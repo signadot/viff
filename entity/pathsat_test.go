@@ -17,7 +17,7 @@ func TestPathsAtAnswersWhatTheDocumentWalkDoes(t *testing.T) {
 	// Positional, like every array the store holds: a `!key` tag is refused on the way in, and
 	// identity is the store's to give (TestAKeyTagIsRefusedOnAWrite).
 	votes := ir.FromSlice([]*ir.Node{
-		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("walter"), "choice": ir.FromString("yes")}),
 		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),
 	})
 	for _, w := range []Write{

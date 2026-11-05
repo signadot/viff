@@ -273,7 +273,7 @@ func TestADescentReachesEveryDepth(t *testing.T) {
 // proposal's votes are addressable one voter at a time.
 func TestAKeyedArrayIsAddressable(t *testing.T) {
 	votes := ir.FromSlice([]*ir.Node{
-		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("walter"), "choice": ir.FromString("yes")}),
 		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),
 	}).WithTag("!key(voter)")
 	ents := []Entity{{
@@ -281,8 +281,8 @@ func TestAKeyedArrayIsAddressable(t *testing.T) {
 		Payload: ir.FromMap(map[string]*ir.Node{"votes": votes}),
 	}}
 
-	if want := `{choice: yes voter: scott}`; flatten(t, read(t, ents, "merge.proposal.X.votes(scott)").Node) != want {
-		t.Fatalf("votes(scott) = %s, want %s", flatten(t, read(t, ents, "merge.proposal.X.votes(scott)").Node), want)
+	if want := `{choice: yes voter: walter}`; flatten(t, read(t, ents, "merge.proposal.X.votes(walter)").Node) != want {
+		t.Fatalf("votes(walter) = %s, want %s", flatten(t, read(t, ents, "merge.proposal.X.votes(walter)").Node), want)
 	}
 	if d := read(t, ents, "merge.proposal.X.votes(nobody)"); d.Node != nil {
 		t.Fatalf("votes(nobody) answered %s, want nothing", flatten(t, d.Node))
@@ -302,7 +302,7 @@ func TestAKeyedArrayIsAddressable(t *testing.T) {
 // silence at these addresses, which is a separate question.
 func TestPathsReachIntoArrays(t *testing.T) {
 	votes := ir.FromSlice([]*ir.Node{
-		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("walter"), "choice": ir.FromString("yes")}),
 		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("ana"), "choice": ir.FromString("no")}),
 	}).WithTag("!key(voter)")
 	plain := ir.FromSlice([]*ir.Node{ir.FromString("a"), ir.FromString("b")})
@@ -371,7 +371,7 @@ func TestPathsReachIntoArrays(t *testing.T) {
 // (git-issue anbz58g6h12krp0sn5n0).
 func TestAWildcardReachesOnlyItsOwnKind(t *testing.T) {
 	votes := ir.FromSlice([]*ir.Node{
-		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("walter"), "choice": ir.FromString("yes")}),
 	}).WithTag("!key(voter)")
 	ents := []Entity{{
 		Ref:     RefAt("merge", "proposal", "X"),
@@ -393,14 +393,14 @@ func TestAWildcardReachesOnlyItsOwnKind(t *testing.T) {
 	}
 }
 
-// An unkeyed array says so rather than answering no: `(scott)` over it is a question the data
+// An unkeyed array says so rather than answering no: `(walter)` over it is a question the data
 // cannot be asked, not one whose answer is nothing.
 func TestAKeyOnAnUnkeyedArrayIsAnError(t *testing.T) {
 	ents := []Entity{{
 		Ref:     RefAt("merge", "proposal", "X"),
-		Payload: ir.FromMap(map[string]*ir.Node{"votes": ir.FromSlice([]*ir.Node{ir.FromString("scott")})}),
+		Payload: ir.FromMap(map[string]*ir.Node{"votes": ir.FromSlice([]*ir.Node{ir.FromString("walter")})}),
 	}}
-	if _, _, err := Reach(docOf(ents), at(t, "merge.proposal.X.votes(scott)"), nil); err == nil {
+	if _, _, err := Reach(docOf(ents), at(t, "merge.proposal.X.votes(walter)"), nil); err == nil {
 		t.Fatal("a keyed lookup into an unkeyed array was answered rather than refused")
 	}
 }
@@ -449,7 +449,7 @@ func flatten(t *testing.T, n *ir.Node) string {
 func TestAKeyTagIsRefusedOnAWrite(t *testing.T) {
 	s := openStore(t)
 	votes := ir.FromSlice([]*ir.Node{
-		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("scott"), "choice": ir.FromString("yes")}),
+		ir.FromMap(map[string]*ir.Node{"voter": ir.FromString("walter"), "choice": ir.FromString("yes")}),
 	}).WithTag("!key(voter)")
 	for _, tc := range []struct {
 		name  string

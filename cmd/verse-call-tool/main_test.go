@@ -134,10 +134,10 @@ func TestOnlyWhatWasGivenIsSent(t *testing.T) {
 }
 
 func TestAListIsTheFlagRepeated(t *testing.T) {
-	h := &host{out: "scott chose yes"}
+	h := &host{out: "walter chose yes"}
 	serve(t, h)
 	code, out, _ := exec(t, "", "ask", "-question", "ship it?", "-options", "yes", "-options", "no", "-within", "30m")
-	if code != exitOK || out != "scott chose yes\n" {
+	if code != exitOK || out != "walter chose yes\n" {
 		t.Fatalf("exit %d, out %q", code, out)
 	}
 	opts, _ := h.input["options"].([]any)

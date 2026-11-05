@@ -57,8 +57,8 @@ func RecordID(at, name string) string {
 //
 // AN OWNER RECORD, though the question is the system's like the node above it and the elision
 // would have written none: what reaches a question is decided on its record, so that a grant
-// held out above — the docket's open default — stops here, and a gate held out to davido is
-// held out to davido. The link under is what lets the task's owner, or the charter's, answer
+// held out above — the docket's open default — stops here, and a gate held out to oscar is
+// held out to oscar. The link under is what lets the task's owner, or the charter's, answer
 // what their own work asked, with the question standing at its own address.
 func poseRecord(store entity.Store, q task.GateQuestion, taskID string) error {
 	var origin entity.Ref

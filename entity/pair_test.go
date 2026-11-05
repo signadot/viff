@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	asker     = "user:daniel@example.com"
+	asker     = "user:victor@example.com"
 	installer = "user:installer@example.com"
 )
 
@@ -104,7 +104,7 @@ func TestAPairWithTheSystemIsTheOtherPartyAlone(t *testing.T) {
 		}
 	}
 	// And a write whose VALUE reaches a place the other party may not write is refused there —
-	// the check beneath the named node, which a system actor skips. shared is Daniel's, held out
+	// the check beneath the named node, which a system actor skips. shared is Victor's, held out
 	// `read-write` to the installer; carol makes shared.c under a grant, and a grant stops at an
 	// owner's record, so the installer's does not reach it.
 	const carol = "user:carol@example.com"

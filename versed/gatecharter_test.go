@@ -137,14 +137,14 @@ func TestTheGateCharterAsksWhomAPersonsAskNames(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	id := askID(t, ask(t, "user:daniel@example.com", ts.URL,
+	id := askID(t, ask(t, "user:victor@example.com", ts.URL,
 		`{name: land, question: "Merge verse/ask?", to: [ana@example.com]}`))
 	var asked map[string]entity.Obj
 	deadline := time.After(10 * time.Second)
 	for len(asked) == 0 {
 		select {
 		case <-deadline:
-			t.Fatal("the charter asked nobody about daniel's ask")
+			t.Fatal("the charter asked nobody about victor's ask")
 		case <-time.After(10 * time.Millisecond):
 		}
 		asked = asksIn(t, srv)
@@ -157,12 +157,12 @@ func TestTheGateCharterAsksWhomAPersonsAskNames(t *testing.T) {
 	// or she is told twice, once by a line naming no rule at all.
 	time.Sleep(200 * time.Millisecond)
 	if n := messagesIn(t, srv); n != 1 {
-		t.Fatalf("%d messages about daniel's ask, want one", n)
+		t.Fatalf("%d messages about victor's ask, want one", n)
 	}
 	if msg["asks"] != id {
-		t.Errorf("the message to ana asks %v, want daniel's ask", msg["asks"])
+		t.Errorf("the message to ana asks %v, want victor's ask", msg["asks"])
 	}
-	if text, _ := msg["text"].(string); !strings.Contains(text, "user:daniel@example.com") || strings.Contains(text, "$") {
+	if text, _ := msg["text"].(string); !strings.Contains(text, "user:victor@example.com") || strings.Contains(text, "$") {
 		t.Errorf("the message to ana says %q, want who asked, resolved", text)
 	}
 }
@@ -295,12 +295,12 @@ func TestAPersonsAskLabelledForAChannelIsStillDMd(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	id := askID(t, ask(t, "user:daniel@example.com", ts.URL,
+	id := askID(t, ask(t, "user:victor@example.com", ts.URL,
 		`{name: land, question: "Merge?", to: [ana@example.com], labels: {slack: C123}}`))
 	var got []entity.Obj
 	for deadline := time.Now().Add(10 * time.Second); len(got) == 0; got = messagesTo(t, srv) {
 		if time.Now().After(deadline) {
-			t.Fatal("the charter said nothing about daniel's ask")
+			t.Fatal("the charter said nothing about victor's ask")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

@@ -91,7 +91,7 @@ func TestAnAsksThenRunsOnTheLocalRunner(t *testing.T) {
 	t.Cleanup(ts.CloseClientConnections)
 	testAddr = strings.TrimPrefix(ts.URL, "http://")
 
-	id := askAs(t, daniel, "land", "-q", "go?", "--to", daniel, "--on", `[{match: {verdict: proceed}, then: {spawn: {script: "echo landed", environment: {systems: {network: {mode: open}}}}}}]`)
+	id := askAs(t, victor, "land", "-q", "go?", "--to", victor, "--on", `[{match: {verdict: proceed}, then: {spawn: {script: "echo landed", environment: {systems: {network: {mode: open}}}}}}]`)
 	ref := mirror.AskRef(id)
 	if out, err := runCLI(t, "gate", questionOn(t, store, ref), "--answer", "proceed"); err != nil {
 		t.Fatalf("answer: %v\n%s", err, out)

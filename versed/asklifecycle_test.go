@@ -19,25 +19,25 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-// AN ANSWER DELIVERED BEFORE A REWORDING IS NOT OVERTAKEN BY IT: davido's yes to edit 1 reaches
-// the waiter, and daniel's change to the words, which would have asked edit 2, is refused whole:
+// AN ANSWER DELIVERED BEFORE A REWORDING IS NOT OVERTAKEN BY IT: oscar's yes to edit 1 reaches
+// the waiter, and victor's change to the words, which would have asked edit 2, is refused whole:
 // the record stays at edit 1, and its date does not move. Before, the record moved to edit 2 and
-// the yes settled it, running a `then` davido never saw.
+// the yes settled it, running a `then` oscar never saw.
 func TestAnAnswerDeliveredBeforeARewordingIsNotOvertaken(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
 	due := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], due: "`+due+`"}`))
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], due: "`+due+`"}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
 
-	res := task.Choose(task.Proceed, davido)
+	res := task.Choose(task.Proceed, oscar)
 	res.Edit = 1
 	if err := srv.Reg.Deliver(id, res); err != nil {
-		t.Fatalf("delivering davido's yes: %v", err)
+		t.Fatalf("delivering oscar's yes: %v", err)
 	}
 	later := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
-	resp := change(t, daniel, ts.URL, id, `{question: "Merge, and tag it?", on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge and tag", environment: {systems: {network: {mode: open}}}}}}], due: "`+later+`"}`)
+	resp := change(t, victor, ts.URL, id, `{question: "Merge, and tag it?", on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge and tag", environment: {systems: {network: {mode: open}}}}}}], due: "`+later+`"}`)
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("a change after the answer was delivered: %s: %s, want 409", resp.Status, bodyOf(t, resp))
 	}
@@ -54,13 +54,13 @@ func TestAnAnswerDeliveredBeforeARewordingIsNotOvertaken(t *testing.T) {
 // what raised it, and its owner's DELETE is refused rather than leaving that waiting on nothing.
 func TestOnlyAPersonsAskIsDeleted(t *testing.T) {
 	srv, ts := asking(t)
-	const scott = "user:scott@example.com"
+	const walter = "user:walter@example.com"
 	ref := mirror.AskRef("verse.trigger.review.review~7")
-	if err := entity.Establish(srv.Store, ref, scott, entity.Ref{}, nil); err != nil {
+	if err := entity.Establish(srv.Store, ref, walter, entity.Ref{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	entitytest.Set(t, srv.Store, ref, entity.Obj{"status": mirror.QuestionPending, "gate": "review"}.Payload())
-	if resp := deleteAs(t, scott, ts.URL+"/asks/verse.trigger.review.review~7"); resp.StatusCode != http.StatusConflict {
+	if resp := deleteAs(t, walter, ts.URL+"/asks/verse.trigger.review.review~7"); resp.StatusCode != http.StatusConflict {
 		t.Fatalf("deleting a rule's question: %s: %s, want 409", resp.Status, bodyOf(t, resp))
 	}
 	if _, ok, _ := srv.Store.Get(ref); !ok {
@@ -169,7 +169,7 @@ func TestAnAnsweredAskWithoutItsAnswerFieldStillFollows(t *testing.T) {
 	ctx, down := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
-	id := askID(t, ask(t, "user:scott@example.com", ts.URL, `{name: ship, question: q, to: [ann@example.com],
+	id := askID(t, ask(t, "user:walter@example.com", ts.URL, `{name: ship, question: q, to: [ann@example.com],
 		on: [{match: {verdict: proceed}, then: {ask: {name: next, question: "And then?", to: [lead@example.com]}}}]}`))
 	posed(t, first, mirror.AskRef(id))
 	ts.Close()

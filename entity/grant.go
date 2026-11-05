@@ -194,7 +194,7 @@ func (l Levels) Payload() Payload {
 //   - read-write: [verse-runner]            # the record's own node, and beneath it
 //   - below: true                          # beneath the record's node, not the node itself
 //     owner: ["*"]
-//   - at: [spaces, scott, shared, "*"]     # somewhere else: a path, with at most a trailing *
+//   - at: [spaces, walter, shared, "*"]     # somewhere else: a path, with at most a trailing *
 //     read: [ana@example.com]
 //
 // A line with no `at` is about the node the record is on, which is what nearly every line is:

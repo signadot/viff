@@ -285,7 +285,7 @@ func shown(t *testing.T, m map[string]any) string {
 func TestOutSaysWhatEachQuestionAsks(t *testing.T) {
 	r := newOutRig(t)
 	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending,
-		mirror.WaitingOnField: []any{"user:scott@example.com", "user:ana@example.com"},
+		mirror.WaitingOnField: []any{"user:walter@example.com", "user:ana@example.com"},
 		"options":             []any{map[string]any{"id": "proceed"}, map[string]any{"id": "deny"}}})
 	r.askAbout(t, "q~1")
 	r.pass(t)
@@ -293,7 +293,7 @@ func TestOutSaysWhatEachQuestionAsks(t *testing.T) {
 		t.Fatalf("posted %v, want one message", r.fake.posted)
 	}
 	want := "the review is waiting\n" +
-		"> Answers `q~1` · waiting on `scott@example.com`, `ana@example.com`\n" +
+		"> Answers `q~1` · waiting on `walter@example.com`, `ana@example.com`\n" +
 		"Answer in this thread: `proceed`, `deny`"
 	if said := shown(t, r.fake.posted[0]); said != want {
 		t.Errorf("said\n%s\nwant\n%s", said, want)
@@ -391,24 +391,24 @@ func TestOutSaysWhatEachOptionMeans(t *testing.T) {
 func TestOutSaysWhatEachBallotSaid(t *testing.T) {
 	r := newOutRig(t)
 	ballots := map[string]any{
-		"user:ana@example.com":   map[string]any{"choice": "proceed", "say": []any{"fine by me, but not on friday"}},
-		"user:scott@example.com": map[string]any{"choice": "proceed"},
+		"user:ana@example.com":    map[string]any{"choice": "proceed", "say": []any{"fine by me, but not on friday"}},
+		"user:walter@example.com": map[string]any{"choice": "proceed"},
 	}
 	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionPending, "pose": "Ship it?",
 		"options": []any{map[string]any{"id": "proceed", "need": 2}}, "ballots": ballots})
 	r.askAbout(t, "q~1")
 	r.pass(t)
-	want := "so far: `ana@example.com` proceed — fine by me, but not on friday, `scott@example.com` proceed"
+	want := "so far: `ana@example.com` proceed — fine by me, but not on friday, `walter@example.com` proceed"
 	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, want) {
 		t.Errorf("said %q, want it to carry %q", said, want)
 	}
 
 	// And once it settles, the ballots stay in front of the channel, since two voices decided it.
 	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionAnswered, "verdict": "proceed",
-		"by": "user:scott@example.com", "ballots": ballots})
+		"by": "user:walter@example.com", "ballots": ballots})
 	r.pass(t)
 	said := shown(t, r.fake.updates[0])
-	if !strings.Contains(said, "answered *proceed* by `scott@example.com` · ballots: `ana@example.com` proceed — fine by me") {
+	if !strings.Contains(said, "answered *proceed* by `walter@example.com` · ballots: `ana@example.com` proceed — fine by me") {
 		t.Errorf("redrawn as %q, want the verdict and who voted how", said)
 	}
 }
@@ -422,7 +422,7 @@ func TestOutRedrawsTheMessageWhenItsQuestionSettles(t *testing.T) {
 	r.pass(t)
 
 	r.pose(t, "q~1", entity.Obj{"status": mirror.QuestionAnswered, "verdict": "deny",
-		"by": "user:ani@example.com", "say": []any{"not on friday"}})
+		"by": "user:peggy@example.com", "say": []any{"not on friday"}})
 	r.pass(t)
 	if len(r.fake.posted) != 1 || len(r.fake.updates) != 1 {
 		t.Fatalf("posted %d, updated %d: want the one message redrawn", len(r.fake.posted), len(r.fake.updates))
@@ -431,7 +431,7 @@ func TestOutRedrawsTheMessageWhenItsQuestionSettles(t *testing.T) {
 	if strings.Contains(said, "Answer in this thread") {
 		t.Errorf("said %q: a settled question still says how to answer it", said)
 	}
-	if want := "> `q~1` answered *deny* by `ani@example.com`: not on friday"; !strings.Contains(said, want) {
+	if want := "> `q~1` answered *deny* by `peggy@example.com`: not on friday"; !strings.Contains(said, want) {
 		t.Errorf("said %q, want it to carry %q", said, want)
 	}
 	r.pass(t)
@@ -452,12 +452,12 @@ func TestOutSaysWhatBecameOfTheQuestion(t *testing.T) {
 	}{
 		{"a ballot so far", entity.Obj{"status": mirror.QuestionPending,
 			"options": []any{map[string]any{"id": "proceed"}},
-			"ballots": map[string]any{"user:ani@example.com": map[string]any{"choice": "proceed"}}},
-			true, "Answers `q~1` · so far: `ani@example.com` proceed"},
+			"ballots": map[string]any{"user:peggy@example.com": map[string]any{"choice": "proceed"}}},
+			true, "Answers `q~1` · so far: `peggy@example.com` proceed"},
 		{"answered", entity.Obj{"status": mirror.QuestionAnswered, "verdict": "proceed",
-			"by": "user:scott@example.com"}, false, "`q~1` answered *proceed* by `scott@example.com`"},
+			"by": "user:walter@example.com"}, false, "`q~1` answered *proceed* by `walter@example.com`"},
 		{"a verdict under a pending status", entity.Obj{"status": mirror.QuestionPending,
-			"verdict": "proceed", "by": "user:scott@example.com"}, false, "`q~1` answered *proceed* by `scott@example.com`"},
+			"verdict": "proceed", "by": "user:walter@example.com"}, false, "`q~1` answered *proceed* by `walter@example.com`"},
 		{"withdrawn", entity.Obj{"status": mirror.QuestionOrphaned, "why": "the rule stopped selecting it"},
 			false, "`q~1` was withdrawn unanswered: the rule stopped selecting it"},
 	} {

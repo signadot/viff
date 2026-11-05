@@ -373,7 +373,7 @@ func TestASayToARunningScriptIsRefused(t *testing.T) {
 	}
 }
 
-// Scott's probe on #23: an operator's say while a script's push is asked about is refused, the
+// Walter's probe on #23: an operator's say while a script's push is asked about is refused, the
 // question stands, and once approved the push lands.
 func TestASayDuringAScriptsPushLeavesItsQuestionStanding(t *testing.T) {
 	withCallTool(t)

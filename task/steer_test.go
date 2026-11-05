@@ -110,12 +110,12 @@ func TestASayIsIgnoredByADriverThatHoldsNoConversation(t *testing.T) {
 // again. The loop knew who was speaking the whole time and dropped it on the floor.
 func TestAnOperatorsSteerArrivesWithItsStanding(t *testing.T) {
 	said := "hurry — produce your answer now"
-	got := fold(convMsg{text: said, by: "human:scott", kind: convSay})
+	got := fold(convMsg{text: said, by: "human:walter", kind: convSay})
 
 	if !strings.Contains(got, said) {
 		t.Fatalf("the operator's own words are gone: %q", got)
 	}
-	if !strings.Contains(got, "human:scott") {
+	if !strings.Contains(got, "human:walter") {
 		t.Errorf("the speaker is not named, so a person and a service read alike: %q", got)
 	}
 	// The load-bearing claim: they can see what the model cannot. That is what makes it a

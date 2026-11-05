@@ -41,7 +41,7 @@ func installAs(t *testing.T, as, url, charter string) *http.Response {
 	return postAs(t, as, url+"/charter", "application/tony", charter)
 }
 
-// A gate that names its answerers holds its question out to them: davido answers, a stranger
+// A gate that names its answerers holds its question out to them: oscar answers, a stranger
 // is refused, and the charter's owner answers what their own rule asked. With two answerers
 // and `need: 2` the question waits for both.
 func TestAGateHeldOutToItsAnswerers(t *testing.T) {
@@ -68,7 +68,7 @@ func TestAGateHeldOutToItsAnswerers(t *testing.T) {
 	rec, _, _ := srv.Store.Get(entity.PermsRef(mirror.QuestionRef(qid)))
 	grants, _ := entity.ParseGrants(mirror.QuestionRef(qid).Segs(), rec.Payload)
 	if len(grants) != 1 || len(grants[0].To[entity.ReadWrite]) != 1 || grants[0].To[entity.ReadWrite][0] != "user:oscar@example.com" {
-		t.Fatalf("the question's grants = %+v; want read-write for davido", grants)
+		t.Fatalf("the question's grants = %+v; want read-write for oscar", grants)
 	}
 	if got := entity.Str(rec.Payload, entity.OwnerField); got != entity.SystemDocket {
 		t.Fatalf("the question's record is owned by %q", got)
@@ -82,7 +82,7 @@ func TestAGateHeldOutToItsAnswerers(t *testing.T) {
 	resp = answerAs(t, "oscar@example.com", ts.URL, qid)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("davido could not answer the question held out to him: %s", resp.Status)
+		t.Fatalf("oscar could not answer the question held out to him: %s", resp.Status)
 	}
 	if q := settledQuestion(t, srv, qid); q["by"] != "user:oscar@example.com" {
 		t.Fatalf("settled by %v", q["by"])

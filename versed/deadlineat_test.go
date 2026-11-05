@@ -16,7 +16,7 @@ import (
 	"github.com/signadot/verse/mirror"
 )
 
-const asker = "user:daniel@example.com"
+const asker = "user:victor@example.com"
 
 // datedRule is one standing rule posing every `ask.*` question under the clock its record names
 // (`by`), settling on proceed when it passes, and latching the record when it is answered.

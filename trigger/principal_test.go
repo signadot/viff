@@ -76,10 +76,10 @@ func TestAnInstallWritesTheRuleAsItsInstaller(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
 		Action:    setStage("reviewed"),
 	}
-	if err := eng.InstallTriggerAs(t.Context(), "scott@example.com", tr); err != nil {
+	if err := eng.InstallTriggerAs(t.Context(), "walter@example.com", tr); err != nil {
 		t.Fatal(err)
 	}
-	if got := st.by(charter.RuleRef("", "review")); got != "scott@example.com" {
+	if got := st.by(charter.RuleRef("", "review")); got != "walter@example.com" {
 		t.Fatalf("the rule record was written as %q, want the installer", got)
 	}
 	// Restored at a start, the record is re-written by nobody in particular: the store's own

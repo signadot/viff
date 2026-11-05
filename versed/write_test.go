@@ -222,7 +222,7 @@ func TestVerseOwnHalfRefusesAClientWrite(t *testing.T) {
 
 	// And the two halves of a vote: the ballot lands, the motion does not.
 	if resp := postTony(t, ts.URL+"/entity", api.PutEntity{
-		At: "vote.abcd.scott", Payload: entity.Obj{"choice": "approve"}.Payload(),
+		At: "vote.abcd.walter", Payload: entity.Obj{"choice": "approve"}.Payload(),
 	}); resp.StatusCode >= http.StatusBadRequest {
 		t.Errorf("casting a ballot = %s, want it accepted", resp.Status)
 	} else {

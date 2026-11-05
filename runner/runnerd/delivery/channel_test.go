@@ -60,7 +60,7 @@ func within(repos []string, names ...string) *runner.Launch {
 // A push the task asked for before its process died is finished before anything decides what
 // did not leave. Settle closes the channel and then waits for the request in flight; without
 // that, salvage would read a tree an approved push was staging from, hold the work under `held`
-// as if nobody had authorized it, and the next sweep would send it twice. (Scott's, from #16.)
+// as if nobody had authorized it, and the next sweep would send it twice. (Walter's, from #16.)
 func TestSettleWaitsForThePushInFlight(t *testing.T) {
 	ctx := context.Background()
 	forge := t.TempDir()

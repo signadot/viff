@@ -78,7 +78,7 @@ func TestTaskResolveAnswersALocalGate(t *testing.T) {
 	qid := waitQuestion(t, srv, "local-1")
 
 	resp := postTony(t, ops.URL+"/tasks/local-1/resolve",
-		api.Resolve{ID: qid, Choice: "proceed", By: "user:scott@example.com"})
+		api.Resolve{ID: qid, Choice: "proceed", By: "user:walter@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("resolving a LOCAL task gate = %s, want 204 — the body did not reach the decision", resp.Status)

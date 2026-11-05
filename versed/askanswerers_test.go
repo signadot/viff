@@ -13,8 +13,8 @@ import (
 // taking a list found nobody.
 func TestAnAsksAnswerersAreAListHoweverManyItNames(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel = "user:daniel@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
+	const victor = "user:victor@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
 	stored := func(when string) {
 		t.Helper()
@@ -27,7 +27,7 @@ func TestAnAsksAnswerersAreAListHoweverManyItNames(t *testing.T) {
 		}
 	}
 	stored("posed")
-	if resp := change(t, daniel, ts.URL, id, `{question: "Merge, and tag it?"}`); resp.StatusCode != http.StatusOK {
+	if resp := change(t, victor, ts.URL, id, `{question: "Merge, and tag it?"}`); resp.StatusCode != http.StatusOK {
 		t.Fatalf("the change: %s", resp.Status)
 	}
 	stored("reworded")

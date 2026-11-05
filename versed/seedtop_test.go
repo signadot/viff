@@ -157,7 +157,7 @@ func TestASecondSeedLeavesAnEditedRecordAlone(t *testing.T) {
 // verse has. That is what lets an admin put the top back — and, through `verse perms`, edit the
 // root's own record on a running verse, which nobody could when the system owned it.
 func TestTheRootIsTheAdminIdentitys(t *testing.T) {
-	store := seeded(t, Perms{Admins: []string{"user:scott@example.com"}})
+	store := seeded(t, Perms{Admins: []string{"user:walter@example.com"}})
 	rec, ok, err := store.Get(entity.PermsRef(entity.RefAt()))
 	if err != nil || !ok {
 		t.Fatalf("the root's record: %v %v", ok, err)
@@ -212,7 +212,7 @@ func TestTheAdminIdentityDoesNotDisplaceAnOwner(t *testing.T) {
 // here can tell an edit from a config that moved.
 func TestAConfigChangeNeedsAReseed(t *testing.T) {
 	store := seeded(t, Perms{})
-	bob, scott := "user:bob@example.com", "user:scott@example.com"
+	bob, walter := "user:bob@example.com", "user:walter@example.com"
 	// A place taken while the verse was open, which the narrowing must leave alone.
 	place := entity.RefAt("github", "signadot", "verse")
 	if err := entity.Claim(store, place, "user:alice@example.com"); err != nil {
@@ -220,7 +220,7 @@ func TestAConfigChangeNeedsAReseed(t *testing.T) {
 	}
 
 	// Restarted with admins named, and without a reseed: what stands is what stood.
-	admins := Perms{Admins: []string{scott}}
+	admins := Perms{Admins: []string{walter}}
 	if err := seedPerms(store, admins); err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestAConfigChangeNeedsAReseed(t *testing.T) {
 	if mayCreate(t, store, bob, entity.RefAt("spaces")) {
 		t.Error("a reseed did not narrow the top")
 	}
-	if !mayCreate(t, store, scott, entity.RefAt("spaces")) {
+	if !mayCreate(t, store, walter, entity.RefAt("spaces")) {
 		t.Error("a reseed did not admit the admin it names")
 	}
 	// It touches the top and nothing else: the place alice took is still hers, and the admin
@@ -280,7 +280,7 @@ func TestAnEmptyDefaultIsPrivateNotUnset(t *testing.T) {
 // had added a level to kept the level and a `child-grants` the config no longer said stayed: "reseed
 // with no admins puts the open form back" left a root that was not the open form.
 func TestAReseedReplacesWhatAnOperatorAdded(t *testing.T) {
-	store := seeded(t, Perms{Admins: []string{"user:scott@example.com"}})
+	store := seeded(t, Perms{Admins: []string{"user:walter@example.com"}})
 	root := entity.RefAt()
 	// An operator widens the first line and sets a default, by hand.
 	if err := entity.SetGrants(store, root, []entity.Grant{
@@ -299,7 +299,7 @@ func TestAReseedReplacesWhatAnOperatorAdded(t *testing.T) {
 		t.Fatal("the fixture is wrong: the operator's read-write did not land")
 	}
 
-	if err := seedPerms(store, Perms{Admins: []string{"user:scott@example.com"}, Reseed: true}); err != nil {
+	if err := seedPerms(store, Perms{Admins: []string{"user:walter@example.com"}, Reseed: true}); err != nil {
 		t.Fatal(err)
 	}
 	if holds(t, store, bob, entity.ReadWrite, entity.RefAt("anywhere")) {
@@ -323,11 +323,11 @@ func TestAReseedReplacesWhatAnOperatorAdded(t *testing.T) {
 // other's. So a list that differs from the group is a verse somebody administers, not drift —
 // and it has to be true that the admin identity can make the edit, and that nobody else can.
 func TestTheAdminIdentityChangesWhoTheAdminsAre(t *testing.T) {
-	store := seeded(t, Perms{Admins: []string{"user:scott@example.com"}})
+	store := seeded(t, Perms{Admins: []string{"user:walter@example.com"}})
 	group, ana := entity.GroupRef(AdminGroup), "user:ana@example.com"
-	members := entity.Obj{entity.MembersField: []any{AdminPrincipal, "user:scott@example.com", ana}}.Payload()
-	if _, _, err := entity.As(store, "user:scott@example.com").Write(entity.Write{
-		At: group.At(), Value: members, Principal: "user:scott@example.com",
+	members := entity.Obj{entity.MembersField: []any{AdminPrincipal, "user:walter@example.com", ana}}.Payload()
+	if _, _, err := entity.As(store, "user:walter@example.com").Write(entity.Write{
+		At: group.At(), Value: members, Principal: "user:walter@example.com",
 	}); err == nil {
 		t.Error("an admin who is not the root's owner rewrote the admin group")
 	}

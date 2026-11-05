@@ -38,37 +38,37 @@ func askID(t *testing.T, resp *http.Response) string {
 // the asker and whom it asks and nobody else, and posed to whom it names.
 func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel, davido, bob = "user:daniel@example.com", "user:oscar@example.com", "user:bob@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
+	const victor, oscar, bob = "user:victor@example.com", "user:oscar@example.com", "user:bob@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
 	if !strings.HasPrefix(id, "land-") {
 		t.Fatalf("id %q is not derived from the name", id)
 	}
 	ref := mirror.AskRef(id)
-	if o, _ := entity.OwnerOf(srv.Store, ref); o != daniel {
+	if o, _ := entity.OwnerOf(srv.Store, ref); o != victor {
 		t.Fatalf("the ask is %q's, want the asker's", o)
 	}
 	e, _, _ := srv.Store.Get(ref)
-	if got := mirror.PrincipalFrom(e.Payload); got != daniel {
+	if got := mirror.PrincipalFrom(e.Payload); got != victor {
 		t.Fatalf("the ask says its asker is %q", got)
 	}
-	if got := mirror.GranteesTo(e.Payload); len(got) != 1 || got[0] != davido {
-		t.Fatalf("to %v, want [%s] in the grammar's spelling", got, davido)
+	if got := mirror.GranteesTo(e.Payload); len(got) != 1 || got[0] != oscar {
+		t.Fatalf("to %v, want [%s] in the grammar's spelling", got, oscar)
 	}
-	for who, want := range map[string]int{daniel: http.StatusOK, davido: http.StatusOK, bob: http.StatusForbidden} {
+	for who, want := range map[string]int{victor: http.StatusOK, oscar: http.StatusOK, bob: http.StatusForbidden} {
 		if resp := getAs(t, who, ts.URL+"/entity?at="+ref.KPath()); resp.StatusCode != want {
 			t.Errorf("%s reading the ask: %s, want %d", who, resp.Status, want)
 		}
 	}
 	posed(t, srv, ref)
 	qid := ref.Name()
-	if got := heldOutTo(t, srv, qid); len(got) != 1 || got[0] != davido {
-		t.Fatalf("held out to %v, want davido alone", got)
+	if got := heldOutTo(t, srv, qid); len(got) != 1 || got[0] != oscar {
+		t.Fatalf("held out to %v, want oscar alone", got)
 	}
 	// And its question, which carries its words, is read as the ask is: on its own, and on the
 	// docket. Waited for, because the check learns of the question's record a moment after the
 	// docket writes it (7q4azhtj); what is asserted is who reads it once it has.
 	q := ts.URL + "/entity?at=" + mirror.QuestionRef(qid).KPath()
-	for _, who := range []string{daniel, davido} {
+	for _, who := range []string{victor, oscar} {
 		deadline := time.Now().Add(2 * time.Second)
 		for getAs(t, who, q).StatusCode != http.StatusOK {
 			if time.Now().After(deadline) {
@@ -92,12 +92,12 @@ func TestAnAskIsItsAskersAndReadByWhomItAsks(t *testing.T) {
 // refuses, and not by owning anything above it, since nobody but the system does.
 func TestNobodyElseWritesAnAsk(t *testing.T) {
 	srv, ts := asking(t)
-	id := askID(t, ask(t, "user:daniel@example.com", ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
+	id := askID(t, ask(t, "user:victor@example.com", ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
 	ref := mirror.AskRef(id)
 	for _, who := range []string{"user:bob@example.com", tester} {
 		if _, _, err := entity.As(srv.Store, who).Write(entity.Write{
 			At: entity.Path{Ref: ref, Access: "then"}, Value: entity.Obj{"prompt": "something else"}.Payload()}); err == nil {
-			t.Errorf("%s rewrote daniel's then", who)
+			t.Errorf("%s rewrote victor's then", who)
 		}
 	}
 }
@@ -109,7 +109,7 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 	soon := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	for body, want := range map[string]string{
 		`{name: x}`:                                   "question is required",
-		`{name: x, question: q, to: [davido]}`:        "a bare word names nothing",
+		`{name: x, question: q, to: [oscar]}`:         "a bare word names nothing",
 		`{name: x, question: q, due: tomorrow}`:       "RFC 3339",
 		`{name: x, question: q, due: "` + past + `"}`: "not in the future",
 		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {prompt: a, script: ""}}]}`:                                                "one key",
@@ -128,7 +128,7 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 		`{name: x, question: q, answerers: [oscar@example.com]}`:                                                                         "answerers",
 		`{name: x, question: q, on: [{match: {verdict: proceed}, then: {ask: {name: d, question: q, answerers: [oscar@example.com]}}}]}`: "answerers",
 	} {
-		resp := ask(t, "user:daniel@example.com", ts.URL, body)
+		resp := ask(t, "user:victor@example.com", ts.URL, body)
 		if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, want) {
 			t.Errorf("%s: %s %q, want 400 saying %q", body, resp.Status, msg, want)
 		}
@@ -144,11 +144,11 @@ func TestAnAskIsCheckedWhereItIsAsked(t *testing.T) {
 func TestAThensSpawnIsHeldToTheRunnerWhenAsked(t *testing.T) {
 	srv, ts := asking(t)
 	describeLocal(t, srv, stock.Open().Describe([]string{runner.NetworkOpen}))
-	resp := ask(t, "user:daniel@example.com", ts.URL, `{name: x, question: q, on: [{match: {verdict: proceed}, then: {spawn: {script: "true"}}}]}`)
+	resp := ask(t, "user:victor@example.com", ts.URL, `{name: x, question: q, on: [{match: {verdict: proceed}, then: {spawn: {script: "true"}}}]}`)
 	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(msg, "mode none: this runner builds open only") {
 		t.Errorf("a then whose network the runner does not build: %s %q, want 400", resp.Status, msg)
 	}
-	resp = ask(t, "user:daniel@example.com", ts.URL, `{name: y, question: q, on: [{match: {verdict: proceed}, then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}]}`)
+	resp = ask(t, "user:victor@example.com", ts.URL, `{name: y, question: q, on: [{match: {verdict: proceed}, then: {spawn: {script: "true", environment: {systems: {network: {mode: open}}}}}}]}`)
 	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusCreated {
 		t.Errorf("a then the runner runs: %s %q, want 201", resp.Status, msg)
 	}
@@ -165,7 +165,7 @@ func TestAnAsksSilenceIsNoUnlessItSaysYes(t *testing.T) {
 		}
 		due := clock.Now().Add(time.Minute).UTC().Format(time.RFC3339)
 		body := `{name: ` + name + `, question: "Merge?", to: [oscar@example.com], due: "` + due + `"` + said + `}`
-		ref := mirror.AskRef(askID(t, ask(t, "user:daniel@example.com", ts.URL, body)))
+		ref := mirror.AskRef(askID(t, ask(t, "user:victor@example.com", ts.URL, body)))
 		posed(t, srv, ref)
 		clock.Advance(time.Minute)
 		deadline := time.After(3 * time.Second)
@@ -189,16 +189,16 @@ func TestAnAsksSilenceIsNoUnlessItSaysYes(t *testing.T) {
 // WITHDRAWING IS THE ASKER'S, and a question about an ask that is gone is withdrawn.
 func TestAnAskIsWithdrawnByItsAsker(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
 	qid := ref.Name()
-	if resp := deleteAs(t, davido, ts.URL+"/asks/"+id); resp.StatusCode == http.StatusNoContent {
-		t.Fatal("davido withdrew daniel's ask")
+	if resp := deleteAs(t, oscar, ts.URL+"/asks/"+id); resp.StatusCode == http.StatusNoContent {
+		t.Fatal("oscar withdrew victor's ask")
 	}
-	if resp := deleteAs(t, daniel, ts.URL+"/asks/"+id); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("daniel's withdrawal: %s: %s", resp.Status, bodyOf(t, resp))
+	if resp := deleteAs(t, victor, ts.URL+"/asks/"+id); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("victor's withdrawal: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	if _, ok, _ := srv.Store.Get(ref); ok {
 		t.Fatal("the ask stands")
@@ -215,7 +215,7 @@ func TestAnAskIsWithdrawnByItsAsker(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	// Gone, it is nobody's to read, and withdrawing it again is refused like any id one cannot read.
-	if resp := deleteAs(t, daniel, ts.URL+"/asks/"+id); resp.StatusCode != http.StatusForbidden {
+	if resp := deleteAs(t, victor, ts.URL+"/asks/"+id); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("withdrawing it again: %s, want 403", resp.Status)
 	}
 }
@@ -224,8 +224,8 @@ func TestAnAskIsWithdrawnByItsAsker(t *testing.T) {
 // none answers the edit standing now.
 func TestAnAnswerToAnEarlierEditIsRefused(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
 	// Asked again, as the verb that changes an ask does it: the record and the waiting question.
@@ -235,11 +235,11 @@ func TestAnAnswerToAnEarlierEditIsRefused(t *testing.T) {
 	}
 	e, _, _ := srv.Store.Get(ref)
 	srv.Reg.Revise(askQuestion(id, e.Payload, ""))
-	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: davido, Edit: 1})
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: oscar, Edit: 1})
 	if msg := bodyOf(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(msg, "you answered edit 1") {
 		t.Fatalf("an answer to edit 1: %s %q, want 409 saying it was asked again", resp.Status, msg)
 	}
-	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
+	if resp := answerAs(t, oscar, ts.URL, id); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("an answer naming no edit: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	if got := waitField(t, srv, ref, "answer"); got != "yes" {

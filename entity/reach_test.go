@@ -26,7 +26,7 @@ func TestAPathReachesItsOwnLength(t *testing.T) {
 	}
 	// An access into an array is a place INSIDE the node the names reach, so the path reaches
 	// that node.
-	inArray, err := ParseAt(`demo.pr."1".votes(scott)`)
+	inArray, err := ParseAt(`demo.pr."1".votes(walter)`)
 	if err != nil {
 		t.Fatal(err)
 	}

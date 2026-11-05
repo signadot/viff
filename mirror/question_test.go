@@ -126,7 +126,7 @@ func TestReposingOverASettledQuestionClearsTheAnswer(t *testing.T) {
 	store := entitytest.Store(t)
 	pose(t, store, "guard~1", "approval", "", task.Step{})
 	AnswerQuestion(store, "guard~1", task.Resolution{
-		Proceed: true, By: "human:scott", Steer: []string{"ship it"}})
+		Proceed: true, By: "human:walter", Steer: []string{"ship it"}})
 
 	pose(t, store, "guard~1", "approval", "", task.Step{}) // posed again under the id it had
 
@@ -209,7 +209,7 @@ func TestAWithdrawalDoesNotOverwriteAnAnswer(t *testing.T) {
 	PostQuestion(store, task.Pending{
 		Question: task.GateQuestion{ID: "run-1~d1", Gate: "write"},
 	}, "run-1")
-	AnswerQuestion(store, "run-1~d1", task.Resolution{Proceed: true, By: "human:scott"})
+	AnswerQuestion(store, "run-1~d1", task.Resolution{Proceed: true, By: "human:walter"})
 
 	DropQuestion(store, "run-1~d1", "an operator said something while this was being asked about")
 
@@ -218,7 +218,7 @@ func TestAWithdrawalDoesNotOverwriteAnAnswer(t *testing.T) {
 	if got["status"] != QuestionAnswered {
 		t.Fatalf("status = %v, want the answer to survive the crossing withdrawal", got["status"])
 	}
-	if got["by"] != "human:scott" {
+	if got["by"] != "human:walter" {
 		t.Errorf("by = %v — the decision lost its author", got["by"])
 	}
 }
@@ -271,9 +271,9 @@ func TestAQuestionSaysWhoItWaitsOn(t *testing.T) {
 	entitytest.Set(t, store, entity.GroupRef("leads"),
 		entity.Obj{entity.MembersField: []any{"user:bo@example.com"}}.Payload())
 
-	poseTo(t, store, "run-a~d1", "user:scott@example.com", "group:payments")
+	poseTo(t, store, "run-a~d1", "user:walter@example.com", "group:payments")
 	same(t, waitsOn(t, store, "run-a~d1"),
-		[]string{"user:scott@example.com", "user:ana@example.com", "user:bo@example.com"})
+		[]string{"user:walter@example.com", "user:ana@example.com", "user:bo@example.com"})
 
 	// Named nobody, about something: whoever may write what it is about, as it is written
 	// (9ce3bva0, D3). There is no list of them to write down, and a reader can see that this is
@@ -295,8 +295,8 @@ func TestAQuestionSaysWhoItWaitsOn(t *testing.T) {
 // `answerers`, who decided on `by`.
 func TestASettledQuestionWaitsOnNobody(t *testing.T) {
 	store := docket(t)
-	poseTo(t, store, "run-a~d1", "user:scott@example.com")
-	AnswerQuestion(store, "run-a~d1", task.Choose("proceed", "user:scott@example.com"))
+	poseTo(t, store, "run-a~d1", "user:walter@example.com")
+	AnswerQuestion(store, "run-a~d1", task.Choose("proceed", "user:walter@example.com"))
 
 	if got := waitsOn(t, store, "run-a~d1"); len(got) != 0 {
 		t.Errorf("a settled question waits on %v", got)
@@ -332,7 +332,7 @@ func TestAQuestionCarriesWhatItsSubjectSaysOfItself(t *testing.T) {
 	store := docket(t)
 	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"),
 		entity.Obj{"says": "bump go-tony to v0.0.234\nand fix the two call sites"}.Payload())
-	poseTo(t, store, "run-a~d1", "user:scott@example.com")
+	poseTo(t, store, "run-a~d1", "user:walter@example.com")
 
 	e, _, _ := store.Get(QuestionRef("run-a~d1"))
 	if got := entity.Str(e.Payload, "about"); got != "bump go-tony to v0.0.234" {
@@ -345,7 +345,7 @@ func TestAQuestionCarriesWhatItsSubjectSaysOfItself(t *testing.T) {
 func TestASubjectThatSaysNothingLeavesTheQuestionBare(t *testing.T) {
 	store := docket(t)
 	entitytest.Set(t, store, entity.RefAt("demo", "pr", "1"), entity.Obj{"stage": "open"}.Payload())
-	poseTo(t, store, "run-a~d1", "user:scott@example.com")
+	poseTo(t, store, "run-a~d1", "user:walter@example.com")
 
 	e, _, _ := store.Get(QuestionRef("run-a~d1"))
 	if got := entity.Str(e.Payload, "about"); got != "" {

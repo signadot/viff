@@ -22,13 +22,13 @@ import (
 // strata each package adds, changes and removes, the rules that would be held, and the packages
 // the prune would take away.
 //
-// IT IS A QUESTION, NEVER PART OF THE INSTALL, and kept apart from it at every turn (dzxn44gw,
-// Scott: "as a matter of ontological cleanliness"): its own route and file, no charter lock, no
-// transaction, and no engine that runs anything. It asks the checks an install asks, each without
-// its write: the files split into packages as an install splits them, the prune's targets as an
-// install computes them, the address as the installer's to take, the outboxes against the iods
-// registered, and each package's strata and rules in an engine of the check's own that is never
-// started (trigger.Check), each spawn against what the runners offer as the install's is. A
+// IT IS A QUESTION, NEVER PART OF THE INSTALL, and kept apart from it at every turn (dzxn44gw):
+// its own route and file, no charter lock, no transaction, and no engine that runs anything. It
+// asks the checks an install asks, each without its write: the files split into packages as an
+// install splits them, the prune's targets as an install computes them, the address as the
+// installer's to take, the outboxes against the iods registered, and each package's strata and
+// rules in an engine of the check's own that is never started (trigger.Check), each spawn against
+// what the runners offer as the install's is. A
 // verdict of `installs` says the install would not be refused by any of these; what it cannot say
 // is what the store answers on the day, which is the install's own.
 //

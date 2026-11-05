@@ -107,8 +107,8 @@ func newSocketRigWith(t *testing.T, bearer client.BearerFunc) *socketRig {
 	f := newFake()
 	f.socketURL = "ws" + strings.TrimPrefix(ss.URL, "http") + "/socket"
 	f.users = []map[string]any{
-		{"id": "U7", "name": "scott", "profile": map[string]any{"email": "scott@example.com"}},
-		{"id": "U8", "name": "ani", "profile": map[string]any{"email": "ani@example.com"}},
+		{"id": "U7", "name": "walter", "profile": map[string]any{"email": "walter@example.com"}},
+		{"id": "U8", "name": "peggy", "profile": map[string]any{"email": "peggy@example.com"}},
 		{"id": "U9", "name": "nobody", "profile": map[string]any{}},
 	}
 	src := newSource(t, f, slack.Config{})
@@ -193,8 +193,8 @@ func TestAQuestionAskedInAThreadIsAnsweredThere(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatalf("yes in the thread answered nothing: %v", r.question(t))
 	}
-	if q := r.question(t); q["verdict"] != "proceed" || q["by"] != "user:scott@example.com" {
-		t.Fatalf("yes in the thread answered %v by %v, want proceed by scott", q["verdict"], q["by"])
+	if q := r.question(t); q["verdict"] != "proceed" || q["by"] != "user:walter@example.com" {
+		t.Fatalf("yes in the thread answered %v by %v, want proceed by walter", q["verdict"], q["by"])
 	}
 }
 
@@ -229,13 +229,13 @@ func TestAReplyIsAdmittedAsThePersonWhereVerseVerifiesPeople(t *testing.T) {
 		t.Fatalf("the reply answered nothing: %v", r.question(t))
 	}
 	q := r.question(t)
-	if q["verdict"] != "proceed" || q["by"] != "user:scott@example.com" {
-		t.Fatalf("answered %v by %v, want proceed by scott", q["verdict"], q["by"])
+	if q["verdict"] != "proceed" || q["by"] != "user:walter@example.com" {
+		t.Fatalf("answered %v by %v, want proceed by walter", q["verdict"], q["by"])
 	}
 	e, _, _ := r.store.Get(mirror.QuestionRef(askedQuestion))
-	ballot := entity.Get(entity.Get(e.Payload, "ballots"), "user:scott@example.com")
+	ballot := entity.Get(entity.Get(e.Payload, "ballots"), "user:walter@example.com")
 	if entity.Str(ballot, "authenticated") != "slack" || entity.Str(ballot, "via") != "agent:slack-iod" {
-		t.Errorf("scott's ballot = %v, want authenticated by slack via this io", ballot)
+		t.Errorf("walter's ballot = %v, want authenticated by slack via this io", ballot)
 	}
 
 	// The io with no credential of its own: the person is asserted, and a verse that verifies
@@ -310,7 +310,7 @@ func TestAReplyAnswersTheQuestionAsWhoeverTypedIt(t *testing.T) {
 	if said := r.heard(t, "thread"); !strings.Contains(said, "Answered") || !strings.Contains(said, "U7") {
 		t.Errorf("said %q in the thread, want the answer and who gave it", said)
 	}
-	if q := r.question(t); q["by"] != "user:scott@example.com" || q["verdict"] != "proceed" {
+	if q := r.question(t); q["by"] != "user:walter@example.com" || q["verdict"] != "proceed" {
 		t.Errorf("answered %v by %v, want proceed by the person who typed it", q["verdict"], q["by"])
 	}
 
@@ -412,7 +412,7 @@ func TestASecondReplyHearsVersesRefusalAlone(t *testing.T) {
 	if said := r.heard(t, "U8"); !strings.HasPrefix(said, "Not answered: ") || !strings.Contains(said, "already") {
 		t.Errorf("said %q to the second answerer, want verse's refusal", said)
 	}
-	if q := r.question(t); q["by"] != "user:scott@example.com" {
+	if q := r.question(t); q["by"] != "user:walter@example.com" {
 		t.Errorf("answered by %v, want the first answer to stand", q["by"])
 	}
 }
@@ -440,7 +440,7 @@ func TestAReplyThatIsNotAnAnswerIsSaidOnTheQuestion(t *testing.T) {
 
 	r.reply(t, "e1", "U7", "hold on, checking with ops")
 	said := r.waitForSay(t, "hold on, checking with ops")
-	if said["by"] != "user:scott@example.com" {
+	if said["by"] != "user:walter@example.com" {
 		t.Errorf("said by %v, want the person who typed it", said["by"])
 	}
 	if got := r.fake.saidTo("thread", r.ts) + r.fake.saidTo("U7", r.ts); got != "" {
@@ -481,7 +481,7 @@ func TestTheBotSaysSoWhenItDoesNotUnderstand(t *testing.T) {
 	if !strings.Contains(said, "noted") {
 		t.Errorf("said %q, want it to say the words were kept", said)
 	}
-	if got := r.waitForSay(t, "what does this involve?"); got["by"] != "user:scott@example.com" {
+	if got := r.waitForSay(t, "what does this involve?"); got["by"] != "user:walter@example.com" {
 		t.Errorf("said by %v, want the person who typed it", got["by"])
 	}
 	if q := r.question(t); q["status"] != mirror.QuestionPending {
@@ -505,7 +505,7 @@ func TestAThreadGoesOnAfterItsQuestionSettles(t *testing.T) {
 	if said := r.heard(t, "U8"); !strings.Contains(said, "settled") {
 		t.Errorf("said %q, want it to say the question is settled", said)
 	}
-	if got := r.waitForSay(t, "approve"); got["by"] != "user:ani@example.com" {
+	if got := r.waitForSay(t, "approve"); got["by"] != "user:peggy@example.com" {
 		t.Errorf("said by %v, want the person who typed it", got["by"])
 	}
 }
@@ -637,20 +637,20 @@ func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
 	}
 	r.asking(t)
 
-	// Unbound and with no first sight to admit her, scott's reply counts for nothing.
+	// Unbound and with no first sight to admit her, walter's reply counts for nothing.
 	r.reply(t, "e1", "U7", "proceed")
 	if q := r.question(t); q["verdict"] != nil {
 		t.Fatalf("an unbound reply answered: %v", q)
 	}
 	if got := waitSaid(t, r, "U7", "Not answered"); got == "" {
-		t.Fatalf("scott was not told the refusal alone: %v", r.fake.ephemerals)
+		t.Fatalf("walter was not told the refusal alone: %v", r.fake.ephemerals)
 	}
 	if q := r.question(t); q["verdict"] != nil {
 		t.Fatalf("an unbound reply answered: %v", q)
 	}
 
-	// Scott claims a Slack account from the CLI, asserted; the nonce is what the verse answers.
-	resp, err := client.New(r.addr, "user:scott@example.com").Post("/accounts/slack", nil, map[string]any{})
+	// Walter claims a Slack account from the CLI, asserted; the nonce is what the verse answers.
+	resp, err := client.New(r.addr, "user:walter@example.com").Post("/accounts/slack", nil, map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -674,16 +674,16 @@ func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
 		"command": "/verse", "text": "link " + claim.Nonce, "user_id": "U7", "channel_id": "D77",
 	}}
 	<-r.sock.acks
-	if got := waitSaid(t, r, "U7", "Linked"); !strings.Contains(got, "<@U7> is user:scott@example.com") {
+	if got := waitSaid(t, r, "U7", "Linked"); !strings.Contains(got, "<@U7> is user:walter@example.com") {
 		t.Fatalf("the link: told %q", got)
 	}
 	rec, ok, err := entity.As(r.store, entity.SystemIdentity).Get(entity.VerseRef("identity", "slack", "account", "U7"))
-	if err != nil || !ok || entity.Str(rec.Payload, "principal") != "user:scott@example.com" ||
+	if err != nil || !ok || entity.Str(rec.Payload, "principal") != "user:walter@example.com" ||
 		entity.Str(rec.Payload, "claimant") != "asserted" || entity.Str(entity.Get(rec.Payload, "proof"), "method") != "heard" {
 		t.Fatalf("the binding = %v (ok=%v err=%v)", rec.Payload, ok, err)
 	}
 
-	// Now the reply is scott's, through the binding.
+	// Now the reply is walter's, through the binding.
 	r.reply(t, "e4", "U7", "proceed")
 	select {
 	case <-r.kicked:
@@ -691,8 +691,8 @@ func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
 		t.Fatalf("the reply after linking answered nothing: %v", r.question(t))
 	}
 	q := r.question(t)
-	ballot := entity.Get(entity.Get(mustGet(t, r.store, mirror.QuestionRef(askedQuestion)), "ballots"), "user:scott@example.com")
-	if q["verdict"] != "proceed" || q["by"] != "user:scott@example.com" || entity.Str(ballot, "authenticated") != "slack" {
+	ballot := entity.Get(entity.Get(mustGet(t, r.store, mirror.QuestionRef(askedQuestion)), "ballots"), "user:walter@example.com")
+	if q["verdict"] != "proceed" || q["by"] != "user:walter@example.com" || entity.Str(ballot, "authenticated") != "slack" {
 		t.Fatalf("after linking: answered %v by %v, ballot %v", q["verdict"], q["by"], ballot)
 	}
 }

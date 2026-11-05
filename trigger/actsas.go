@@ -12,8 +12,8 @@ import (
 // The place is the subject's literal prefix: the settled part of the address, the last segment
 // left out, as a stratum's place is (literalPrefix). The installer has to own it. A rule's task
 // acting as whoever wrote a record is safe only where writing that record is writing into the
-// charter's own place; a rule over somebody else's space (`spaces.daniel.*`) would otherwise
-// run a task of its author's design as Daniel.
+// charter's own place; a rule over somebody else's space (`spaces.victor.*`) would otherwise
+// run a task of its author's design as Victor.
 func (t Trigger) ActsAsSubjectOver() (entity.Ref, bool) {
 	if !t.spawnsAsSubject() {
 		return entity.Ref{}, false

@@ -105,7 +105,7 @@ func TestAResolverThatWouldDoNothingIsRefused(t *testing.T) {
 			`{name: r, match: {}, exclusive: true, method: {driver: service}}`,
 			"retired"},
 		{"a person driver, which is retired",
-			`{name: r, match: {}, method: {driver: person, who: ani@example.com}}`,
+			`{name: r, match: {}, method: {driver: person, who: peggy@example.com}}`,
 			"retired"},
 		{"a driver that is not built",
 			`{name: r, match: {}, method: {driver: llm, url: "https://x"}}`,

@@ -14,7 +14,7 @@ import (
 func TestAGuardAtAnArrayElementAsksAboutTheElement(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("demo", "pr", "1")
-	seedVotes(t, s, ref) // [{by: scott, choice: approve}, {by: dee, choice: reject}]
+	seedVotes(t, s, ref) // [{by: walter, choice: approve}, {by: dee, choice: reject}]
 
 	won, _, err := s.Write(Write{At: ref.Into("votes[1].choice"), Value: Val("approve"),
 		When: []Require{{Pattern: Val("reject")}}})
@@ -51,7 +51,7 @@ func TestAGuardAtAnElementIsUndisturbedByTheOthers(t *testing.T) {
 		t.Helper()
 		won, _, err := s.Write(Write{At: ref.Into("votes[0]"),
 			Value: Obj{"choice": "approve"}.Payload(),
-			When:  []Require{{Pattern: Obj{"by": "scott"}.Payload()}}})
+			When:  []Require{{Pattern: Obj{"by": "walter"}.Payload()}}})
 		if err != nil {
 			t.Fatalf("guarded write: %v", err)
 		}
@@ -62,7 +62,7 @@ func TestAGuardAtAnElementIsUndisturbedByTheOthers(t *testing.T) {
 	}
 	// A third ballot, and the first one is untouched.
 	if _, _, err := s.Write(Write{At: ref.At(), Value: Raw(mustParseNode(t,
-		`{votes: [{by: scott, choice: approve}, {by: dee, choice: reject}, {by: kai, choice: approve}]}`))}); err != nil {
+		`{votes: [{by: walter, choice: approve}, {by: dee, choice: reject}, {by: kai, choice: approve}]}`))}); err != nil {
 		t.Fatalf("appending a ballot: %v", err)
 	}
 	if !guarded() {
@@ -110,7 +110,7 @@ func TestACreateAtAnElementThatStandsIsRefused(t *testing.T) {
 	if won {
 		t.Fatal("a create committed over an element that was already there")
 	}
-	if got := renderPayload(t, s, ref); !strings.Contains(got, "by: scott") {
+	if got := renderPayload(t, s, ref); !strings.Contains(got, "by: walter") {
 		t.Fatalf("a refused create damaged the ballot:\n%s", got)
 	}
 }
@@ -173,14 +173,14 @@ func TestAGuardAtAnElementNoTagCanCarryIsRefused(t *testing.T) {
 // the encoder writes the tag onto the value and the comment nowhere, so the wire rescues the
 // pattern the constructor got wrong. The constructor is what has to be right.
 func TestTheElementPatternIsAboutTheElementUnderAComment(t *testing.T) {
-	doc := mustParseComment(t, `{demo: {pr: {"1": {votes: [{by: scott}, {by: dee}]}}}}`)
+	doc := mustParseComment(t, `{demo: {pr: {"1": {votes: [{by: walter}, {by: dee}]}}}}`)
 	for _, tc := range []struct {
 		name    string
 		pattern Payload
 		want    bool
 	}{
-		{"plain", Obj{"by": "scott"}.Payload(), true},
-		{"under a head comment", mustParseComment(t, "# who cast it\n{by: scott}"), true},
+		{"plain", Obj{"by": "walter"}.Payload(), true},
+		{"under a head comment", mustParseComment(t, "# who cast it\n{by: walter}"), true},
 		{"the ballot beside it", mustParseComment(t, "# who cast it\n{by: dee}"), false},
 	} {
 		p := pathPattern{at: RefAt("demo", "pr", "1").At(), sub: "votes[0]", pattern: tc.pattern}
@@ -191,7 +191,7 @@ func TestTheElementPatternIsAboutTheElementUnderAComment(t *testing.T) {
 		}
 		if got != tc.want {
 			t.Errorf("%s: the pattern matched=%v, want %v — it is asked about votes[0], "+
-				"where scott's ballot stands", tc.name, got, tc.want)
+				"where walter's ballot stands", tc.name, got, tc.want)
 		}
 	}
 }

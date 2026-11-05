@@ -35,7 +35,7 @@ type PutEntity struct {
 	// `demo.pr."a.b"`.
 	At string `tony:"field=at"`
 	// Sub is the place inside the address when it is richer than names: an array access, and
-	// anything under it — `votes[0]`, `votes(scott).choice`. A kinded path fragment below At.
+	// anything under it — `votes[0]`, `votes(walter).choice`. A kinded path fragment below At.
 	// See entity.Path.Access for why it rides beside the address rather than inside it.
 	Sub     string         `tony:"field=sub,omitzero"`
 	Payload entity.Payload `tony:"field=payload,omitzero"`

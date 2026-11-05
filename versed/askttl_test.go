@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	ttlAsker    = "user:daniel@example.com"
+	ttlAsker    = "user:victor@example.com"
 	ttlAnswerer = "user:oscar@example.com"
 )
 

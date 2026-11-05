@@ -15,7 +15,7 @@ import (
 	"github.com/signadot/verse/task"
 )
 
-const ani = "user:ani@example.com"
+const peggy = "user:peggy@example.com"
 
 // tonyDoc is src read as a tony document.
 func tonyDoc(t *testing.T, src string) entity.Payload {
@@ -27,16 +27,16 @@ func tonyDoc(t *testing.T, src string) entity.Payload {
 	return n
 }
 
-// askAni is scott asking ani something with an `on`, as `verse ask` does, and the input a charter
+// askPeggy is walter asking peggy something with an `on`, as `verse ask` does, and the input a charter
 // derives to reach her; it answers the ask's id once it is posed.
-func (r *socketRig) askAni(t *testing.T) string {
+func (r *socketRig) askPeggy(t *testing.T) string {
 	t.Helper()
-	resp, err := client.New(r.addr, "user:scott@example.com").Post("/asks", nil, verseapi.Ask{
-		Name: "land", Question: "Merge verse/ask?", To: []string{ani},
+	resp, err := client.New(r.addr, "user:walter@example.com").Post("/asks", nil, verseapi.Ask{
+		Name: "land", Question: "Merge verse/ask?", To: []string{peggy},
 		On: tonyDoc(t, `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}]`),
 	})
 	if err != nil || resp.StatusCode != http.StatusCreated {
-		t.Fatalf("asking ani: %v %v", err, resp)
+		t.Fatalf("asking peggy: %v %v", err, resp)
 	}
 	var asked verseapi.Asked
 	if err := client.Decode(resp, &asked); err != nil {
@@ -48,12 +48,12 @@ func (r *socketRig) askAni(t *testing.T) string {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	r.ask(t, ani, "land", entity.Obj{"text": "An ask is waiting on you.", "asks": asked.ID})
+	r.ask(t, peggy, "land", entity.Obj{"text": "An ask is waiting on you.", "asks": asked.ID})
 	return asked.ID
 }
 
-// aniSays is ani replying in the thread of the DM the out half posted her.
-func (r *socketRig) aniSays(t *testing.T, envelope, text string) {
+// peggySays is peggy replying in the thread of the DM the out half posted her.
+func (r *socketRig) peggySays(t *testing.T, envelope, text string) {
 	t.Helper()
 	r.event(t, envelope, map[string]any{
 		"type": "message", "channel": "DU8", "user": "U8", "text": text,
@@ -71,26 +71,26 @@ func (r *socketRig) ask1(t *testing.T, id string) entity.Obj {
 // for, since an ask is read by whom it asks, and shows who asked and what a yes runs.
 func TestAPersonsAskReachesThemReadAsThem(t *testing.T) {
 	r := newSocketRig(t)
-	id := r.askAni(t)
+	id := r.askPeggy(t)
 	r.pass(t)
 	if len(r.fake.posted) != 1 {
-		t.Fatalf("posted %v, want ani's DM: %v", r.fake.posted, r.status(t, "land"))
+		t.Fatalf("posted %v, want peggy's DM: %v", r.fake.posted, r.status(t, "land"))
 	}
 	said := shown(t, r.fake.posted[0])
-	for _, want := range []string{"Merge verse/ask?", "asked by `scott@example.com`", "on *proceed*, runs as the asker: “merge verse/ask to main”", "Answer in this thread"} {
+	for _, want := range []string{"Merge verse/ask?", "asked by `walter@example.com`", "on *proceed*, runs as the asker: “merge verse/ask to main”", "Answer in this thread"} {
 		if !strings.Contains(said, want) {
-			t.Errorf("ani's DM does not say %q: %q", want, said)
+			t.Errorf("peggy's DM does not say %q: %q", want, said)
 		}
 	}
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
-	r.aniSays(t, "1", "proceed")
+	r.peggySays(t, "1", "proceed")
 	select {
 	case <-r.kicked:
 	case <-time.After(5 * time.Second):
-		t.Fatalf("ani's yes answered nothing: %v", r.ask1(t, id))
+		t.Fatalf("peggy's yes answered nothing: %v", r.ask1(t, id))
 	}
-	if q := r.ask1(t, id); q["verdict"] != "proceed" || q["by"] != ani {
-		t.Fatalf("answered %v by %v, want ani's yes", q["verdict"], q["by"])
+	if q := r.ask1(t, id); q["verdict"] != "proceed" || q["by"] != peggy {
+		t.Fatalf("answered %v by %v, want peggy's yes", q["verdict"], q["by"])
 	}
 }
 
@@ -98,19 +98,19 @@ func TestAPersonsAskReachesThemReadAsThem(t *testing.T) {
 // changed what a yes runs is refused, and the redrawn message is answered as it now reads.
 func TestAReplyToAnAskSinceChangedIsRefused(t *testing.T) {
 	r := newSocketRig(t)
-	id := r.askAni(t)
+	id := r.askPeggy(t)
 	r.pass(t)
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
 	b, _ := codec.Marshal(verseapi.AskChange{On: tonyDoc(t, `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}]`)}, codec.Tony)
 	req, _ := http.NewRequest(http.MethodPatch, "http://"+r.addr+"/asks/"+id, strings.NewReader(string(b)))
 	req.Header.Set("Content-Type", "application/tony")
-	req.Header.Set(verseapi.PrincipalHeader, "user:scott@example.com")
+	req.Header.Set(verseapi.PrincipalHeader, "user:walter@example.com")
 	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != http.StatusOK {
-		t.Fatalf("scott's change: %v %v", err, resp)
+		t.Fatalf("walter's change: %v %v", err, resp)
 	}
-	r.aniSays(t, "2", "proceed")
+	r.peggySays(t, "2", "proceed")
 	if said := r.heard(t, "U8"); !strings.Contains(said, "Not answered") {
-		t.Fatalf("ani was told %q, want her stale answer refused", said)
+		t.Fatalf("peggy was told %q, want her stale answer refused", said)
 	}
 	if q := r.ask1(t, id); q["status"] != mirror.QuestionPending {
 		t.Fatalf("a reply to the old words settled the ask: %v", q)
@@ -119,14 +119,14 @@ func TestAReplyToAnAskSinceChangedIsRefused(t *testing.T) {
 	if len(r.fake.updates) == 0 || !strings.Contains(shown(t, r.fake.updates[len(r.fake.updates)-1]), "merge it and tag it") {
 		t.Fatalf("the message was not redrawn with the new then: %v", r.fake.updates)
 	}
-	r.aniSays(t, "3", "proceed")
+	r.peggySays(t, "3", "proceed")
 	select {
 	case <-r.kicked:
 	case <-time.After(5 * time.Second):
-		t.Fatalf("ani's yes to the redrawn ask answered nothing: %v", r.ask1(t, id))
+		t.Fatalf("peggy's yes to the redrawn ask answered nothing: %v", r.ask1(t, id))
 	}
 	if q := r.ask1(t, id); q["verdict"] != "proceed" {
-		t.Fatalf("answered %v, want ani's yes", q["verdict"])
+		t.Fatalf("answered %v, want peggy's yes", q["verdict"])
 	}
 }
 
@@ -134,32 +134,32 @@ func TestAReplyToAnAskSinceChangedIsRefused(t *testing.T) {
 // to the words the message still shows, so it is refused rather than counted for the new ones.
 func TestAReplyToAMessageNotYetRedrawnIsRefused(t *testing.T) {
 	r := newSocketRig(t)
-	id := r.askAni(t)
+	id := r.askPeggy(t)
 	r.pass(t)
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
-	if code := r.send(t, "user:scott@example.com", "", http.MethodPatch, "/asks/"+id,
+	if code := r.send(t, "user:walter@example.com", "", http.MethodPatch, "/asks/"+id,
 		`{on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}]}`); code != http.StatusOK {
-		t.Fatalf("scott's change: %d", code)
+		t.Fatalf("walter's change: %d", code)
 	}
 	r.fake.fail["chat.update"] = "cant_update_message" // refused, and the message stands with its old words
 	r.pass(t)
-	r.aniSays(t, "2", "proceed")
+	r.peggySays(t, "2", "proceed")
 	if said := r.heard(t, "U8"); !strings.Contains(said, "Not answered") {
-		t.Fatalf("ani was told %q, want her answer to the words she saw refused", said)
+		t.Fatalf("peggy was told %q, want her answer to the words she saw refused", said)
 	}
 	if q := r.ask1(t, id); q["status"] != mirror.QuestionPending {
 		t.Fatalf("a reply to a message Slack never redrew settled the ask: %v", q)
 	}
 }
 
-// deskForAni is a resolver ani installs and grants to answer for her.
-func (r *socketRig) deskForAni(t *testing.T) {
+// deskForPeggy is a resolver peggy installs and grants to answer for her.
+func (r *socketRig) deskForPeggy(t *testing.T) {
 	t.Helper()
-	if code := r.send(t, ani, "", http.MethodPost, "/resolvers",
+	if code := r.send(t, peggy, "", http.MethodPost, "/resolvers",
 		`{name: desk, match: {}, method: {driver: service}}`); code != http.StatusCreated {
 		t.Fatalf("install: %d", code)
 	}
-	if code := r.send(t, ani, "", http.MethodPost, "/resolvers/desk/grant", `{}`); code != http.StatusNoContent {
+	if code := r.send(t, peggy, "", http.MethodPost, "/resolvers/desk/grant", `{}`); code != http.StatusNoContent {
 		t.Fatalf("grant: %d", code)
 	}
 }
@@ -181,46 +181,46 @@ func (r *socketRig) send(t *testing.T, who, resolver, method, path, body string)
 	return resp.StatusCode
 }
 
-// AN ASK ANI'S RESOLVER SERVES says so, and ani answers it herself only by saying `force`.
+// AN ASK PEGGY'S RESOLVER SERVES says so, and peggy answers it herself only by saying `force`.
 func TestAnAskYourResolverServesTakesForce(t *testing.T) {
 	r := newSocketRig(t)
-	r.deskForAni(t)
-	id := r.askAni(t)
+	r.deskForPeggy(t)
+	id := r.askPeggy(t)
 	r.pass(t)
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
 	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, "served for you by `verse.resolvers.desk`") {
-		t.Fatalf("ani's DM does not say her resolver serves it: %q", said)
+		t.Fatalf("peggy's DM does not say her resolver serves it: %q", said)
 	}
-	r.aniSays(t, "4", "proceed")
+	r.peggySays(t, "4", "proceed")
 	if said := r.heard(t, "U8"); !strings.Contains(said, "Not answered") {
-		t.Fatalf("ani was told %q, want her answer refused without force", said)
+		t.Fatalf("peggy was told %q, want her answer refused without force", said)
 	}
-	r.aniSays(t, "5", "force proceed")
+	r.peggySays(t, "5", "force proceed")
 	select {
 	case <-r.kicked:
 	case <-time.After(5 * time.Second):
-		t.Fatalf("ani's forced yes answered nothing: %v", r.ask1(t, id))
+		t.Fatalf("peggy's forced yes answered nothing: %v", r.ask1(t, id))
 	}
-	if q := r.ask1(t, id); q["verdict"] != "proceed" || q["by"] != ani {
-		t.Fatalf("answered %v by %v, want ani's own yes", q["verdict"], q["by"])
+	if q := r.ask1(t, id); q["verdict"] != "proceed" || q["by"] != peggy {
+		t.Fatalf("answered %v by %v, want peggy's own yes", q["verdict"], q["by"])
 	}
 }
 
 // AN ANSWER THROUGH A RESOLVER is drawn with the resolver it came through.
 func TestAnAnswerThroughAResolverSaysSo(t *testing.T) {
 	r := newSocketRig(t)
-	r.deskForAni(t)
-	id := r.askAni(t)
+	r.deskForPeggy(t)
+	id := r.askPeggy(t)
 	r.pass(t)
-	if code := r.send(t, ani, "desk", http.MethodPost, "/asks/"+id+"/answer", `{choice: proceed}`); code != http.StatusNoContent {
+	if code := r.send(t, peggy, "desk", http.MethodPost, "/asks/"+id+"/answer", `{choice: proceed}`); code != http.StatusNoContent {
 		t.Fatalf("the desk's answer: %d", code)
 	}
 	r.pass(t)
 	if len(r.fake.updates) == 0 {
 		t.Fatal("the message was not redrawn")
 	}
-	if said := shown(t, r.fake.updates[len(r.fake.updates)-1]); !strings.Contains(said, "answered *proceed* by `ani@example.com` via `verse.resolvers.desk`") {
-		t.Fatalf("redrawn as %q, want ani's answer via the desk", said)
+	if said := shown(t, r.fake.updates[len(r.fake.updates)-1]); !strings.Contains(said, "answered *proceed* by `peggy@example.com` via `verse.resolvers.desk`") {
+		t.Fatalf("redrawn as %q, want peggy's answer via the desk", said)
 	}
 }
 
@@ -277,24 +277,24 @@ func TestADMSaysWhatAYesAndANoRun(t *testing.T) {
 		}
 		return asked.ID
 	}
-	ship := post("user:alice@example.com", verseapi.Ask{Name: "ship", Question: "Ship it?", To: []string{"user:scott@example.com"}})
-	id := post("user:scott@example.com", verseapi.Ask{
-		Name: "ui-ok", Question: "Is the UI ok?", To: []string{ani},
+	ship := post("user:alice@example.com", verseapi.Ask{Name: "ship", Question: "Ship it?", To: []string{"user:walter@example.com"}})
+	id := post("user:walter@example.com", verseapi.Ask{
+		Name: "ui-ok", Question: "Is the UI ok?", To: []string{peggy},
 		On: tonyDoc(t, `[{match: {verdict: proceed}, then: {answer: {ask: `+ship+`, choice: proceed}}},
-			{then: {ask: {name: ship-lead, question: "Ani said no: ship it?", to: [lead@example.com]}}}]`),
+			{then: {ask: {name: ship-lead, question: "Peggy said no: ship it?", to: [lead@example.com]}}}]`),
 	})
-	r.ask(t, ani, "ui-ok", entity.Obj{"text": "An ask is waiting on you.", "asks": id})
+	r.ask(t, peggy, "ui-ok", entity.Obj{"text": "An ask is waiting on you.", "asks": id})
 	r.pass(t)
 	if len(r.fake.posted) != 1 {
-		t.Fatalf("posted %v, want ani's DM: %v", r.fake.posted, r.status(t, "ui-ok"))
+		t.Fatalf("posted %v, want peggy's DM: %v", r.fake.posted, r.status(t, "ui-ok"))
 	}
 	said := shown(t, r.fake.posted[0])
 	for _, want := range []string{
 		"on *proceed*, runs as the asker: answers `" + ship + "` *proceed*",
-		"on any answer, runs as the asker: asks “Ani said no: ship it?” of `lead@example.com`",
+		"on any answer, runs as the asker: asks “Peggy said no: ship it?” of `lead@example.com`",
 	} {
 		if !strings.Contains(said, want) {
-			t.Errorf("ani's DM does not say %q: %q", want, said)
+			t.Errorf("peggy's DM does not say %q: %q", want, said)
 		}
 	}
 }

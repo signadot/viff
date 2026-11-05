@@ -37,8 +37,8 @@ func taskFor(t *testing.T, srv *Server, rule, subject string) entity.Entity {
 }
 
 // A RULE'S TASK ACTS FOR WHOEVER WROTE THE RECORD, where the rule says `as: subject`. The
-// installer's charter watches `ask.*`; daniel writes an ask; the task that answers it is made by
-// the pair of daniel and the rule, which acts as daniel — so the task record is daniel's, and says
+// installer's charter watches `ask.*`; victor writes an ask; the task that answers it is made by
+// the pair of victor and the rule, which acts as victor — so the task record is victor's, and says
 // who asked. The same charter's rule without `as` spawns as its installer, as every spawn did.
 func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
@@ -46,7 +46,7 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	const daniel, installer = "user:daniel@example.com", "user:installer@example.com"
+	const victor, installer = "user:victor@example.com", "user:installer@example.com"
 	// The ask charter's shape: its installer owns `ask` and holds out `owner` beneath it, so an
 	// ask is its writer's record, and the rule — acting as the owner above — may latch it.
 	askPlace := entity.RefAt("ask")
@@ -54,7 +54,7 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := entity.SetGrants(srv.Store, askPlace, []entity.Grant{{At: askPlace.Segs(), Below: true,
-		To: map[entity.Level][]string{entity.OwnerLevel: {daniel}}}}); err != nil {
+		To: map[entity.Level][]string{entity.OwnerLevel: {victor}}}}); err != nil {
 		t.Fatal(err)
 	}
 	resp := installAs(t, installer, ts.URL, `[
@@ -70,19 +70,19 @@ func TestASpawnAsTheSubjectActsForTheRecordsOwner(t *testing.T) {
 	resp.Body.Close()
 
 	ask := entity.RefAt("ask", "one")
-	if _, _, err := entity.As(srv.Store, daniel).Write(entity.Write{At: ask.At(),
+	if _, _, err := entity.As(srv.Store, victor).Write(entity.Write{At: ask.At(),
 		Value: entity.Obj{"question": "land it?"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := entity.OwnerOf(srv.Store, ask); o != daniel {
+	if o, _ := entity.OwnerOf(srv.Store, ask); o != victor {
 		t.Fatalf("the fixture is wrong: the ask is %q's", o)
 	}
 
 	asked := taskFor(t, srv, "for-the-asker", ask.String())
-	if got := entity.Str(asked.Payload, "actsFor"); got != daniel {
+	if got := entity.Str(asked.Payload, "actsFor"); got != victor {
 		t.Errorf("the task says it acts for %q, want the ask's owner", got)
 	}
-	if got, _ := entity.SettledOwnerOf(srv.Store, asked.Ref, 2*time.Second); got != daniel {
+	if got, _ := entity.SettledOwnerOf(srv.Store, asked.Ref, 2*time.Second); got != victor {
 		t.Errorf("the task spawned as the subject is %q's, want the asker's", got)
 	}
 
@@ -143,8 +143,8 @@ func TestAChartersSpawnCannotNameWhoItActsFor(t *testing.T) {
 
 // A RULE ACTS AS WHOEVER WROTE A RECORD ONLY IN ITS INSTALLER'S PLACE. Its task runs on the
 // record owner's authority, so a rule over somebody else's space would run its author's task as
-// them. Over Daniel's space it is refused at install, wherever in the rule the `as: subject`
-// is; over the installer's own place it installs; and a rule over Daniel's space that acts as
+// them. Over Victor's space it is refused at install, wherever in the rule the `as: subject`
+// is; over the installer's own place it installs; and a rule over Victor's space that acts as
 // itself installs as before.
 func TestARuleActsAsTheSubjectOnlyInItsInstallersPlace(t *testing.T) {
 	srv := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
@@ -152,8 +152,8 @@ func TestARuleActsAsTheSubjectOnlyInItsInstallersPlace(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	const daniel, installer = "user:daniel@example.com", "user:installer@example.com"
-	for place, owner := range map[string]string{"spaces.daniel": daniel, "ask": installer} {
+	const victor, installer = "user:victor@example.com", "user:installer@example.com"
+	for place, owner := range map[string]string{"spaces.victor": victor, "ask": installer} {
 		ref, err := entity.ParseAddr(place)
 		if err != nil {
 			t.Fatal(err)
@@ -169,13 +169,13 @@ func TestARuleActsAsTheSubjectOnlyInItsInstallersPlace(t *testing.T) {
 		name, charter string
 		want          int
 	}{
-		{"as the subject over daniel's space", rule("harvest", "spaces.daniel.*",
+		{"as the subject over victor's space", rule("harvest", "spaces.victor.*",
 			`{spawn: {script: "true", as: subject}, onDone: {patch: {done: true}}}`), http.StatusForbidden},
-		{"as the subject in a hook, over daniel's space", rule("harvest-later", "spaces.daniel.*",
+		{"as the subject in a hook, over victor's space", rule("harvest-later", "spaces.victor.*",
 			`{spawn: {agent: {name: verse}, prompt: "true"}, onDone: {patch: {done: true}, spawn: {script: "true", as: subject}}}`), http.StatusForbidden},
 		{"as the subject in the installer's place", rule("asks", "ask.*",
 			`{spawn: {script: "true", as: subject}, onDone: {patch: {done: true}}}`), http.StatusCreated},
-		{"as itself over daniel's space", rule("watch-daniel", "spaces.daniel.*",
+		{"as itself over victor's space", rule("watch-victor", "spaces.victor.*",
 			`{spawn: {agent: {name: verse}, prompt: "true"}, onDone: {patch: {done: true}}}`), http.StatusCreated},
 	} {
 		resp := installAs(t, installer, ts.URL, c.charter)
@@ -208,20 +208,20 @@ func taskQuestion(t *testing.T, srv *Server, ref entity.Ref) string {
 }
 
 // A TASK ACTING FOR SOMEBODY ASKS THEM. Its own gate names nobody, so it would be open to every
-// person; run for daniel's ask, it is held out to daniel alone — nobody else says go for him.
+// person; run for victor's ask, it is held out to victor alone — nobody else says go for him.
 // The same rule without `as` asks as it always did, openly.
 func TestATaskActingForTheAskerAsksThem(t *testing.T) {
 	srv := serverWith(t, stepBuilder(t), entitytest.Store(t)) // its action is a step, so its own gate asks
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	const daniel, installer = "user:daniel@example.com", "user:installer@example.com"
+	const victor, installer = "user:victor@example.com", "user:installer@example.com"
 	askPlace := entity.RefAt("ask")
 	if err := entity.Claim(srv.Store, askPlace, installer); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.SetGrants(srv.Store, askPlace, []entity.Grant{{At: askPlace.Segs(), Below: true,
-		To: map[entity.Level][]string{entity.OwnerLevel: {daniel}}}}); err != nil {
+		To: map[entity.Level][]string{entity.OwnerLevel: {victor}}}}); err != nil {
 		t.Fatal(err)
 	}
 	resp := installAs(t, installer, ts.URL, `[
@@ -236,17 +236,17 @@ func TestATaskActingForTheAskerAsksThem(t *testing.T) {
 	}
 	resp.Body.Close()
 	ask := entity.RefAt("ask", "one")
-	if _, _, err := entity.As(srv.Store, daniel).Write(entity.Write{At: ask.At(),
+	if _, _, err := entity.As(srv.Store, victor).Write(entity.Write{At: ask.At(),
 		Value: entity.Obj{"question": "land it?"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
 	asked := taskFor(t, srv, "for-the-asker", ask.String())
-	if got := heldOutTo(t, srv, taskQuestion(t, srv, asked.Ref)); len(got) != 1 || got[0] != daniel {
-		t.Errorf("the task acting for daniel asks %v, want daniel alone", got)
+	if got := heldOutTo(t, srv, taskQuestion(t, srv, asked.Ref)); len(got) != 1 || got[0] != victor {
+		t.Errorf("the task acting for victor asks %v, want victor alone", got)
 	}
 	plain := taskFor(t, srv, "for-the-rule", ask.String())
-	if got := heldOutTo(t, srv, taskQuestion(t, srv, plain.Ref)); len(got) == 1 && got[0] == daniel {
-		t.Errorf("the rule's own task asks daniel alone, as if it acted for him")
+	if got := heldOutTo(t, srv, taskQuestion(t, srv, plain.Ref)); len(got) == 1 && got[0] == victor {
+		t.Errorf("the rule's own task asks victor alone, as if it acted for him")
 	}
 }
 
@@ -276,13 +276,13 @@ func TestATaskActingForTheAskerIsSeenToFinish(t *testing.T) {
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	const daniel, installer = "user:daniel@example.com", "user:installer@example.com"
+	const victor, installer = "user:victor@example.com", "user:installer@example.com"
 	askPlace := entity.RefAt("ask")
 	if err := entity.Claim(srv.Store, askPlace, installer); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.SetGrants(srv.Store, askPlace, []entity.Grant{{At: askPlace.Segs(), Below: true,
-		To: map[entity.Level][]string{entity.OwnerLevel: {daniel}}}}); err != nil {
+		To: map[entity.Level][]string{entity.OwnerLevel: {victor}}}}); err != nil {
 		t.Fatal(err)
 	}
 	resp := installAs(t, installer, ts.URL, `{name: for-the-asker,
@@ -294,12 +294,12 @@ func TestATaskActingForTheAskerIsSeenToFinish(t *testing.T) {
 	}
 	resp.Body.Close()
 	ask := entity.RefAt("ask", "one")
-	if _, _, err := entity.As(srv.Store, daniel).Write(entity.Write{At: ask.At(),
+	if _, _, err := entity.As(srv.Store, victor).Write(entity.Write{At: ask.At(),
 		Value: entity.Obj{"question": "land it?"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
 	waitField(t, srv, ask, "asked")
 	if got := taskStatus(t, srv, taskFor(t, srv, "for-the-asker", ask.String()).Ref); got != "done" {
-		t.Errorf("the task acting for daniel ended %q, want done", got)
+		t.Errorf("the task acting for victor ended %q, want done", got)
 	}
 }

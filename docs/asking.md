@@ -310,7 +310,7 @@ While an ask waits, you can change it, or take it back:
 ```sh
 verse ask land --due 72h                               # move its date: nothing is asked again
 verse ask land --on @on.tony                           # change what follows: it is asked again
-verse ask land --to ani@example.com                    # ask somebody else: asked again, of them
+verse ask land --to peggy@example.com                    # ask somebody else: asked again, of them
 verse ask land --withdraw                              # take it back
 ```
 

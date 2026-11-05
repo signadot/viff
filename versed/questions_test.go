@@ -15,9 +15,9 @@ import (
 // it among their questions; whom it names does; a vote waits on every person but its asker.
 func TestTheQuestionsPutToYouAreWhatWaitsOnYou(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	land := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
-	lunch := askID(t, ask(t, davido, ts.URL, `{name: lunch, question: "Lunch at noon?"}`))
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
+	land := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
+	lunch := askID(t, ask(t, oscar, ts.URL, `{name: lunch, question: "Lunch at noon?"}`))
 	list := func(who, q string) string {
 		t.Helper()
 		resp := getAs(t, who, ts.URL+"/asks"+q)
@@ -34,18 +34,18 @@ func TestTheQuestionsPutToYouAreWhatWaitsOnYou(t *testing.T) {
 		who, id string
 		want    bool
 	}{
-		{daniel, land, false}, // his own ask
-		{davido, land, true},  // named
-		{daniel, lunch, true}, // a vote, waiting on every person
-		{davido, lunch, false},
+		{victor, land, false}, // his own ask
+		{oscar, land, true},   // named
+		{victor, lunch, true}, // a vote, waiting on every person
+		{oscar, lunch, false},
 	} {
 		if got := strings.Contains(list(c.who, "?waiting=me"), c.id); got != c.want {
 			t.Errorf("%s's questions list %s: %v, want %v", c.who, c.id, got, c.want)
 		}
 	}
 	// The docket is every pending ask they may read, their own included.
-	if !strings.Contains(list(daniel, "?all=true"), land) {
-		t.Errorf("daniel's docket does not list his own ask")
+	if !strings.Contains(list(victor, "?all=true"), land) {
+		t.Errorf("victor's docket does not list his own ask")
 	}
 }
 

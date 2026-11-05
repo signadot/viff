@@ -313,7 +313,7 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 		}
 	}
 
-	if err := rh.Resolve(decision, "proceed", "go ahead", "human:scott"); err != nil {
+	if err := rh.Resolve(decision, "proceed", "go ahead", "human:walter"); err != nil {
 		t.Fatalf("answering the remote gate %s = %v", decision, err)
 	}
 	// Reported success is not delivery. The task has to actually go on, and the answer has
@@ -330,8 +330,8 @@ func TestHTTPRunnerAnswersARemoteGate(t *testing.T) {
 				if !ev.Proceed {
 					t.Fatalf("the remote read a deny from an approve: %+v", ev)
 				}
-				if ev.By != "human:scott" {
-					t.Fatalf("by = %q, want human:scott — attribution was dropped on the wire", ev.By)
+				if ev.By != "human:walter" {
+					t.Fatalf("by = %q, want human:walter — attribution was dropped on the wire", ev.By)
 				}
 				return
 			}

@@ -259,7 +259,7 @@ func withLayers(t *testing.T, systemBase, xdgDir string) {
 // knobs do.
 func TestUserFromFileAndEnv(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "verse.tony")
-	write(t, p, "user: scott@example.com\n")
+	write(t, p, "user: walter@example.com\n")
 	withLayers(t, filepath.Join(t.TempDir(), "verse"), t.TempDir())
 	t.Setenv(EnvConfigPath, p)
 
@@ -267,7 +267,7 @@ func TestUserFromFileAndEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.User != "scott@example.com" {
+	if c.User != "walter@example.com" {
 		t.Errorf("user = %q, want the file's", c.User)
 	}
 	t.Setenv("VERSE_USER", "verse-runner-bot")

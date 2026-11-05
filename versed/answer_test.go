@@ -83,7 +83,7 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 	const id = "verse.trigger.review.review~1"
 	answered := answerable(t, srv, id)
 
-	win := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
+	win := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:walter@example.com"})
 	win.Body.Close()
 	if win.StatusCode != http.StatusNoContent {
 		t.Fatalf("first answer = %s, want 204", win.Status)
@@ -101,7 +101,7 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 	// second decision through after the first had already released the work.
 	select {
 	case res := <-answered:
-		if !res.Proceed || res.By != "user:scott@example.com" {
+		if !res.Proceed || res.By != "user:walter@example.com" {
 			t.Fatalf("the waiter got %+v, want the first answer", res)
 		}
 	case <-time.After(2 * time.Second):
@@ -109,7 +109,7 @@ func TestTwoAnswersRaceAndBothAreRecorded(t *testing.T) {
 	}
 
 	q := questionDoc(t, srv, id)
-	if q["status"] != mirror.QuestionAnswered || q["by"] != "user:scott@example.com" || q["verdict"] != "proceed" {
+	if q["status"] != mirror.QuestionAnswered || q["by"] != "user:walter@example.com" || q["verdict"] != "proceed" {
 		t.Fatalf("the record does not name the winner: %+v", q)
 	}
 	stale, _ := q["stale"].(map[string]any)
@@ -133,7 +133,7 @@ func TestAnsweringNoQuestionIsNotTheSameAsLosing(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp := postTony(t, ts.URL+answerPath("verse.trigger.nope.nope~9"), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
+	resp := postTony(t, ts.URL+answerPath("verse.trigger.nope.nope~9"), api.Resolve{Choice: "proceed", By: "user:walter@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("answering an unknown id = %s, want 404", resp.Status)
@@ -177,7 +177,7 @@ func TestAnAnswerIsAboutTheQuestionItsPathNames(t *testing.T) {
 	answerable(t, srv, id)
 	answerable(t, srv, other)
 
-	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{ID: other, Choice: "proceed", By: "user:scott@example.com"})
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{ID: other, Choice: "proceed", By: "user:walter@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("an answer whose body names another question = %s, want 400", resp.Status)
@@ -208,7 +208,7 @@ func TestAnUndeliverableAnswerSaysSo(t *testing.T) {
 
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
-	resp := postTony(t, ts.URL+answerPath("p~d1"), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
+	resp := postTony(t, ts.URL+answerPath("p~d1"), api.Resolve{Choice: "proceed", By: "user:walter@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Fatalf("answering an open question on an unreachable runner = %s, want 502", resp.Status)

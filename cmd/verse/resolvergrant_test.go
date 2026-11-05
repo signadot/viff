@@ -14,7 +14,7 @@ import (
 // `revoke` takes it back; `--for` names a place instead.
 func TestAResolverIsGrantedAndRevokedFromTheCLI(t *testing.T) {
 	store := serveAsking(t)
-	as(t, daniel)
+	as(t, victor)
 	doc := filepath.Join(t.TempDir(), "helper.tony")
 	if err := os.WriteFile(doc, []byte(`{name: helper, match: {}, method: {driver: service}}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -25,11 +25,11 @@ func TestAResolverIsGrantedAndRevokedFromTheCLI(t *testing.T) {
 	via := entity.Via(resolver.Ref("helper"))
 	granted := func() bool {
 		t.Helper()
-		e, ok, err := store.Get(entity.PermsRef(entity.ForRef(daniel)))
+		e, ok, err := store.Get(entity.PermsRef(entity.ForRef(victor)))
 		if err != nil || !ok {
 			return false
 		}
-		gs, _ := entity.ParseGrants(entity.ForRef(daniel).Segs(), e.Payload)
+		gs, _ := entity.ParseGrants(entity.ForRef(victor).Segs(), e.Payload)
 		for _, g := range gs {
 			for _, n := range g.To[entity.Answer] {
 				if n == via {
@@ -43,7 +43,7 @@ func TestAResolverIsGrantedAndRevokedFromTheCLI(t *testing.T) {
 		t.Fatalf("resolver grant: %v\n%s", err, out)
 	}
 	if !granted() {
-		t.Fatal("the grant is not on daniel's node")
+		t.Fatal("the grant is not on victor's node")
 	}
 	if out, err := runCLI(t, "resolver", "revoke", "helper"); err != nil || !strings.Contains(out, "no longer answers for you") {
 		t.Fatalf("resolver revoke: %v\n%s", err, out)
@@ -52,7 +52,7 @@ func TestAResolverIsGrantedAndRevokedFromTheCLI(t *testing.T) {
 		t.Fatal("the revoked grant stands")
 	}
 	if _, err := runCLI(t, "resolver", "grant", "helper", "--for", "nobodys.place"); err == nil {
-		t.Fatal("a grant at a place daniel does not own was taken")
+		t.Fatal("a grant at a place victor does not own was taken")
 	}
 }
 
@@ -61,7 +61,7 @@ func TestAResolverIsGrantedAndRevokedFromTheCLI(t *testing.T) {
 // with --served; answering it yourself takes --force.
 func TestAnAskYourResolverServesIsMarkedAndAnsweredWithForce(t *testing.T) {
 	serveAsking(t)
-	as(t, davido)
+	as(t, oscar)
 	doc := filepath.Join(t.TempDir(), "desk.tony")
 	if err := os.WriteFile(doc, []byte(`{name: desk, match: {}, method: {driver: service}}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -72,22 +72,22 @@ func TestAnAskYourResolverServesIsMarkedAndAnsweredWithForce(t *testing.T) {
 	if out, err := runCLI(t, "resolver", "grant", "desk"); err != nil {
 		t.Fatalf("resolver grant: %v\n%s", err, out)
 	}
-	id := askAs(t, daniel, "land", "-q", "Review verse/ask?", "--to", "oscar@example.com")
-	as(t, davido)
+	id := askAs(t, victor, "land", "-q", "Review verse/ask?", "--to", "oscar@example.com")
+	as(t, oscar)
 
 	his, _ := runCLIIn(t, strings.NewReader(""), "question", "--watch", "--since", "0")
 	waitFor(t, his, "waiting on you "+id+": Review verse/ask? (served by verse.resolvers.desk)")
 
 	if out, err := runCLI(t, "gate"); err != nil || strings.Contains(out, id) {
-		t.Fatalf("davido's docket lists what his resolver serves: %v\n%s", err, out)
+		t.Fatalf("oscar's docket lists what his resolver serves: %v\n%s", err, out)
 	}
 	if out, err := runCLI(t, "gate", "--served"); err != nil || !strings.Contains(out, id) || !strings.Contains(out, "verse.resolvers.desk") {
-		t.Fatalf("davido's docket --served: %v\n%s", err, out)
+		t.Fatalf("oscar's docket --served: %v\n%s", err, out)
 	}
 	if out, err := runCLI(t, "gate", id, "--answer", "proceed"); err == nil {
-		t.Fatalf("davido answered what his resolver serves without --force:\n%s", out)
+		t.Fatalf("oscar answered what his resolver serves without --force:\n%s", out)
 	}
 	if out, err := runCLI(t, "gate", id, "--answer", "proceed", "--force"); err != nil {
-		t.Fatalf("davido's --force answer: %v\n%s", err, out)
+		t.Fatalf("oscar's --force answer: %v\n%s", err, out)
 	}
 }

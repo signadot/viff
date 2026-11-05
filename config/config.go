@@ -441,7 +441,7 @@ type PermsConfig struct {
 	// `{read: ["*"]}` — the open verse's when left unset, and `{}` for a verse where what
 	// anybody creates is theirs and their grantees' alone.
 	ChildGrants map[string][]string `tony:"field=child-grants,omitzero"`
-	// Admins are who may take a top-level place: grantees (`scott@example.com`, `agent:ops`),
+	// Admins are who may take a top-level place: grantees (`walter@example.com`, `agent:ops`),
 	// seeded into the `admin` group and held `owner` beneath the root. Unset is the open verse
 	// — anybody takes one — which is what a dogfood deployment runs as. Env:
 	// VERSE_PERMS_ADMINS, comma-separated, which is how a cluster with no verse.tony in the pod

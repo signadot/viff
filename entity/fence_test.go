@@ -119,16 +119,16 @@ func TestAPlaceBesideSomebodyElsesIsStillFree(t *testing.T) {
 }
 
 // An owner keeps what they hold: the fence is on ownership CONCLUDED FROM A GRANT, and a record
-// naming you is not a grant. Scott owning `spaces` still owns ana's place inside it, which is
+// naming you is not a grant. Walter owning `spaces` still owns ana's place inside it, which is
 // the parent-owns-the-subtree half of the model and the half a fence must not eat.
 func TestAnOwnerAboveKeepsWhatIsBeneath(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
-	scott, ana := "user:scott@example.com", "user:ana@example.com"
+	walter, ana := "user:walter@example.com", "user:ana@example.com"
 	spaces := entity.RefAt("spaces")
-	if err := entity.Claim(store, spaces, scott); err != nil {
+	if err := entity.Claim(store, spaces, walter); err != nil {
 		t.Fatal(err)
 	}
-	// Ana's place inside scott's, hers because he held `owner` out beneath it.
+	// Ana's place inside walter's, hers because he held `owner` out beneath it.
 	if err := entity.AddGrant(store, spaces, entity.Grant{
 		At: spaces.Segs(), Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {ana}},
 	}); err != nil {
@@ -138,8 +138,8 @@ func TestAnOwnerAboveKeepsWhatIsBeneath(t *testing.T) {
 	if err := entity.Claim(store, anas, ana); err != nil {
 		t.Fatalf("ana takes her space: %v", err)
 	}
-	if ok, err := entity.Holds(store, scott, entity.OwnerLevel, anas); err != nil || !ok {
-		t.Errorf("scott lost ana's space beneath his own: %v %v", ok, err)
+	if ok, err := entity.Holds(store, walter, entity.OwnerLevel, anas); err != nil || !ok {
+		t.Errorf("walter lost ana's space beneath his own: %v %v", ok, err)
 	}
 	if ok, err := entity.Holds(store, ana, entity.OwnerLevel, anas); err != nil || !ok {
 		t.Errorf("ana does not own her own space: %v %v", ok, err)
@@ -151,8 +151,8 @@ func TestAnOwnerAboveKeepsWhatIsBeneath(t *testing.T) {
 // that dropped an `owner` line left the owner held out, on a record that said it was taken back.
 func TestSettingGrantsDropsWhatItLeavesOut(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
-	at := entity.RefAt("spaces", "scott")
-	if err := entity.Claim(store, at, "user:scott@example.com"); err != nil {
+	at := entity.RefAt("spaces", "walter")
+	if err := entity.Claim(store, at, "user:walter@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.SetGrants(store, at, []entity.Grant{
@@ -160,7 +160,7 @@ func TestSettingGrantsDropsWhatItLeavesOut(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	beneath := entity.RefAt("spaces", "scott", "x")
+	beneath := entity.RefAt("spaces", "walter", "x")
 	if ok, _ := entity.MayCreate(store, "user:bob@example.com", beneath); !ok {
 		t.Fatal("bob was not given the place to begin with")
 	}
@@ -227,8 +227,8 @@ func (d *deafMirror) Get(ref entity.Ref) (entity.Entity, bool, error) {
 func TestAMirrorThatDoesNotAnswerAdmitsNobody(t *testing.T) {
 	inner := &deafMirror{Store: entitytest.OpenStore(t)}
 	setup := entity.As(inner, entity.SystemDefault)
-	joe, rule, vault := "user:joe@example.com", entity.RefAt("joes", "rule"), entity.RefAt("vault")
-	if err := entity.Claim(setup, rule, joe); err != nil {
+	trent, rule, vault := "user:trent@example.com", entity.RefAt("joes", "rule"), entity.RefAt("vault")
+	if err := entity.Claim(setup, rule, trent); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.Claim(setup, vault, "user:admin@example.com"); err != nil {
@@ -242,7 +242,7 @@ func TestAMirrorThatDoesNotAnswerAdmitsNobody(t *testing.T) {
 	view := entity.As(inner, entity.SystemDefault)
 	ok, err := entity.Holds(view, entity.Via(rule), entity.ReadWrite, entity.RefAt("vault", "secret"))
 	if ok {
-		t.Error("joe's rule writes admin's vault while the mirror does not answer")
+		t.Error("trent's rule writes admin's vault while the mirror does not answer")
 	}
 	if err == nil {
 		t.Error("a mirror that did not answer was read as a mirror with nothing in it")

@@ -194,7 +194,7 @@ func TestABallotForAnUnknownOptionIsRefused(t *testing.T) {
 	const id = "verse.trigger.review.review~3"
 	answered := answerable(t, srv, id)
 
-	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "maybe", By: "user:scott@example.com"})
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "maybe", By: "user:walter@example.com"})
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
@@ -209,7 +209,7 @@ func TestABallotForAnUnknownOptionIsRefused(t *testing.T) {
 		t.Fatalf("a refused ballot left a trace: %+v", q)
 	}
 
-	ok := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
+	ok := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:walter@example.com"})
 	ok.Body.Close()
 	if ok.StatusCode != http.StatusNoContent {
 		t.Fatalf("a real answer afterwards = %s, want 204", ok.Status)

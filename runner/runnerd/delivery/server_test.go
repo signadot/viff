@@ -286,7 +286,7 @@ func TestABranchIsTheTasksOwnWhenItMadeIt(t *testing.T) {
 // own work: a create is a push to a branch that is not at the forge, and an update a push to one
 // whose tip this task made, both facts the runner fills. t0's branch, at main's tip, is neither
 // for t1, so t1's fast-forward onto it, its rewrite of it and its deletion are refused by the row
-// after; t1's own branch is created, and then updated. (Daniel's finding on #24.)
+// after; t1's own branch is created, and then updated. (Victor's finding on #24.)
 func TestAnotherTasksBranchIsNotThisTasksToPush(t *testing.T) {
 	forge := t.TempDir()
 	origin := initRepo(t, forge, "acme/svc")

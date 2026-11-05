@@ -34,8 +34,8 @@ func TestControlAgainstADeadRemoteIsUnreachable(t *testing.T) {
 		{"cancel", h.Cancel("stop", "")},
 		{"pause", h.Pause("")},
 		{"resume", h.Resume("")},
-		{"steer", h.Steer("do it differently", "human:scott", "")},
-		{"resolve", h.(resolver).Resolve("d1", "proceed", "", "human:scott")},
+		{"steer", h.Steer("do it differently", "human:walter", "")},
+		{"resolve", h.(resolver).Resolve("d1", "proceed", "", "human:walter")},
 	} {
 		if !errors.Is(c.err, task.ErrUnreachable) {
 			t.Errorf("%s against a dead remote = %v, want ErrUnreachable", c.what, c.err)
@@ -78,7 +78,7 @@ func TestARemoteResolveDistinguishesItsRefusals(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no", c.status)
 		}))
-		err := client.HTTP(srv.URL).Attach("p").(resolver).Resolve("d1", "proceed", "", "human:scott")
+		err := client.HTTP(srv.URL).Attach("p").(resolver).Resolve("d1", "proceed", "", "human:walter")
 		if !errors.Is(err, c.want) {
 			t.Errorf("a %d answer = %v, want %v", c.status, err, c.want)
 		}

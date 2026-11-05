@@ -91,12 +91,12 @@ func TestARequestsPrincipalOwnsWhatItCreates(t *testing.T) {
 	rule := `{ name: review,
 	  condition: { subject: { path: "demo.pr.*", value: { stage: open } } },
 	  action: { patch: { stage: reviewing } } }`
-	resp = postAs(t, "scott@example.com", ts.URL+"/charter", "application/tony", rule)
+	resp = postAs(t, "walter@example.com", ts.URL+"/charter", "application/tony", rule)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("install: %s", resp.Status)
 	}
-	if got := owner(t, srv, charter.RuleRef("", "review")); got != "user:scott@example.com" {
+	if got := owner(t, srv, charter.RuleRef("", "review")); got != "user:walter@example.com" {
 		t.Fatalf("the rule record is owned by %q, want its installer", got)
 	}
 

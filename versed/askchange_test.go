@@ -38,9 +38,9 @@ func changeAs(t *testing.T, as, resolver, url, id, body string) *http.Response {
 }
 
 const (
-	chAsker  = "user:daniel@example.com"
-	chDavido = "user:oscar@example.com"
-	chBob    = "user:bob@example.com"
+	chAsker = "user:victor@example.com"
+	chOscar = "user:oscar@example.com"
+	chBob   = "user:bob@example.com"
 )
 
 // A NEW DATE MOVES THE CLOCK AND ASKS NOTHING AGAIN: the edit stands, the deadline is the new
@@ -89,11 +89,11 @@ func TestAChangedThenAsksAgain(t *testing.T) {
 	if resp := change(t, chAsker, ts.URL, id, `{on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}]}`); resp.StatusCode != http.StatusOK {
 		t.Fatalf("changing then: %s: %s", resp.Status, bodyOf(t, resp))
 	}
-	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: chDavido, Edit: 1})
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: chOscar, Edit: 1})
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("an answer to edit 1 after the change: %s, want 409", resp.Status)
 	}
-	resp = postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: chDavido, Edit: 2})
+	resp = postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: chOscar, Edit: 2})
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("an answer to edit 2: %s: %s", resp.Status, bodyOf(t, resp))
 	}
@@ -120,8 +120,8 @@ func TestChangedAnswerersAreAskedInstead(t *testing.T) {
 	if got := entity.Strs(e.Payload, mirror.WaitingOnField); len(got) != 1 || got[0] != chBob {
 		t.Fatalf("it waits on %v, want bob", got)
 	}
-	if resp := answerAs(t, chDavido, ts.URL, id); resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("davido, no longer asked, answering: %s, want 403", resp.Status)
+	if resp := answerAs(t, chOscar, ts.URL, id); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("oscar, no longer asked, answering: %s, want 403", resp.Status)
 	}
 	if resp := answerAs(t, chBob, ts.URL, id); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("bob answering: %s: %s", resp.Status, bodyOf(t, resp))
@@ -135,10 +135,10 @@ func TestAnAskIsChangedByItsAskerWhileItWaits(t *testing.T) {
 	id := askID(t, ask(t, chAsker, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
-	if resp := change(t, chDavido, ts.URL, id, `{question: "Merge today?"}`); resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("davido changing daniel's ask: %s, want 403", resp.Status)
+	if resp := change(t, chOscar, ts.URL, id, `{question: "Merge today?"}`); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("oscar changing victor's ask: %s, want 403", resp.Status)
 	}
-	if resp := answerAs(t, chDavido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
+	if resp := answerAs(t, chOscar, ts.URL, id); resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("the answer: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	waitField(t, srv, ref, "answer")

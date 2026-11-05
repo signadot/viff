@@ -12,8 +12,8 @@ import (
 // still withdraw it, which is when they most want it gone.
 func TestAnAskThatDoesNotReadIsStillItsAskers(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel = "user:daniel@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
+	const victor = "user:victor@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	ref := mirror.AskRef(id)
 	posed(t, srv, ref)
 	// An edit that is not a number: the record no longer reads as an api.AskRecord.
@@ -26,7 +26,7 @@ func TestAnAskThatDoesNotReadIsStillItsAskers(t *testing.T) {
 	if !personsAsk(e.Payload) {
 		t.Fatal("an ask that does not read is not taken for a person's ask")
 	}
-	resp := deleteAs(t, daniel, ts.URL+"/asks/"+id)
+	resp := deleteAs(t, victor, ts.URL+"/asks/"+id)
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		t.Fatalf("its asker withdrawing it = %s, want it withdrawn", resp.Status)

@@ -53,20 +53,20 @@ func TestAGateNamingPrincipalAsksWhoeverRanTheTask(t *testing.T) {
 	}
 }
 
-// AN ASK'S `then` ASKS ITS ASKER: the task acts for daniel, so its own question, naming nobody,
+// AN ASK'S `then` ASKS ITS ASKER: the task acts for victor, so its own question, naming nobody,
 // waits on him rather than on the docket, and its record keeps that across a restart.
 func TestAThenTasksOwnQuestionAsksTheAsker(t *testing.T) {
 	srv, ts := askingOn(t, serverWith(t, stepBuilder(t), entitytest.Store(t)))
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Land it?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "true", environment: {systems: {network: {mode: open}, commands: {run: {}}}}, autonomy: `+stepAsksTony+`}}}]}`))
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Land it?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "true", environment: {systems: {network: {mode: open}, commands: {run: {}}}}, autonomy: `+stepAsksTony+`}}}]}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
-	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("davido's answer: %s: %s", resp.Status, bodyOf(t, resp))
+	if resp := answerAs(t, oscar, ts.URL, id); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("oscar's answer: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	then := thenTaskOf(t, srv, land)
-	if got := waitingOn(t, srv, waitQuestion(t, srv, then.Ref.Name())); !slices.Equal(got, []string{daniel}) {
-		t.Fatalf("the row's task question waits on %v, want daniel alone", got)
+	if got := waitingOn(t, srv, waitQuestion(t, srv, then.Ref.Name())); !slices.Equal(got, []string{victor}) {
+		t.Fatalf("the row's task question waits on %v, want victor alone", got)
 	}
 	if got := entity.Strs(then.Payload, "answerers"); !slices.Equal(got, []string{task.PrincipalAnswerer}) {
 		t.Errorf("the row's task record holds answerers %v, want [%s]", got, task.PrincipalAnswerer)

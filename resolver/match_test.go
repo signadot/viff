@@ -97,7 +97,7 @@ func TestAMatchIsCheckedAtInstall(t *testing.T) {
 	if err := ok.Check(); err != nil {
 		t.Errorf("an empty match: %v", err)
 	}
-	node := mustNode(t, `{name: r, match: {to: user:ani}, method: {driver: service}}`)
+	node := mustNode(t, `{name: r, match: {to: user:peggy}, method: {driver: service}}`)
 	if err := CheckFields(node); err == nil || !strings.Contains(err.Error(), "a match does not route") {
 		t.Errorf("a match naming `to`: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestTheLaddersFieldsAreRetired(t *testing.T) {
 		`{name: r, match: {}, byRef: true, method: {driver: service}}`,
 		`{name: r, match: {}, deadline: {within: "4h"}, method: {driver: service}}`,
 		`{name: r, match: {}, exclusive: true, method: {driver: service}}`,
-		`{name: r, match: {}, method: {driver: person, who: ani@example.com}}`,
+		`{name: r, match: {}, method: {driver: person, who: peggy@example.com}}`,
 		`{name: r, match: {}, method: {driver: group, group: "group:qa"}}`,
 	} {
 		if err := CheckFields(mustNode(t, doc)); err == nil || !strings.Contains(err.Error(), "retired") {

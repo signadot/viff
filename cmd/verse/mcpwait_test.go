@@ -67,9 +67,9 @@ func openWait(t *testing.T, cs *mcp.ClientSession) string {
 // WHAT ALREADY WAITS is the first thing a wait says: the watch opens with what stands.
 func TestWaitSaysWhatWaitsAtStart(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com")
+	id := askAs(t, victor, "land", "-q", "Review?", "--to", "oscar@example.com")
 	questionOn(t, store, mirror.AskRef(id))
-	out, cursor := waitUntil(t, mcpSessionAs(t, davido), "", "waiting on you "+id+": Review?")
+	out, cursor := waitUntil(t, mcpSessionAs(t, oscar), "", "waiting on you "+id+": Review?")
 	if cursor == "" || cursor == "0" {
 		t.Fatalf("no cursor after a line:\n%s", out)
 	}
@@ -78,14 +78,14 @@ func TestWaitSaysWhatWaitsAtStart(t *testing.T) {
 // WHAT ARRIVES WHILE A CALL WAITS wakes it.
 func TestWaitSaysWhatArrives(t *testing.T) {
 	store := serveAsking(t)
-	dav := mcpSessionAs(t, davido)
+	dav := mcpSessionAs(t, oscar)
 	since := openWait(t, dav)
 	got := make(chan string, 1)
 	go func() {
 		out, _, _ := waitCall(t, dav, since, 10)
 		got <- out
 	}()
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com")
+	id := askAs(t, victor, "land", "-q", "Review?", "--to", "oscar@example.com")
 	questionOn(t, store, mirror.AskRef(id))
 	select {
 	case out := <-got:
@@ -101,19 +101,19 @@ func TestWaitSaysWhatArrives(t *testing.T) {
 // flight is answered by the next call from the cursor, once each, in order.
 func TestWaitMissesNothingBetweenCalls(t *testing.T) {
 	store := serveAsking(t)
-	dan := mcpSessionAs(t, daniel)
+	dan := mcpSessionAs(t, victor)
 	since := openWait(t, dan)
-	first := askAs(t, daniel, "first", "-q", "First?", "--to", "oscar@example.com")
-	second := askAs(t, daniel, "second", "-q", "Second?", "--to", "oscar@example.com")
+	first := askAs(t, victor, "first", "-q", "First?", "--to", "oscar@example.com")
+	second := askAs(t, victor, "second", "-q", "Second?", "--to", "oscar@example.com")
 	_, c1 := waitUntil(t, dan, since, "raised question "+first+": First?", "raised question "+second+": Second?")
 
-	// No call in flight: davido answers the first, daniel withdraws the second.
+	// No call in flight: oscar answers the first, victor withdraws the second.
 	questionOn(t, store, mirror.AskRef(first))
-	as(t, davido)
+	as(t, oscar)
 	if out, err := runCLI(t, "question", first, "--answer", "proceed"); err != nil {
-		t.Fatalf("davido's answer: %v\n%s", err, out)
+		t.Fatalf("oscar's answer: %v\n%s", err, out)
 	}
-	as(t, daniel)
+	as(t, victor)
 	if out, err := runCLI(t, "ask", second, "--withdraw"); err != nil {
 		t.Fatalf("the withdrawal: %v\n%s", err, out)
 	}
@@ -132,13 +132,13 @@ func TestWaitMissesNothingBetweenCalls(t *testing.T) {
 // answer is said once and not again.
 func TestWaitSaysAnAnswerOnce(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com")
+	id := askAs(t, victor, "land", "-q", "Review?", "--to", "oscar@example.com")
 	questionOn(t, store, mirror.AskRef(id))
-	dan := mcpSessionAs(t, daniel)
+	dan := mcpSessionAs(t, victor)
 	since := openWait(t, dan)
-	as(t, davido)
+	as(t, oscar)
 	if out, err := runCLI(t, "question", id, "--answer", "proceed"); err != nil {
-		t.Fatalf("davido's answer: %v\n%s", err, out)
+		t.Fatalf("oscar's answer: %v\n%s", err, out)
 	}
 	answered := "answered " + id + " yes: Review?"
 	out, cursor := waitUntil(t, dan, since, answered)
@@ -174,9 +174,9 @@ func TestWaitRefusesACursorTheServerForgot(t *testing.T) {
 // A STREAM THAT ENDS is followed again, and what was said before it ended is not said again.
 func TestWaitFollowsAgainWhenItsStreamEnds(t *testing.T) {
 	_, ts := serveAskingAt(t)
-	dan := mcpSessionAs(t, daniel)
+	dan := mcpSessionAs(t, victor)
 	since := openWait(t, dan)
-	first := askAs(t, daniel, "first", "-q", "First?")
+	first := askAs(t, victor, "first", "-q", "First?")
 	out1, c1 := waitUntil(t, dan, since, "raised question "+first+": First?")
 	ts.CloseClientConnections()
 	// That ends every connection to the verse, the CLI's idle ones in the shared pool with the
@@ -184,7 +184,7 @@ func TestWaitFollowsAgainWhenItsStreamEnds(t *testing.T) {
 	// tried again. A CLI is a process per command and dials afresh; the pool goes so this one
 	// does too.
 	http.DefaultTransport.(*http.Transport).CloseIdleConnections()
-	second := askAs(t, daniel, "second", "-q", "Second?")
+	second := askAs(t, victor, "second", "-q", "Second?")
 	out2, _ := waitUntil(t, dan, c1, "raised question "+second+": Second?")
 	if n := strings.Count(out1+out2, "raised question "+first+": First?"); n != 1 {
 		t.Fatalf("the ask before the stream ended said %d times:\n%s%s", n, out1, out2)
@@ -194,7 +194,7 @@ func TestWaitFollowsAgainWhenItsStreamEnds(t *testing.T) {
 // A CALL THE HOST CANCELS returns, rather than waiting out its timeout.
 func TestWaitReturnsWhenTheHostCancels(t *testing.T) {
 	serveAsking(t)
-	dan := mcpSessionAs(t, daniel)
+	dan := mcpSessionAs(t, victor)
 	since := openWait(t, dan)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
@@ -225,11 +225,11 @@ func TestWaitWithNobodyConfigured(t *testing.T) {
 // as many lines as it counts, whether it counts more lines than this server has said or fewer.
 func TestWaitRefusesACursorFromAnotherServer(t *testing.T) {
 	store := serveAsking(t)
-	before := mcpSessionAs(t, davido)
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com")
+	before := mcpSessionAs(t, oscar)
+	id := askAs(t, victor, "land", "-q", "Review?", "--to", "oscar@example.com")
 	questionOn(t, store, mirror.AskRef(id))
 	_, old := waitUntil(t, before, "", "waiting on you "+id)
-	after := mcpSessionAs(t, davido)
+	after := mcpSessionAs(t, oscar)
 	waitUntil(t, after, "", "waiting on you "+id) // the new server has said as many lines, or more
 	for _, cursor := range []string{old, "57"} {
 		out, _, isErr := waitCall(t, after, cursor, 1)
@@ -243,11 +243,11 @@ func TestWaitRefusesACursorFromAnotherServer(t *testing.T) {
 // the parts are what one answer says.
 func TestWaitAnswersInParts(t *testing.T) {
 	serveAsking(t)
-	dan := mcpSessionAs(t, daniel)
+	dan := mcpSessionAs(t, victor)
 	since := openWait(t, dan)
 	var wants []string
 	for _, name := range []string{"first", "second", "third", "fourth"} {
-		id := askAs(t, daniel, name, "-q", strings.Repeat(name, 10)+"?")
+		id := askAs(t, victor, name, "-q", strings.Repeat(name, 10)+"?")
 		wants = append(wants, "raised question "+id)
 	}
 	whole, end := waitUntil(t, dan, since, wants...)
@@ -285,7 +285,7 @@ func TestWaitSaysARepeatedFailureOnce(t *testing.T) {
 	was := waitRetryFirst
 	waitRetryFirst = 5 * time.Millisecond
 	t.Cleanup(func() { waitRetryFirst = was })
-	dan := mcpSessionAs(t, daniel)
+	dan := mcpSessionAs(t, victor)
 	openWait(t, dan)
 	time.Sleep(300 * time.Millisecond) // five tries, and more
 	out, _, _ := waitCall(t, dan, "", 1)

@@ -83,19 +83,19 @@ func thenTaskOf(t *testing.T, srv *Server, ref entity.Ref) entity.Entity {
 	}
 }
 
-// AN ASK, END TO END: daniel asks davido, with what follows a yes; the ask is posed to davido
-// alone, davido's yes is recorded on it, and its then runs as a task that is daniel's.
+// AN ASK, END TO END: victor asks oscar, with what follows a yes; the ask is posed to oscar
+// alone, oscar's yes is recorded on it, and its then runs as a task that is victor's.
 func TestAnAskIsAnsweredAndItsThenRunsForTheAsker(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Review verse/ask?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}]}`))
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Review verse/ask?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}]}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
-	if got := heldOutTo(t, srv, id); len(got) != 1 || got[0] != davido {
-		t.Fatalf("held out to %v, want davido alone", got)
+	if got := heldOutTo(t, srv, id); len(got) != 1 || got[0] != oscar {
+		t.Fatalf("held out to %v, want oscar alone", got)
 	}
-	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("davido's answer: %s: %s", resp.Status, bodyOf(t, resp))
+	if resp := answerAs(t, oscar, ts.URL, id); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("oscar's answer: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	if got := waitField(t, srv, land, "answer"); got != "yes" {
 		t.Fatalf("the ask records %q, want yes", got)
@@ -104,7 +104,7 @@ func TestAnAskIsAnsweredAndItsThenRunsForTheAsker(t *testing.T) {
 	// The owner record follows the write it records, so it is waited for, not read at once.
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		o, _ := entity.OwnerOf(srv.Store, task.Ref)
-		if o == daniel {
+		if o == victor {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -123,13 +123,13 @@ func TestAnAskIsAnsweredAndItsThenRunsForTheAsker(t *testing.T) {
 // spawn's is.
 func TestAThenRunsRecordCarriesItsPolicy(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: tag, question: "Tag v1?", to: [oscar@example.com],
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: tag, question: "Tag v1?", to: [oscar@example.com],
 		on: [{match: {verdict: proceed}, then: {spawn: {script: "true", environment: {systems: {network: {mode: open}, question: {ask: {}}}}, autonomy: [{match: {system: question}, then: allow}, {then: deny}]}}}]}`))
 	tag := mirror.AskRef(id)
 	posed(t, srv, tag)
-	if resp := answerAs(t, davido, ts.URL, id); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("davido's answer: %s: %s", resp.Status, bodyOf(t, resp))
+	if resp := answerAs(t, oscar, ts.URL, id); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("oscar's answer: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	then := thenTaskOf(t, srv, tag)
 	if p := mirror.AutonomyOf(then.Payload); len(p) != 2 || p[0].Match.System != "question" || p[0].Then.Mode != "allow" {
@@ -149,7 +149,7 @@ func TestAThensAutonomyIsCheckedWhenAsked(t *testing.T) {
 		`{spawn: {prompt: "go", environment: {systems: {network: {mode: open}}}, autonomy: [{match: {verb: push}, then: allow}, {then: deny}]}}`,
 		`{answer: {ask: other, choice: proceed}, autonomy: [{then: deny}]}`,
 	} {
-		resp := ask(t, "user:daniel@example.com", ts.URL, `{name: bad, question: "Go?", on: [{then: `+then+`}]}`)
+		resp := ask(t, "user:victor@example.com", ts.URL, `{name: bad, question: "Go?", on: [{then: `+then+`}]}`)
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("then %s: %s %s, want 400", then, resp.Status, bodyOf(t, resp))
 		}
@@ -161,7 +161,7 @@ func TestAThensAutonomyIsCheckedWhenAsked(t *testing.T) {
 // leaves.
 func TestAnAskWithoutAThenIsAVote(t *testing.T) {
 	srv, ts := asking(t)
-	id := askID(t, ask(t, "user:daniel@example.com", ts.URL, `{name: name, question: "Call it runverse?"}`))
+	id := askID(t, ask(t, "user:victor@example.com", ts.URL, `{name: name, question: "Call it runverse?"}`))
 	name := mirror.AskRef(id)
 	posed(t, srv, name)
 	if resp := answerAs(t, "user:bob@example.com", ts.URL, id); resp.StatusCode != http.StatusNoContent {
@@ -175,13 +175,13 @@ func TestAnAskWithoutAThenIsAVote(t *testing.T) {
 // A NO IS RECORDED AND RUNS NOTHING: the ask records `answer: no`, and its then is never a task.
 func TestANoToAnAskIsRecordedAndRunsNothing(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}]}`))
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge verse/ask?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}]}`))
 	land := mirror.AskRef(id)
 	posed(t, srv, land)
-	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "deny", By: davido})
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "deny", By: oscar})
 	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("davido's no: %s: %s", resp.Status, bodyOf(t, resp))
+		t.Fatalf("oscar's no: %s: %s", resp.Status, bodyOf(t, resp))
 	}
 	if got := waitField(t, srv, land, "answer"); got != "no" {
 		t.Fatalf("the ask records %q, want no", got)
@@ -196,11 +196,11 @@ func TestANoToAnAskIsRecordedAndRunsNothing(t *testing.T) {
 // it asks'.
 func TestAnAskIsNotAnsweredByItsAsker(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel = "user:daniel@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
+	const victor = "user:victor@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	posed(t, srv, mirror.AskRef(id))
-	if resp := answerAs(t, daniel, ts.URL, id); resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("daniel answering his own ask: %s, want 403", resp.Status)
+	if resp := answerAs(t, victor, ts.URL, id); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("victor answering his own ask: %s, want 403", resp.Status)
 	}
 }
 
@@ -212,8 +212,8 @@ func TestAnAskOutlivesARestart(t *testing.T) {
 	ctx, stop := context.WithCancel(t.Context())
 	first.Start(ctx)
 	ts := httptest.NewServer(first.Handler())
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	id := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
+	id := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com], on: [{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]}`))
 	land := mirror.AskRef(id)
 	posed(t, first, land)
 	ts.Close()
@@ -225,12 +225,12 @@ func TestAnAskOutlivesARestart(t *testing.T) {
 	defer ts2.Close()
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		resp := answerAs(t, davido, ts2.URL, id)
+		resp := answerAs(t, oscar, ts2.URL, id)
 		if resp.StatusCode == http.StatusNoContent {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("davido's answer after the restart: %s: %s", resp.Status, bodyOf(t, resp))
+			t.Fatalf("oscar's answer after the restart: %s: %s", resp.Status, bodyOf(t, resp))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

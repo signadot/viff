@@ -34,7 +34,7 @@ import (
 //
 //	verse ask                                       your asks
 //	verse ask land                                  one of them, and whom it waits on
-//	verse ask land -q "Review verse/ask?" --to ani@example.com --due 48h --on @on.tony
+//	verse ask land -q "Review verse/ask?" --to peggy@example.com --due 48h --on @on.tony
 //	verse ask land --withdraw                       take it back
 //	verse ask --watch                               a line when one settles, or a question waits on you
 //	verse ask --watch --notify                      and on the desktop: what needs you (notify.go)

@@ -20,18 +20,18 @@ func TestTheWatchNotifiesWhatNeedsYou(t *testing.T) {
 	var got []alert
 	quiet := func(rev, line string) {}
 
-	q := newAskWatch(apiClient(), daniel, false, true)
+	q := newAskWatch(apiClient(), victor, false, true)
 	q.alert = func(a alert) { got = append(got, a) }
 	q.frame(askFrame{at: "verse.ask.q1", rev: "5", to: entity.Obj{
-		"status": "pending", "waitingOn": []any{daniel}, "pose": "Land it?",
+		"status": "pending", "waitingOn": []any{victor}, "pose": "Land it?",
 	}.Payload()}, quiet)
 	q.frame(askFrame{at: "verse.ask.q1", rev: "6", to: entity.Obj{
-		"status": "approved", "waitingOn": []any{daniel}, "pose": "Land it?",
+		"status": "approved", "waitingOn": []any{victor}, "pose": "Land it?",
 	}.Payload()}, quiet)
 
-	a := newAskWatch(apiClient(), daniel, true, false)
+	a := newAskWatch(apiClient(), victor, true, false)
 	a.alert = func(al alert) { got = append(got, al) }
-	mine := entity.Obj{mirror.FromField: mirror.FromPrincipal(daniel), "question": "Lunch?"}
+	mine := entity.Obj{mirror.FromField: mirror.FromPrincipal(victor), "question": "Lunch?"}
 	a.frame(askFrame{at: "verse.ask.a1", rev: "7", to: mine.Payload()}, quiet)
 	mine["answer"] = "yes"
 	a.frame(askFrame{at: "verse.ask.a1", rev: "8", to: mine.Payload()}, quiet)
@@ -57,19 +57,19 @@ func TestCatchingUpIsOneQuietSummary(t *testing.T) {
 	var mu sync.Mutex
 	var got []alert
 	quiet := func(rev, line string) {}
-	w := newAskWatch(apiClient(), daniel, true, true)
+	w := newAskWatch(apiClient(), victor, true, true)
 	w.quietFor = time.Hour // ended by hand below
 	w.alert = func(a alert) { mu.Lock(); got = append(got, a); mu.Unlock() }
 	w.catchUp()
 	pending := func(pose string) entity.Payload {
-		return entity.Obj{"status": "pending", "waitingOn": []any{daniel}, "pose": pose}.Payload()
+		return entity.Obj{"status": "pending", "waitingOn": []any{victor}, "pose": pose}.Payload()
 	}
 	w.frame(askFrame{at: "verse.ask.q1", rev: "3", to: pending("Land it?")}, quiet)
 	w.frame(askFrame{at: "verse.ask.q2", rev: "4", to: pending("Ship it?")}, quiet)
 	w.frame(askFrame{at: "verse.ask.q3", rev: "5", to: pending("Gone soon?")}, quiet)
-	w.frame(askFrame{at: "verse.ask.q3", rev: "6", to: entity.Obj{"status": "denied", "waitingOn": []any{daniel}}.Payload()}, quiet)
+	w.frame(askFrame{at: "verse.ask.q3", rev: "6", to: entity.Obj{"status": "denied", "waitingOn": []any{victor}}.Payload()}, quiet)
 	w.frame(askFrame{at: "verse.ask.a1", rev: "7", to: entity.Obj{
-		mirror.FromField: mirror.FromPrincipal(daniel), "question": "Lunch?", "answer": "yes"}.Payload()}, quiet)
+		mirror.FromField: mirror.FromPrincipal(victor), "question": "Lunch?", "answer": "yes"}.Payload()}, quiet)
 	for _, a := range got {
 		if !a.withdraw {
 			t.Fatalf("notified while catching up: %+v", a)
@@ -94,13 +94,13 @@ func TestCatchingUpIsOneQuietSummary(t *testing.T) {
 // A QUIET STREAM ENDS THE CATCHING UP by itself.
 func TestAQuietStreamIsCaughtUp(t *testing.T) {
 	done := make(chan alert, 1)
-	w := newAskWatch(apiClient(), daniel, false, true)
+	w := newAskWatch(apiClient(), victor, false, true)
 	w.quietFor = 10 * time.Millisecond
 	w.alert = func(a alert) { done <- a }
 	w.catchUp()
 	w.opened()
 	w.frame(askFrame{at: "verse.ask.q1", rev: "3", to: entity.Obj{
-		"status": "pending", "waitingOn": []any{daniel}, "pose": "Land it?"}.Payload()}, func(string, string) {})
+		"status": "pending", "waitingOn": []any{victor}, "pose": "Land it?"}.Payload()}, func(string, string) {})
 	select {
 	case a := <-done:
 		if a.title != "verse: 1 question waits on you" || a.urgent {
@@ -113,10 +113,10 @@ func TestAQuietStreamIsCaughtUp(t *testing.T) {
 
 // A WATCH WITHOUT --notify notifies nothing, and says the same lines.
 func TestTheWatchWithoutNotifyHasNoAlerter(t *testing.T) {
-	w := newAskWatch(apiClient(), daniel, false, true)
+	w := newAskWatch(apiClient(), victor, false, true)
 	var said []string
 	w.frame(askFrame{at: "verse.ask.q1", rev: "5", to: entity.Obj{
-		"status": "pending", "waitingOn": []any{daniel}, "pose": "Land it?",
+		"status": "pending", "waitingOn": []any{victor}, "pose": "Land it?",
 	}.Payload()}, func(rev, line string) { said = append(said, line) })
 	if len(said) != 1 || !strings.HasPrefix(said[0], "waiting on you q1: Land it?") {
 		t.Fatalf("said %q", said)
@@ -225,7 +225,7 @@ func TestAStuckDesktopNeitherHangsNorHidesDrops(t *testing.T) {
 // THE QUIET CLOCK STARTS WHEN THE STREAM OPENS: a verse slow to answer, or to assemble what stands,
 // is not quiet, and what it then sends is still caught up on.
 func TestCatchingUpWaitsForTheStreamToOpen(t *testing.T) {
-	w := newAskWatch(apiClient(), daniel, false, true)
+	w := newAskWatch(apiClient(), victor, false, true)
 	w.quietFor = 10 * time.Millisecond
 	w.alert = func(alert) {}
 	w.catchUp()
@@ -243,13 +243,13 @@ func TestCatchingUpWaitsForTheStreamToOpen(t *testing.T) {
 // opened; and a stream's clocks do not end the next one's catching up.
 func TestABusyDocketIsCaughtUpAtTheCap(t *testing.T) {
 	done := make(chan alert, 4)
-	w := newAskWatch(apiClient(), daniel, false, true)
+	w := newAskWatch(apiClient(), victor, false, true)
 	w.quietFor, w.catchUpMax = 30*time.Millisecond, 150*time.Millisecond
 	w.alert = func(a alert) { done <- a }
 	w.catchUp()
 	w.opened()
 	w.frame(askFrame{at: "verse.ask.q1", rev: "3", to: entity.Obj{
-		"status": "pending", "waitingOn": []any{daniel}, "pose": "Land it?"}.Payload()}, func(string, string) {})
+		"status": "pending", "waitingOn": []any{victor}, "pose": "Land it?"}.Payload()}, func(string, string) {})
 	stop := time.After(time.Second)
 	tick := time.NewTicker(5 * time.Millisecond)
 	defer tick.Stop()
@@ -271,7 +271,7 @@ func TestABusyDocketIsCaughtUpAtTheCap(t *testing.T) {
 
 // A RECONNECT'S CATCHING UP is its own: the first stream's clocks firing late end nothing.
 func TestAnEarlierStreamsClockEndsNothing(t *testing.T) {
-	w := newAskWatch(apiClient(), daniel, false, true)
+	w := newAskWatch(apiClient(), victor, false, true)
 	w.alert = func(alert) {}
 	w.catchUp()
 	gen := w.catchGen
@@ -287,13 +287,13 @@ func TestAnEarlierStreamsClockEndsNothing(t *testing.T) {
 func TestTheSummaryClosesWhenItsQuestionsSettle(t *testing.T) {
 	var got []alert
 	quiet := func(rev, line string) {}
-	w := newAskWatch(apiClient(), daniel, false, true)
+	w := newAskWatch(apiClient(), victor, false, true)
 	w.quietFor = time.Hour
 	w.alert = func(a alert) { got = append(got, a) }
 	w.catchUp()
 	for _, id := range []string{"q1", "q2"} {
 		w.frame(askFrame{at: "verse.ask." + id, rev: "3", to: entity.Obj{
-			"status": "pending", "waitingOn": []any{daniel}, "pose": id}.Payload()}, quiet)
+			"status": "pending", "waitingOn": []any{victor}, "pose": id}.Payload()}, quiet)
 	}
 	w.caughtUp()
 	if len(got) != 1 || got[0].key != catchUpKey {
@@ -301,7 +301,7 @@ func TestTheSummaryClosesWhenItsQuestionsSettle(t *testing.T) {
 	}
 	settle := func(id, rev string) {
 		w.frame(askFrame{at: "verse.ask." + id, rev: rev, to: entity.Obj{
-			"status": "approved", "waitingOn": []any{daniel}}.Payload()}, quiet)
+			"status": "approved", "waitingOn": []any{victor}}.Payload()}, quiet)
 	}
 	got = nil
 	settle("q1", "4")

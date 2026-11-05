@@ -136,9 +136,9 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 	if err := first.Eng.AddTrigger(rule); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	// Scott's pr, so scott answers its gate: one naming nobody is answered by whoever may write
+	// Walter's pr, so walter answers its gate: one naming nobody is answered by whoever may write
 	// what it is about.
-	owns(t, first, "user:scott@example.com", nil, entity.RefAt("demo", "pr", "1"))
+	owns(t, first, "user:walter@example.com", nil, entity.RefAt("demo", "pr", "1"))
 	entitytest.Set(t, first.Store, entity.RefAt("demo", "pr", "1"),
 		entity.Obj{"stage": "open"}.Payload())
 	var posed string
@@ -175,7 +175,7 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 
 	ops := httptest.NewServer(second.Handler())
 	defer ops.Close()
-	resp := postTony(t, ops.URL+answerPath(posed), api.Resolve{Choice: "proceed", By: "user:scott@example.com"})
+	resp := postTony(t, ops.URL+answerPath(posed), api.Resolve{Choice: "proceed", By: "user:walter@example.com"})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("answering the re-posed question = %s, want 204 — it is listed but nothing is waiting", resp.Status)

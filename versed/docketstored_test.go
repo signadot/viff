@@ -14,11 +14,11 @@ import (
 // the git iod's obsolete sweep found none, skipped every question, and settled nothing.
 func TestTheDocketKeepsWhenAQuestionWasPosed(t *testing.T) {
 	srv, ts := asking(t)
-	const daniel, davido = "user:daniel@example.com", "user:oscar@example.com"
-	land := askID(t, ask(t, daniel, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
+	const victor, oscar = "user:victor@example.com", "user:oscar@example.com"
+	land := askID(t, ask(t, victor, ts.URL, `{name: land, question: "Merge?", to: [oscar@example.com]}`))
 	posed(t, srv, mirror.AskRef(land))
 
-	resp := getAs(t, davido, ts.URL+"/asks?waiting=me")
+	resp := getAs(t, oscar, ts.URL+"/asks?waiting=me")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("the docket: %s", resp.Status)

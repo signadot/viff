@@ -1197,7 +1197,7 @@ func (a *attributed) accessFor(principal string, ref Ref, creating bool) (access
 
 // pairAccess is what a pair holds at ref: what its ASKER holds, and nothing the rule adds or
 // takes away. A consequence is the raiser's, so it runs on the raiser's authority (9ce3bva0):
-// asked whether I may merge, Daniel's yes lets me merge what I may, and neither the answerer
+// asked whether I may merge, Victor's yes lets me merge what I may, and neither the answerer
 // nor the rule's installer needs that right. The rule is the pair's second party so the record
 // says what the task acted through, not so the check can ask it.
 //
@@ -1323,7 +1323,7 @@ func (a *attributed) withholdAll(ents []Entity) ([]Entity, error) {
 
 // A READ ANSWERS ONLY WHAT MAY BE READ, AT EVERY NODE IT CARRIES. A row the reader may read
 // holds a payload, and a node inside that payload can stand under a record of its own that the
-// reader may not read: scott's `demo.pr.1.secret`, taken with no grants, is refused to ana at
+// reader may not read: walter's `demo.pr.1.secret`, taken with no grants, is refused to ana at
 // its own address — and was handed to her whole by a read of `demo.pr.1` or `demo.pr`, since
 // keep asks only of the row. withhold leaves each such node out of the payload, as keep leaves a
 // row out of a listing, and counts it as Hidden.

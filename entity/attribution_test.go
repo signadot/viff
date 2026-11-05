@@ -157,23 +157,23 @@ func TestAttributedWriteStampsThePrincipalAndRecordsTheOwner(t *testing.T) {
 func TestAPlaceActingResolvesToItsOwner(t *testing.T) {
 	inner := &stamped{Store: entitytest.OpenStore(t)}
 	rule := entity.VerseRef("trigger", "rule", "review")
-	scott := entity.As(inner, "user:scott@example.com")
-	grantInstalls(t, scott)
-	if _, _, err := scott.Write(entity.Write{At: rule.At(), Value: entity.Obj{"name": "review"}.Payload()}); err != nil {
+	walter := entity.As(inner, "user:walter@example.com")
+	grantInstalls(t, walter)
+	if _, _, err := walter.Write(entity.Write{At: rule.At(), Value: entity.Obj{"name": "review"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := ownerOf(t, inner, rule); o != "user:scott@example.com" {
+	if o, _ := ownerOf(t, inner, rule); o != "user:walter@example.com" {
 		t.Fatalf("the rule record's owner = %q", o)
 	}
 
-	firing := entity.As(scott, entity.Via(rule))
+	firing := entity.As(walter, entity.Via(rule))
 	pr := entity.RefAt("demo", "pr", "2")
 	if _, _, err := firing.Write(entity.Write{At: pr.At(), Value: entity.Obj{"stage": "open"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
 	// Owned THROUGH what the firing created: the record stands at the topmost new node, and
 	// ownership descends from it.
-	if ok, err := entity.Holds(scott, "user:scott@example.com", entity.OwnerLevel, pr); err != nil || !ok {
+	if ok, err := entity.Holds(walter, "user:walter@example.com", entity.OwnerLevel, pr); err != nil || !ok {
 		t.Fatalf("an entity the rule created is not the rule's owner's: %v %v", ok, err)
 	}
 }
@@ -319,8 +319,8 @@ func TestAResolutionMissIsNotRemembered(t *testing.T) {
 		t.Fatal("a rule nobody owns reads the root's perms record, which only the system may")
 	}
 	grantInstalls(t, system)
-	scott := entity.As(system, "user:scott@example.com")
-	if _, _, err := scott.Write(entity.Write{At: rule.At(), Value: entity.Obj{"name": "late"}.Payload()}); err != nil {
+	walter := entity.As(system, "user:walter@example.com")
+	if _, _, err := walter.Write(entity.Write{At: rule.At(), Value: entity.Obj{"name": "late"}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
 	second := entity.RefAt("demo", "pr", "2")
@@ -328,7 +328,7 @@ func TestAResolutionMissIsNotRemembered(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The record stands at the top of what the write made, which is `demo`.
-	if o, _ := ownerOf(t, inner, entity.RefAt("demo")); o != "user:scott@example.com" {
+	if o, _ := ownerOf(t, inner, entity.RefAt("demo")); o != "user:walter@example.com" {
 		t.Fatalf("after the rule has an owner, its creation is owned by %q, want the installer", o)
 	}
 }

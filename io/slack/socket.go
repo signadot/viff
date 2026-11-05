@@ -449,7 +449,7 @@ func optionsOf(asked []Asked) []string {
 }
 
 // aliases are the other words that ARE an option, said alone: for the two a gate has unless it
-// says otherwise, the short one and the plain one. "yes" to "Ask ani to review it?" is the answer
+// says otherwise, the short one and the plain one. "yes" to "Ask peggy to review it?" is the answer
 // everybody types, and a reply that has to be spelled `proceed` is a reply people get wrong.
 func aliases(option string) []string {
 	switch option {

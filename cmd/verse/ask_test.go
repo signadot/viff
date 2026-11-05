@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	daniel = "user:daniel@example.com"
-	davido = "user:oscar@example.com"
+	victor = "user:victor@example.com"
+	oscar  = "user:oscar@example.com"
 )
 
 // serveAsking is a started verse, which asks as every verse does: versed poses what stands under
@@ -113,11 +113,11 @@ func waitFieldCLI(t *testing.T, store entity.Store, ref entity.Ref, field string
 	t.Fatalf("%s never carried %s", ref, field)
 }
 
-// ASKING, END TO END: daniel asks davido by name, sees the ask pending and waiting on davido,
-// davido answers through `verse gate`, and daniel sees the answer.
+// ASKING, END TO END: victor asks oscar by name, sees the ask pending and waiting on oscar,
+// oscar answers through `verse gate`, and victor sees the answer.
 func TestAnAskIsAskedAnsweredAndSeen(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review verse/ask?", "--to", "oscar@example.com",
+	id := askAs(t, victor, "land", "-q", "Review verse/ask?", "--to", "oscar@example.com",
 		"--due", "48h", "--on-silence", "proceed", "--on", `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask", environment: {systems: {network: {mode: open}}}}}}]`, "--keep", "72h")
 	ref := mirror.AskRef(id)
 	rec := payloadOf(t, store, ref)
@@ -128,8 +128,8 @@ func TestAnAskIsAskedAnsweredAndSeen(t *testing.T) {
 	if _, err := runCLI(t, "ask", "land", "--on-silence", "deny"); err == nil || !strings.Contains(err.Error(), "go with --question") {
 		t.Fatalf("--on-silence on a standing ask: %v, want it refused as going with --question", err)
 	}
-	if got := mirror.GranteesTo(entity.Obj(rec).Payload()); len(got) != 1 || got[0] != davido {
-		t.Fatalf("to = %v, want [%s] in the grammar", rec[mirror.ToField], davido)
+	if got := mirror.GranteesTo(entity.Obj(rec).Payload()); len(got) != 1 || got[0] != oscar {
+		t.Fatalf("to = %v, want [%s] in the grammar", rec[mirror.ToField], oscar)
 	}
 	if rec["keep"] != "72h0m0s" {
 		t.Fatalf("keep = %v, want 72h", rec["keep"])
@@ -143,28 +143,28 @@ func TestAnAskIsAskedAnsweredAndSeen(t *testing.T) {
 	if out, err := runCLI(t, "ask"); err != nil || !strings.Contains(out, id) || !strings.Contains(out, "pending") {
 		t.Fatalf("the listing: %v\n%s", err, out)
 	}
-	if out, err := runCLI(t, "ask", "land"); err != nil || !strings.Contains(out, qid) || !strings.Contains(out, davido) {
+	if out, err := runCLI(t, "ask", "land"); err != nil || !strings.Contains(out, qid) || !strings.Contains(out, oscar) {
 		t.Fatalf("the ask does not say its question and whom it waits on: %v\n%s", err, out)
 	}
 
-	as(t, davido)
+	as(t, oscar)
 	if out, err := runCLI(t, "gate", qid, "--answer", "proceed"); err != nil {
-		t.Fatalf("davido's answer: %v\n%s", err, out)
+		t.Fatalf("oscar's answer: %v\n%s", err, out)
 	}
-	as(t, daniel)
+	as(t, victor)
 	waitFieldCLI(t, store, ref, "answer")
 	if out, err := runCLI(t, "ask", id); err != nil || !strings.Contains(out, "answer: yes") {
 		t.Fatalf("the answer is not on the ask: %v\n%s", err, out)
 	}
 }
 
-// THE WATCH, FROM A CURSOR: run after the fact from revision 0, it says each event of daniel's ask
-// in order; davido's says the question that waited on him, and that it settled.
+// THE WATCH, FROM A CURSOR: run after the fact from revision 0, it says each event of victor's ask
+// in order; oscar's says the question that waited on him, and that it settled.
 func TestTheWatchSaysWhatHappenedSinceItsCursor(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review verse/ask?", "--to", "oscar@example.com")
+	id := askAs(t, victor, "land", "-q", "Review verse/ask?", "--to", "oscar@example.com")
 	qid := questionOn(t, store, mirror.AskRef(id))
-	as(t, davido)
+	as(t, oscar)
 	if out, err := runCLI(t, "gate", qid, "--answer", "proceed"); err != nil {
 		t.Fatalf("answer: %v\n%s", err, out)
 	}
@@ -174,30 +174,30 @@ func TestTheWatchSaysWhatHappenedSinceItsCursor(t *testing.T) {
 	waitFor(t, his, "waiting on you "+qid+": Review verse/ask?")
 	waitFor(t, his, "settled "+qid+": answered")
 	if strings.Contains(his.String(), "raised question "+id) {
-		t.Fatalf("davido's watch tells him of daniel's ask as his own:\n%s", his.String())
+		t.Fatalf("oscar's watch tells him of victor's ask as his own:\n%s", his.String())
 	}
 
-	// davido's own watch of asks says his asks, and not the question put to him: that is his
+	// oscar's own watch of asks says his asks, and not the question put to him: that is his
 	// question watch's. It is read once it says an ask of his raised after.
-	as(t, davido)
-	own := askAs(t, davido, "tea", "-q", "Tea?")
+	as(t, oscar)
+	own := askAs(t, oscar, "tea", "-q", "Tea?")
 	// An ask he names nothing is raised all the same, under the name verse gives it.
-	if anon := askAs(t, davido, "-q", "Coffee?"); !strings.HasPrefix(anon, "run-") {
+	if anon := askAs(t, oscar, "-q", "Coffee?"); !strings.HasPrefix(anon, "run-") {
 		t.Fatalf("an ask named nothing was raised as %q, want verse's run-<nonce>", anon)
 	}
-	as(t, davido)
+	as(t, oscar)
 	asks, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch", "--since", "0")
 	waitFor(t, asks, "raised question "+own+": Tea?")
 	if strings.Contains(asks.String(), "waiting on you") {
-		t.Fatalf("davido's ask watch says a question waits on him:\n%s", asks.String())
+		t.Fatalf("oscar's ask watch says a question waits on him:\n%s", asks.String())
 	}
 
-	as(t, daniel)
+	as(t, victor)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch", "--since", "0")
 	waitFor(t, mine, "raised question "+id+": Review verse/ask?")
 	waitFor(t, mine, "answered "+id+" yes: Review verse/ask?")
 	if strings.Contains(mine.String(), "waiting on you") {
-		t.Fatalf("daniel's watch says a question waits on him:\n%s", mine.String())
+		t.Fatalf("victor's watch says a question waits on him:\n%s", mine.String())
 	}
 }
 
@@ -206,26 +206,26 @@ func TestTheWatchSaysWhatHappenedSinceItsCursor(t *testing.T) {
 // do not answer their own ask.
 func TestTheWatchSaysAnAskForAnyoneWaitsOnYou(t *testing.T) {
 	serveAsking(t)
-	id := askAs(t, davido, "lunch", "-q", "Lunch at noon?")
-	as(t, daniel)
+	id := askAs(t, oscar, "lunch", "-q", "Lunch at noon?")
+	as(t, victor)
 	his, _ := runCLIIn(t, strings.NewReader(""), "questions", "--watch", "--since", "0")
 	waitFor(t, his, "waiting on you "+id+": Lunch at noon?")
 
-	// davido's watch is read once it says a later question put to him by name, so a line about
+	// oscar's watch is read once it says a later question put to him by name, so a line about
 	// his own vote would be there before it.
-	tea := askAs(t, daniel, "tea", "-q", "Tea?", "--to", "oscar@example.com")
-	as(t, davido)
+	tea := askAs(t, victor, "tea", "-q", "Tea?", "--to", "oscar@example.com")
+	as(t, oscar)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "questions", "--watch", "--since", "0")
 	waitFor(t, mine, "waiting on you "+tea+": Tea?")
 	if strings.Contains(mine.String(), id) {
-		t.Fatalf("davido's watch says his own vote waits on him:\n%s", mine.String())
+		t.Fatalf("oscar's watch says his own vote waits on him:\n%s", mine.String())
 	}
 }
 
 // WHOM A WILDCARD REACHES: every principal of its kind, or everyone, and never the asker of the
 // ask; a principal is matched as written.
 func TestWhomAnAskWaitsOn(t *testing.T) {
-	const me, other = "user:daniel@example.com", "user:oscar@example.com"
+	const me, other = "user:victor@example.com", "user:oscar@example.com"
 	w := &askWatch{me: me}
 	for _, c := range []struct {
 		waiting       []any
@@ -249,29 +249,29 @@ func TestWhomAnAskWaitsOn(t *testing.T) {
 			q[mirror.FromField] = mirror.FromPrincipal(c.asker)
 		}
 		if got, decided := w.waitsOnMe(q.Payload()); got != c.want || decided != c.decided {
-			t.Errorf("waitingOn %v, asker %q: waits on daniel %v (decided %v), want %v (%v)",
+			t.Errorf("waitingOn %v, asker %q: waits on victor %v (decided %v), want %v (%v)",
 				c.waiting, c.asker, got, decided, c.want, c.decided)
 		}
 	}
 }
 
-// THE QUESTIONS PUT TO YOU are what `verse question` lists: daniel's ask to davido is on his docket
-// (`--all`) and not among his questions, and davido finds it among his under each of the
+// THE QUESTIONS PUT TO YOU are what `verse question` lists: victor's ask to oscar is on his docket
+// (`--all`) and not among his questions, and oscar finds it among his under each of the
 // command's names.
 func TestTheQuestionListingIsWhatWaitsOnYou(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com")
+	id := askAs(t, victor, "land", "-q", "Review?", "--to", "oscar@example.com")
 	questionOn(t, store, mirror.AskRef(id))
 	if out, err := runCLI(t, "question"); err != nil || strings.Contains(out, id) {
-		t.Fatalf("daniel's questions list his own ask: %v\n%s", err, out)
+		t.Fatalf("victor's questions list his own ask: %v\n%s", err, out)
 	}
 	if out, err := runCLI(t, "question", "--all"); err != nil || !strings.Contains(out, id) {
-		t.Fatalf("daniel's docket does not list his own ask: %v\n%s", err, out)
+		t.Fatalf("victor's docket does not list his own ask: %v\n%s", err, out)
 	}
-	as(t, davido)
+	as(t, oscar)
 	for _, name := range []string{"question", "questions", "qs", "gate"} {
 		if out, err := runCLI(t, name); err != nil || !strings.Contains(out, id) {
-			t.Fatalf("verse %s as davido does not list the ask put to him: %v\n%s", name, err, out)
+			t.Fatalf("verse %s as oscar does not list the ask put to him: %v\n%s", name, err, out)
 		}
 	}
 }
@@ -280,7 +280,7 @@ func TestTheQuestionListingIsWhatWaitsOnYou(t *testing.T) {
 // wait on you when the verse says it does.
 func TestTheQuestionWatchAsksTheVerseWhatItCannotRead(t *testing.T) {
 	var asked string
-	w := newAskWatch(apiClient(), daniel, false, true)
+	w := newAskWatch(apiClient(), victor, false, true)
 	w.askVerse = func(id string) bool { asked = id; return true }
 	var said []string
 	w.frame(askFrame{at: "verse.ask.q1", rev: "5", to: entity.Obj{
@@ -291,14 +291,14 @@ func TestTheQuestionWatchAsksTheVerseWhatItCannotRead(t *testing.T) {
 	}
 }
 
-// YOUR ASKS are the ones you asked: davido's vote, which anyone may read, is not in daniel's list.
+// YOUR ASKS are the ones you asked: oscar's vote, which anyone may read, is not in victor's list.
 func TestTheListingIsYourAsks(t *testing.T) {
 	serveAsking(t)
-	askAs(t, davido, "lunch", "-q", "Lunch at noon?")
-	land := askAs(t, daniel, "land", "-q", "Review?")
+	askAs(t, oscar, "lunch", "-q", "Lunch at noon?")
+	land := askAs(t, victor, "land", "-q", "Review?")
 	out, err := runCLI(t, "ask")
 	if err != nil || !strings.Contains(out, land) || strings.Contains(out, "lunch") {
-		t.Fatalf("daniel's listing: %v\n%s", err, out)
+		t.Fatalf("victor's listing: %v\n%s", err, out)
 	}
 	as(t, "user:nobody@example.com")
 	if out, err = runCLI(t, "ask"); err != nil || !strings.Contains(out, "no asks standing") {
@@ -310,8 +310,8 @@ func TestTheListingIsYourAsks(t *testing.T) {
 // with both ids rather than guessed between.
 func TestANameThatNamesTwoAsksIsRefused(t *testing.T) {
 	serveAsking(t)
-	first := askAs(t, daniel, "land", "-q", "first?")
-	second := askAs(t, daniel, "land", "-q", "second?")
+	first := askAs(t, victor, "land", "-q", "first?")
+	second := askAs(t, victor, "land", "-q", "second?")
 	_, err := runCLI(t, "ask", "land")
 	if err == nil || !strings.Contains(err.Error(), first) || !strings.Contains(err.Error(), second) {
 		t.Fatalf("an ambiguous name: %v", err)
@@ -325,9 +325,9 @@ func TestANameThatNamesTwoAsksIsRefused(t *testing.T) {
 // one key an ask runs are refused before anything stands.
 func TestAnAskIsCheckedBeforeItIsWritten(t *testing.T) {
 	store := serveAsking(t)
-	as(t, daniel)
+	as(t, victor)
 	for _, args := range [][]string{
-		{"ask", "land", "-q", "x?", "--to", "davido"},
+		{"ask", "land", "-q", "x?", "--to", "oscar"},
 		{"ask", "land", "-q", "x?", "--due", "-1h"},
 		{"ask", "land", "-q", "x?", "--due", "2020-01-01T00:00:00Z"},
 		{"ask", "land", "-q", "x?", "--due", "tomorrow"},
@@ -354,7 +354,7 @@ func TestAnAskIsCheckedBeforeItIsWritten(t *testing.T) {
 // it again as its next edit, and --about, which says what a new ask is, is refused.
 func TestAWaitingAskIsChangedByItsAsker(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com", "--due", "1h", "--on", `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]`)
+	id := askAs(t, victor, "land", "-q", "Review?", "--to", "oscar@example.com", "--due", "1h", "--on", `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge it", environment: {systems: {network: {mode: open}}}}}}]`)
 	ref := mirror.AskRef(id)
 	questionOn(t, store, ref)
 	if out, err := runCLI(t, "ask", "land", "--due", "72h"); err != nil || !strings.Contains(out, "moved "+id) {
@@ -381,7 +381,7 @@ func TestAWaitingAskIsChangedByItsAsker(t *testing.T) {
 // WITHDRAWING removes the ask, and its question goes with it.
 func TestAWithdrawnAskIsGoneAndAsksNobody(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com")
+	id := askAs(t, victor, "land", "-q", "Review?", "--to", "oscar@example.com")
 	ref := mirror.AskRef(id)
 	qid := questionOn(t, store, ref)
 	if out, err := runCLI(t, "ask", "land", "--withdraw"); err != nil {
@@ -410,13 +410,13 @@ func TestAWithdrawnAskIsGoneAndAsksNobody(t *testing.T) {
 // result is what the calls did.
 func TestACallsThenRunsItsCalls(t *testing.T) {
 	store := serveCalls(t)
-	id := askAs(t, daniel, "land", "-q", "Tag it?", "--to", "oscar@example.com",
+	id := askAs(t, victor, "land", "-q", "Tag it?", "--to", "oscar@example.com",
 		"--on", `[{match: {verdict: proceed}, then: {spawn: {script: "echo tagged", environment: {systems: {network: {mode: open}}}}}}]`)
 	ref := mirror.AskRef(id)
 	questionOn(t, store, ref)
-	as(t, davido)
+	as(t, oscar)
 	if out, err := runCLI(t, "gate", id, "--answer", "proceed"); err != nil {
-		t.Fatalf("davido's answer: %v\n%s", err, out)
+		t.Fatalf("oscar's answer: %v\n%s", err, out)
 	}
 	waitFieldCLI(t, store, ref, "ran.task")
 	task := mirror.Ref(atPathCLI(payloadOf(t, store, ref), "ran.task").(string))
@@ -436,38 +436,38 @@ func TestACallsThenRunsItsCalls(t *testing.T) {
 	}
 }
 
-// A WATCH OPENED BEFORE sees whole records: an ask standing when it opened is known as daniel's
+// A WATCH OPENED BEFORE sees whole records: an ask standing when it opened is known as victor's
 // when it is answered, and an answer is said once however much is written on the ask after it (its
 // status, its expiry). The watch is known to be open once it says an ask asked after it.
 // A WATCH FROM A CURSOR SAYS WHAT HAPPENS AFTER ITS HISTORY: the ask stood before the watch, its
 // asking is in the history from 0, and its answer comes live, after the history ends. The live
-// part carries the whole ask, so the answer is said as daniel's.
+// part carries the whole ask, so the answer is said as victor's.
 func TestAWatchFromACursorSaysWhatHappensAfterItsHistory(t *testing.T) {
 	store := serveAsking(t)
-	id := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com")
+	id := askAs(t, victor, "land", "-q", "Review?", "--to", "oscar@example.com")
 	qid := questionOn(t, store, mirror.AskRef(id))
-	as(t, daniel)
+	as(t, victor)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch", "--since", "0")
 	waitFor(t, mine, "raised question "+id+": Review?")
 
-	as(t, davido)
+	as(t, oscar)
 	if out, err := runCLI(t, "question", qid, "--answer", "proceed"); err != nil {
-		t.Fatalf("davido's answer: %v\n%s", err, out)
+		t.Fatalf("oscar's answer: %v\n%s", err, out)
 	}
 	waitFor(t, mine, "answered "+id+" yes: Review?")
 }
 
 func TestTheWatchSaysAnAskStandingBeforeItAnsweredOnce(t *testing.T) {
 	store := serveAsking(t)
-	before := askAs(t, daniel, "land", "-q", "Review?", "--to", "oscar@example.com")
+	before := askAs(t, victor, "land", "-q", "Review?", "--to", "oscar@example.com")
 	qBefore := questionOn(t, store, mirror.AskRef(before))
-	as(t, daniel)
+	as(t, victor)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch")
-	after := askAs(t, daniel, "tag", "-q", "Tag?", "--to", "oscar@example.com")
+	after := askAs(t, victor, "tag", "-q", "Tag?", "--to", "oscar@example.com")
 	waitFor(t, mine, "raised question "+after+": Tag?")
 	qAfter := questionOn(t, store, mirror.AskRef(after))
 
-	as(t, davido)
+	as(t, oscar)
 	for _, q := range []string{qBefore, qAfter} {
 		if out, err := runCLI(t, "gate", q, "--answer", "proceed"); err != nil {
 			t.Fatalf("answer %s: %v\n%s", q, err, out)
@@ -478,7 +478,7 @@ func TestTheWatchSaysAnAskStandingBeforeItAnsweredOnce(t *testing.T) {
 	// Every write after the answer is in the stream before an ask asked after them.
 	waitFieldCLI(t, store, mirror.AskRef(before), "expires")
 	waitFieldCLI(t, store, mirror.AskRef(after), "expires")
-	last := askAs(t, daniel, "last", "-q", "Last?")
+	last := askAs(t, victor, "last", "-q", "Last?")
 	waitFor(t, mine, "raised question "+last+": Last?")
 
 	out := mine.String()
@@ -496,17 +496,17 @@ func TestTheWatchSaysAnAskStandingBeforeItAnsweredOnce(t *testing.T) {
 // AN ASK THAT GOES AT ITS EXPIRY IS EXPIRED, and one taken back while it waits is withdrawn.
 func TestTheWatchSaysAnExpiredAskExpired(t *testing.T) {
 	store := serveAsking(t)
-	as(t, daniel)
+	as(t, victor)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch")
-	pending := askAs(t, daniel, "later", "-q", "Later?", "--to", "oscar@example.com")
+	pending := askAs(t, victor, "later", "-q", "Later?", "--to", "oscar@example.com")
 	waitFor(t, mine, "raised question "+pending+": Later?")
-	brief := askAs(t, daniel, "brief", "-q", "Brief?", "--to", "oscar@example.com", "--keep", "1s")
+	brief := askAs(t, victor, "brief", "-q", "Brief?", "--to", "oscar@example.com", "--keep", "1s")
 	q := questionOn(t, store, mirror.AskRef(brief))
-	as(t, davido)
+	as(t, oscar)
 	if out, err := runCLI(t, "gate", q, "--answer", "proceed"); err != nil {
 		t.Fatalf("answer: %v\n%s", err, out)
 	}
-	as(t, daniel)
+	as(t, victor)
 	waitFor(t, mine, "expired "+brief)
 	if out, err := runCLI(t, "ask", pending, "--withdraw"); err != nil {
 		t.Fatalf("withdraw: %v\n%s", err, out)
@@ -522,13 +522,13 @@ func TestTheWatchSaysAnExpiredAskExpired(t *testing.T) {
 // said twice, and what is asked after is said.
 func TestTheWatchFollowsAgainWhenItsStreamEnds(t *testing.T) {
 	_, ts := serveAskingAt(t)
-	as(t, daniel)
+	as(t, victor)
 	mine, _ := runCLIIn(t, strings.NewReader(""), "ask", "--watch")
-	first := askAs(t, daniel, "first", "-q", "First?")
+	first := askAs(t, victor, "first", "-q", "First?")
 	waitFor(t, mine, "raised question "+first+": First?")
 	ts.CloseClientConnections()
 	waitFor(t, mine, "the stream ended")
-	second := askAs(t, daniel, "second", "-q", "Second?")
+	second := askAs(t, victor, "second", "-q", "Second?")
 	waitFor(t, mine, "raised question "+second+": Second?")
 	if n := saidLines(mine.String(), "raised question "+first+": First?"); n != 1 {
 		t.Fatalf("the ask before the stream ended said %d times:\n%s", n, mine.String())
@@ -537,10 +537,10 @@ func TestTheWatchFollowsAgainWhenItsStreamEnds(t *testing.T) {
 
 // A GAP IS SAID, with the revision to replay it from: the last the watch met.
 func TestTheWatchSaysAGap(t *testing.T) {
-	w := newAskWatch(apiClient(), daniel, true, false)
+	w := newAskWatch(apiClient(), victor, true, false)
 	var said []string
 	say := func(rev, line string) { said = append(said, "@"+rev+" "+line) }
-	w.frame(askFrame{at: "verse.ask.a1", op: "set", rev: "5", to: entity.Obj{mirror.FromField: mirror.FromPrincipal(davido)}.Payload()}, say)
+	w.frame(askFrame{at: "verse.ask.a1", op: "set", rev: "5", to: entity.Obj{mirror.FromField: mirror.FromPrincipal(oscar)}.Payload()}, say)
 	w.frame(askFrame{rev: "9", gap: 2}, say)
 	if len(said) != 1 || said[0] != "@9 gap: 2 commits were not delivered; replay them with --since 5" {
 		t.Fatalf("said %q", said)
@@ -550,7 +550,7 @@ func TestTheWatchSaysAGap(t *testing.T) {
 // --served WIDENS THE LISTING and only that, and --watch follows what waits on you: each with what
 // it cannot mean is refused rather than ignored, a flag after an id as one before it.
 func TestTheQuestionFlagsThatMeanNothingTogetherAreRefused(t *testing.T) {
-	as(t, daniel)
+	as(t, victor)
 	for _, args := range [][]string{
 		{"question", "--served", "--all"},
 		{"question", "--served", "--watch"},

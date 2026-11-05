@@ -20,7 +20,7 @@ import (
 type Path struct {
 	Ref
 	// Access is the place INSIDE the node when it is one an address of names cannot spell: an
-	// array element and anything under it — `votes[0]`, `votes(scott).choice`. It is a kinded
+	// array element and anything under it — `votes[0]`, `votes(walter).choice`. It is a kinded
 	// path fragment below the path, and it is empty for every write that names a node.
 	//
 	// A FIELD ALONGSIDE, rather than the path growing a segment kind, because a path is what
@@ -107,7 +107,7 @@ func (r Ref) KPath() string { return JoinSegs(r.Segs()) }
 // A STEP IS ONE PLACE, and which one is decided by its first character — five clauses, no
 // splitting, no delimiter scan:
 //
-//	[0]  {0}  (scott)  [*]  {*}     an array, sparse-array or keyed access
+//	[0]  {0}  (walter)  [*]  {*}     an array, sparse-array or keyed access
 //	*                               any field: the segment wildcard, for a READ
 //	..                              every depth beneath here, this node included: a READ
 //	"[0]"  'a.b'  "*"  '".."'       the NAME inside the quotes, literally
@@ -273,7 +273,7 @@ func TargetOf(segs []string) (Path, error) {
 }
 
 // Into is the path reaching a place inside the node at this path that an address of names
-// cannot spell: an array element and what is under it (`votes[0]`, `votes(scott).choice`).
+// cannot spell: an array element and what is under it (`votes[0]`, `votes(walter).choice`).
 func (r Ref) Into(access string) Path { return Path{Ref: r, Access: access} }
 
 // Write is one conditional write: Value is applied at At iff every Require holds, with the
@@ -744,7 +744,7 @@ func JoinSteps(segs []string) string {
 //
 // TWO QUOTINGS, for two readers. The shell's comes off before verse sees the word, so it only
 // protects a segment from being split or expanded; what arrives is then read by the step
-// clauses, and a name those would read as something else — an access (`[0]`, `(scott)`), the
+// clauses, and a name those would read as something else — an access (`[0]`, `(walter)`), the
 // wildcard (`*`), or a quoted name (`"x"`) — is first wrapped in the quoted clause, which takes
 // it back literally.
 // Without that the listing prints `'[0]'`, the shell hands verse `[0]`, and the line reads

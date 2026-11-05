@@ -82,21 +82,21 @@ func TestTheRecordsOneMayReadAreListed(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	scott := entity.As(srv.Store, "user:walter@example.com")
-	space, notes, private := entity.RefAt("spaces", "scott"), entity.RefAt("spaces", "scott", "notes"), entity.RefAt("spaces", "scott", "private")
-	if resp := putAs(t, "walter@example.com", ts.URL, "spaces.scott.notes", entity.Obj{"todo": "milk"}.Payload()); resp.StatusCode/100 != 2 {
+	walter := entity.As(srv.Store, "user:walter@example.com")
+	space, notes, private := entity.RefAt("spaces", "walter"), entity.RefAt("spaces", "walter", "notes"), entity.RefAt("spaces", "walter", "private")
+	if resp := putAs(t, "walter@example.com", ts.URL, "spaces.walter.notes", entity.Obj{"todo": "milk"}.Payload()); resp.StatusCode/100 != 2 {
 		t.Fatalf("notes: %s", resp.Status)
 	}
-	if err := entity.Claim(scott, space, "user:walter@example.com"); err != nil {
+	if err := entity.Claim(walter, space, "user:walter@example.com"); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.SetChildGrants(scott, space, entity.Levels{}); err != nil {
+	if err := entity.SetChildGrants(walter, space, entity.Levels{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := entity.SetGrants(scott, space, nil); err != nil {
+	if err := entity.SetGrants(walter, space, nil); err != nil {
 		t.Fatal(err)
 	}
-	if resp := putAs(t, "walter@example.com", ts.URL, "spaces.scott.private", entity.Obj{"todo": "mine"}.Payload()); resp.StatusCode/100 != 2 {
+	if resp := putAs(t, "walter@example.com", ts.URL, "spaces.walter.private", entity.Obj{"todo": "mine"}.Payload()); resp.StatusCode/100 != 2 {
 		t.Fatalf("private: %s", resp.Status)
 	}
 
@@ -119,11 +119,11 @@ func TestTheRecordsOneMayReadAreListed(t *testing.T) {
 	}
 	mine := listed("walter@example.com")
 	// Two records, where ownership changed: `spaces`, which his first put brought into being —
-	// a creation takes the place it made with it — and `spaces.scott`, which he took to close.
+	// a creation takes the place it made with it — and `spaces.walter`, which he took to close.
 	top := entity.RefAt("spaces")
 	for _, at := range []string{top.String(), space.String()} {
 		if _, ok := mine[at]; !ok {
-			t.Errorf("scott's listing lacks %s: %v", at, mine)
+			t.Errorf("walter's listing lacks %s: %v", at, mine)
 		}
 	}
 	// Neither node beneath has a record of its own: each is owned through the place above it,
@@ -137,7 +137,7 @@ func TestTheRecordsOneMayReadAreListed(t *testing.T) {
 		t.Errorf("the place's record reads %+v", mine[space.String()])
 	}
 	// Ana reads the top, which was created under the open default, and nothing of the space
-	// scott closed — the notes inside it included, since they are his through the space and
+	// walter closed — the notes inside it included, since they are his through the space and
 	// closing it closed them.
 	theirs := listed("ana@example.com")
 	if _, ok := theirs[top.String()]; !ok {

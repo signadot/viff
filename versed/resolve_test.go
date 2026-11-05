@@ -83,7 +83,7 @@ func TestAnAskAnswerAcceptsAPIResolve(t *testing.T) {
 	}()
 	waitPending(t, srv, id)
 
-	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:scott@example.com", Say: []string{"ship it"}})
+	resp := postTony(t, ts.URL+answerPath(id), api.Resolve{Choice: "proceed", By: "user:walter@example.com", Say: []string{"ship it"}})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("gate resolve: status = %s, want 204", resp.Status)

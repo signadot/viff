@@ -170,17 +170,17 @@ func TestAReaderSeesTheSameSetEveryWay(t *testing.T) {
 func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
 	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
-	scott, ana := entity.As(system, "user:walter@example.com"), entity.As(system, "user:ana@example.com")
+	walter, ana := entity.As(system, "user:walter@example.com"), entity.As(system, "user:ana@example.com")
 
 	pr := entity.RefAt("demo", "pr", "1")
 	secret := entity.RefAt("demo", "pr", "1", "secret")
 	from := system.Head()
-	if _, _, err := scott.Write(entity.Write{At: pr.At(), Value: entity.Obj{
+	if _, _, err := walter.Write(entity.Write{At: pr.At(), Value: entity.Obj{
 		"open": "yes", "secret": entity.Obj{"x": 1},
 	}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
-	// scott's, holding out nothing: an explicit empty list, since a record with no grants field
+	// walter's, holding out nothing: an explicit empty list, since a record with no grants field
 	// reads as holding out the root's default.
 	seedRecordRaw(t, system, secret, entity.Obj{
 		entity.OwnerField: "user:walter@example.com", entity.GrantsField: entity.GrantsPayload(secret.Segs(), nil),
@@ -231,7 +231,7 @@ func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
 	// A live watch, over a change to the row once the record stands.
 	watch, unsub := ana.Observe(entity.PrefixPattern([]string{"demo", "pr"}, 3))
 	defer unsub()
-	if _, _, err := scott.Write(entity.Write{At: pr.At("open"), Value: entity.Val("no")}); err != nil {
+	if _, _, err := walter.Write(entity.Write{At: pr.At("open"), Value: entity.Val("no")}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.After(3 * time.Second)
@@ -267,8 +267,8 @@ func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
 	if node, ok, err := snap.ReadAt([]string{"demo"}); err != nil || !ok || holdsSecret(entity.Get(entity.Get(node, "pr"), "1")) {
 		t.Fatalf("ana's snapshot read of demo = %v ok=%v err=%v", node, ok, err)
 	}
-	// scott, who owns it, and the system see it.
-	for name, s := range map[string]entity.Store{"scott": scott, "the system": system} {
+	// walter, who owns it, and the system see it.
+	for name, s := range map[string]entity.Store{"walter": walter, "the system": system} {
 		if e, ok, err := s.Get(pr); err != nil || !ok || !holdsSecret(e.Payload) {
 			t.Fatalf("%s's Get of the row = %v ok=%v err=%v, want the secret", name, e.Payload, ok, err)
 		}
@@ -565,20 +565,20 @@ func TestAGroupAdmitsItsMembers(t *testing.T) {
 	}
 	for who, want := range map[string]bool{
 		"user:oscar@example.com": true,  // a member
-		"user:carol@example.com":   true,  // a member of a member group
-		"runner:bot":               true,  // of a kind a member group names
-		"user:erin@example.com":    true,  // a member of a group in a cycle
-		"user:frank@example.com":   true,  // five groups down
-		"user:bob@example.com":     false, // nobody's member, walked through the cycle to the end
-		"":                         false, // the unattributed request is not a member of anything
+		"user:carol@example.com": true,  // a member of a member group
+		"runner:bot":             true,  // of a kind a member group names
+		"user:erin@example.com":  true,  // a member of a group in a cycle
+		"user:frank@example.com": true,  // five groups down
+		"user:bob@example.com":   false, // nobody's member, walked through the cycle to the end
+		"":                       false, // the unattributed request is not a member of anything
 	} {
 		if got, _ := entity.Holds(system, who, entity.Read, pr); got != want {
 			t.Errorf("%q reads alice's pr = %v, want %v", who, got, want)
 		}
 	}
-	// Membership moves: taking davido out takes his read.
+	// Membership moves: taking oscar out takes his read.
 	group("payments", "group:security")
 	if got, _ := entity.Holds(system, "user:oscar@example.com", entity.Read, pr); got {
-		t.Fatal("davido reads after being taken out of the group")
+		t.Fatal("oscar reads after being taken out of the group")
 	}
 }

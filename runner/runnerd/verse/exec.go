@@ -21,7 +21,7 @@ import (
 //
 // Two things were wrong with handing back the os error, and a drive found both in one line:
 //
-//	ERROR: read /Users/scott/.verse-runner/workspaces/docsdrift-e1f3.../verse/trigger: is a directory
+//	ERROR: read /Users/walter/.verse-runner/workspaces/docsdrift-e1f3.../verse/trigger: is a directory
 //
 // It does not say what to do. "is a directory" is a fact about the path and not an instruction,
 // so the model spends a turn working out that the tool it wanted was list_dir — and the whole

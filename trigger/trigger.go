@@ -348,7 +348,7 @@ type Gate struct {
 	// Answerers is who the question is held out to, when the gate says: grantees, the way a
 	// grant names them — a person, a kind (`user`, `agent`), `*`, a group's or a resolver's
 	// address. Written as the question's `read-write` grant when it is posed, in place of the
-	// docket's default, so a gate naming davido is davido's to answer and the charter's owner's,
+	// docket's default, so a gate naming oscar is oscar's to answer and the charter's owner's,
 	// who co-owns what their rule asked. `need` is how many of them it takes.
 	Answerers []string `tony:"field=answerers,omitzero"`
 	// AnswerersFrom names the field of the SUBJECT'S value that says who else is asked: a dotted

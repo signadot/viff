@@ -156,7 +156,7 @@ func TestASpawnWithAGateThatAsksNobodyIsRefused(t *testing.T) {
 	ok := postTony(t, ts.URL+"/tasks", api.Spawn{ID: "running", Spawn: launch.Spec{Script: "sleep 5", Environment: openNet, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}}})
 	ok.Body.Close()
 	req, _ := http.NewRequest(http.MethodPut, ts.URL+"/tasks/running/autonomy",
-		strings.NewReader(`{autonomy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {need: 2}}}, {then: sometimes}], by: "user:scott@example.com"}`))
+		strings.NewReader(`{autonomy: [{name: shell, match: {system: commands, verb: run}, then: {ask: {need: 2}}}, {then: sometimes}], by: "user:walter@example.com"}`))
 	req.Header.Set("Content-Type", "application/tony")
 	req.Header.Set(api.PrincipalHeader, tester)
 	slid, err := http.DefaultClient.Do(req)

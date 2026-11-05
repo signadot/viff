@@ -66,7 +66,7 @@ func TestAGateAsksWhomTheRecordNames(t *testing.T) {
 	one := entity.RefAt("ask", "one")
 	entitytest.Set(t, srv.Store, one, entity.Obj{"question": "q", "answerers": "oscar@example.com"}.Payload())
 	if got := heldOutTo(t, srv, waitRuleQuestion(t, srv, "ask", one.String())); len(got) != 1 || got[0] != "user:oscar@example.com" {
-		t.Fatalf("one name: held out to %v, want davido alone", got)
+		t.Fatalf("one name: held out to %v, want oscar alone", got)
 	}
 
 	srv2, _ := askingRule(t, 2)
@@ -74,7 +74,7 @@ func TestAGateAsksWhomTheRecordNames(t *testing.T) {
 	entitytest.Set(t, srv2.Store, two, entity.Obj{"question": "q",
 		"answerers": []any{"oscar@example.com", "peggy@example.com"}}.Payload())
 	got := heldOutTo(t, srv2, waitRuleQuestion(t, srv2, "ask", two.String()))
-	if len(got) != 2 || got[0] != "user:peggy@example.com" || got[1] != "user:oscar@example.com" {
+	if len(got) != 2 || got[0] != "user:oscar@example.com" || got[1] != "user:peggy@example.com" {
 		t.Fatalf("a list: held out to %v, want both", got)
 	}
 }

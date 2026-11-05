@@ -23,7 +23,7 @@ import (
 // another ask, or raises one, on their own authority, as `verse question --answer` and `verse ask`
 // would for them. The answer lends them nothing: it is the condition, and what follows is theirs.
 //
-//	then: {answer: {ask: ship-3f2a…, choice: proceed, say: "david says the UI is ok"}}
+//	then: {answer: {ask: ship-3f2a…, choice: proceed, say: "ivan says the UI is ok"}}
 //	then: {ask: {name: deploy, question: "Deploy it?", to: [ann@…], due: 4h, on: […]}}
 //
 // NOTHING IS SPAWNED. Each is one more act of the asker's, made by the route that makes it

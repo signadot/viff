@@ -14,7 +14,7 @@ import (
 // commit: the node and its record land together, and the check has the record before the
 // commit does.
 
-const daniel = "user:daniel@example.com"
+const victor = "user:victor@example.com"
 
 // createWith is a create at ref carrying grants, as who.
 func createWith(store entity.Store, who string, ref entity.Ref, v entity.Obj, grants ...entity.Grant) (bool, error) {
@@ -101,7 +101,7 @@ func TestANodeCreatedWithGrantsIsHiddenFromItsFirstCommit(t *testing.T) {
 	for i := range 5 {
 		node = entity.RefAt("ask", fmt.Sprintf("q%d", i))
 		private[node] = true
-		if ok, err := createWith(system, daniel, node, entity.Obj{"question": "private?"}); err != nil || !ok {
+		if ok, err := createWith(system, victor, node, entity.Obj{"question": "private?"}); err != nil || !ok {
 			t.Fatalf("creating %s with grants: %v %v", node, ok, err)
 		}
 		if _, found, err := bob.Get(node); found || err == nil {
@@ -110,12 +110,12 @@ func TestANodeCreatedWithGrantsIsHiddenFromItsFirstCommit(t *testing.T) {
 		if _, found, err := bobSide.Get(node); found || err == nil {
 			t.Fatalf("bob read %s in a scope after it was created: found=%v err=%v", node, found, err)
 		}
-		if _, found, err := entity.As(system, daniel).Get(node); err != nil || !found {
-			t.Fatalf("daniel cannot read the node he created: %v %v", found, err)
+		if _, found, err := entity.As(system, victor).Get(node); err != nil || !found {
+			t.Fatalf("victor cannot read the node he created: %v %v", found, err)
 		}
 	}
 	open := entity.RefAt("ask", "open")
-	_, rev, err := entity.As(system, daniel).Write(entity.Write{At: open.At(), Value: entity.Obj{"question": "public?"}.Payload()})
+	_, rev, err := entity.As(system, victor).Write(entity.Write{At: open.At(), Value: entity.Obj{"question": "public?"}.Payload()})
 	if err != nil {
 		t.Fatalf("creating %s: %v", open, err)
 	}
@@ -131,7 +131,7 @@ func TestANodeCreatedWithGrantsIsHiddenFromItsFirstCommit(t *testing.T) {
 func TestGrantsOnANodeThatStandsAreRefused(t *testing.T) {
 	doc := entity.RefAt("shared", "doc")
 	store := standing(t, doc, entity.Obj{"title": "the system's"})
-	_, err := createWith(store, daniel, doc, entity.Obj{"title": "daniel's"})
+	_, err := createWith(store, victor, doc, entity.Obj{"title": "victor's"})
 	if !errors.Is(err, entity.ErrStands) {
 		t.Fatalf("grants on a node that stands were not refused as such: %v", err)
 	}
@@ -147,22 +147,22 @@ func TestGrantsOnANodeThatStandsAreRefused(t *testing.T) {
 	}
 }
 
-// A RACE WITH A PLAIN CREATE IS REFUSED, NOT MERGED. daniel owns the place, so nothing about his
+// A RACE WITH A PLAIN CREATE IS REFUSED, NOT MERGED. victor owns the place, so nothing about his
 // right to create asks for the node's absence; the grants do, at the commit. The plain create
 // that got there first stands as it was written.
 func TestACreateWithGrantsThatLosesARaceIsRefused(t *testing.T) {
 	raw := entitytest.OpenStore(t)
 	store := entity.As(raw, entity.SystemDefault)
-	if ok, err := writeAs(store, daniel, entity.RefAt("mine").At(), entity.Obj{}.Payload()); err != nil || !ok {
-		t.Fatalf("daniel taking mine: %v %v", ok, err)
+	if ok, err := writeAs(store, victor, entity.RefAt("mine").At(), entity.Obj{}.Payload()); err != nil || !ok {
+		t.Fatalf("victor taking mine: %v %v", ok, err)
 	}
 	node := entity.RefAt("mine", "q")
 	racing := &before{Store: raw, on: entity.RefAt(), then: func() {
-		if ok, err := writeAs(store, daniel, node.At(), entity.Obj{"by": "plain"}.Payload()); err != nil || !ok {
+		if ok, err := writeAs(store, victor, node.At(), entity.Obj{"by": "plain"}.Payload()); err != nil || !ok {
 			t.Errorf("the plain create could not land: %v %v", ok, err)
 		}
 	}}
-	_, err := createWith(entity.As(racing, entity.SystemDefault), daniel, node, entity.Obj{"question": "private?"})
+	_, err := createWith(entity.As(racing, entity.SystemDefault), victor, node, entity.Obj{"question": "private?"})
 	if !errors.Is(err, entity.ErrStands) {
 		t.Fatalf("the create with grants that lost the race was not refused: %v", err)
 	}
@@ -179,15 +179,15 @@ func TestACreateWithGrantsThatLosesARaceIsRefused(t *testing.T) {
 // it changes what the node holds out, if not its owner.
 func TestACreatorWhoOwnsThePlaceAboveGetsTheRecord(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
-	if ok, err := writeAs(store, daniel, entity.RefAt("mine").At(), entity.Obj{}.Payload()); err != nil || !ok {
-		t.Fatalf("daniel taking mine: %v %v", ok, err)
+	if ok, err := writeAs(store, victor, entity.RefAt("mine").At(), entity.Obj{}.Payload()); err != nil || !ok {
+		t.Fatalf("victor taking mine: %v %v", ok, err)
 	}
 	node := entity.RefAt("mine", "p")
-	if ok, err := createWith(store, daniel, node, entity.Obj{"n": 1}); err != nil || !ok {
+	if ok, err := createWith(store, victor, node, entity.Obj{"n": 1}); err != nil || !ok {
 		t.Fatalf("creating with grants: %v %v", ok, err)
 	}
-	if owner, recorded := ownerOf(t, store, node); !recorded || owner != daniel {
-		t.Fatalf("the record is %q (recorded %v), want daniel's", owner, recorded)
+	if owner, recorded := ownerOf(t, store, node); !recorded || owner != victor {
+		t.Fatalf("the record is %q (recorded %v), want victor's", owner, recorded)
 	}
 	bob := entity.As(store, "user:bob@example.com")
 	if _, found, err := bob.Get(node); found || err == nil {
@@ -204,7 +204,7 @@ func TestACreatorWhoOwnsThePlaceAboveGetsTheRecord(t *testing.T) {
 func TestAGrantNoOwnerCouldGiveIsRefused(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
 	node := entity.RefAt("mine", "x")
-	_, err := createWith(store, daniel, node, entity.Obj{"n": 1},
+	_, err := createWith(store, victor, node, entity.Obj{"n": 1},
 		entity.Grant{At: node.Segs(), To: map[entity.Level][]string{entity.OwnerLevel: {"user:bob@example.com"}}})
 	if !errors.Is(err, entity.ErrBadGrants) {
 		t.Fatalf("`owner` held out at the node was not refused: %v", err)
@@ -217,8 +217,8 @@ func TestAGrantNoOwnerCouldGiveIsRefused(t *testing.T) {
 		"an element": {At: node.Into("[0]"), Value: entity.Obj{}.Payload()},
 		"the mirror": {At: entity.PermsRef(node).At(), Value: entity.Obj{}.Payload()},
 	} {
-		w.Principal, w.Grants = daniel, []entity.Grant{}
-		if _, _, err := entity.As(store, daniel).Write(w); !errors.Is(err, entity.ErrBadGrants) {
+		w.Principal, w.Grants = victor, []entity.Grant{}
+		if _, _, err := entity.As(store, victor).Write(w); !errors.Is(err, entity.ErrBadGrants) {
 			t.Errorf("grants on %s were not refused: %v", name, err)
 		}
 	}

@@ -1205,7 +1205,7 @@ func (tx *charterTx) rule(def *ir.Node) (int, error) {
 	// A TASK ACTING AS WHOEVER WROTE A RECORD selects only in its installer's place. It runs on
 	// the record owner's authority (entity.Pair), which is safe where writing the record is
 	// writing into the charter's own place — an ask under verse.ask, the system's — and is
-	// harvesting anywhere else: a rule over Daniel's space would run its author's task as Daniel.
+	// harvesting anywhere else: a rule over Victor's space would run its author's task as Victor.
 	if place, ok := t.ActsAsSubjectOver(); ok {
 		if code, err := checkPlace(tx.store, tx.as(), place,
 			fmt.Sprintf("rule %q acting as the owner of what it selects under it", t.Name)); err != nil {

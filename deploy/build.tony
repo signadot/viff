@@ -139,7 +139,7 @@ build:
     codexSecretKey: ""
     claudeSecretKey: ""
     issuerSecretKey: ""
-    # Comma-separated grantees who may take a top-level place (`scott@example.com,agent:ops`).
+    # Comma-separated grantees who may take a top-level place (`walter@example.com,agent:ops`).
     # "" is the open verse. See the patch below for how it reaches versed, and what changing it
     # on a running verse takes.
     permsAdmins: ""

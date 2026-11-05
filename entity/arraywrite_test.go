@@ -17,14 +17,14 @@ import (
 // three paths that look alike:
 //
 //	votes[0].choice     an IN-RANGE index: the patch lands and reads back
-//	votes(scott).choice a KEYED element:   refused at the commit, no harm done
+//	votes(walter).choice a KEYED element:   refused at the commit, no harm done
 //	votes[2] on 2       PAST THE END:      refused at the patch, naming the length
 //
 // The third one is the history worth keeping. It used to be ACCEPTED, and the log was then
 // unreadable — a bad write that succeeded and took every later read with it. That is what
 // `ParsePath`'s refusal of array element writes was resting on, and it is fixed upstream as of
 // go-tony v0.0.149 (tony-format 7cdvym1fh12ksmd5g5n0), which is why the refusal now rests on
-// something else: `Path.Field` is a list of object field names, and offering `[0]` or `(scott)`
+// something else: `Path.Field` is a list of object field names, and offering `[0]` or `(walter)`
 // means teaching the write path — and its preconditions — to carry a kpath segment. That is a
 // feature, filed rather than assumed away.
 //
@@ -53,19 +53,19 @@ func TestTheSubstrateDoesPatchAnInRangeArrayElement(t *testing.T) {
 //
 // TWICE OVER NOW. The array below carries no `!key` tag, because verse refuses one on the way in
 // (checkNotKeyed): identity is the store's, given by the schema, and the store's schema keys
-// nothing here. So `(scott)` names no element of a positional array, which is what the patch is
+// nothing here. So `(walter)` names no element of a positional array, which is what the patch is
 // told -- and it is why an element is addressed by position everywhere verse spells an address.
 func TestTheSubstrateRefusesAKeyedElementPatch(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("demo", "pr", "1")
 	if _, _, err := s.Write(Write{At: ref.At(), Value: Raw(mustParseNode(t,
-		`{votes: [{by: scott, choice: approve}, {by: dee, choice: reject}]}`))}); err != nil {
+		`{votes: [{by: walter, choice: approve}, {by: dee, choice: reject}]}`))}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := s.sess.Patch(ctx, s.refPath(ref)+".votes(scott).choice", ir.FromString("reject")); err == nil {
+	if _, err := s.sess.Patch(ctx, s.refPath(ref)+".votes(walter).choice", ir.FromString("reject")); err == nil {
 		t.Fatal("a keyed-element patch was accepted; the refusal's reasoning assumes it is not")
 	}
 	// Unharmed: the entity still reads, and still says what it said.
@@ -124,7 +124,7 @@ func TestAnArrayPatchPastTheEndIsRefused(t *testing.T) {
 func seedVotes(t *testing.T, s *LogdStore, ref Ref) {
 	t.Helper()
 	if _, _, err := s.Write(Write{At: ref.At(), Value: Raw(mustParseNode(t,
-		`{votes: [{by: scott, choice: approve}, {by: dee, choice: reject}]}`))}); err != nil {
+		`{votes: [{by: walter, choice: approve}, {by: dee, choice: reject}]}`))}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 }

@@ -194,7 +194,7 @@ func TestJoinStepsQuotesOnlyWhatAShellWouldTouch(t *testing.T) {
 		{[]string{"demo", "pr", "it's"}, `demo pr "it's"`},
 		// A name the step clauses would read as something else carries the quoted clause too.
 		{[]string{"demo", "pr", "1", "[0]"}, `demo pr 1 '"[0]"'`},
-		{[]string{"demo", "pr", "1", "(scott)"}, `demo pr 1 '"(scott)"'`},
+		{[]string{"demo", "pr", "1", "(walter)"}, `demo pr 1 '"(walter)"'`},
 		{[]string{"demo", "pr", "1", `"x"`}, `demo pr 1 '""x""'`},
 		{[]string{"demo", "pr", "1", "'x'"}, `demo pr 1 "''x''"`},
 	} {
@@ -224,7 +224,7 @@ func TestWhatAListingPrintsIsWhatAReadTakes(t *testing.T) {
 		{"verse", "task", "instance", "review@demo.pr.1"},
 		{"demo", "pr", "1", "[0]"},
 		{"demo", "pr", "1", "{0}"},
-		{"demo", "pr", "1", "(scott)"},
+		{"demo", "pr", "1", "(walter)"},
 		{"demo", "pr", "1", `"x"`},
 		{"demo", "pr", "1", "'x'"},
 		{"demo", "pr", "1", `"`},
@@ -263,8 +263,8 @@ func TestAnElementsListingLineReadsBackAsTheElement(t *testing.T) {
 		RefAt("demo", "pr", "1", "votes").Into("[0]"),
 		RefAt("demo", "pr", "1", "votes").Into("[0].choice"),
 		RefAt("demo", "pr", "1", "votes").Into("{7}"),
-		RefAt("demo", "pr", "1", "votes").Into("(scott)"),
-		RefAt("demo", "pr", "1", "votes").Into("(scott).choice"),
+		RefAt("demo", "pr", "1", "votes").Into("(walter)"),
+		RefAt("demo", "pr", "1", "votes").Into("(walter).choice"),
 		RefAt("demo", "pr", "a b.txt", "votes").Into("[0].by"),
 		RefAt("demo", "pr", "1").Into("[0]"), // an array under the entity itself
 	} {

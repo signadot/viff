@@ -12,7 +12,7 @@ import (
 
 // UseGitToken makes a token the only credential the git commands of this process present over
 // https, as `x-access-token`: how the git io fetches and pushes as a GitHub App's installation
-// rather than with a person's token (git-issue dzxn44gw; the decision is Scott's, 2026-10-04).
+// rather than with a person's token (git-issue dzxn44gw).
 //
 // The token is kept in a file under dir, mode 0600, rewritten whenever token answers a new one,
 // and a credential helper reads it: git asks for a credential per command, and the token turns

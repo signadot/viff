@@ -70,7 +70,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	}
 
 	l := &runner.Launch{ID: "p1", Provenance: runner.Provenance{
-		Principal: "scott", Subject: `demo.pr."1"`, Chain: "review",
+		Principal: "walter", Subject: `demo.pr."1"`, Chain: "review",
 	}}
 	if _, err := deliver(t, ws, l, "fixed the flaky test\n\ndetails", ""); err != nil {
 		t.Fatalf("deliver: %v", err)
@@ -89,7 +89,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 		for _, want := range []string{
 			"fixed the flaky test",
 			"Verse-Task: p1",
-			"Verse-Principal: scott",
+			"Verse-Principal: walter",
 			`Verse-Subject: demo.pr."1"`,
 			"Verse-Chain: review",
 		} {
@@ -1171,7 +1171,7 @@ func tipOf(t *testing.T, tree *Tree) plumbing.Hash {
 	return h
 }
 
-// A REF THE TASK WRITES DOESN'T MAKE ITS COMMIT UPSTREAM (Scott's probe on #22): the task commits
+// A REF THE TASK WRITES DOESN'T MAKE ITS COMMIT UPSTREAM (Walter's probe on #22): the task commits
 // C without the trailers and D with them, and points a mirror/* ref of its checkout at C, as `git
 // update-ref refs/remotes/mirror/evil <C>` does. C is still the task's, and the delivery is
 // refused naming it, as it is without the ref.

@@ -26,18 +26,18 @@ func listed(t *testing.T, store entity.Store, path string, pattern entity.Payloa
 	return out, reached
 }
 
-// scottsSecret is scott's `demo.pr.1`, readable by everyone, with a place inside it —
+// scottsSecret is walter's `demo.pr.1`, readable by everyone, with a place inside it —
 // `demo.pr.1.secret` — that holds out nothing: ana reads the row and not the secret.
 func scottsSecret(t *testing.T) (system, ana entity.Store) {
 	t.Helper()
 	system = entity.As(entitytest.OpenStore(t), entity.SystemDefault)
-	scott, pr := "user:scott@example.com", entity.RefAt("demo", "pr", "1")
-	if _, _, err := entity.As(system, scott).Write(entity.Write{At: pr.At(),
+	walter, pr := "user:walter@example.com", entity.RefAt("demo", "pr", "1")
+	if _, _, err := entity.As(system, walter).Write(entity.Write{At: pr.At(),
 		Value: entity.Obj{"stage": "open", "secret": entity.Obj{"key": "hunter2"}}.Payload()}); err != nil {
 		t.Fatal(err)
 	}
 	secret := entity.RefAt("demo", "pr", "1", "secret")
-	if err := entity.Claim(system, secret, scott); err != nil {
+	if err := entity.Claim(system, secret, walter); err != nil {
 		t.Fatal(err)
 	}
 	if err := entity.SetGrants(system, secret, nil); err != nil {

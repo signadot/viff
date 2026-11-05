@@ -241,7 +241,7 @@ func until(t *testing.T, ok func() bool, why string) {
 // Every sink resolves `to` once and then addresses what it already made — a Slack channel and ts,
 // a Linear comment id, both on the status. So a `to` changed afterwards reached nobody: the input
 // went on editing the message it first made, at the old target, silently. Found by writing an
-// address that was not one (`user:scott@…`, an ellipsis) and watching the DM update anyway.
+// address that was not one (`user:walter@…`, an ellipsis) and watching the DM update anyway.
 func TestATargetIsFixedAtFirstDelivery(t *testing.T) {
 	r := newOutRig(t)
 	r.sink.fields = entity.Obj{"ts": "1.1"}

@@ -181,7 +181,7 @@ func TestAResumeDoesNotReplayAnsweredGates(t *testing.T) {
 	p := NewTask("p", toolSup(allowAll(), AutoResolver{}), nil, nil)
 	p.emit(Event{Kind: EventPending, ID: "p~d1", Gate: "write"})
 	gateAt := p.Cursor()
-	p.emit(Event{Kind: EventDecision, ID: "p~d1", Proceed: true, By: "human:scott"})
+	p.emit(Event{Kind: EventDecision, ID: "p~d1", Proceed: true, By: "human:walter"})
 	for range RingCap + 10 {
 		p.emit(Event{Kind: EventSay, Text: "thinking"})
 	}

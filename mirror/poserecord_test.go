@@ -108,21 +108,21 @@ func (o *oneRecordWrite) Write(w entity.Write) (bool, int64, error) {
 func TestAQuestionAskedAgainIsHeldOutToWhomThisAskingNames(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDocket)
 	view := entity.As(store, entity.SystemDefault)
-	davido, alice := "user:davido@example.com", "user:alice@example.com"
-	q := task.GateQuestion{ID: "ship~1", Gate: "ship", Answerers: []string{davido},
+	oscar, alice := "user:oscar@example.com", "user:alice@example.com"
+	q := task.GateQuestion{ID: "ship~1", Gate: "ship", Answerers: []string{oscar},
 		Deadline: &task.Deadline{Within: "72h", Default: "deny"}}
 	if !mirror.PostQuestion(store, task.Pending{Question: q}, "") {
 		t.Fatal("not posed")
 	}
-	mirror.AnswerQuestion(store, q.ID, task.Resolution{Choice: "proceed", Proceed: true, By: davido})
+	mirror.AnswerQuestion(store, q.ID, task.Resolution{Choice: "proceed", Proceed: true, By: oscar})
 
 	q.Answerers = []string{alice}
 	if !mirror.PostQuestion(store, task.Pending{Question: q}, "") {
 		t.Fatal("not posed again")
 	}
 	ref := mirror.QuestionRef(q.ID)
-	if ok, _ := entity.Holds(view, davido, entity.ReadWrite, ref); ok {
-		t.Error("davido, whom the first asking named, still answers the second")
+	if ok, _ := entity.Holds(view, oscar, entity.ReadWrite, ref); ok {
+		t.Error("oscar, whom the first asking named, still answers the second")
 	}
 	if ok, err := entity.Holds(view, alice, entity.ReadWrite, ref); err != nil || !ok {
 		t.Errorf("alice, whom this asking names, may not answer: %v %v", ok, err)

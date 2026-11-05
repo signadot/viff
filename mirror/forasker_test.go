@@ -12,9 +12,9 @@ import (
 // own, then the launch's default for a question naming nobody (Meta.Answerers), and otherwise
 // the docket. $principal is put as whom the task acts for, and dropped where that is nobody.
 func TestARelayedQuestionAsksWhomItNames(t *testing.T) {
-	const daniel, ani = "user:daniel@example.com", "user:ani@example.com"
+	const victor, peggy = "user:victor@example.com", "user:peggy@example.com"
 	me := []string{task.PrincipalAnswerer}
-	named := task.Autonomy{{Name: "ship", Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{ani}}}}}
+	named := task.Autonomy{{Name: "ship", Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{peggy}}}}}
 	mine := task.Autonomy{{Name: "ship", Then: task.Then{Mode: task.ThenAsk, Ask: &task.Ask{Answerers: []string{task.PrincipalAnswerer, "group:payments"}}}}}
 	for _, c := range []struct {
 		name string
@@ -22,12 +22,12 @@ func TestARelayedQuestionAsksWhomItNames(t *testing.T) {
 		ev   task.Event
 		want []string
 	}{
-		{"a launch whose questions are its asker's", Meta{ActsFor: daniel, Answerers: me}, task.Event{Gate: "ship"}, []string{daniel}},
-		{"a hand-run task's nameless gate", Meta{ActsFor: daniel}, task.Event{Gate: "ship"}, nil},
-		{"a gate naming its answerers", Meta{ActsFor: daniel, Answerers: me, Autonomy: named}, task.Event{Gate: "ship"}, []string{ani}},
-		{"a gate naming $principal and a group", Meta{ActsFor: daniel, Autonomy: mine}, task.Event{Gate: "ship"}, []string{daniel, "group:payments"}},
-		{"a frame naming its answerers", Meta{ActsFor: daniel, Answerers: me}, task.Event{Gate: "ship", Answerers: []string{"user:bo@example.com"}}, []string{"user:bo@example.com"}},
-		{"the ask tool, from a person's task", Meta{ActsFor: daniel}, task.Event{Gate: "ask", Answerers: me}, []string{daniel}},
+		{"a launch whose questions are its asker's", Meta{ActsFor: victor, Answerers: me}, task.Event{Gate: "ship"}, []string{victor}},
+		{"a hand-run task's nameless gate", Meta{ActsFor: victor}, task.Event{Gate: "ship"}, nil},
+		{"a gate naming its answerers", Meta{ActsFor: victor, Answerers: me, Autonomy: named}, task.Event{Gate: "ship"}, []string{peggy}},
+		{"a gate naming $principal and a group", Meta{ActsFor: victor, Autonomy: mine}, task.Event{Gate: "ship"}, []string{victor, "group:payments"}},
+		{"a frame naming its answerers", Meta{ActsFor: victor, Answerers: me}, task.Event{Gate: "ship", Answerers: []string{"user:bo@example.com"}}, []string{"user:bo@example.com"}},
+		{"the ask tool, from a person's task", Meta{ActsFor: victor}, task.Event{Gate: "ask", Answerers: me}, []string{victor}},
 		{"the ask tool, acting for nobody", Meta{}, task.Event{Gate: "ask", Answerers: me}, nil},
 		{"the ask tool, acting for the system", Meta{ActsFor: entity.SystemCharter}, task.Event{Gate: "ask", Answerers: me}, nil},
 	} {

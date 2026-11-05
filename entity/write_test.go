@@ -539,7 +539,7 @@ func TestAWriteReachesAnArrayElement(t *testing.T) {
 	}{
 		{[]string{"merge", "proposal", "X", "votes", "[0]"}, RefAt("merge", "proposal", "X", "votes"), "[0]"},
 		{[]string{"merge", "proposal", "X", "votes", "{0}"}, RefAt("merge", "proposal", "X", "votes"), "{0}"},
-		{[]string{"merge", "proposal", "X", "votes", "(scott)"}, RefAt("merge", "proposal", "X", "votes"), "(scott)"},
+		{[]string{"merge", "proposal", "X", "votes", "(walter)"}, RefAt("merge", "proposal", "X", "votes"), "(walter)"},
 		{[]string{"merge", "proposal", "X", "votes", "[*]"}, RefAt("merge", "proposal", "X", "votes"), "[*]"},
 		{[]string{"merge", "proposal", "X", "votes", "[0]", "choice"}, RefAt("merge", "proposal", "X", "votes"), "[0].choice"},
 		// An access may LEAD, which addresses an element of a node that is itself an array.
