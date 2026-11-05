@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/reference/condition/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>The condition of a rule - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="The condition of a rule - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/reference/condition/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#the-condition-of-a-rule" class="nav-link">The condition of a rule</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#subject-what-the-firing-is-about-and-required" class="nav-link">subject: what the firing is about, and required</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#on-and-when-the-cause-and-the-condition" class="nav-link">on and when: the cause and the condition</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-match-can-say" class="nav-link">What a match can say</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#why-it-is-this-way" class="nav-link">Why it is this way</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="the-condition-of-a-rule">The condition of a rule<a class="headerlink" href="#the-condition-of-a-rule" title="Permanent link">#</a></h1>
+<p>This page describes the fields of the <a href="../../glossary/#condition">condition</a> of a
+<a href="../../glossary/#rule">rule</a>: <code>subject</code>, <code>on</code> and <code>when</code>. All three are written as matches, so
+the page also says what a <a href="../../glossary/#match">match</a> can say.
+<a href="../../trigger-model/">The charter reference</a> is the model that these fields belong to.</p>
+<p>A condition reads data in the store. People write it, rules write it, verse writes its own, and
+an <a href="../../glossary/#iod">iod</a> writes what a system outside verse holds. The condition
+does not care which.</p>
+<h2 id="subject-what-the-firing-is-about-and-required"><code>subject</code>: what the firing is about, and required<a class="headerlink" href="#subject-what-the-firing-is-about-and-required" title="Permanent link">#</a></h2>
+<p><code>subject</code> says what a <a href="../../glossary/#firing">firing</a> acts on. It is a <code>Match</code> at one point in
+time, and never a formula. Verse selects the subject once, from the
+<a href="../../glossary/#store">store</a> as it stood at the commit. A subject has no <code>until</code> and no
+<code>deadline</code>: verse <em>selects</em> a subject, and does not <em>await</em> it.</p>
+<p><code>subject</code> is the one field that a condition cannot leave out. The rest of the rule is read
+relative to it. <a href="https://github.com/signadot/verse/blob/main/docs/design/reference-condition.md#the-subject-is-required">The subject is required</a> gives the reason.</p>
+<p>A subject resolves in one of two ways. Both use the same match grammar.</p>
+<table>
+<thead>
+<tr>
+<th>subject</th>
+<th>resolves to</th>
+<th>example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>an <a href="../../glossary/#address">address</a> with no wildcard (<code>demo.pr.1</code>)</td>
+<td>that address, whether or not <a href="../../glossary/#data">data</a> stands there. An action's <code>patch</code> <em>creates</em> it.</td>
+<td>publishing a fact nothing has written yet</td>
+</tr>
+<tr>
+<td>a <a href="../../glossary/#pattern">pattern</a>, which is a path with <code>*</code> or <code>..</code> in it (<code>demo.pr.*</code>), with an optional payload predicate</td>
+<td>every matching address in the store, at that commit</td>
+<td>every reviewed PR</td>
+</tr>
+</tbody>
+</table>
+<p>A subject is always a <em>selection</em>. It is never "the data that changed".
+<a href="https://github.com/signadot/verse/blob/main/docs/design/reference-condition.md#a-subject-is-a-selection">A subject is a selection</a> gives the reason.</p>
+<p>"When a PR opens, review it" and "review all of them" therefore settle in the same state. The
+action moves each PR out of the selection, so both end with every open PR reviewed. The two
+differ in the number of firings, and not in the state they end in.</p>
+<p>An address with no wildcard is a set of one, <em>whether or not anything stands there</em>. To name an
+address is to name it by identity. It is not to select from what is there.
+<a href="https://github.com/signadot/verse/blob/main/docs/design/reference-condition.md#a-name-is-a-set-of-one">A name is a set of one</a> gives the reason.</p>
+<p>A subject that selects must begin with a literal segment, so that it selects out of a place.
+Or the subject names one address outright. The engine selects and spawns for these two shapes.
+A pattern that selects nothing does nothing. It never creates data at a segment called <code>*</code>.</p>
+<p>The engine starts one firing for each selected address, and each firing is about exactly one
+subject. Every part of a firing uses that identity as its key:</p>
+<ul>
+<li>its spawn id</li>
+<li>its gate question</li>
+<li>its selection channel</li>
+<li>its place in a causal chain</li>
+</ul>
+<p>A re-evaluation about a subject is not a second firing in two cases: when the subject is
+already firing, and when work that the firing started is already running. So a rule that waits
+for a person does not ask again at every commit.</p>
+<p>For this reason <code>subject</code> is bounded, where a <code>when</code> formula ranges freely. <code>subject</code> names a
+place, and its predicate is over the <a href="../../glossary/#payload">payload</a> at one address.
+"All open PRs" is <code>{path: "demo.pr.*", value: {stage: open}}</code>. The same thing deeper in the tree
+is <code>{path: "repos.verse.drift.head.*", value: {reviewed: pending}}</code>.</p>
+<h3 id="the-pattern-says-how-deep-its-subjects-are">The pattern says how deep its subjects are<a class="headerlink" href="#the-pattern-says-how-deep-its-subjects-are" title="Permanent link">#</a></h3>
+<p>The depth of a piece of data is a property of the question, and not of the store. A document
+that holds <code>{a: {b: {c: {stage: open}}}}</code> has data at <code>a.b.c</code>. Or it has data at <code>a.b</code> whose
+payload is nested. Nothing in the document says which.</p>
+<p>The pattern therefore carries the depth. A <code>path:</code> of N segments identifies the nodes exactly
+N segments down. A name and a <code>*</code> count the same: each is one segment.</p>
+<table>
+<thead>
+<tr>
+<th><code>path</code></th>
+<th>What it selects</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{path: "demo.pr.*"}</code></td>
+<td>the nodes that stand under <code>demo.pr</code></td>
+</tr>
+<tr>
+<td><code>{path: "repos.verse.drift.head.*"}</code></td>
+<td>the nodes under <code>repos.verse.drift.head</code></td>
+</tr>
+<tr>
+<td><code>{path: "demo.pr"}</code></td>
+<td>the node at <code>demo.pr</code> itself</td>
+</tr>
+</tbody>
+</table>
+<p>A short path is not a prefix. In a path with no <code>..</code> segment, nothing means "at or below".</p>
+<p>A pattern that names the wrong depth does not fail. It selects the node at the depth it asked
+for. That node exists, and its payload is the subtree beneath it. The rule reads the fields
+that it wanted, does not find them, and writes its patches at that node.</p>
+<p>Check the depth wherever a rule reads what another rule derived. See
+<a href="../action/#action-what-fires"><code>action</code></a>.</p>
+<p>A write names the place that it writes. A listing walks: <code>verse data -paths</code> lists every
+address under the one it was given, and <code>-depth</code> bounds how far it goes beneath that address.</p>
+<p>A listing walks for this reason. A listing of one level would answer with whatever stands at
+that level, and would lose anything deeper.</p>
+<h3 id="the-string-form-is-an-address-in-one-grammar">The string form is an address, in one grammar<a class="headerlink" href="#the-string-form-is-an-address-in-one-grammar" title="Permanent link">#</a></h3>
+<p>One string grammar names addresses by identity. Both the charter wire and the CLI
+(<code>verse flow show &lt;addr&gt;</code>) parse it. The string is a
+<a href="../../glossary/#kinded-path">kinded path</a>, with <code>*</code> for any one segment. So
+<code>"subject": "demo.pr.*"</code> in a charter and <code>verse flow show 'demo.pr.*'</code> on the command line
+mean the same set.</p>
+<p>The string is the path that it spells, at every length.</p>
+<table>
+<thead>
+<tr>
+<th>String</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"demo.pr"</code></td>
+<td>names the address <code>demo.pr</code></td>
+</tr>
+<tr>
+<td><code>"repos.verse.drift.head.*"</code></td>
+<td>selects five segments deep</td>
+</tr>
+</tbody>
+</table>
+<p>Anything else in a segment is a name. <code>hotfix-*</code> in the string is the segment called
+<code>hotfix-*</code>, and not a glob.</p>
+<p>The object form says the same path and adds a predicate:
+<code>{path: "repos.verse.drift.head.*", value: {…}}</code>. There is no list of segments, and a path holds
+no operator. A condition on what a node holds is a predicate on the node, where a reader looks
+for it.</p>
+<p>There is no deferred reference form, and nothing in a payload can redirect a subject. Take a rule
+whose cause is a change to <code>verse.task.instance</code>, and which acts on PRs. The rule acts on the
+PRs that its own <code>subject</code> selects, every one of them. It does not act on the one PR that the
+completed task names.</p>
+<p>A <code>flow</code> field on the changed payload does not change this.
+<a href="https://github.com/signadot/verse/blob/main/docs/design/reference-condition.md#a-flow-field-does-not-redirect-a-subject">A <code>flow</code> field does not redirect a subject</a> gives
+the reason.</p>
+<p><a href="../action/#completion-hooks-one-trigger-chaining-visible">Completion hooks</a> advance exactly
+the subject that a finished task was about. The store cannot fake this correlation, because the engine spawned the task.</p>
+<table>
+<thead>
+<tr>
+<th>You mean</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"this task, this subject"</td>
+<td>a <a href="../../glossary/#hook">hook</a></td>
+</tr>
+<tr>
+<td>"when this becomes true, act on that set"</td>
+<td>an <code>on</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>flow</code> is a field that verse writes on the record of each task: the field <em>is</em> the subject of
+the task. The flow query reads it. A rule whose subject carries the field reads it as
+<code>subject.value.flow</code>. The field is distinct from the reserved <code>subject</code> binding, which is
+the resolved subject of the firing itself.</p>
+<h3 id="acting-on-a-set">Acting on a set<a class="headerlink" href="#acting-on-a-set" title="Permanent link">#</a></h3>
+<p>A subject that selects advances a whole set. The team's CI records the checks on <code>main</code> at
+<code>ci.status.main</code>, and this rule ships every reviewed pull request while those checks pass:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">ship-reviewed</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="na">when</span><span class="o">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;ci.status.main&quot;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      <span class="na">value</span><span class="o">:</span> <span class="p">{</span> <span class="na">state</span><span class="o">:</span> <span class="sx">green</span> <span class="p">}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>      <span class="na">value</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">reviewed</span> <span class="p">}</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  <span class="na">gates</span><span class="o">:</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">ship</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="na">mode</span><span class="o">:</span> <span class="sx">ask</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">shipped</span> <span class="p">}</span>
+</code></pre></div>
+<p>Every reviewed PR advances, while CI on <code>main</code> is green. Each PR is a firing of its own, with its
+own <code>ask</code> gate. With a <code>spawn</code>, each PR has its own task, tagged with that PR as its subject. So
+each PR is a <a href="../../glossary/#flow">flow</a> of its own.</p>
+<p><strong>There is one gate for each member</strong>, and not one gate for the whole set. A firing is about
+one address, so twelve reviewed PRs are twelve questions
+(<a href="../gates/#gates-whether-it-proceeds">gates</a>). An operator gives twelve answers, because <code>verse question approve</code> has
+no bulk form.</p>
+<p><strong>The <code>when</code> is the condition</strong>: while CI on <code>main</code> is green. Verse evaluates the rule again at
+every commit that touches either subtree. So the rule also acts on a PR that reaches <code>reviewed</code>
+later.</p>
+<p><a href="../../trigger-model/#two-rules-read-out-loud">Two rules, read out loud</a> says what an <code>on</code> in
+place of <code>when</code> means. The engine warns at install when a narrow <code>on</code> leaves uncovered a part of what the rule reads.</p>
+<h2 id="on-and-when-the-cause-and-the-condition"><code>on</code> and <code>when</code>: the cause and the condition<a class="headerlink" href="#on-and-when-the-cause-and-the-condition" title="Permanent link">#</a></h2>
+<p><code>on</code> and <code>when</code> are one predicate asked at two moments. Both are optional. Both are matches
+over the store, with the same grammar.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Asked at</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../../glossary/#on"><code>on</code></a></td>
+<td>C-1 and C</td>
+<td>fires on the rising edge, ¬P → P</td>
+</tr>
+<tr>
+<td><a href="../../glossary/#when"><code>when</code></a></td>
+<td>C</td>
+<td>gates</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>when</code> is the condition.</strong> With no <code>on</code>, verse considers the rule at every commit that
+touches anything the rule reads. <code>when</code> says whether to act at that commit. This shape is a
+reconciler: <em>while</em> this holds, act on what the subject selects.</p>
+<p><strong><code>on</code> is the cause.</strong> It narrows <em>when verse considers the rule at all</em> to the instant at
+which its predicate becomes true. Two properties follow, and an author must know both:</p>
+<ul>
+<li><strong>An edge does not fire again while it stays true.</strong>
+  <code>on: {path: "demo.pr.*", value: {stage: reviewed}}</code> rises when the first PR reaches
+  <code>reviewed</code>. It says nothing about the second PR, because the predicate never fell. "On each
+  PR reaching reviewed" has no spelling. A subject and a latch say it.</li>
+<li><strong>A rule with an <code>on</code> does not act on the backlog.</strong> When the rule is installed over a store
+  where its predicate already holds, there is no rising edge to observe. A
+  <a href="../../glossary/#level-rule">level rule</a> does the opposite: it acts on everything that
+  already stands (see <a href="#the-backlog">level at open</a>).</li>
+</ul>
+<p>A match is a predicate over the store. It joins a <code>path</code> and a <code>value</code>. The <code>path</code> says which
+addresses the match reaches. The <code>value</code> is a <a href="../../glossary/#predicate">predicate</a> over the
+payload that stands at those addresses. A match with no <code>value</code> asks only where.</p>
+<p><strong>A match has no <code>op</code> key.</strong> Verse refuses a charter that carries <code>op</code>, and the refusal
+explains why. It does not say "unknown key". A match says a create and a delete in this way:</p>
+<table>
+<thead>
+<tr>
+<th>Change</th>
+<th>How a match says it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a create</td>
+<td>the rising edge of "this exists"</td>
+</tr>
+<tr>
+<td>a delete</td>
+<td>the rising edge of the <a href="../../trigger-model/#lifecycle-how-data-leaves">vanishing marker</a> that precedes removal</td>
+</tr>
+</tbody>
+</table>
+<p><a href="https://github.com/signadot/verse/blob/main/docs/design/reference-condition.md#a-match-has-no-op-key">A match has no <code>op</code> key</a> gives the reason.</p>
+<p>A match that is only a path of names and <code>*</code> reads back from <code>verse c</code>
+in the string form: <code>demo.pr.*</code>. It is the same match in a shorter spelling.</p>
+<p><strong>Keep a condition small.</strong> A large condition is hard to read and hard to check. To act "only
+the first time", match a state field that your action then advances. That field is a
+<strong><a href="../../glossary/#latch">latch</a></strong>. <a href="../../trigger-model/#the-rule">The rule</a> says why a rule
+needs one.</p>
+<p><a id="the-backlog"></a>
+<strong>Installing a rule fires it on what already matches.</strong> When a rule opens, its observation
+replays the places that the rule reads. So the rule acts at once on the backlog that stands in
+the store at the install. You do not write the data again to announce a state that it already
+has.</p>
+<p>An <code>on</code> is the exception, for the same reason that it does not fire again: a predicate that
+already holds has no rising edge.</p>
+<p>The latch also stops an action from running again when the engine restarts over a store that
+is still in the matching state. See
+<a href="https://github.com/signadot/verse/blob/main/docs/change-events.md#the-seed-is-replayed-a-subtree-watch-is-level-triggered-at-the-open">change events</a>.</p>
+<p><strong>Neither <code>on</code> nor <code>when</code> composes over time.</strong> See
+<a href="../../trigger-model/#limits-today">Limits today</a>.</p>
+<h2 id="what-a-match-can-say">What a match can say<a class="headerlink" href="#what-a-match-can-say" title="Permanent link">#</a></h2>
+<p>A match is a tony match, and <code>tony.Match</code> evaluates it.</p>
+<p><strong>A path takes no operator.</strong> A path is a kinded path, the same one that <code>verse data -at</code>
+reads. A segment is a name, <code>*</code> or <code>..</code>. <code>**</code> is no segment and is refused: <code>..</code> is every depth,
+<code>*.*</code> exactly two. To select a family of names, write a predicate on what the node holds:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># every pr whose branch is a hotfix</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">branch</span><span class="o">:</span> <span class="k">!glob</span> <span class="s2">&quot;hotfix-*&quot;</span><span class="p">}</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># everything but one</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">id</span><span class="o">:</span> <span class="k">!not</span> <span class="s2">&quot;1&quot;</span><span class="p">}</span>
+</code></pre></div>
+<p><strong>An <a href="../../glossary/#operator">operator</a> is a tag</strong>, and nothing else acts as one. Inside
+<code>value</code> the difference changes the meaning:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="na">value</span><span class="o">:</span> <span class="k">!not</span> <span class="p">{</span><span class="na">reviewed</span><span class="o">:</span> <span class="kc">null</span><span class="p">}</span>      <span class="c1"># the absence latch</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">not</span><span class="o">:</span> <span class="p">{</span><span class="na">reviewed</span><span class="o">:</span> <span class="kc">null</span><span class="p">}}</span>    <span class="c1"># a payload EQUAL to that object — which is nothing, ever</span>
+</code></pre></div>
+<p>Both lines are legal, and the second means what it says. <code>value</code> is a predicate over payload
+<em>data</em>, and a payload may have a field named <code>not</code> that holds one key.</p>
+<p>JSON has no syntax for tags, so a charter written in JSON has no operators. It can write paths
+and plain equality predicates. Write a condition that needs an operator in tony.</p>
+<p><strong>A path decides where a rule watches.</strong> The read narrows to the literal prefix of the path:
+<code>entity.Pattern.literalPrefix</code> stops at the first <code>*</code> or <code>..</code>. The rest of the path picks from
+what stands under the prefix.</p>
+<p>A path that selects begins with a name for the same reason. A watch opens on the literal
+prefix, and a watch cannot open on a wildcard at the top.</p>
+<p><code>verse</code> is a segment like any other. What verse writes about its own running stands under it
+(<a href="../entities/">entities</a>). A rule about those records names <code>verse</code> first:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># a rule about PRs — the ordinary case, and it cannot see verse&#39;s own records</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="na">subject</span><span class="o">:</span> <span class="p">{</span><span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span><span class="p">}</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># a rule about what verse writes: an ask on the docket, a task&#39;s mirror, an installed rule</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;verse.ask.*&quot;</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">status</span><span class="o">:</span> <span class="sx">pending</span><span class="p">}</span>
+</code></pre></div>
+<p>Nothing is excluded by default to make this hold. A path begins with the place that it is
+about. So <code>{path: "task.*.*"}</code>, in a charter about the tasks of the world, reaches <code>task.*</code>.
+It never reaches the mirror of a run at <code>verse.task.instance</code>.</p>
+<p>A <code>..</code> segment reaches every depth beneath the place where it stands, and the node at that
+place too. Use it for a rule about things that do not all stand at one depth. Derived records
+are such things:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># every finding beneath repos.verse, wherever the rule that derived it put one</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;repos.verse..finding&quot;</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="na">subject</span><span class="o">:</span> <span class="s2">&quot;repos.verse..finding&quot;</span>   <span class="c1"># the same, as a kinded path</span>
+</code></pre></div>
+<p>A subject that descends selects by reading the subtree at its literal prefix and walking it.
+Verse opens its watch with the pattern, and not with a depth. So a write at any depth that the
+pattern reaches wakes the rule.</p>
+<p>A subject that descends names a set. So it is never "one address named": a rule with a
+descending subject selects.</p>
+<p><strong>The payload predicate takes operators.</strong> The predicate is <code>value</code>: a tony match, evaluated
+against the payload.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># a record&#39;s fields</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="na">when</span><span class="o">:</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  <span class="na">value</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="k">!or</span> <span class="p">[</span><span class="sx">open</span><span class="p">,</span> <span class="sx">merged</span><span class="p">]</span> <span class="p">}</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="na">on</span><span class="o">:</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  <span class="na">value</span><span class="o">:</span> <span class="p">{</span> <span class="na">branch</span><span class="o">:</span> <span class="k">!glob</span> <span class="s2">&quot;hotfix-*&quot;</span> <span class="p">}</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="c1"># the payload root</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="na">when</span><span class="o">:</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.count.*&quot;</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>  <span class="na">value</span><span class="o">:</span> <span class="k">!or</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">100</span><span class="p">]</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="c1"># an order: one field against another in the same payload, scaled (!lt, !le, !gt, !ge)</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;quota.status.*&quot;</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>  <span class="na">value</span><span class="o">:</span> <span class="p">{</span> <span class="na">used</span><span class="o">:</span> <span class="k">!ge(0.8).get-path(root)</span> <span class="sx">cap</span> <span class="p">}</span>
+</code></pre></div>
+<p><code>value</code> is open in shape because a payload is. A payload is any tony value: a
+record, a count, a flag, a state name, a list. So a predicate over it may be any of those, or
+an operator over one. Almost every charter writes the record form. The other forms are why the
+key is not called <code>fields</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Payload</th>
+<th>What <code>value</code> means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a record</td>
+<td>a <strong>subset</strong> constraint, as a tony match over an object always is. The fields you name must agree, and any others are ignored.</td>
+</tr>
+<tr>
+<td>a scalar</td>
+<td>equality. There is nothing to be a subset of, so <code>value: 42</code> means the payload <em>is</em> 42.</td>
+</tr>
+</tbody>
+</table>
+<p><code>value: "stage=open"</code> is a legal predicate. It matches data whose whole payload is the
+string <code>stage=open</code>. It is not an expression language. There is one name for the predicate,
+and no assertion about its shape. <a href="https://github.com/signadot/verse/blob/main/docs/design/reference-condition.md#value-asserts-no-shape"><code>value</code> asserts no shape</a> gives
+the reason.</p>
+<p>Know three things about a predicate before you rely on one.</p>
+<p><strong><code>!glob</code> is <code>filepath.Match</code>.</strong> So <code>*</code> does not cross <code>/</code>, and <code>?</code> and <code>[…]</code> are special
+characters: <code>!glob "a*"</code> does not match <code>a/b</code>. This is intended: a name that holds a <code>/</code> can be
+matched one piece at a time. The <code>&lt;workspace&gt;/&lt;ts&gt;</code> of a slack message is such a
+name. But <code>!glob "*"</code> and a bare <code>*</code> are not interchangeable: a bare <code>*</code> is any one segment,
+whatever it holds.</p>
+<p><strong>A <code>null</code> in a predicate is a presence test</strong>, and not "is null". A null pattern matches any
+value, so it constrains only that the field is there. The three questions have three
+spellings:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># stage is present, whatever its value</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="na">value</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="kc">null</span> <span class="p">}</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># stage is absent</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="na">value</span><span class="o">:</span> <span class="k">!not</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="kc">null</span> <span class="p">}</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># stage is present and its value is null</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="na">value</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="k">!irtype</span> <span class="kc">null</span> <span class="p">}</span>
+</code></pre></div>
+<p>An absent key is not a null key. The store records whether a field was cleared or never
+written.</p>
+<p><strong>Numbers are type-exact.</strong> <code>2</code> and <code>2.0</code> are different values, so a predicate written
+<code>{n: 2}</code> does not match a payload of <code>{n: 2.0}</code>. Integer widths do not matter. A width comes
+from whoever wrote the value, and not from the value.</p>
+<h2 id="why-it-is-this-way">Why it is this way<a class="headerlink" href="#why-it-is-this-way" title="Permanent link">#</a></h2>
+<p>The reasons for this design are in <a href="https://github.com/signadot/verse/blob/main/docs/design/reference-condition.md">reference-condition.md</a>, in the repository.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

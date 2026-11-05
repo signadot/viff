@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/perms-guide/">
+        <link rel="icon" href="../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+
+        <title>Permissions, walked - Verse</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link href="../pygments.css" rel="stylesheet">
+        <link href="../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Permissions, walked - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/perms-guide/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href=".."><img src="../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../asking/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../reference/scopes/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#permissions-walked" class="nav-link">Permissions, walked</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#before-the-first-step-who-you-are" class="nav-link">Before the first step: who you are</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#step-1-your-own-data-and-who-wrote-it" class="nav-link">Step 1: your own data, and who wrote it</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#step-2-a-task-you-run-and-what-it-may-do-for-its-gates" class="nav-link">Step 2: a task you run, and what it may do for its gates</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#step-3-a-charter-and-what-it-owns" class="nav-link">Step 3: a charter, and what it owns</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#step-4-a-gate-with-nobody-behind-it" class="nav-link">Step 4: a gate with nobody behind it</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#step-5-a-resolver-that-answers-for-somebody" class="nav-link">Step 5: a resolver that answers for somebody</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-to-check-when-something-surprises-you" class="nav-link">What to check when something surprises you</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="permissions-walked">Permissions, walked<a class="headerlink" href="#permissions-walked" title="Permanent link">#</a></h1>
+<p>This page shows the permissions model by example, in the order you meet it. The model itself is
+<a href="../perms/">perms.md</a>: one owner for each node, grants on the records, and one check on every
+write and read. The detail is in <a href="../reference/perms/">reference/perms.md</a>.</p>
+<p>Most of what you own in a verse, you never wrote by hand: a task record that the runtime
+mirrored, a question that a <a href="../glossary/#rule">rule</a> posed, a branch that an
+<a href="../glossary/#iod">iod</a> reflected. The permissions on those things follow from who asked for the
+work, not from who typed. This surprises people, so the page walks it in five steps:</p>
+<ol>
+<li>your own data;</li>
+<li>a task you run, and its gates;</li>
+<li>a <a href="../glossary/#charter">charter</a>, and what it owns;</li>
+<li>a gate with no resolver behind it;</li>
+<li>a gate with a resolver behind it.</li>
+</ol>
+<h2 id="before-the-first-step-who-you-are">Before the first step: who you are<a class="headerlink" href="#before-the-first-step-who-you-are" title="Permanent link">#</a></h2>
+<p>Every request that the CLI makes carries a <a href="../glossary/#principal">principal</a>: a name. Verse
+checks every write and read against what its place permits <em>for that name</em>. So first, settle
+what the name is.</p>
+<p>The CLI reads its config in layers
+(<a href="https://github.com/signadot/verse/blob/main/docs/reference/up.md#configuration">reference/up.md</a>). Each layer is patched over the one before:</p>
+<ol>
+<li><code>/etc/verse.tony</code>;</li>
+<li><code>~/.config/verse.tony</code>;</li>
+<li>the environment;</li>
+<li>the flag on the command.</li>
+</ol>
+<p><code>user:</code> in the file is who every command acts as:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># ~/.config/verse.tony</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="na">addr</span><span class="o">:</span> <span class="s2">&quot;localhost:9797&quot;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="na">user</span><span class="o">:</span> <span class="s2">&quot;you@example.com&quot;</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>What it overrides</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VERSE_USER</code> in the environment</td>
+<td>the file, for one shell</td>
+</tr>
+<tr>
+<td><code>-as</code></td>
+<td>both, on the commands that take it. Use it to act as somebody else for one command and see what they see.</td>
+</tr>
+<tr>
+<td><code>VERSE_CONFIG=&lt;file&gt;</code></td>
+<td>both file layers, outright. So a second verse gets a second file, and not a second identity in one file.</td>
+</tr>
+</tbody>
+</table>
+<p>With no <code>user</code> anywhere, who the CLI acts as depends on where the verse is:</p>
+<ul>
+<li><strong>A verse on this machine</strong> (<code>localhost</code>, <code>127.0.0.1</code>, <code>::1</code>): the CLI acts as the
+  <a href="../glossary/#local-user">local user</a>, <code>user:&lt;login&gt;@localhost</code>. <code>&lt;login&gt;</code> is your login name.
+  This is who you are in the <a href="../tutorial/">tutorial</a> before you configure anything.</li>
+<li><strong>Any other verse:</strong> the request names nobody. It reads what <code>*</code> may read, and it writes
+  nothing. Verse refuses every request that is not a read with
+  <code>400 Verse-Principal is required</code>, because a write by nobody would be recorded as the
+  system's.</li>
+</ul>
+<p>The server refuses a write that names nobody, wherever it comes from. The local user is only
+the CLI's default. So a program of your own that writes must name somebody itself.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>verse<span class="w"> </span>data<span class="w"> </span>spaces<span class="w"> </span>you<span class="w"> </span>notes<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{todo: [buy milk]}&#39;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>verse<span class="w"> </span>perms<span class="w"> </span>spaces<span class="w"> </span>you<span class="w"> </span>notes<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>owner<span class="w">             </span><span class="c1"># owner: user:you@example.com</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nv">VERSE_USER</span><span class="o">=</span>ana@example.com<span class="w"> </span>verse<span class="w"> </span>perms<span class="w"> </span>spaces<span class="w"> </span>you<span class="w"> </span>notes<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>owner<span class="w">   </span><span class="c1"># the same record, read as ana</span>
+</code></pre></div>
+<p>A name carries its kind before the colon. A request presents one of three kinds:</p>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Who</th>
+<th>How it is set</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>user:you@example.com</code></td>
+<td>a person</td>
+<td><code>user:</code> or <code>-as</code>. A bare email is read as this kind.</td>
+</tr>
+<tr>
+<td><code>agent:&lt;name&gt;</code></td>
+<td>a harness that drives verse from outside</td>
+<td><code>agent:</code> in its config, instead of <code>user:</code></td>
+</tr>
+<tr>
+<td><code>runner:&lt;identity&gt;</code></td>
+<td>a <a href="../glossary/#worker">worker</a></td>
+<td>it claims work as <code>-as runner:&lt;identity&gt;</code>. A runner reached by url acts as the <code>identity</code> its registration names.</td>
+</tr>
+</tbody>
+</table>
+<p>Verse refuses a bare word such as <code>-as verse-runner</code>, and the refusal gives the grammar.
+<a href="../reference/perms/#the-grammar">reference/perms.md</a> has the whole grammar. The name is
+<a href="../perms/#principals-and-grantees">self-asserted</a>: everything below is about what a name may do,
+not about who holds it.</p>
+<p><strong>You are also somebody in Slack and on GitHub.</strong> When you answer a verse question in a Slack
+thread or in a pull request comment, the iod that heard you asks verse to count the answer as
+yours. Verse does that only through an <strong>account binding</strong>: a record that says this Slack
+member, or this GitHub login, is this principal. You make the binding yourself, once for each
+system, by proving to the app that you are the verse user:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>verse<span class="w"> </span>account<span class="w"> </span>-link<span class="w"> </span>slack<span class="w">                       </span><span class="c1"># prints: /verse link &lt;nonce&gt;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>verse<span class="w"> </span>account<span class="w"> </span>-link<span class="w"> </span>github<span class="w"> </span>-account<span class="w"> </span>your-login
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>verse<span class="w"> </span>account<span class="w">                                   </span><span class="c1"># the bindings that are you</span>
+</code></pre></div>
+<p>Say the line it prints from your own account. For Slack, say <code>/verse link &lt;nonce&gt;</code> to the app,
+and the Slack iod reports that your account said it. For GitHub, say it in a comment on any
+issue or pull request in a repository verse reflects; the command lists them, and waits until
+verse has read your comment. Either way, verse binds the account to you. From then on, your replies there
+count as you. The ballot records that you answered through Slack or GitHub, and through which
+iod. Nobody but you can make the binding: a nonce said by anyone else binds nothing.</p>
+<p><strong>A verse can verify a person instead of taking their word.</strong> Where its config names an
+identity provider, <code>verse account login</code> logs you in there. The CLI then sends the token it got
+in place of a name. Verse checks the token, and acts as the person it proves. <code>verse whoami</code>
+says how verse knows you: the provider's name, or <code>asserted</code> for a name it took as given. <code>-as</code>,
+and <code>agent:</code> in the config, still send a bare name. A verse with <code>mode: required</code> refuses a
+person who carries no token, with <code>401</code> and a line that says to log in. People are verified, and
+so are the deployment's own iods, which present their own tokens, and a runner whose
+registration names the subject of its token, which every registration does. An agent is not
+verified: it is whoever it says it is.</p>
+<p><a href="../reference/perms/#who-a-request-is-from">Who a request is from</a> has the rules.</p>
+<p>Two things to know before the first step. Each is a reasonable guess, and wrong:</p>
+<ul>
+<li><strong>A group is not a principal.</strong> <code>group:&lt;name&gt;</code> is a <a href="../glossary/#grantee">grantee</a>. It
+  appears on a grant line, in a gate's <code>answerers</code>, or behind a resolver. It admits the group's
+  members, and each member acts as themselves. Nothing ever acts <em>as</em> a group. No request can
+  present a group, and a group owns nothing.</li>
+<li><strong>The <code>agent</code> kind exists, and grants treat it as a person.</strong> A harness that drives verse
+  from outside can present itself as an agent (<code>agent:</code> in the CLI's config). Verse lists it
+  under its own kind, and grants it exactly what a person is granted. So read
+  <code>[user:*, agent:*]</code> as "people".</li>
+</ul>
+<h2 id="step-1-your-own-data-and-who-wrote-it">Step 1: your own data, and who wrote it<a class="headerlink" href="#step-1-your-own-data-and-who-wrote-it" title="Permanent link">#</a></h2>
+<p>With <code>user:</code> set, everything you type is yours. The data that
+<a href="../tutorial/data/">the tutorial</a> seeds is a good place to start. So is an address of your own:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>verse<span class="w"> </span>data<span class="w"> </span>spaces<span class="w"> </span>you<span class="w"> </span>notes<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{todo: [buy milk]}&#39;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>verse<span class="w"> </span>perms<span class="w"> </span>spaces<span class="w"> </span>you<span class="w"> </span>notes
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="na">at</span><span class="o">:</span> <span class="sx">spaces.you.notes</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="na">grants</span><span class="o">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">-</span> <span class="na">read</span><span class="o">:</span> <span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="na">owner</span><span class="o">:</span> <span class="sx">user:you@example.com</span>
+</code></pre></div>
+<p><code>spaces.you.notes</code> is yours because you created it, and it holds out the root's
+<code>child-grants</code>, <code>read: ["*"]</code> (<a href="../perms/#ownership">perms.md</a>).</p>
+<p>Verse refuses the write of another user, and says why:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>VERSE_USER=ana@example.com verse data spaces you notes -put &#39;{todo: []}&#39;
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>→ 403 refused: user:ana@example.com holds read at spaces.you.notes and writing it needs
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  read-write; the nearest owner on record is user:you@example.com at spaces.you.notes
+</code></pre></div>
+<p>A refusal always says the three things that <a href="../perms/#what-you-see">perms.md</a> lists. The last
+is the record that decided. When verse refuses something you expected to pass, read that
+record.</p>
+<p><strong>Take a place.</strong> <code>verse perms</code> on a node you may create under gives the node a record of its
+own. What you set there governs what is made beneath it
+(<a href="../reference/perms/#creating-and-taking-a-place">where a place can be taken</a>).</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>verse<span class="w"> </span>perms<span class="w"> </span>spaces<span class="w"> </span>you<span class="w"> </span>-child-grants<span class="w"> </span><span class="s1">&#39;{}&#39;</span><span class="w"> </span>-grants<span class="w"> </span><span class="s1">&#39;[]&#39;</span><span class="w">  </span><span class="c1"># nothing held out beneath, nothing on it</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>verse<span class="w"> </span>data<span class="w"> </span>spaces<span class="w"> </span>you<span class="w"> </span>private<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{…}&#39;</span><span class="w">              </span><span class="c1"># yours alone: no read for anyone</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>verse<span class="w"> </span>perms<span class="w"> </span>spaces<span class="w"> </span>you<span class="w"> </span>-grant<span class="w"> </span><span class="s1">&#39;{read: [ana@example.com]}&#39;</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>verse<span class="w"> </span>perms<span class="w"> </span>spaces<span class="w"> </span>you<span class="w"> </span>-revoke<span class="w"> </span><span class="s1">&#39;{read: [ana@example.com]}&#39;</span>
+</code></pre></div>
+<p><a href="../reference/perms/#verse-perms">reference/perms.md</a> lists the flags.</p>
+<p>A withdrawn grant stops future acts. It changes nothing that exists.</p>
+<p>The store also knows who wrote every commit. How it keeps the author is in
+<a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#the-author-of-a-commit">perms.md</a>, in the repository.</p>
+<p><strong>What is not yours to write.</strong> Verse refuses <code>verse data -put</code> under <code>verse.</code>, whatever you
+hold. You write there through the verbs that own it: <code>verse c -a</code>, <code>verse task run</code>,
+<code>verse question approve</code>, <code>verse perms</code>. Under each verb, the store checks the write against its
+place. So nothing that reaches the store can make a task or answer a question for you.</p>
+<p>Verse refuses <code>verse data verse perms</code> too. A person reads records with <code>verse perms</code>, never
+from the mirror (<a href="../perms/#verses-own-half">perms.md</a>).</p>
+<h2 id="step-2-a-task-you-run-and-what-it-may-do-for-its-gates">Step 2: a task you run, and what it may do for its gates<a class="headerlink" href="#step-2-a-task-you-run-and-what-it-may-do-for-its-gates" title="Permanent link">#</a></h2>
+<p>A <a href="../glossary/#task">task</a> is data that the runtime mirrors. The mirror writes the task
+<em>as whoever asked for it</em>:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>verse<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>-f<span class="w"> </span>check.tony<span class="w">                 </span><span class="c1"># a spawn: prompt, subject, environment, autonomy</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>verse<span class="w"> </span>perms<span class="w"> </span>verse<span class="w"> </span>task<span class="w"> </span>instance<span class="w"> </span>&lt;id&gt;
+</code></pre></div>
+<p>The task is yours. The record beneath <code>verse.task.instance</code> names you as owner for two reasons:</p>
+<ul>
+<li>the seed holds <code>child-owner</code> out to everyone there;</li>
+<li>the spawn wrote as you.</li>
+</ul>
+<p>Verse writes the task's record as whoever runs it, and that write is the check for <code>run</code>
+(<a href="../reference/perms/#levels">levels</a>). The task's <code>run</code> and <code>claim</code> records follow it. Everyone
+may read the task, by the default it was created with. Only you and the runtime write it.</p>
+<p><strong>The runner that works the task holds the task and nothing else.</strong> A runner reached by url
+acts as <code>runner:</code> with the <code>identity</code> its registration names, and that is the claim. What the
+task does on verse itself, through the <a href="../systems/verse/">verse system</a>, the runner carries as
+the task's owner, only while the task runs
+(<a href="../reference/perms/#a-task-carried-by-its-runner">a task carried by its runner</a>).</p>
+<p>When a worker claims the task, verse grants it <code>read-write</code> and <code>control</code> on the task and on
+this run. Every report after that is written as the worker. That grant stops at the task's
+record.</p>
+<p>A <a href="../glossary/#question">question</a> that the task raises is an ask, at its own address,
+<code>verse.ask.&lt;id&gt;</code>. A grant on the task does not reach the ask. So the worker may not answer its
+own question (<a href="../perms/#grants">perms.md</a>).</p>
+<p><strong>What you may say about its questions.</strong> Two things, and they answer different questions:</p>
+<ul>
+<li>The spawn's <code>autonomy</code> is <em>which</em> of its steps are refused, asked about or allowed, and what
+  each question takes to settle. It is a list of rows: a <code>match</code> over a step's system, verb and
+  params, and a <code>then</code>. For an ask, the <code>then</code> carries <code>need</code>, <code>within</code>, <code>default</code>,
+  <code>answerers</code> and <code>labels</code> (<a href="../reference/tasks/#a-rows-question">a row's question</a>).</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># check.tony</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="na">prompt</span><span class="o">:</span> <span class="sx">check</span> <span class="sx">that</span> <span class="sx">the</span> <span class="sx">migration</span> <span class="sx">in</span> <span class="sx">app/db</span> <span class="sx">applies</span> <span class="sx">to</span> <span class="sx">an</span> <span class="sx">empty</span> <span class="sx">database</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="na">subject</span><span class="o">:</span> <span class="sx">demo.pr.1</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>  <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="na">git</span><span class="o">:</span> <span class="p">[{</span><span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span><span class="p">,</span> <span class="na">fetch</span><span class="o">:</span> <span class="p">{}}]</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="na">commands</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">shell</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>  <span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">commands</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">run</span><span class="p">}</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>  <span class="na">then</span><span class="o">:</span> <span class="p">{</span><span class="na">ask</span><span class="o">:</span> <span class="p">{</span><span class="na">need</span><span class="o">:</span> <span class="mi">1</span><span class="p">,</span> <span class="na">within</span><span class="o">:</span> <span class="s2">&quot;4h&quot;</span><span class="p">,</span> <span class="na">default</span><span class="o">:</span> <span class="sx">deny</span><span class="p">,</span> <span class="na">answerers</span><span class="o">:</span> <span class="p">[</span><span class="sx">ana@example.com</span><span class="p">]}}</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="p">-</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span>
+</code></pre></div>
+<p><code>answerers</code> is <em>who</em> may answer. When the question is posed, <code>answerers</code> becomes the
+  question's <code>read-write</code> line, in place of the docket's default. Leave it off, and the default
+  stands. In the seed, the default is <code>[user:*, agent:*]</code>: any person.
+- <code>-as &lt;who&gt;</code> is who the run is. So it is who owns the run, and who co-owns what the run asks.</p>
+<p>What the task may <em>do</em> in the world is a different question: push, open a pull request, call a
+sub-agent, reach a host. The spawn's <code>environment</code> says that, system by system, fixed when it
+starts, and the runner refuses a launch whose environment goes past what it offers
+(<a href="../reference/tasks/#who-does-the-work-and-with-what">who does the work, and with what</a>). A permissions grant says who may touch
+data. A task's environment says what the task may do, and its autonomy what it does unasked.</p>
+<p><strong>Answering.</strong> You answer your task's questions as their co-owner, and so does whoever the
+line names. Verse refuses the runner (<a href="../perms/#tasks-and-gates">perms.md</a>).</p>
+<p>Try it as somebody else, and read the refusal:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>VERSE_USER=x@example.com verse question &lt;id&gt; --answer proceed
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>→ 403 refused: user:x@example.com holds read at verse.ask.&quot;&lt;id&gt;&quot; and answering it
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  needs read-write; the nearest owner on record is system:docket at verse.ask.&quot;&lt;id&gt;&quot;
+</code></pre></div>
+<p><code>x</code> holds <code>read</code>, because the docket's default gives every question <code>read: ["*"]</code>. <code>x</code> does
+not hold <code>read-write</code>, because <code>x</code> is not on the line.</p>
+<p>A worker may meet something that the task cannot decide. It asks with <code>question-ask</code>, and may
+say whom (<a href="../reference/tasks/#a-question-for-the-person">a question for the person</a>).</p>
+<h2 id="step-3-a-charter-and-what-it-owns">Step 3: a charter, and what it owns<a class="headerlink" href="#step-3-a-charter-and-what-it-owns" title="Permanent link">#</a></h2>
+<p>A rule acts as whoever installed its charter. So the installer co-owns every question that its
+rules pose, and may answer them without being named on any line.</p>
+<p><a href="../perms/#what-acts-on-its-own">perms.md</a> states the rule, and
+<a href="../reference/perms/#installed-things">reference/perms.md</a> has the detail. How this step looks on
+a deployed verse is in <a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#step-3-a-charter-and-what-it-owns">platform/perms.md</a>,
+in the repository.</p>
+<h2 id="step-4-a-gate-with-nobody-behind-it">Step 4: a gate with nobody behind it<a class="headerlink" href="#step-4-a-gate-with-nobody-behind-it" title="Permanent link">#</a></h2>
+<p>A charter gate raises the same record as a task's question: an ask, at <code>verse.ask.&lt;id&gt;</code>.
+<code>verse perms verse ask &lt;id&gt;</code> shows who may see it, who may answer it, and who owns it. If the
+gate names no <code>answerers:</code>, whoever may write what the question is about may answer, and whoever
+may read it sees it. The answerers a gate names must be able to read what it is about, or the
+gate is refused when it fires.</p>
+<ul>
+<li>To narrow the questions posed later, name <code>answerers</code> on the gate in the charter, and install
+  the charter again. The install refuses a gate that nobody could settle.</li>
+<li>To narrow a question that stands, write its record with <code>verse perms</code>. You co-own it through
+  the rule.</li>
+<li>To bring somebody else in, ask them: an ask of your own, about the same thing.</li>
+</ul>
+<p><a href="../reference/perms/#questions">reference/perms.md</a> has the rules. How this step looks on a
+deployed verse is in <a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#step-4-a-gate-with-nobody-behind-it">platform/perms.md</a>,
+in the repository.</p>
+<h2 id="step-5-a-resolver-that-answers-for-somebody">Step 5: a resolver that answers for somebody<a class="headerlink" href="#step-5-a-resolver-that-answers-for-somebody" title="Permanent link">#</a></h2>
+<p>A <a href="../glossary/#resolver">resolver</a> is an installed service that answers asks for whoever
+grants it (<a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md">resolvers</a>). It owns nothing, and nothing is moved to it. A
+party lets it answer for them with an <code>answer</code> grant, and may still answer for themselves.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>verse<span class="w"> </span>resolver<span class="w"> </span>add<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="s">name: ben-desk</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="s">match: {about: &quot;verse-dev.merge.train.*&quot;}</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="s">method: {driver: service}</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="s">EOF</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="nv">VERSE_USER</span><span class="o">=</span>ben@example.com<span class="w"> </span>verse<span class="w"> </span>resolver<span class="w"> </span>grant<span class="w"> </span>ben-desk
+</code></pre></div>
+<p>Ben makes the grant, so <code>VERSE_USER</code> names him for that one command. The grant is Ben's, at
+<code>verse.for.user:ben@example.com</code>. From then on, <code>ben-desk</code> serves an ask put to Ben about a
+merge train. It may read the ask (<code>answering:</code> on the ask's <code>read</code>). Its answer, made as the
+resolver, is Ben's ballot, with <code>via</code> naming the resolver. For the asks about a place that name
+nobody, the place's owner on record grants at the place. Two resolvers never answer for one
+party on one ask: verse refuses a grant that would let them.</p>
+<p><strong>What a service holds.</strong> A resolver's service acts as whoever installed it
+(<a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#what-a-resolver-service-holds">platform/perms.md</a>, in the repository).</p>
+<p><strong>Groups, here and on a gate.</strong> A <a href="../glossary/#group">group</a> is a named set of grantees, and
+<code>group:&lt;name&gt;</code> is how anything names it:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>verse<span class="w"> </span>group<span class="w"> </span>add<span class="w"> </span>release<span class="w"> </span>you@example.com<span class="w"> </span>group:qa<span class="w"> </span><span class="s1">&#39;runner:*&#39;</span><span class="w">   </span><span class="c1"># stored at verse.principal.group.release</span>
+</code></pre></div>
+<p>A member is any <a href="../reference/perms/#the-grammar">grantee</a>, another group included.
+<code>verse group add</code> refuses a member it cannot read, such as a group's address or a bare word,
+and prints the grammar. Only the group's maker changes it. How verse reads the members when it
+checks a grant is in <a href="../perms/#grants">perms.md</a>.</p>
+<p>A gate's <code>answerers: [group:release]</code> puts its question to the group's members, each answering
+as themselves, or through a resolver they grant.</p>
+<h2 id="what-to-check-when-something-surprises-you">What to check when something surprises you<a class="headerlink" href="#what-to-check-when-something-surprises-you" title="Permanent link">#</a></h2>
+<ul>
+<li><strong>A refusal names the record that decided.</strong> Read it with <code>verse perms &lt;path&gt;</code>. If you may
+  not read it, you are outside the node's <code>read</code>, and that is the first fact.</li>
+<li><strong>A question is not under its task.</strong> It is an ask: look at <code>verse.ask.&lt;id&gt;</code>, not at the
+  task. Verse refuses the runner there on purpose.</li>
+<li><strong>A rule acts as its installer.</strong> A firing that verse refuses, or a rule that never wakes, is
+  usually the installer's own grants, seen through the rule.</li>
+<li><strong><code>verse status</code> counts.</strong> <code>perms: {refused, unreadable, hidden, unparsed}</code> is the check's
+  count since the process started. <a href="../reference/perms/#verse-perms">reference/perms.md</a> says
+  what each field counts.</li>
+</ul></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

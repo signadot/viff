@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/systems/github/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>github - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="github - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/systems/github/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">github</a>
+</li>
+                                    
+<li>
+    <a href="../github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../git-issue/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../github-issue/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#github" class="nav-link">github</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-charter-sees" class="nav-link">What a charter sees</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-charter-writes" class="nav-link">What a charter writes</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-task-can-do" class="nav-link">What a task can do</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#where-the-credential-lives" class="nav-link">Where the credential lives</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="github">github<a class="headerlink" href="#github" title="Permanent link">#</a></h1>
+<p>The <code>github</code> system is GitHub as the forge of a repository that a task checked out. Its verbs
+are about pull requests, which belong to the forge and not to git. The runner performs them
+with its credential for the repository.</p>
+<h2 id="what-a-charter-sees">What a charter sees<a class="headerlink" href="#what-a-charter-sees" title="Permanent link">#</a></h2>
+<p><code>iod github</code> writes a repository at GitHub into the store: its pull requests, issues,
+discussions, workflow runs and comments.</p>
+<table>
+<thead>
+<tr>
+<th>Address</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>github.&lt;org&gt;.&lt;name&gt;.pr.&lt;n&gt;</code></td>
+<td>a pull request: its state, base, head and sha, its checks, labels and assignees, and whom a review is waiting on (<code>requestedReviewers</code>, <code>requestedTeams</code>)</td>
+</tr>
+<tr>
+<td><code>github.&lt;org&gt;.&lt;name&gt;.run.&lt;id&gt;</code></td>
+<td>a workflow run: its status, conclusion, branch and sha</td>
+</tr>
+<tr>
+<td><code>github.&lt;org&gt;.&lt;name&gt;.comment.&lt;n&gt;.&lt;id&gt;</code></td>
+<td>a comment, on the pull request or issue that <code>on</code> names</td>
+</tr>
+</tbody>
+</table>
+<p><code>requestedReviewers</code> holds a person until they submit a review, and again when one is requested
+of them anew, so a login in it means the pull request is waiting on that person. Their reviews
+are not reflected: a task reads them with <code>github-read-pr</code>.</p>
+<p>A rule reacts to a pull request as it reacts to any data. Its <code>checks</code> is what CI last said
+about its head: the newest run's conclusion (<code>success</code>, <code>failure</code>) or what it is still doing
+(<code>in_progress</code>). Here, an open pull
+request whose checks failed:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;github.acme.app.pr.*&quot;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">state</span><span class="o">:</span> <span class="sx">open</span><span class="p">,</span> <span class="na">checks</span><span class="o">:</span> <span class="sx">failure</span><span class="p">}</span>
+</code></pre></div>
+<p><a href="https://github.com/signadot/verse/blob/main/docs/reference/iod.md#github">iod github</a> has the flags and the whole payload. The issues are
+the <a href="../github-issue/"><code>github-issue</code></a> system's.</p>
+<h2 id="what-a-charter-writes">What a charter writes<a class="headerlink" href="#what-a-charter-writes" title="Permanent link">#</a></h2>
+<p>Comments, reviews, merges, a commit status, a new pull request. With <code>-out</code>, the iod carries a
+rule's writes back to GitHub. A rule writes an input under <code>github.&lt;org&gt;.&lt;name&gt;.out</code>, or in an
+outbox its package declares, and the iod does what the input says
+(<a href="https://github.com/signadot/verse/blob/main/docs/reference/iod.md#the-out-half-of-github">the out half of github</a>). So a rule can merge a
+pull request once its checks pass, or comment to say why not, with no task.</p>
+<h2 id="what-a-task-can-do">What a task can do<a class="headerlink" href="#what-a-task-can-do" title="Permanent link">#</a></h2>
+<p>A task gets the forge's pull requests with a <code>github</code> block for a repository its <code>git</code> block
+checks out, where the runner's forge is GitHub. The block's verbs and shapes say which pull
+requests are within reach; the autonomy decides among them.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">}</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  <span class="na">prompt</span><span class="o">:</span> <span class="s2">&quot;Make the failing check on $[subject.ref] pass, and open a pull request.&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>      <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>      <span class="na">git</span><span class="o">:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>      <span class="p">-</span> <span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>        <span class="na">from</span><span class="o">:</span> <span class="sx">main</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        <span class="na">fetch</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>        <span class="na">push</span><span class="o">:</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>        <span class="p">-</span> <span class="p">{</span><span class="na">ref</span><span class="o">:</span> <span class="k">!glob</span> <span class="s2">&quot;refs/heads/verse/auto/*&quot;</span><span class="p">,</span> <span class="na">exists</span><span class="o">:</span> <span class="l">false</span><span class="p">}</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>        <span class="p">-</span> <span class="p">{</span><span class="na">ref</span><span class="o">:</span> <span class="k">!glob</span> <span class="s2">&quot;refs/heads/verse/auto/*&quot;</span><span class="p">,</span> <span class="na">own</span><span class="o">:</span> <span class="l">true</span><span class="p">}</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>      <span class="na">github</span><span class="o">:</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>      <span class="p">-</span> <span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>        <span class="na">create-pr</span><span class="o">:</span> <span class="p">{</span><span class="na">base</span><span class="o">:</span> <span class="sx">main</span><span class="p">,</span> <span class="na">own</span><span class="o">:</span> <span class="l">true</span><span class="p">}</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>  <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>  <span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">github</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">create-pr</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>  <span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<p><code>draft</code> is whether the pull request opens as a draft, <code>true</code> or <code>false</code>. A shape naming
+<code>draft: true</code> (<code>create-pr: {base: main, own: true, draft: true}</code>) gives a task drafts only: it
+can propose, and a person marks the proposal ready.</p>
+<p><code>own</code> on a pull request is the runner's word that the head's tip is a commit this task made, as
+it is on a push (<a href="../git/#what-a-task-can-do">git</a>). The runner refuses a pull request from a
+branch this run did not push whatever the rows say.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+<th>Step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>github-create-pr</code></td>
+<td>opens a pull request from a branch the task pushed into a base, as a draft when it says <code>draft: true</code>; if one is already open from that branch, it finds that one</td>
+<td><code>github.create-pr</code>, with <code>repo</code>, <code>base</code>, <code>head</code>, <code>draft</code></td>
+</tr>
+<tr>
+<td><code>github-update-pr</code></td>
+<td>changes the open pull request from a branch the task pushed: its title, body or base. What it does not name stays as it is.</td>
+<td><code>github.update-pr</code>, with <code>repo</code>, <code>head</code>, and <code>base</code> when it moves the base</td>
+</tr>
+<tr>
+<td><code>github-list-prs</code></td>
+<td>reads the open pull requests, most recently changed first: each one's number, title, author, branches, last change, and whom a review is requested from. It stops at 500 and says so.</td>
+<td><code>github.list-prs</code>, with <code>repo</code></td>
+</tr>
+<tr>
+<td><code>github-read-pr</code></td>
+<td>reads one pull request by its number: its fields, whom a review is requested from, the reviews given so far, what CI says of its head (check runs and commit statuses: failing and unfinished by name and link, passing and skipped counted), and its description</td>
+<td><code>github.read-pr</code>, with <code>repo</code>, <code>pr</code></td>
+</tr>
+</tbody>
+</table>
+<p>A pull request must come from a branch this run pushed. A pull request from any other branch
+is refused. Its commits carry the task's trailers, so the iod's copy of the pull request can be
+tied to the task that made it. A script calls the same tools with <code>verse-call-tool</code>.</p>
+<p>The reads are steps too, as a Slack read is: what the forge holds is not the task's until it is
+read, and a row can keep a task from it. A description and a review are other people's words,
+and they come into the task's context as written. A pull request that is not there is refused,
+and the task re-plans on it.</p>
+<p>A block that names no verbs gives every verb, the reads and the writes alike. A task that only
+reads names them: <code>github: [{repo: acme/app, read-pr: {}}]</code>.</p>
+<h2 id="where-the-credential-lives">Where the credential lives<a class="headerlink" href="#where-the-credential-lives" title="Permanent link">#</a></h2>
+<p><strong>The iod</strong> needs a fine-grained token or a GitHub App for the repositories it reads. For its
+out half, it needs write access on pull requests and issues.</p>
+<p><strong>The task</strong> holds no credential. The runner opens, updates and reads pull requests with its token for
+the forge, <code>GITHUB_TOKEN</code>. For a GitHub Enterprise Server, set <code>repos.api: https://&lt;host&gt;/api/v3</code>
+in the runner's configuration, and <code>repos.host</code> to the host.</p>
+<p><strong>The operator</strong> sets a limit on what any task may propose, in the runner's configuration, under each doer whose tasks may use it:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="na">agents</span><span class="o">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  <span class="na">claude</span><span class="o">:</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>      <span class="na">github</span><span class="o">:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>        <span class="na">ceiling</span><span class="o">:</span> <span class="p">{</span><span class="na">repo</span><span class="o">:</span> <span class="k">!regexp</span> <span class="s2">&quot;^github\\.com/acme/&quot;</span><span class="p">,</span> <span class="na">create-pr</span><span class="o">:</span> <span class="p">{</span><span class="na">base</span><span class="o">:</span> <span class="sx">main</span><span class="p">},</span> <span class="na">update-pr</span><span class="o">:</span> <span class="p">{}}</span>
+</code></pre></div>
+<p>Verse refuses to install a spawn whose environment gives proposals beyond the ceiling, saying
+what the ceiling gives; the runner holds each proposal at the act to the environment, the row,
+and then the ceiling.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

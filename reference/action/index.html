@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/reference/action/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>The action of a rule - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="The action of a rule - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/reference/action/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#the-action-of-a-rule" class="nav-link">The action of a rule</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#action-what-fires" class="nav-link">action: what fires</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#why-it-is-this-way" class="nav-link">Why it is this way</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="the-action-of-a-rule">The action of a rule<a class="headerlink" href="#the-action-of-a-rule" title="Permanent link">#</a></h1>
+<p>This page describes the <code>action</code> field of a <a href="../../glossary/#rule">rule</a>: <code>patch</code>, <code>derive</code>,
+<code>spawn</code> and <code>seq</code>. It also describes what an action can read, the answer contract,
+completion hooks, and the ids and progress facts that a firing writes. The model that the
+action belongs to is in <a href="../../trigger-model/">the charter reference</a>.</p>
+<p>Most examples on this page are a team's pull requests of <code>acme/app</code>, kept as records at
+<code>demo.pr.&lt;n&gt;</code> with a <code>stage</code> and the branch <code>head</code>. The examples of <code>derive</code> and of a read in a
+condition are from comment-drift, the charter that reviews the verse repository's own <code>main</code>
+(<a href="../charter/">the charter</a>).</p>
+<h2 id="action-what-fires"><code>action</code>: what fires<a class="headerlink" href="#action-what-fires" title="Permanent link">#</a></h2>
+<p>The <a href="../../glossary/#action">action</a> of a rule is data, not code. An action needs no target of
+its own. It acts on the <a href="../../glossary/#subject">subject</a> of the condition.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>patch</code></td>
+<td>changes the payload of the subject (<a href="#patch">patch</a>)</td>
+</tr>
+<tr>
+<td><code>derive</code></td>
+<td>writes data at an address that is not the subject (<a href="#derive">derive</a>)</td>
+</tr>
+<tr>
+<td><code>spawn</code></td>
+<td>starts a task (<a href="#spawn">spawn</a>)</td>
+</tr>
+<tr>
+<td><code>seq</code></td>
+<td>runs a list of actions in order (<a href="#seq-sequence-along-the-chain-parallel-across-triggers">seq</a>)</td>
+</tr>
+<tr>
+<td><code>onDone</code></td>
+<td>an action that fires when the task ends <code>done</code> (<a href="#completion-hooks-one-trigger-chaining-visible">completion hooks</a>)</td>
+</tr>
+<tr>
+<td><code>onFailed</code></td>
+<td>an action that fires when the task ends <code>failed</code> (<a href="#completion-hooks-one-trigger-chaining-visible">completion hooks</a>)</td>
+</tr>
+<tr>
+<td><code>onCancelled</code></td>
+<td>an action that fires when the task ends <code>cancelled</code> (<a href="#completion-hooks-one-trigger-chaining-visible">completion hooks</a>)</td>
+</tr>
+<tr>
+<td><code>onOrphaned</code></td>
+<td>an action for a task that ends <code>orphaned</code>, which no tracked task does (<a href="#completion-hooks-one-trigger-chaining-visible">completion hooks</a>)</td>
+</tr>
+</tbody>
+</table>
+<p>An action writes to the store, and it can also act on a system outside verse. A <code>patch</code> or a
+<code>derive</code> that writes to an <a href="../../glossary/#iod">iod</a>'s out place asks the iod to act: to post a
+comment, to set a label, to merge. The iod carries the write out to its system, and writes back
+what happened (<a href="https://github.com/signadot/verse/blob/main/docs/reference/io.md#the-out-half">the out half</a>). For work that needs a judgment or a
+checkout, the action spawns a task.</p>
+<p><strong>Every rule has an action, and verse refuses at install a rule that would do nothing.</strong> Any one
+of <code>patch</code>, <code>derive</code>, <code>spawn</code> or <code>seq</code> is enough. A rule with none of them would install, watch
+its subtree for the life of the store, and never write anything.</p>
+<p>Completion hooks do not count as an action. A hook is what happens when something finishes, and
+without a spawn or a seq nothing finishes. For the same reason, verse refuses an <code>onX</code> without a
+spawn or a seq. A gate does not count either: on a rule with no action, a gate asks a question
+whose answer nothing reads.</p>
+<p><strong>An action resolves everything, then writes.</strong> The order is:</p>
+<ol>
+<li>resolve the <code>patch</code> and every <code>derive</code>;</li>
+<li>write the patch;</li>
+<li>write each derived record;</li>
+<li><code>spawn</code>.</li>
+</ol>
+<p>A reference that does not resolve fails the firing before anything is written. So does a read
+of an address where nothing stands. The subject stays where it was, so the rule fires again on the
+next commit that touches it. The failure is kept on the rule
+(<a href="../../trigger-model/#when-a-rule-does-nothing">when a rule does nothing</a>). The same holds for a
+completion hook.</p>
+<p>The writes are separate commits. If the store fails between two of them, what landed stays.</p>
+<h3 id="patch"><code>patch</code><a class="headerlink" href="#patch" title="Permanent link">#</a></h3>
+<p><code>patch</code> writes to the payload of the subject. It is a state transition.</p>
+<p>A <a href="../../glossary/#patch">patch</a> is a tony patch, not an assignment. A nested write merges into
+the subtree it names, and does not replace it. So two rules that write under one key do not
+overwrite each other's fields. The
+<a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop">mergeop</a> operators apply.
+<code>patch: { tmp: !delete null }</code> removes a key. Setting fields cannot say that. Writing a scalar
+(<code>patch: 42</code>) replaces the whole payload.</p>
+<p>A nested write merges into an object. The subject may hold an array or a scalar under that key.
+Then nothing is there to merge into, and verse refuses the firing. It does not replace what
+stands there:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># subject: {stage: counting, votes: [{by: ana}, {by: bo}]}</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">patch</span><span class="p">:</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">stage</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">counted</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">votes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">bo</span><span class="p">:</span><span class="w"> </span><span class="nv">yes</span><span class="p p-Indicator">}</span><span class="w">      </span><span class="c1"># refused: the patch merges an object into votes, where an array stands</span>
+</code></pre></div>
+<p>The refusal fails the firing, as any patch does that could not be established.</p>
+<p>To replace a container on purpose, write the whole value at that key (<code>patch: {votes: [...]}</code>).
+That is a value and not a merge, and it says so.</p>
+<p>A key that the subject does not carry yet is a different case. A patch builds it. Every derive
+that grows structure depends on this.</p>
+<h3 id="derive"><code>derive</code><a class="headerlink" href="#derive" title="Permanent link">#</a></h3>
+<p><code>derive</code> writes data at an address that is <em>not</em> the subject. A <code>patch</code> cannot do this. A
+<a href="../../glossary/#derive">derive</a> is a list of entries. Each entry names an address as a path, and
+what goes there: <code>- {path: "repos.verse.drift.head", value: …}</code>. Its content may read its
+own subject. It may also read other data, at or below its own level.</p>
+<p>A derive is installable only inside a declared order of levels, and it must land strictly above
+the rule that writes it. See <a href="../../strata/">strata</a>.</p>
+<p><strong>Without a name, the engine chooses the address, and the address says where the record came
+from.</strong> The address is the place, then the rule, then the segments of the subject. A rule
+<code>proposal-appeared</code> that selects <code>git.verse.ref.*</code> and derives into
+<code>[repos, verse, merge, proposal]</code> writes</p>
+<div class="codehilite"><pre><span></span><code>repos.verse.merge.proposal.proposal-appeared.git.verse.ref.&quot;verse/auto/…&quot;
+</code></pre></div>
+<p>This address has <strong>nine</strong> segments: four for the place, one for the rule, four for the subject.
+No two rules can address the same record.</p>
+<p><strong>So a reader of a derivation says how deep one is.</strong> The depth follows from the depth of the
+subjects that the producing rule selects. <code>[repos, verse, merge, proposal, "*"]</code> has five
+segments. It selects the <em>rule</em> level, whose payload is the whole subtree of that rule's
+derivations, and not any one of them.
+<a href="../condition/#the-pattern-says-how-deep-its-subjects-are">The pattern says how deep its subjects are</a>
+says what a wrong depth does.</p>
+<p><strong>Naming one is how a derive stays shallow.</strong> <code>id:</code> puts the record at the place plus that one
+segment: <code>repos.verse.merge.proposal."verse/auto/…"</code>, which has five segments. A reader already
+spells that address. A derive usually wants an <code>id:</code> when its subjects stand under one place and
+the rules that read them name the place literally.</p>
+<p>One firing derives one record, unless it says <code>!each</code>. <code>!each</code> fans out over a list and derives
+one record per element. The address of each takes a key read out of the element. The rule is the
+same, with the key in the address. With it, the twelve findings of a task become twelve facts,
+and not one long paragraph. See
+<a href="../../strata/#each-when-one-answer-holds-many-facts">strata</a>.</p>
+<p>A single derive may carry a <code>key:</code> too:
+<code>- {path: "repos.verse.merge.train", key: .[subject.value.sha], value: …}</code>. Its address is then a
+function of (rule, subject, key), and not of (rule, subject). It gives one record per value of
+something, where the same subject keeps moving. See
+<a href="../../strata/#a-key-on-a-single-derive">strata</a>.</p>
+<p><strong><code>id:</code> is that key without the rule and the subject.</strong> The difference is for the reader. A keyed
+record stands at <code>repos.verse.drift.head.head-moved.git.verse.head.aaaa1111</code>: the place, the
+rule, the subject, the key. Nothing in the grammar builds that address from a subject. So a
+reader that wants the record must <em>describe</em> it, with a <code>"*"</code> per segment and a predicate on a
+field it happens to know. It cannot name it.</p>
+<p>With <code>id: .[subject.value.sha]</code> the record is <code>repos.verse.drift.head.aaaa1111</code>, and a reader
+spells it: <code>!get-path {at: [repos, verse, drift, head, .[subject.value.sha]], path: result.report}</code>.</p>
+<p><code>id:</code> gives the author the job of keeping addresses unique.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Two subjects of one rule that compute the same value</th>
+<th>What it claims</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id:</code></td>
+<td>share one record</td>
+<td>the value identifies the record <strong>across subjects</strong>. This is true when the subject is a singleton, as <code>git.verse.head</code> is.</td>
+</tr>
+<tr>
+<td><code>key:</code></td>
+<td>get one record each</td>
+<td>the value identifies the record within one subject only</td>
+</tr>
+</tbody>
+</table>
+<p>The <em>place</em> stays the engine's in both cases, because a derive may write only inside its own
+stratum. Verse checks this at install. Verse refuses a derive that carries both <code>id:</code> and <code>key:</code>.</p>
+<p><code>!each</code> takes both too, and there the difference matters more.</p>
+<ul>
+<li>Keyed, every element lands under (rule, subject, key). A fan-out can only create its <strong>own</strong>
+  copies.</li>
+<li>Named, every element lands at the place plus the value. In this way the fan-out of one rule
+  reaches records that another rule names. It is the only way to say "mark every one of those
+  that is already there".</li>
+</ul>
+<p>A derive merges at depth, so the mark lands beside the facts, and not over them.</p>
+<h3 id="an-install-re-fires-so-a-derive-must-own-what-it-writes">An install re-fires, so a derive must own what it writes<a class="headerlink" href="#an-install-re-fires-so-a-derive-must-own-what-it-writes" title="Permanent link">#</a></h3>
+<p>Installing a charter evaluates its rules against what is already in the store
+(<a href="../condition/#the-backlog">the backlog</a>). So an install
+acts on the world, and not only on what happens next. A <code>derive</code> is a patch merged at depth, so
+it overwrites exactly the fields it names.</p>
+<p>So a derive that names a field that <em>another</em> rule owns rewrites that field <strong>every time the
+charter is installed</strong>. It writes over whatever state the flow had reached. A rule that has not
+changed, applied again, sets a flow at <code>reviewed: baseline</code> back to <code>pending</code> and <code>gathered</code>.
+Nothing fails: the derive writes its own value again.</p>
+<p>So a derive states the facts it owns. The rule that follows it starts from an <strong>absence</strong>:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># the derive says what it knows, and nothing about the flow&#39;s state</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="na">derive</span><span class="o">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">-</span> <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;notes.row&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">sha</span><span class="o">:</span> <span class="sx">.[subject.name]</span><span class="p">}</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># …and the next rule latches on the absence, which is nobody&#39;s to overwrite</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;notes.row.*&quot;</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="na">value</span><span class="o">:</span> <span class="k">!not.has-path</span> <span class="sx">reviewed</span>
+</code></pre></div>
+<p>For a charter that does it the other way, the install prints a note that names both rules and
+the field.</p>
+<h3 id="spawn"><code>spawn</code><a class="headerlink" href="#spawn" title="Permanent link">#</a></h3>
+<p><code>spawn</code> launches a <a href="../../glossary/#task">task</a>. Verse tags the spawned task with the subject.
+The tag makes the task part of the flow of that subject.</p>
+<p>A spawn answers four questions, and each is a field:</p>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Field</th>
+<th>What it names</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>what is the work</td>
+<td><code>prompt</code> or <code>script</code></td>
+<td>a prompt, the job in text, for an agent; or a script, which is the work and its own doer. Exactly one.</td>
+</tr>
+<tr>
+<td>who does it</td>
+<td><code>agent</code></td>
+<td>for a prompt, the agent that does it (<code>agent: {name: verse}</code>), with its settings; absent is verse's default agent</td>
+</tr>
+<tr>
+<td>what it works in</td>
+<td><code>environment</code></td>
+<td>the variables its shell is given (<code>vars</code>), and the systems it may use (<code>systems</code>): the whole of what the task may do</td>
+</tr>
+<tr>
+<td>what each step gets</td>
+<td><code>autonomy</code></td>
+<td>one ordered list of rows over the task's steps: the first row that matches a step denies it, asks about it, or allows it, and the last row decides every step no row above matched</td>
+</tr>
+</tbody>
+</table>
+<p>The spawn can also carry a <a href="#the-answer-contract">contract</a> (<code>answer</code>) that the result must
+satisfy.</p>
+<p><strong>The work and who does it.</strong> A <code>prompt</code> is for an agent. <code>agent</code> names one by the name runners
+offer it under (<code>verse</code> is verse's own agent); without <code>agent</code>, it is verse's default agent
+(<code>defaultAgent</code>, <code>verse</code> by default). Verse routes the spawn to a runner that offers it
+(<a href="https://github.com/signadot/verse/blob/main/docs/runners.md#where-a-spawn-runs">runners</a>). A <code>script</code> is a shell script; it runs by its <code>#!</code> line, or
+under bash, and takes no <code>agent</code>. A spawn with both, or neither, is refused.</p>
+<p>An agent's settings are written beside its name: <code>agent: {name: codex, model: gpt-5-codex,
+effort: high}</code>. Each is one the runner's offer declares, with a value it takes; one it does not
+declare is refused. They take expressions, so a charter can write <code>model: $[subject.value.model]</code>.
+<code>agent.annotations</code> are settings for the runner, such as <code>verse.portkey/virtual-key</code>. Verse
+writes that one itself from <code>virtualKey</code>, the address of the model credential the run spends
+(<a href="../../glossary/#virtual-key">virtual key</a>), and refuses it written in <code>annotations</code>.</p>
+<p><strong>The environment.</strong> <code>environment</code> is what the run works in. <code>vars</code> are variables set in the
+task's shell, by name: how a script gets data from the subject without splicing it into its
+text, <code>vars: {BRANCH: $[subject.value.head]}</code>. A runner refuses a name it owns. <code>systems</code> is what
+the task may do, one block per <a href="../../systems/">system</a>, and it is the whole of it: a step
+no block gives is refused before any row is read. A block names the verbs it gives, each with its
+shapes; a block that names no verb gives every verb of its system, the network apart.</p>
+<table>
+<thead>
+<tr>
+<th>System</th>
+<th>What its block does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>git</code></td>
+<td>a repository the task works in: <code>{repo: acme/app, from: main, fetch: {}, push: [{ref: !glob "refs/heads/verse/auto/*", exists: false}, {ref: !glob "refs/heads/verse/auto/*", own: true}]}</code>. <code>repo</code> is <code>owner/name</code> at GitHub, or <code>host/owner/name</code> on another forge; <code>from</code> omitted is the default branch. Both take expressions, so a charter can write <code>from: $[subject.value.head]</code>. Its <code>push</code> shapes are what may leave it, by <code>ref</code>, <code>delete</code>, <code>force</code>, and <code>exists</code> and <code>own</code>, which the runner fills from the forge; a charter that ships writes them rather than an empty block, which would give every push. The record of the task carries <code>git</code>, so a reader sees what the run worked on without the charter.</td>
+</tr>
+<tr>
+<td><code>git-issue</code></td>
+<td>a repository's own tracker, of a repository <code>git</code> checks out: <code>{repo: acme/app}</code> gives all its verbs</td>
+</tr>
+<tr>
+<td><code>github</code>, <code>github-issue</code>, <code>linear-issue</code>, <code>slack</code></td>
+<td>the forge's pull requests, the trackers' issues, and Slack's channels, each a block of its own: <code>{repo: acme/app}</code> for <code>github</code> and <code>github-issue</code>; Linear's and Slack's blocks name their verbs and shapes, such as <code>{post: {channel: deploys}}</code> (<a href="../../systems/">the systems</a>)</td>
+</tr>
+<tr>
+<td><code>verse</code></td>
+<td>verse itself, acted on as the person the task runs for: reading and writing data, asks, and installing charters (<code>verse.charter-install</code>). A charter a task installs launches within the task, less <code>verse.charter-install</code> (<a href="../../systems/verse/">the verse system</a>, <a href="../charter/">the charter</a>)</td>
+</tr>
+<tr>
+<td><code>network</code></td>
+<td>what the run may reach: <code>{mode: none}</code>, <code>{mode: open}</code> (the host's network), or <code>{mode: allow, tcp-client: [{host: api.github.com}, {host: pypi.org, port: 443}]}</code>. Absent is <code>none</code>. The runner builds it once, when the run starts, and refuses a mode its sandbox cannot build: an unconfined runner, such as <code>verse up</code>'s, builds only <code>open</code> (<a href="../../systems/inside/#the-network">the network</a>).</td>
+</tr>
+<tr>
+<td><code>files</code>, <code>commands</code>, <code>agent</code>, <code>question</code></td>
+<td>what a doer does inside its run: <code>files: {}</code>, <code>commands: {run: {command: !regexp "^make "}}</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>A script is one action, and no step.</strong> Nothing asks before it runs: verse decided to start
+it. What it may do beyond its workspace is call the task's tools from its shell with
+<code>verse-call-tool</code>: <code>git-push</code>, <code>github-create-pr</code> and <code>git-fetch</code> for the repositories its
+environment gives, their issue trackers' verbs (<code>git-issue-create</code>, <code>github-issue-comment</code>,
+<code>linear-issue-close</code>, …), Slack's (<code>slack-post</code>, <code>slack-read</code>, …), and <code>question-ask</code>. Each call
+is an action of the task, and the same step an agent's use of the tool is, so the same rows
+decide it. A refusal is an answer the script reads, not the end of its run.</p>
+<p><strong>The autonomy.</strong> A step is what a task is about to do, a verb of a
+<a href="../../systems/">system</a>: <code>git.push</code>, <code>github.create-pr</code>, <code>files.write</code>, <code>commands.run</code>,
+<code>agent.call-sub-agent</code>, the trackers' and Slack's acts, and a connection under a network of
+<code>allow</code>, <code>network.tcp-client</code> (<a href="../tasks/#the-autonomy">the table</a>). A step outside the
+environment is refused first. <code>autonomy</code> is one ordered list of rows over the rest: the first row
+that matches a step decides it, and the last row, which names no step, decides every step no row
+above matched. With no autonomy, every step is asked about: the last row is the one place a run
+is made unattended. A firing that already answered its own <code>gates</code> allows the steps it decided,
+<code>{match: {system: git, verb: push}, then: allow}</code>, and does not ask again for each action. A row
+on the network allows or denies, since a connection can't wait for an answer, and the default row
+doesn't decide a connection: a host the environment's <code>tcp-client</code> shapes give is reached unless a
+row on the network denies it.</p>
+<p>Each row poses its question, or refuses, at the step it matches, at every boundary of the
+task, and not once for the firing:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">release</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  <span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">git</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">push</span><span class="p">,</span> <span class="na">ref</span><span class="o">:</span> <span class="sx">refs/heads/main</span><span class="p">}</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  <span class="na">then</span><span class="o">:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="na">ask</span><span class="o">:</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>      <span class="na">need</span><span class="o">:</span> <span class="mi">2</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>      <span class="na">answerers</span><span class="o">:</span> <span class="p">[</span><span class="sx">group:release</span><span class="p">]</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>      <span class="na">within</span><span class="o">:</span> <span class="sx">4h</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>      <span class="na">default</span><span class="o">:</span> <span class="sx">deny</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>      <span class="na">labels</span><span class="o">:</span> <span class="p">{</span><span class="na">slack</span><span class="o">:</span> <span class="sx">C0EXAMPLE000</span><span class="p">}</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">git</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">push</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>what the question names, and what a hook's <code>onDenied</code> refers to; absent, the row is named by its place, <code>autonomy[0]</code>. Two rows of one name are refused, and so are <code>turn</code>, <code>ask</code>, <code>question-ask</code> and <code>environment</code>, the questions that are no row's</td>
+</tr>
+<tr>
+<td><code>match</code></td>
+<td>the step's <code>system</code>, which every row but the default names, its <code>verb</code>, left out for any of the system's, and the step's fields: <code>repo</code>, <code>from</code>, <code>ref</code>, <code>delete</code> and <code>force</code> for <code>git.push</code>, and <code>exists</code> and <code>own</code>, which the runner fills from the forge; <code>repo</code>, <code>base</code>, <code>head</code>, <code>draft</code> and <code>own</code> for <code>github.create-pr</code>; <code>repo</code>, <code>head</code>, <code>base</code> and <code>own</code> for <code>github.update-pr</code>; <code>path</code> for <code>files.write</code>; <code>command</code> for <code>commands.run</code>; <code>agent</code> for <code>agent.call-sub-agent</code>; <code>repo</code> and <code>issue</code> for a tracker's acts, <code>team</code> for a Linear filing; <code>channel</code>, and <code>thread</code> or <code>emoji</code>, for Slack's; <code>host</code> and <code>port</code> for <code>network.tcp-client</code>. Each <a href="../../systems/">system's page</a> lists its verbs and their fields. A field left out matches anything. Each field is a tony match pattern: a value matches itself, <code>null</code> any value, <code>!glob "refs/heads/*"</code> a glob whose <code>*</code> stops at a <code>/</code>, <code>!regexp "^refs/heads/verse/"</code> a Go regexp, and <code>!or [a, b]</code> either (<a href="../tasks/#the-autonomy">the autonomy</a>). A field is written as the runner spells it: <code>repo</code> as <code>host/owner/name</code> in lower case (<code>github.com/acme/app</code>), <code>ref</code> a full ref (<code>refs/heads/main</code>), <code>base</code> and <code>head</code> a branch's name (<code>main</code>), <code>delete</code> and <code>force</code> <code>true</code> or <code>false</code>, unquoted, a Linear <code>team</code> or <code>issue</code> uppercase, a Slack <code>channel</code> lowercase with no <code>#</code>; a pattern it is never spelled as is refused. A field the step does not have is refused, and so is a <code>$</code>: a match is a pattern over what the task does, not bound by the firing. A row with no <code>match</code> is the default, and it is last. A row that can match nothing the environment gives is refused, since it would never decide.</td>
+</tr>
+<tr>
+<td><code>then</code></td>
+<td><code>deny</code>, <code>ask</code> or <code>allow</code>; or <code>{ask: {…}}</code>, an ask with its shape</td>
+</tr>
+<tr>
+<td><code>then.ask.need</code></td>
+<td>how many approvals the step takes; absent is one</td>
+</tr>
+<tr>
+<td><code>then.ask.answerers</code></td>
+<td>who is asked, in the grammar a rule's gate uses (<code>user:…</code>, <code>group:…</code>, <code>$principal</code>); absent is the docket</td>
+</tr>
+<tr>
+<td><code>then.ask.within</code>, <code>then.ask.default</code></td>
+<td>how long the question stands, and what silence settles on</td>
+</tr>
+<tr>
+<td><code>then.ask.labels</code></td>
+<td>what the question says about itself for whoever watches asks: <code>team: payments</code>, <code>slack: C…</code></td>
+</tr>
+</tbody>
+</table>
+<p>The runner reads the step, the approvals, the answerers and the deadline's duration, and says
+which gate matched. Verse adds the rest when it poses the question. See
+<a href="../tasks/#a-rows-question">a gate's question</a>.</p>
+<p>What a run may do is its environment, and the runner refuses the rest and asks nobody. The
+environment lies within the runner's ceilings: a runner publishes, for each system it holds, the
+ceiling its operator wrote, blocks in the environment's form, and an environment beyond one fails
+the spawn when the rule is installed, naming the ceiling, as does one its sandbox can't build.
+The runner holds the environment to its ceilings again at the launch and at each act
+(<a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#what-it-offers">the verse runner</a>). The autonomy is the dial over the rest.</p>
+<p>An unknown step in a row, an agent no runner offers, a setting no runner offering it takes, or an
+unknown field inside <code>spawn:</code> (<code>runner:</code> among them: verse routes a spawn to a runner that offers
+its doer, <a href="https://github.com/signadot/verse/blob/main/docs/runners.md#where-a-spawn-runs">runners</a>) fails the spawn when the rule is installed.
+Verse does not fall back to a default, and it drops nothing.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it names</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>timeout</code></td>
+<td>how long the run may take, as a duration. Verse cancels it after that, on every runner.</td>
+</tr>
+<tr>
+<td><code>credential</code></td>
+<td><code>{audience: &lt;name&gt;}</code> asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule that writes a gate, <code>mode: auto</code> included. See <a href="../gates/#a-credential-for-what-a-gate-let-through">a credential for what a gate let through</a>.</td>
+</tr>
+<tr>
+<td><code>virtualKey</code></td>
+<td>the address of the model credential the run spends, such as <code>acme.keys.review</code>. Verse reads it as whoever installed the rule, so a rule cannot name a key its owner may not read. Absent is the runner's default (<a href="../../glossary/#virtual-key">virtual key</a>).</td>
+</tr>
+<tr>
+<td><code>retain</code></td>
+<td>how many of the task's events verse keeps for a reader who attaches late. Absent is the default.</td>
+</tr>
+</tbody>
+</table>
+<p>A spawn names no resolver. A question goes to the people a row or a gate names, and each of
+them grants the <a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md">resolver</a> that answers for them (<code>verse resolver
+grant</code>). Verse refuses a <code>resolver:</code> on a spawn at install.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">}</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  <span class="na">environment</span><span class="o">:</span> <span class="p">{</span><span class="na">systems</span><span class="o">:</span> <span class="p">{</span><span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}}}</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  <span class="na">prompt</span><span class="o">:</span>   <span class="s2">&quot;Review $[subject.ref] for security defects.&quot;</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  <span class="na">answer</span><span class="o">:</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="na">severity</span><span class="o">:</span> <span class="k">!or</span> <span class="p">[</span><span class="sx">low</span><span class="p">,</span> <span class="sx">high</span><span class="p">]</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="na">note</span><span class="o">:</span>     <span class="k">!irtype</span> <span class="sx">string</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">write</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">files</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">write</span><span class="p">}</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>  <span class="p">-</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span>
+</code></pre></div>
+<h3 id="as-subject--a-task-for-whoever-wrote-the-record"><code>as: subject</code> — a task for whoever wrote the record<a class="headerlink" href="#as-subject--a-task-for-whoever-wrote-the-record" title="Permanent link">#</a></h3>
+<p>The task of a rule acts as the installer of the rule. <code>as: subject</code> makes it act for the owner of
+the record that fired it as well. Here a team lets each person file a request for an agent, as a
+record under <code>requests</code>, a place the rule's installer owns and grants people to create in:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">run-request</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;requests.*&quot;</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>      <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">filed</span><span class="p">}</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="na">patch</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">running</span><span class="p">}</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>      <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">}</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>      <span class="na">environment</span><span class="o">:</span> <span class="p">{</span><span class="na">systems</span><span class="o">:</span> <span class="p">{</span><span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}}}</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>      <span class="na">prompt</span><span class="o">:</span> <span class="sx">$[subject.value.prompt]</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>      <span class="na">as</span><span class="o">:</span> <span class="sx">subject</span>
+</code></pre></div>
+<p>The task acts as the pair of them, <code>pair:&lt;owner&gt; via:&lt;the rule's address&gt;</code>, on the owner's
+authority. A consequence belongs to whoever raised it: asked "may I merge this?", an answerer's
+yes lets the owner merge what the owner may. Neither the answerer nor the installer needs that
+right, and the installer's reach is not lent to the owner.</p>
+<p>A rule may say <code>as: subject</code> only where its subject lies in a place the installer owns: the
+settled part of the subject's path, the last segment left out. Anywhere else, the installer
+could select somebody's records and run a task of the installer's design as them, so verse
+refuses the charter at install.</p>
+<p>The task record is the owner's, and says so as <code>actsFor:</code>. Its own gates ask the owner. Where the
+owner is the system, the task acts as the rule alone.</p>
+<p><code>subject</code> is the only value that <code>as</code> takes. Verse refuses any other at install. It also refuses
+a charter that writes <code>actsFor:</code> itself, because the engine sets it.</p>
+<h3 id="a-script--when-the-charter-knows-the-actions">A script — when the charter knows the actions<a class="headerlink" href="#a-script--when-the-charter-knows-the-actions" title="Permanent link">#</a></h3>
+<p>A spawn can carry the work itself, instead of a prompt for an agent to work it out. A merge is a
+few git commands. A model that finds them again at each firing adds nothing but the chance of
+doing something else.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  <span class="na">script</span><span class="o">:</span> <span class="p">|</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="sh">    git -C app merge --ff-only &quot;mirror/$BRANCH&quot;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="sh">    verse-call-tool git-push -branch main</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="na">vars</span><span class="o">:</span> <span class="p">{</span><span class="na">BRANCH</span><span class="o">:</span> <span class="sx">$[subject.value.head]</span><span class="p">}</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>      <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>      <span class="na">git</span><span class="o">:</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>      <span class="p">-</span> <span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>        <span class="na">from</span><span class="o">:</span> <span class="sx">main</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>        <span class="na">fetch</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>        <span class="na">push</span><span class="o">:</span> <span class="p">{</span><span class="na">ref</span><span class="o">:</span> <span class="sx">refs/heads/main</span><span class="p">,</span> <span class="na">force</span><span class="o">:</span> <span class="l">false</span><span class="p">,</span> <span class="na">delete</span><span class="o">:</span> <span class="l">false</span><span class="p">}</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>  <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>  <span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<p>The environment gives the push to <code>main</code> and no other, so no row has to refuse the rest. The
+script runs in the workspace its <code>git</code> blocks checked out, with its <code>vars</code> in its shell.
+Its calls to <code>verse-call-tool</code> are the task's actions. Each is a step, as an agent's call is: the
+same rows decide it, and the task's record shows it. So a row written for an agent's push holds
+this push too. A call
+the runner declines is an answer on the call's output, and the script decides what it means:
+<code>verse-call-tool git-push -branch "$BRANCH" -delete || true</code> is a sweep that one declined ref does
+not stop.</p>
+<p><strong>A script's text is not bound.</strong> <code>$[subject.ref]</code> in a prompt is the subject; a script's text
+is never expanded, so every <code>$</code> in it is the shell's. A value from the firing reaches a script as a variable in
+the environment's <code>vars</code>, which the shell reads and never parses: spliced into the text, a branch named
+<code>x;curl …</code> would be a program.</p>
+<p>The result of the task is the script's output. The task ends <code>done</code> when the script exits 0,
+and <code>failed</code> with the reason otherwise, so a hook never fires <code>onDone</code> for a command that did
+not work.</p>
+<p>A script does not get what belongs to a model:</p>
+<ul>
+<li>no <code>answer</code> contract, because nothing can repair one. A spawn that carries both is refused.</li>
+<li>no sub-agents to call.</li>
+<li>no choice of the next action from what the last result said.</li>
+</ul>
+<p>The last one is the cost. A script is right for a few git commands, and wrong for anything that
+branches.</p>
+<h3 id="bindings">Bindings<a class="headerlink" href="#bindings" title="Permanent link">#</a></h3>
+<p>A <a href="../../glossary/#binding">binding</a> is a name an action reads a value by. A patch, a derive, the
+address of a path read and the strings of a spawn all read them the same way, through an
+<a href="#expressions">expression</a>: <code>.[stage]</code> is the value of <code>stage</code>, and <code>"saw $[stage]"</code> writes it
+into text. Every field of <strong>the payload an action reads</strong> is bound by name (<code>stage</code>, <code>path</code>, …).
+<code>subject</code> is bound too, to the resolved subject. Which payload the action reads has exactly two
+answers. The answer depends on <em>why</em> the action runs.</p>
+<p><strong>A firing of a rule reads the payload of the subject itself.</strong> The change that dispatched the
+firing may be at a different address. Its fields would mean nothing on the subject being acted
+on. So <code>review $[subject.ref]</code> in the prompt of a spawn names the PR the firing is about, even when the
+change that fired was a task's and not the PR's. <code>stage</code> is the stage of that PR, and
+not of the task.</p>
+<p><strong>A completion hook reads the payload of the finished task.</strong> So does an element of a sequence
+that a hook drives. <code>status</code>, <code>result</code>, <code>data</code> and <code>err</code> are the facts it exists to read. The
+engine makes that payload itself, and does not read it from the store. The mirror may not have
+written the terminal facts yet. This is why those bindings resolve at all, and why they are
+flat. They are facts about a run, and no address holds them.</p>
+<p>Each of the four is there whatever the task said. <code>result</code> and <code>err</code> are empty where it said
+nothing, and <code>data</code> is null where its result is no document. So a hook that an <code>onDone</code> and an
+<code>onFailed</code> share can say <code>.[err]</code> in both, and <code>report: .[data]</code> writes null for a task that gave
+no document. Reading into a null is not reading a null: <code>.[data.findings]</code> there refuses the
+firing, as any absent path does.</p>
+<p><code>subject</code> is a record:</p>
+<table>
+<thead>
+<tr>
+<th>Binding</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>subject.ref</code></td>
+<td>the address, <code>demo.pr.1</code></td>
+</tr>
+<tr>
+<td><code>subject.name</code></td>
+<td>its last segment: the key that the subject stands at</td>
+</tr>
+<tr>
+<td><code>subject.value</code></td>
+<td>the payload of the subject <strong>at the commit that caused the firing</strong>, and not at the moment the action runs. The two differ by however long a gate took to be answered. In a completion hook, the subject <strong>as it is when the task ends</strong>.</td>
+</tr>
+<tr>
+<td><code>subject.commit</code></td>
+<td>the revision of that commit, and in a hook the revision the hook reads at. A patch has it where it names <code>subject.commit</code> itself; a derive refuses it (<a href="../../strata/">strata</a>), and a spawn has no counterpart, because a spawn is not where provenance belongs.</td>
+</tr>
+</tbody>
+</table>
+<p><code>.[subject]</code> whole is the record, an object. The address alone is <code>.[subject.ref]</code>.</p>
+<p><strong>A completion hook reads the subject as it is when the task ends.</strong> A task that finishes wakes
+the hook, and no write does. So the hook has no cause of its own, and no commit of its own to
+read at. It reads at the head: <code>subject.value</code>, <code>subject.commit</code>, <code>!get-path</code>, <code>!list-paths</code>, a
+derive and the strings of a hook's spawn all read the verse as it stands when the task ends, in
+one snapshot, so a hook that reads twice reads one world. The head is always there to read. The
+store keeps history for its compaction cutoff only, and a hook that read at the commit its rule
+fired at lost that commit whenever its task ran longer than the cutoff. A hook also survives a
+restart, since nothing but the store is needed to read it.</p>
+<p>So <code>subject.value</code> in an <code>onDone</code> is the subject as the rule's own action left it, its <code>patch</code>
+included, and as anything else wrote it while the task ran. That holds in a hook's spawn too:
+there <code>subject.value</code> is the subject as it is, as in the hook's patch, and not the finished
+task's record. The record of the task still carries <code>occurrence</code>, the commit its rule fired at.
+It says which firing the run was about, and nothing reads at it.</p>
+<p><strong>A value from the firing's moment is the firing's to write.</strong> A hook that needs the subject as
+the condition selected it reads a field the firing wrote beside its spawn. No firing of the same
+rule writes over it while the task runs, because a hooked spawn holds its subject (see
+<a href="#completion-hooks-one-trigger-chaining-visible">Completion hooks</a>). The <code>propose</code> rule of the
+<a href="https://github.com/signadot/verse/blob/main/docs/reference/examples/repo-charters/repo-charters.tony">repository charters</a> asks a person about a
+candidate and records the <code>seen</code> it asked about: the firing writes <code>askedAt: .[seen]</code> beside its
+spawn, and its <code>onDone</code> writes the answer.</p>
+<p>A task that the charter did not start has no firing, and its hooks read the same way, the
+subject as it is. Nothing on its record has to name a commit for <code>subject.value</code> to resolve.</p>
+<p>In a patch or a derive, verse reads the subject's value only where an expression asks for it: a
+read of <code>subject</code> other than as <code>subject.ref</code> or <code>subject.name</code>, such as <code>.[subject.value.round]</code>,
+<code>.[subject?.value]</code>, <code>.[subject["value"]]</code>, or <code>.[subject]</code> whole. A hook's spawn reads it
+whenever one of its strings asks for it.</p>
+<h4 id="expressions">Expressions<a class="headerlink" href="#expressions" title="Permanent link">#</a></h4>
+<p>An expression is <a href="https://signadot.github.io/tony-format/">tony's</a>, written in one of two ways.</p>
+<ul>
+<li><strong>A value that is one <code>.[…]</code> and nothing else</strong> becomes the expression's value, with its type.
+  A number stays a number, and an object stays an object.</li>
+<li><strong>A <code>$[…]</code> inside text</strong> writes the value into the text, and the whole is a string.</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># the number 3</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">count</span><span class="o">:</span> <span class="sx">.[n]</span> <span class="p">}</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="c1"># the string &quot;saw 3&quot;</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">note</span><span class="o">:</span> <span class="s2">&quot;saw $[n]&quot;</span> <span class="p">}</span>
+</code></pre></div>
+<p>Predicates on the payload are exact about type. So a <code>3</code> flattened to <code>"3"</code> is a value that
+<code>value: {count: 3}</code> does not match. The strings of a spawn are text, so there a whole <code>.[…]</code>,
+<code>repo: .[subject.value.repo]</code>, gives the value's text.</p>
+<p>In text, a leaf is its own text, <code>3</code> and not <code>"3"</code>, and a written null is <code>null</code>. An object or a
+list is tony on one line, its fields in name order, so a charter that puts a ledger in front of an
+agent puts a document there:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="na">prompt</span><span class="o">:</span> <span class="s2">&quot;Outstanding findings: $[findings]\n\nThe diff:\n…&quot;</span>
+</code></pre></div>
+<p>A whole <code>.[…]</code> writes an object with its fields in name order too, and a float with nothing after
+the point, <code>3.0</code>, as <code>3</code>.</p>
+<p>An expression reads values, not the document they were written in. A copy writes the value
+without the tags and comments it had: <code>contract: .[subject.value.contract]</code> writes a <code>!raw</code>
+contract as a plain object. A number held only as text arrives as a string. A tag the charter
+puts on the value is its own and stays: <code>tmp: !delete .[x]</code> deletes.</p>
+<p>A <code>$</code> that does not open <code>$[</code> is not an expression. In a spawn's strings it stays as written:
+<code>$HOME</code> and <code>$5</code> reach the agent as they are, whatever the payload holds. In a patch or a derive,
+a <code>$</code> followed by a name, <code>$HOME</code> included, is the spelling references had before expressions,
+and verse refuses it at install with the expression to write instead. Text that means a dollar
+and a name writes it as an expression, <code>'$["$HOME"]'</code>. <code>$5</code> and a lone <code>$</code> are text everywhere.
+<code>$$[</code> is a literal <code>$[</code>. A <code>.[</code> anywhere but the whole of a value is text, so a jq filter such as
+<code>.[0].name</code> in a prompt reaches the agent as written.</p>
+<p>A path goes as deep as the payload does, the elements of its lists among them:
+<code>.[data.items[0]]</code>, and <code>.[result.findings[0].id]</code> in an <code>onDone</code>. What follows an expression in
+text is prose: <code>$[file].go</code> where <code>file</code> is <code>main</code> is <code>main.go</code>. A value that holds a space or a
+quote is quoted in tony, <code>prompt: "review $[subject.ref]"</code> and
+<code>'.[subject.value.title ?? "untitled"]'</code>, and a string with <code>$[…]</code> anywhere but the whole of it is
+quoted, since an unquoted <code>[</code> starts a list.</p>
+<p>A field whose name is not a word, such as <code>pr-number</code>, is read by index:
+<code>.[subject.value["pr-number"]]</code>, and at the top level <code>.[$env["pr-number"]]</code>. That is still a
+path, and an absent key refuses as a dotted path does. Written as a path, <code>pr-number</code> is a
+subtraction: it is refused where <code>pr</code> or <code>number</code> is absent, and where both are numbers it gives
+their difference without a word. <code>get(subject.value, "pr-number")</code> reads the same field but is a
+call, so an absent key is null rather than a refusal; give it a default,
+<code>'.[get(subject.value, "pr-number") ?? "none"]'</code>.</p>
+<p>An expression is more than a path. <code>$[data.summary ?? "no summary"]</code> is a default, and
+<code>$[status == "done" ? "landed" : "stopped"]</code> a choice. The clock is not callable (<code>now()</code>,
+<code>date()</code>): a firing, or a launch that is parked, released or retried, says the same thing each
+time.</p>
+<p>Values are expanded in one pass, over what the charter wrote. Text that an expression brings in
+is not expanded again: a subject whose title is <code>costs $[owner]</code> puts <code>costs $[owner]</code> in the
+prompt.</p>
+<p><strong>A path that is not there refuses</strong>: <code>.[subject.value.never]</code> on a subject without <code>never</code>,
+<code>.[items[5]]</code> where <code>items</code> holds two elements, <code>.[nosuch]</code>. A path through a null does not
+resolve either. Only an expression that is a plain path is held to this: a name, then fields and
+indexes, and nothing else. Inside a larger expression an absent field is null:
+<code>'$[subject.value.never == "x" ? "yes" : "no"]'</code> gives <code>no</code>. <code>?.</code> and <code>??</code> say so on purpose,
+<code>'$[subject.value?.handoff?.summary ?? "none"]'</code>. A value that must be there is its own <code>.[…]</code>.</p>
+<p>So in a patch or a derive, verse refuses at install a value that is one map or list literal,
+<code>'.[{findings: data.findings, n: result}]'</code>, since an absent field in it would be written as null.
+The refusal gives the same value in tony, where each field is its own expression and held to the
+rule: <code>{findings: .[data.findings], n: .[result]}</code>. A literal deeper in an expression builds what
+tony cannot, and stands: <code>'.[map(data.items, {{id: #.id}})]'</code>, where the outer braces are the
+predicate and the inner ones the map. An expression in a patch or a derive that does not parse is
+refused at install too. One that does not compile, or calls the clock, refuses at the firing as an
+absent path does.</p>
+<p>In a patch or a derive the refusal fails the firing, and verse writes nothing. The store records
+an absent key as different from a null one. Writing null for an absent path would turn "the task
+never said" into "the task said nothing", and a match reads those as different facts. A field
+written null reads as null. The failure is the one that a failed write takes: the action stops,
+and its spawn does not start.</p>
+<p>In a spawn the refusal is a failed task. The action's patch has already landed, and its
+<code>onFailed</code> runs with <code>err</code> saying what was absent, so it can write the subject down as failed:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  <span class="na">patch</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">developing</span><span class="p">}</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  <span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">}</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="na">prompt</span><span class="o">:</span> <span class="s2">&quot;open a pull request whose body is $[subject.value.handoff.summary]&quot;</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>  <span class="na">onFailed</span><span class="o">:</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="c1"># spawn refused: prompt: error evaluating &quot;subject.value.handoff.summary&quot;: no &quot;handoff&quot; in subject.value</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="na">patch</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">failed</span><span class="p">,</span> <span class="na">why</span><span class="o">:</span> <span class="sx">.[err]</span><span class="p">}</span>
+</code></pre></div>
+<p>The refused task is on record like a task that a runner refuses. Its id holds <code>status: failed</code>,
+with the refusal as <code>err</code> and the firing's <code>occurrence</code>, so <code>verse task get</code> says why. Nothing
+was started. Its <code>onFailed</code> reads <code>subject.value</code> as it is, as any hook does: <code>stage</code> is
+<code>developing</code>, which the firing wrote before the spawn was refused.</p>
+<h3 id="get-path-and-list-paths-reaching-other-data"><code>!get-path</code> and <code>!list-paths</code>: reaching other data<a class="headerlink" href="#get-path-and-list-paths-reaching-other-data" title="Permanent link">#</a></h3>
+<p>Everything in <a href="#bindings">Bindings</a> reads the subject of the firing, or the task that just
+finished. A <a href="../../glossary/#path-read">path read</a> reaches data that is neither of those:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  <span class="na">patch</span><span class="o">:</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="na">repo</span><span class="o">:</span> <span class="k">!get-path</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>      <span class="na">at</span><span class="o">:</span> <span class="p">[</span><span class="sx">git</span><span class="p">,</span> <span class="sx">repo</span><span class="p">,</span> <span class="sx">.[subject.value.head]</span><span class="p">]</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="na">branch</span><span class="o">:</span> <span class="k">!get-path</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>      <span class="na">at</span><span class="o">:</span> <span class="p">[</span><span class="sx">git</span><span class="p">,</span> <span class="sx">repo</span><span class="p">,</span> <span class="sx">.[subject.value.head]</span><span class="p">]</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>      <span class="na">path</span><span class="o">:</span> <span class="sx">branch</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="na">branches</span><span class="o">:</span> <span class="k">!list-paths</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>      <span class="na">at</span><span class="o">:</span> <span class="s2">&quot;git.repo.*&quot;</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>      <span class="na">path</span><span class="o">:</span> <span class="sx">branch</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="c1"># …and a predicate narrows the walk to the ones that look like this (list only)</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="na">green</span><span class="o">:</span> <span class="k">!list-paths</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>      <span class="na">at</span><span class="o">:</span> <span class="s2">&quot;git.repo.*&quot;</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>      <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">state</span><span class="o">:</span> <span class="sx">green</span><span class="p">}</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>      <span class="na">path</span><span class="o">:</span> <span class="sx">branch</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    <span class="c1"># the string form is the kinded path, for an address with nothing to expand in it</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    <span class="na">head</span><span class="o">:</span>     <span class="k">!get-path</span> <span class="sx">git.verse.head</span>
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>    <span class="c1"># and `at:` names the address as a path, at whatever depth the tree is</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>    <span class="na">says</span><span class="o">:</span> <span class="k">!get-path</span>
+<a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a>      <span class="na">at</span><span class="o">:</span> <span class="s2">&quot;repos.verse.drift.head.aaaa1111&quot;</span>
+<a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a>      <span class="na">path</span><span class="o">:</span> <span class="sx">result.report</span>
+<a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a>    <span class="na">open</span><span class="o">:</span> <span class="k">!list-paths</span>
+<a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a>      <span class="na">at</span><span class="o">:</span> <span class="s2">&quot;repos.verse.drift.finding.*&quot;</span>
+<a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a>      <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">status</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>      <span class="na">path</span><span class="o">:</span> <span class="sx">says</span>
+</code></pre></div>
+<p>The address is <code>at:</code> in a read, and <code>path:</code> in a condition. In a read, <code>path:</code> is the field path
+inside the payload.</p>
+<p><strong>One grammar, split by cardinality, and the names say which.</strong> <code>!get-path</code> answers with one
+node. <code>!list-paths</code> answers with a list, and it is where the globs are.</p>
+<p>The charter shows which one you get. It does not depend on whether a segment is a <code>*</code>.
+<code>!get-path</code> <strong>refuses</strong> a wildcard in its last segment or in its <code>path</code>. The refusal names the
+tag that answers that question instead.</p>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a string</td>
+<td>the address as a kinded path (<code>git.verse.head</code>), with nothing in it to expand. It may go on into the payload (<code>git.verse.head.sha</code>).</td>
+</tr>
+<tr>
+<td><code>at</code></td>
+<td>the address as a path of at least two segments. Every segment above the last is a literal or <code>*</code>. The last is a literal, a whole <code>.[…]</code>, or (list only) a <code>*</code> or an operator.</td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>a kpath into the payload. Wildcards are list-only. Omitted, you get the whole payload.</td>
+</tr>
+<tr>
+<td><code>value</code></td>
+<td>a predicate on the payload, <strong>list only</strong>: of the addresses the path selects, the ones that look like this</td>
+</tr>
+</tbody>
+</table>
+<p>No segment above the last is an expression or a glob. The level check asks whether a read lands at
+or below the stratum of the rule. It asks this of the literal prefix, because that is all that is
+known at install.</p>
+<p><code>!get-path</code> refuses a <code>value</code>, for the same reason it refuses a wildcard. A predicate can name
+several addresses. An address where nothing stands does not satisfy one, and one where data
+stands might not either.</p>
+<p>On the list form, a predicate makes the read <em>cheaper</em>. A <code>*</code> already walks everything under the
+place, and the predicate narrows it.</p>
+<p>Neither form is a query that moves with time. Both are answered from one snapshot at the causing
+commit. So verse evaluates a predicate against the same world that the rule saw.</p>
+<p>The dots of the string form are its segments. An expression has dots of its own, so in the
+string form it is quoted as a segment of its own, <code>!get-path git.repo."$[subject.value.head]"</code>, or
+the address is written as a list with <code>at:</code>, <code>[git, repo, .[subject.value.head]]</code>. A whole <code>.[…]</code>
+cannot be the string form: an address is a list of segments, not one value.</p>
+<p><strong>In an action, they copy and do not track.</strong> Verse reads the value once. If it changes
+afterwards, nothing runs again. This rule fires again only when its own subject changes, or when
+an <code>on</code> or <code>when</code> that it carries covers the target. Add the <code>on</code> if you want to follow the
+target.</p>
+<h3 id="a-condition-may-read-too-and-that-one-does-track">A condition may read too, and that one does track<a class="headerlink" href="#a-condition-may-read-too-and-that-one-does-track" title="Permanent link">#</a></h3>
+<p>A read in the predicate of <code>condition.subject</code> is answered before the predicate is matched. So a
+rule can select on how its subject compares to other data. A match alone cannot say that. A
+match tests a field against a literal or an operator, and never against a value read from
+elsewhere. <code>!let</code> binds the read, and the body compares:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">proposal-outrun</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;repos.verse.merge.proposal.*&quot;</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>      <span class="na">value</span><span class="o">:</span> <span class="k">!let</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>        <span class="na">let</span><span class="o">:</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>        <span class="p">-</span> <span class="na">tip</span><span class="o">:</span> <span class="k">!get-path</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>            <span class="na">at</span><span class="o">:</span> <span class="s2">&quot;git.verse.head&quot;</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>            <span class="na">path</span><span class="o">:</span> <span class="sx">sha</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>        <span class="na">in</span><span class="o">:</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>          <span class="na">state</span><span class="o">:</span> <span class="sx">open</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>          <span class="na">base</span><span class="o">:</span> <span class="k">!not</span> <span class="sx">.[tip]</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>    <span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">state</span><span class="o">:</span> <span class="sx">stale</span> <span class="p">}</span>
+</code></pre></div>
+<p>This rule selects every open proposal cut from a commit that is not the tip of main. It answers
+"which of these can still land", with no walk of ancestry and nothing to poll.</p>
+<p><strong>The read joins what the rule reads.</strong> This is how it differs from a read in an action. Verse
+evaluates the rule <code>proposal-outrun</code> again when <code>git.verse.head</code> moves, over proposals that did
+not change.</p>
+<p>Verse skips a rule at a commit that touched nothing the rule reads. A condition that compares
+against other data reaches a different verdict as soon as that data moves. So the read must
+count, or the skip would be wrong.</p>
+<p><strong>The read cannot name <code>subject</code>.</strong> In an action the subject is settled, and the action
+addresses other data by its fields. A condition <em>chooses</em> the subject, so no one subject is
+there to read from yet. Verse refuses it at install, and says so. It does not say "unknown
+reference".</p>
+<p><strong>A missing <code>!get-path</code> target fails the firing</strong>, as any unresolved reference does. So "nothing
+is there" cannot turn into "something is there, and it is nothing". An empty <code>!list-paths</code> is an
+empty <strong>list</strong>. "Which one" has an answer or does not. "All of them", of nothing, is correctly
+nothing.</p>
+<p><strong>Inside a <code>derive</code>, the reads must resolve at or below the stratum of the rule.</strong> See
+<a href="../../strata/">strata</a>, where that is the whole of what they cost. In a <code>patch</code> they have no
+such limit.</p>
+<p><strong>The tag is the whole spelling.</strong> A plain <code>{get-path: …}</code> key is ordinary data, and stays data.
+So a charter written as JSON cannot write a path read, because JSON has no tags.</p>
+<h3 id="the-answer-contract">The answer contract<a class="headerlink" href="#the-answer-contract" title="Permanent link">#</a></h3>
+<p><code>answer</code> is the shape that the final message of the task must have. The
+<a href="../../glossary/#answer-contract">answer contract</a> is written as a tony <strong>match pattern</strong>: the
+<code>accept</code> clause of a schema. It uses the vocabulary that <code>when</code> uses, and it is stored in the same
+way, under the same <code>!raw</code> escape:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>  <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">}</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>  <span class="na">environment</span><span class="o">:</span> <span class="p">{</span><span class="na">systems</span><span class="o">:</span> <span class="p">{</span><span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}}}</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>  <span class="na">prompt</span><span class="o">:</span>   <span class="s2">&quot;Review $[subject.ref].&quot;</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>  <span class="na">answer</span><span class="o">:</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    <span class="na">class</span><span class="o">:</span>    <span class="k">!or</span> <span class="p">[</span><span class="sx">bug</span><span class="p">,</span> <span class="sx">nit</span><span class="p">,</span> <span class="sx">risk</span><span class="p">]</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="na">severity</span><span class="o">:</span> <span class="k">!or</span> <span class="p">[</span><span class="sx">low</span><span class="p">,</span> <span class="sx">high</span><span class="p">]</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="na">why</span><span class="o">:</span>      <span class="k">!irtype</span> <span class="sx">string</span>
+</code></pre></div>
+<p>Verse checks the contract when the model stops. That is the only moment it can check it. A run
+ends when the model stops calling tools, so stopping and reporting are one act.</p>
+<p>A failure goes back to the agent as a <strong>diagnosis</strong>, and the agent is asked to fix it. The
+diagnosis says:</p>
+<ul>
+<li>the path;</li>
+<li>what was expected there;</li>
+<li>what was found, keeping absent apart from present but wrong;</li>
+<li>every such failure, and not only the first.</li>
+</ul>
+<p>The diagnosis is the match's own account of how it walked (<code>tony.Explaining</code>). So a failure
+inside an operator is located as precisely as the operator knows it: <code>findings[1].severity</code>, and
+not "findings". Repair is limited to two attempts. A model that cannot produce the shape with the
+complaint in front of it will not learn it in more turns.</p>
+<p>A run whose answer never satisfies its contract <strong>fails</strong>. This has four consequences.</p>
+<ul>
+<li><code>patch: { class: .[data.class] }</code> cannot fail at patch time, because a task that could not
+  produce <code>class</code> did not succeed. The failure lands on <code>onFailed</code>, for which every rule already
+  declares a branch. It does not land on a hook that nobody watches.</li>
+<li>The check is on the answer, not the layout. Verse unwraps a fenced answer, so the repair
+  attempts go to the content.</li>
+<li>The contract is a guarantee about <em>shape</em>, not about content. A repair loop pushes a model to
+  comply. So the agent is also told to call <code>yield</code> with the reason <code>cannot</code>, and not to invent a
+  value it could not determine. An honest failure is worth more than a well-formed wrong answer.</li>
+<li>A sub-agent (<code>call_agent</code>) does not inherit the contract. A child answers a subtask that its
+  parent worded, and its result comes back as one more tool result. Only the final message of the
+  parent is what a charter reads.</li>
+</ul>
+<p>A contract that cannot be parsed fails the firing where it is written, before any call to a
+model. A script, with no model to ask again, is refused with a contract. It does not run
+the spawn unchecked. The charter downstream was written in the belief that the contract holds,
+so a contract dropped without a word is worse than none.</p>
+<p>A patch writes what a task answered onto the subject, as a fact:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="na">onDone</span><span class="o">:</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>  <span class="na">patch</span><span class="o">:</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    <span class="na">stage</span><span class="o">:</span>    <span class="sx">reviewed</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="na">severity</span><span class="o">:</span> <span class="sx">.[data.severity]</span>      <span class="c1"># the task&#39;s own answer, as a fact on the subject</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="na">step</span><span class="o">:</span>     <span class="sx">.[verse.review.step]</span>  <span class="c1"># any depth, and list indices: .[result.findings[0].id]</span>
+</code></pre></div>
+<p>A result patched onto the subject is an ordinary fact, and an ordinary condition matches it. The
+condition needs no knowledge of tasks. This closes the loop:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  <span class="na">value</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">reviewed</span><span class="p">,</span> <span class="na">severity</span><span class="o">:</span> <span class="sx">high</span> <span class="p">}</span>
+</code></pre></div>
+<h3 id="completion-hooks-one-trigger-chaining-visible">Completion hooks: one trigger, chaining visible<a class="headerlink" href="#completion-hooks-one-trigger-chaining-visible" title="Permanent link">#</a></h3>
+<p>An <code>Action</code> carries one <a href="../../glossary/#hook">hook</a> for each terminal status:</p>
+<table>
+<thead>
+<tr>
+<th>Hook</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>onDone</code></td>
+<td><code>done</code></td>
+</tr>
+<tr>
+<td><code>onFailed</code></td>
+<td><code>failed</code></td>
+</tr>
+<tr>
+<td><code>onCancelled</code></td>
+<td><code>cancelled</code></td>
+</tr>
+<tr>
+<td><code>onOrphaned</code></td>
+<td><code>orphaned</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each hook is itself a full <code>Action</code> (<code>patch</code> + <code>spawn</code> + its own hooks). So a chain
+(<code>review → merge → approve</code>) nests <code>onDone</code>s, and reads from top to bottom in one rule.</p>
+<p>When the <code>spawn</code> of the action reaches a terminal status, the engine fires the matching hook
+about the <em>same subject</em>, for exactly that task. The engine finds the hook through the registry
+of live tasks, keyed by task id. So a hook needs no <code>flow</code> match and no separate rule.</p>
+<p><strong>A hooked spawn holds its subject.</strong> An action whose <code>spawn</code> carries a hook takes a claim on
+the rule and the subject when it fires, before it writes anything, and the rule does not fire
+about that subject again until the hook has run. The hook reads the subject as it is when the
+task ends (<a href="#bindings">Bindings</a>), so what the firing wrote beside its spawn is what the hook
+finds, and no firing in between has written over it. The claim is a record in the store, as a
+sequence's run claim is, so a restart keeps it for a task that resumes and drops it for one that
+is orphaned. It comes off once the hook has written, whether the hook ran cleanly or failed, and
+whether or not the action still carries the hook. A completion the engine missed leaves the
+subject held until a restart, whose reconcile drops the claim of a task that did not resume. A
+firing about the subject that the hold refused is not lost: once the hook has run, the rule is
+evaluated about the subject again, at the head, if it still selects it. So a change made while
+the subject was held is seen then, and so is the hook's own write. A hold that refused nothing
+owes nothing, so a hook that writes nothing does not fire its rule again by itself.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>  <span class="na">patch</span><span class="o">:</span>  <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">reviewing</span> <span class="p">}</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>  <span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>    <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">}</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>    <span class="na">prompt</span><span class="o">:</span> <span class="s2">&quot;review the pull request at $[subject.ref]&quot;</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>      <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>        <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>        <span class="na">git</span><span class="o">:</span> <span class="p">{</span><span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span><span class="p">,</span> <span class="na">from</span><span class="o">:</span> <span class="sx">$[subject.value.head]</span><span class="p">,</span> <span class="na">fetch</span><span class="o">:</span> <span class="p">{}}</span>
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>    <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>    <span class="p">-</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>  <span class="na">onDone</span><span class="o">:</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>    <span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">reviewed</span> <span class="p">}</span>
+</code></pre></div>
+<p>The alternative is a <em>decoupled</em> completion rule. That is a separate rule that fires on the
+change to <code>verse.task.instance</code> and names the PR by pattern. Use it when a completion should fan
+out into several reactions, advance a different subject, or be written separately. Use the hook
+for a linear chain that one rule owns, with the task step visible in the rule.</p>
+<p>The four hooks are named fields. So an unknown status cannot be written: no field exists to write
+it in. Verse refuses a misspelled <code>onDoen</code> at install, as it refuses any field an action does not
+have.</p>
+<p>Hooks survive a restart. Resume restores them from the chain of the task, so <code>done</code>, <code>failed</code>
+and <code>cancelled</code> still fire.</p>
+<p><code>onOrphaned</code> never fires. Orphaning and adopting are the two alternatives in reconcile. A task
+that can be attached again is adopted, and never marked orphaned. A task that cannot is
+orphaned, and never tracked. So no tracked task reaches that status.</p>
+<h3 id="seq-sequence-along-the-chain-parallel-across-triggers"><code>seq</code>: sequence along the chain, parallel across triggers<a class="headerlink" href="#seq-sequence-along-the-chain-parallel-across-triggers" title="Permanent link">#</a></h3>
+<p><code>seq</code> spells the depth axis directly:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">review</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>      <span class="na">value</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">open</span> <span class="p">}</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>  <span class="na">gates</span><span class="o">:</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">review</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>    <span class="na">mode</span><span class="o">:</span> <span class="sx">ask</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>    <span class="na">seq</span><span class="o">:</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>    <span class="p">-</span> <span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a>        <span class="na">script</span><span class="o">:</span> <span class="s1">&#39;cd app &amp;&amp; make lint&#39;</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a>        <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>          <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>            <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-15-16" name="__codelineno-15-16" href="#__codelineno-15-16"></a>            <span class="na">git</span><span class="o">:</span> <span class="p">{</span><span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span><span class="p">,</span> <span class="na">from</span><span class="o">:</span> <span class="sx">$[subject.value.head]</span><span class="p">,</span> <span class="na">fetch</span><span class="o">:</span> <span class="p">{}}</span>
+<a id="__codelineno-15-17" name="__codelineno-15-17" href="#__codelineno-15-17"></a>    <span class="p">-</span> <span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-15-18" name="__codelineno-15-18" href="#__codelineno-15-18"></a>        <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">}</span>
+<a id="__codelineno-15-19" name="__codelineno-15-19" href="#__codelineno-15-19"></a>        <span class="na">prompt</span><span class="o">:</span> <span class="s2">&quot;review the pull request at $[subject.ref]&quot;</span>
+<a id="__codelineno-15-20" name="__codelineno-15-20" href="#__codelineno-15-20"></a>        <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-15-21" name="__codelineno-15-21" href="#__codelineno-15-21"></a>          <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-15-22" name="__codelineno-15-22" href="#__codelineno-15-22"></a>            <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-15-23" name="__codelineno-15-23" href="#__codelineno-15-23"></a>            <span class="na">git</span><span class="o">:</span> <span class="p">{</span><span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span><span class="p">,</span> <span class="na">from</span><span class="o">:</span> <span class="sx">$[subject.value.head]</span><span class="p">,</span> <span class="na">fetch</span><span class="o">:</span> <span class="p">{}}</span>
+<a id="__codelineno-15-24" name="__codelineno-15-24" href="#__codelineno-15-24"></a>        <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-15-25" name="__codelineno-15-25" href="#__codelineno-15-25"></a>        <span class="p">-</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span>
+<a id="__codelineno-15-26" name="__codelineno-15-26" href="#__codelineno-15-26"></a>      <span class="na">onFailed</span><span class="o">:</span>
+<a id="__codelineno-15-27" name="__codelineno-15-27" href="#__codelineno-15-27"></a>        <span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">rejected</span> <span class="p">}</span>
+<a id="__codelineno-15-28" name="__codelineno-15-28" href="#__codelineno-15-28"></a>    <span class="p">-</span> <span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">reviewed</span> <span class="p">}</span>
+<a id="__codelineno-15-29" name="__codelineno-15-29" href="#__codelineno-15-29"></a>    <span class="na">onDone</span><span class="o">:</span>
+<a id="__codelineno-15-30" name="__codelineno-15-30" href="#__codelineno-15-30"></a>      <span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">ready</span> <span class="p">}</span>
+</code></pre></div>
+<p>There is no <code>par</code>. Breadth is what independent rules that match the same condition do.</p>
+<p>A <a href="../../glossary/#seq">seq</a> follows these rules.</p>
+<ul>
+<li><code>seq</code> and <code>spawn</code> are mutually exclusive on one action. <code>patch</code> beside <code>seq</code> is allowed: the
+  patch applies, then the sequence runs.</li>
+<li>The sequence owns the <code>done</code> slot of each element. So verse refuses at install an explicit
+  <code>onDone</code> on any element, the last element too. The list already says what comes next.
+  <code>onFailed</code>, <code>onCancelled</code> and <code>onOrphaned</code> stay on each element as ways out, and firing one ends
+  the sequence.</li>
+<li><code>onDone</code> on the action that <em>carries</em> the seq means "after the whole sequence". So a sequence is
+  a unit with its own completion, and nesting composes.</li>
+<li>An element with no spawn completes at once. So <code>seq: [{patch: …}, {patch: …}]</code> is two ordered
+  writes, and not an error. <code>seq</code> sequences actions, not tasks.</li>
+<li>Gates gate the sequence, not the step. Gates are per firing, and a sequence is one firing, so
+  one <code>ask</code> approves the whole sequence.</li>
+<li>No chain may contain two <code>seq</code> segments. The rule is stated over chains, and not over elements,
+  because a sequence inside the <code>onFailed</code> of an element nests just as much.</li>
+</ul>
+<h3 id="chains-and-ids">Chains and ids<a class="headerlink" href="#chains-and-ids" title="Permanent link">#</a></h3>
+<p>Verse identifies a spawned task by <code>&lt;chain&gt;@&lt;subject&gt;</code>. The
+<a href="../../glossary/#chain-of-an-action">chain</a> is the
+<a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath">kpath</a> of the action inside
+its rule: dotted field names, and brackets for positions in a list. Hooks descend by field name,
+and elements of a sequence by index:</p>
+<table>
+<thead>
+<tr>
+<th>the action</th>
+<th>chain</th>
+<th>id for <code>demo.pr.1</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the trigger's own</td>
+<td><code>review</code></td>
+<td><code>review@demo.pr.1</code></td>
+</tr>
+<tr>
+<td>its done-hook</td>
+<td><code>review.onDone</code></td>
+<td><code>review.onDone@demo.pr.1</code></td>
+</tr>
+<tr>
+<td>a nested done-hook</td>
+<td><code>review.onDone.onDone</code></td>
+<td><code>review.onDone.onDone@demo.pr.1</code></td>
+</tr>
+<tr>
+<td>the third sequence step</td>
+<td><code>review.seq[2]</code></td>
+<td><code>review.seq.2@demo.pr.1</code></td>
+</tr>
+<tr>
+<td>that step's failure branch</td>
+<td><code>review.seq[2].onFailed</code></td>
+<td><code>review.seq.2.onFailed@demo.pr.1</code></td>
+</tr>
+</tbody>
+</table>
+<p>The chain addresses the action, and does not name it privately. So the chain is deterministic.</p>
+<table>
+<thead>
+<tr>
+<th>Use</th>
+<th>What the deterministic chain gives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a re-fire</td>
+<td>is idempotent, because a spawn dedups by id</td>
+</tr>
+<tr>
+<td>a lookup back into the charter</td>
+<td>is how resume restores the hooks of a task, and how a sequence finds its next step</td>
+</tr>
+<tr>
+<td>the task's record</td>
+<td>publishes it as <code>chain</code>, with its root as <code>trigger</code>. So "every task of this rule" is a predicate on the payload, and not a glob over ids.</td>
+</tr>
+</tbody>
+</table>
+<p>The id drops the brackets, and joins with <code>@</code>. The dotted form is lossless, because the field set
+of <code>Action</code> is closed. A segment after <code>seq</code> is an element, and a segment that matches a hook
+name is a field.</p>
+<p>A rule is identified by its scope, the address of its charter, and its name. Names are unique only
+within one charter. Every charter in a store shares one task runtime and one docket. So every id
+that a firing makes begins with the charter that made it:</p>
+<ul>
+<li>the address of a package, and <code>:</code>;</li>
+<li>the name of a scope, and <code>::</code>;</li>
+<li>nothing, for the charter of baseline.</li>
+</ul>
+<p>The task and its gate questions carry it:</p>
+<table>
+<thead>
+<tr>
+<th>the charter</th>
+<th>task id</th>
+<th>gate question id</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>baseline's</td>
+<td><code>review@demo.pr.1</code></td>
+<td><code>verse.trigger.review.ok~…</code></td>
+</tr>
+<tr>
+<td>the package at <code>repos.verse.drift</code></td>
+<td><code>repos.verse.drift:review@demo.pr.1</code></td>
+<td><code>repos.verse.drift:verse.trigger.review.ok~…</code></td>
+</tr>
+<tr>
+<td>scope <code>me</code>'s</td>
+<td><code>me::review@demo.pr.1</code></td>
+<td><code>me::verse.trigger.review.ok~…</code></td>
+</tr>
+</tbody>
+</table>
+<p>For this reason the name of a rule may not contain <code>:</code>, as it may not contain <code>@</code>.</p>
+<h3 id="progress-facts">Progress facts<a class="headerlink" href="#progress-facts" title="Permanent link">#</a></h3>
+<p>A parallel branch is woken by a condition, and a condition matches facts. So a sequence publishes
+its position. Without it, the breadth axis could not observe the depth axis at all. The engine
+writes the position on the subject, under one reserved <code>verse</code> root, as each element completes:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="na">verse</span><span class="o">:</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>  <span class="na">charter</span><span class="o">:</span>             <span class="c1"># what the engine records about rules acting on this record</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>    <span class="na">review</span><span class="o">:</span>            <span class="c1"># keyed by trigger</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>      <span class="na">step</span><span class="o">:</span>  <span class="mi">2</span>         <span class="c1"># how many elements have completed</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>      <span class="na">steps</span><span class="o">:</span> <span class="mi">3</span>         <span class="c1"># len(seq), known at install</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>      <span class="na">shape</span><span class="o">:</span> <span class="s2">&quot;a3f1…&quot;</span>   <span class="c1"># hash of the declared shape, known at install</span>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>      <span class="na">done</span><span class="o">:</span>  <span class="l">true</span>      <span class="c1"># latched when step reaches steps</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>      <span class="na">ended</span><span class="o">:</span> <span class="sx">failed</span>    <span class="c1"># …or the terminal status an off-ramp stopped it at, or `error`</span>
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>      <span class="na">reason</span><span class="o">:</span> <span class="s2">&quot;…&quot;</span>      <span class="c1"># with `ended: error`, why the element could not run</span>
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>      <span class="na">hook</span><span class="o">:</span>            <span class="c1"># the last completion hook of this rule that failed about this record</span>
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>        <span class="na">chain</span><span class="o">:</span> <span class="sx">review.onDone</span>
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>        <span class="na">task</span><span class="o">:</span> <span class="sx">review@demo.pr.1</span>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>        <span class="na">occurrence</span><span class="o">:</span> <span class="mi">4480</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>        <span class="na">err</span><span class="o">:</span> <span class="s1">&#39;error evaluating &quot;data.severity&quot;: no &quot;severity&quot; in data&#39;</span>
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>  <span class="na">meta</span><span class="o">:</span>                <span class="c1"># what verse records about the record itself</span>
+<a id="__codelineno-16-16" name="__codelineno-16-16" href="#__codelineno-16-16"></a>    <span class="na">vanishing</span><span class="o">:</span> <span class="s2">&quot;2026-07-29T13:04:05Z&quot;</span>   <span class="c1"># the intent to remove it — see Lifecycle</span>
+</code></pre></div>
+<p><code>meta.vanishing</code> is described in
+<a href="../../trigger-model/#lifecycle-how-data-leaves">Lifecycle</a>.</p>
+<p><code>hook</code> is written when a completion hook of the rule fails about this record: a reference that
+did not resolve, a write that was refused. The hook wrote nothing, so the record stays where the
+rule left it. <code>hook</code> says why. The fields the author owns, such as <code>stage</code>, are not touched. The
+task keeps its own status: a <code>done</code> task is not turned <code>failed</code>, and its <code>onFailed</code> does not run.
+The next hook of the same rule about this record that runs cleanly removes <code>hook</code>.</p>
+<p>A sequence element that runs after a task of the sequence finishes is written the same way when
+it fails, with the element's chain (<code>fix.seq[1]</code>) and the task that finished. That element reads
+the finished task's facts, which do not change, and no commit wakes a run that waits on a
+completion, so a failure there does not go away by waiting. So the run also ends: the sequence's
+facts get <code>ended: error</code>, and <code>reason</code> holds the error. The sequence then does not run again
+until its declared shape changes, as after an off-ramp. A clean hook or element of the rule later
+removes <code>hook</code>. An element that fails while the rule fires, before any task of the sequence has
+run, is not recorded. That run stops, and the next firing tries again.</p>
+<p>What the engine writes under <code>verse.charter.&lt;rule&gt;</code> does not wake that rule. A commit whose only
+change to what the rule reads is under its own <code>verse.charter.&lt;rule&gt;</code> (its sequence's position,
+its <code>hook</code> record) does not fire it. So a rule whose spawn has no patch beside it, and whose
+subject still matches when its hook fails, is not fired again by the record of that failure. It
+runs again when something else about the subject changes. Other rules are woken by the record as
+by any change. A subject at any depth works the same way, <code>demo..pr</code> included.</p>
+<p>The check costs one read of what the rule reads at the commit before. It is paid only on a
+commit that writes under the rule's own <code>verse.charter.&lt;rule&gt;</code> on a subject. A subject is written
+whole, so that is every write of a subject the rule has a record on: every write of a subject
+partway through the rule's sequence, and every write of a subject with a failed <code>hook</code> standing,
+until a clean hook removes it. A write of a subject where the rule has written nothing costs
+nothing more, whether versed watches the whole verse or each rule's subtrees.</p>
+<p>A charter can match on <code>hook</code>, for example
+to ask a person when <code>fix</code>'s hook was lost:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>  <span class="na">value</span><span class="o">:</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>    <span class="na">verse</span><span class="o">:</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>      <span class="na">charter</span><span class="o">:</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>        <span class="na">fix</span><span class="o">:</span> <span class="p">{</span> <span class="na">hook</span><span class="o">:</span> <span class="p">{</span> <span class="na">chain</span><span class="o">:</span> <span class="sx">fix.onDone</span> <span class="p">}</span> <span class="p">}</span>
+</code></pre></div>
+<p>A join reads the position at whatever depth it needs:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>  <span class="na">value</span><span class="o">:</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>    <span class="na">verse</span><span class="o">:</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>      <span class="na">charter</span><span class="o">:</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>        <span class="na">review</span><span class="o">:</span> <span class="p">{</span> <span class="na">done</span><span class="o">:</span> <span class="l">true</span> <span class="p">}</span>
+</code></pre></div>
+<p><code>value</code> matches structurally, so it matches a payload that carries any amount of other content.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>done</code></td>
+<td>the engine latches it when <code>step</code> reaches <code>steps</code></td>
+</tr>
+<tr>
+<td><code>ended</code></td>
+<td>the terminal status other than <code>done</code> at which an element stopped the sequence. Its own <code>onFailed</code>/<code>onCancelled</code>/<code>onOrphaned</code> runs, and the sequence stops there. <code>error</code> when an element after a finished task could not run.</td>
+</tr>
+<tr>
+<td><code>reason</code></td>
+<td>with <code>ended: error</code>, the error of the element that could not run</td>
+</tr>
+<tr>
+<td><code>shape</code></td>
+<td>a hash of the declared sequence. Verse compares it at each advance.</td>
+</tr>
+</tbody>
+</table>
+<p>A join that asks for <code>done</code> does not match a run that gave up. A sequence that concluded either
+way does not run again at this shape. Editing the sequence changes the shape, and only that frees
+it.</p>
+<p>When <code>shape</code> does not match, the charter changed under the sequence. The sequence fails with a
+reason. It does not run whatever now stands at <code>seq[k+1]</code>. The error says that the shape changed
+and names the rule. It cannot say what changed.</p>
+<h2 id="why-it-is-this-way">Why it is this way<a class="headerlink" href="#why-it-is-this-way" title="Permanent link">#</a></h2>
+<p>The reasons for this design are in <a href="https://github.com/signadot/verse/blob/main/docs/design/reference-action.md">reference-action.md</a>, in the repository.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

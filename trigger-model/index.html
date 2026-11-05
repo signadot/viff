@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/trigger-model/">
+        <link rel="icon" href="../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+
+        <title>Charter reference - Verse</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link href="../pygments.css" rel="stylesheet">
+        <link href="../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Charter reference - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/trigger-model/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href=".."><img src="../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../systems/inside/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../reference/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#charter-reference" class="nav-link">Charter reference</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#where-the-rest-is" class="nav-link">Where the rest is</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-trigger" class="nav-link">The trigger</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-rule" class="nav-link">The rule</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#two-rules-read-out-loud" class="nav-link">Two rules, read out loud</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#two-layers-point-in-time-matches-and-matches-asked-over-time" class="nav-link">Two layers: point-in-time matches, and matches asked over time</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-commit-is-the-unit" class="nav-link">The commit is the unit</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#when-a-rule-does-nothing" class="nav-link">When a rule does nothing</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#flow-a-subject-match-over-live-tasks" class="nav-link">Flow: a subject-match over live tasks</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#lifecycle-how-data-leaves" class="nav-link">Lifecycle: how data leaves</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#limits-today" class="nav-link">Limits today</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="charter-reference">Charter reference<a class="headerlink" href="#charter-reference" title="Permanent link">#</a></h1>
+<p>A <a href="../glossary/#charter">charter</a> is a set of <a href="../glossary/#rule">rules</a>, with what the rules
+need: the levels they live in, the schedules they read, and the places they read and write. A rule
+has a condition, a list of gates, and an action. When the condition holds and every gate passes, the
+action fires.</p>
+<p>This page is the model of a rule: its parts, how it fires, and the two grammars it is written
+in. To write a rule, start with <a href="../tutorial/charters/">the tutorial's charters pages</a>. They
+install rules and fire them. This page is the model behind them, and
+<a href="#where-the-rest-is">where the rest is</a> lists a page for each part.</p>
+<p>A rule is about <a href="../glossary/#data">data</a>. Each piece of data is a <a href="../glossary/#node">node</a> at
+an <a href="../glossary/#address">address</a>, with a small <a href="../glossary/#payload">payload</a>. An address is a
+path in the tree of the <a href="../glossary/#store">store</a>. Its writer decides how long it is.</p>
+<table>
+<thead>
+<tr>
+<th>Who writes it</th>
+<th>Address</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the git <a href="../glossary/#iod">iod</a>, for a commit in a repository</td>
+<td><code>git.acme.commit.9fe1</code></td>
+</tr>
+<tr>
+<td>verse, for a task</td>
+<td>under <code>verse.task.instance</code></td>
+</tr>
+<tr>
+<td>a <a href="../glossary/#package">package</a>, for a finding of its own</td>
+<td><code>repos.verse.drift.finding.abc</code></td>
+</tr>
+</tbody>
+</table>
+<p>An iod works in both directions. It writes what a system holds into the store, and a rule
+reacts to it. When a rule writes to the iod's out place, the iod carries that write back to
+the system: a comment, a label, a merge (<a href="https://github.com/signadot/verse/blob/main/docs/io.md">iods</a>).</p>
+<h2 id="where-the-rest-is">Where the rest is<a class="headerlink" href="#where-the-rest-is" title="Permanent link">#</a></h2>
+<p>These pages hold the parts of a rule, and the other things a charter author looks up.</p>
+<table>
+<thead>
+<tr>
+<th>Page</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../reference/condition/">The condition of a rule</a></td>
+<td><code>subject</code>, <code>on</code> and <code>when</code>, and what a match can say</td>
+</tr>
+<tr>
+<td><a href="../reference/action/">The action of a rule</a></td>
+<td><code>patch</code>, <code>derive</code>, <code>spawn</code> and <code>seq</code>, what an action reads, the answer contract, hooks, ids and progress facts</td>
+</tr>
+<tr>
+<td><a href="../reference/gates/">The gates of a rule</a></td>
+<td>what a gate asks, who answers it, and how it settles</td>
+</tr>
+<tr>
+<td><a href="../reference/charter/">The charter</a></td>
+<td>packages, <code>reads:</code>, <code>sends:</code>, <code>ttl:</code>, a charter a task installs, <code>verse charter</code>, how a charter is stored, and what an install does not check</td>
+</tr>
+<tr>
+<td><a href="../reference/schedules/">Schedules</a></td>
+<td>time as a cause: schedules, ticks and the calendar</td>
+</tr>
+<tr>
+<td><a href="../reference/entities/">Entities</a></td>
+<td>addresses, payloads, merging writes, conditional writes, selection and watching</td>
+</tr>
+<tr>
+<td><a href="../strata/">Strata</a></td>
+<td>a declared order of levels, and <code>derive</code></td>
+</tr>
+<tr>
+<td><a href="../convergence/">Convergence</a></td>
+<td>what ends a firing, and what is checked at install</td>
+</tr>
+<tr>
+<td><a href="../perms/">Permissions</a></td>
+<td>one owner per node, and grants for everybody else; <a href="../reference/perms/">the detail</a></td>
+</tr>
+<tr>
+<td><a href="../control/#suspending">Control</a></td>
+<td>what a suspension does to rules</td>
+</tr>
+<tr>
+<td><a href="../auto-supervisor/">An automatic supervisor</a></td>
+<td>a worked charter where an agent decides, and passes up what is not its to decide</td>
+</tr>
+<tr>
+<td><a href="../reference/representation/">Representation</a></td>
+<td>tony, JSON and YAML: what verse reads and what it writes</td>
+</tr>
+</tbody>
+</table>
+<p>The commands, and everything else, are in <a href="../reference/">the rest of the reference</a>.</p>
+<h2 id="the-trigger">The trigger<a class="headerlink" href="#the-trigger" title="Permanent link">#</a></h2>
+<p>A rule has four parts.</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the name</td>
+<td>what the rule is called</td>
+</tr>
+<tr>
+<td>the condition</td>
+<td>what the rule is about, and what causes it</td>
+</tr>
+<tr>
+<td>the gates</td>
+<td>what must pass before the action</td>
+</tr>
+<tr>
+<td>the action</td>
+<td>what fires</td>
+</tr>
+</tbody>
+</table>
+<p>A fifth part is optional: <code>stratum:</code>. It names the declared level the rule lives in. A
+<a href="../glossary/#stratum">stratum</a> limits what the rule's subject may be, and where a <code>derive</code> may
+land (<a href="../strata/">strata</a>). A rule with no <code>stratum:</code> has no such limit. No rule on this page
+has one.</p>
+<p>The examples on this page keep a team's pull requests as records at <code>demo.pr.&lt;n&gt;</code>, each with a
+<code>stage</code>, the repository <code>repo</code> (such as <code>acme/app</code>) and the branch <code>head</code>. A rule in their
+charter has an agent review each open pull request, once somebody says yes:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">review</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="c1"># what it is about: every open pull request</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>      <span class="na">value</span><span class="o">:</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="na">stage</span><span class="o">:</span> <span class="sx">open</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>  <span class="c1"># what must pass first: somebody says yes</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>  <span class="na">gates</span><span class="o">:</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">approval</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="na">mode</span><span class="o">:</span> <span class="sx">ask</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  <span class="c1"># what fires: the record moves on, and an agent reviews the branch</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="na">patch</span><span class="o">:</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>      <span class="na">stage</span><span class="o">:</span> <span class="sx">reviewing</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>      <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">}</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>      <span class="na">prompt</span><span class="o">:</span> <span class="s2">&quot;review the pull request at $[subject.ref]&quot;</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>      <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>        <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>          <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>          <span class="na">git</span><span class="o">:</span> <span class="p">{</span><span class="na">repo</span><span class="o">:</span> <span class="sx">$[subject.value.repo]</span><span class="p">,</span> <span class="na">from</span><span class="o">:</span> <span class="sx">$[subject.value.head]</span><span class="p">,</span> <span class="na">fetch</span><span class="o">:</span> <span class="p">{}}</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>      <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>      <span class="p">-</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="na">onDone</span><span class="o">:</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>      <span class="na">patch</span><span class="o">:</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        <span class="na">stage</span><span class="o">:</span> <span class="sx">reviewed</span>
+</code></pre></div>
+<p>Every gate must pass. A rule with no gates fires without asking anybody.</p>
+<p>A rule is data, with no code in it. So a charter can be installed over the wire, stored, and
+read back like any other data. The engine reads the rule directly; there is no compiled form. The Go
+types are in <a href="https://github.com/signadot/verse/blob/main/internal/trigger/trigger.go">trigger.go</a>.</p>
+<h2 id="the-rule">The rule<a class="headerlink" href="#the-rule" title="Permanent link">#</a></h2>
+<p>One sentence says how a rule fires. Everything else on this page follows from it.</p>
+<blockquote>
+<p>At each commit <strong>C</strong>, for each rule: if <code>on</code> is vacuous or <strong>¬on(C-1) ∧ on(C)</strong>, and
+<code>when</code> holds at <strong>C</strong>, fire once for <strong>every address <code>subject</code> selects at C</strong>.</p>
+</blockquote>
+<p>C-1 is the commit before C. An <code>on</code> is vacuous when the rule has no <code>on</code>.</p>
+<p>Three things follow.</p>
+<p><strong>A <a href="../glossary/#firing">firing</a> is about one address.</strong> A <a href="../glossary/#subject">subject</a> that
+selects N addresses gives N firings. Each firing has its own gate question and its own spawn id.
+No firing is about a set.</p>
+<p><strong>Verse reads everything at one snapshot.</strong> The condition and the selection both come from the
+store as it stood at C. So a firing never acts under a condition that stopped holding before
+C. The edge compares C-1 with C, not with what the engine saw last. So a commit that verse
+reads again, after a restart or while catching up, gives the same answer as the first time.</p>
+<p><strong>A vacuous <code>on</code> is the usual shape.</strong> The rule <code>review</code> above has no <code>on</code>. So verse
+considers it at every commit that touches anything the rule reads. The charter ends the
+firing, not the engine. An action ends in one of two ways:</p>
+<ul>
+<li>Its write moves the subject out of the selection. The action fires once, and then the rule
+  selects nothing.</li>
+<li>It writes the same value again. That write makes no commit, so nothing is evaluated next.</li>
+</ul>
+<p>A rule has a <a href="../glossary/#latch">latch</a>, or it runs at every commit. Verse refuses at install
+a spawning action that cannot latch.</p>
+<h2 id="two-rules-read-out-loud">Two rules, read out loud<a class="headerlink" href="#two-rules-read-out-loud" title="Permanent link">#</a></h2>
+<p>The first rule is <code>review</code> above. The second ships what is reviewed when the checks on <code>main</code>
+pass, as the team's CI records them at <code>ci.status.main</code>:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">ship-green</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="na">on</span><span class="o">:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;ci.status.main&quot;</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>      <span class="na">value</span><span class="o">:</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>        <span class="na">state</span><span class="o">:</span> <span class="sx">green</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>      <span class="na">value</span><span class="o">:</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        <span class="na">stage</span><span class="o">:</span> <span class="sx">reviewed</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="na">patch</span><span class="o">:</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>      <span class="na">stage</span><span class="o">:</span> <span class="sx">shipped</span>
+</code></pre></div>
+<p><code>review</code> reads: <em>while a PR is open, review it</em>. Its patch moves each PR past <code>open</code>, so the
+rule settles.</p>
+<p><code>ship-green</code> reads: <em>at the moment CI on <code>main</code> goes green, ship everything reviewed</em>. It fires
+once, at the edge, over the PRs as they stood at that commit. With <code>when</code> in place of <code>on</code>, it says
+<em>while CI is green</em>, and it also ships a PR that is reviewed later.</p>
+<h2 id="two-layers-point-in-time-matches-and-matches-asked-over-time">Two layers: point-in-time matches, and matches asked over time<a class="headerlink" href="#two-layers-point-in-time-matches-and-matches-asked-over-time" title="Permanent link">#</a></h2>
+<p>The model has one noun and two grammars. The noun is the data at an address. The grammars are the
+match and the formula.</p>
+<p>A <em><a href="../glossary/#match">match</a></em> is a tony selector over the store at one moment. It says which
+addresses satisfy it now. A match holds no time.</p>
+<p>A <em>formula</em> is a match that verse asks of the store as the store changes. For a cause, verse
+asks it at two revisions. For a condition, it asks at one. A formula is its match and nothing
+more.</p>
+<table>
+<thead>
+<tr>
+<th>Concept</th>
+<th>Grammar</th>
+<th>What it says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>subject</code></td>
+<td>match, at one moment</td>
+<td>the addresses a firing is <em>about</em>, selected at the commit. Required</td>
+</tr>
+<tr>
+<td>flow</td>
+<td>match, at one moment</td>
+<td>which live tasks to steer, by their subject</td>
+</tr>
+<tr>
+<td><code>on</code></td>
+<td>formula, a match at two revisions</td>
+<td>the <strong>cause</strong>: fire at the commit where this first holds, having not held before</td>
+</tr>
+<tr>
+<td><code>when</code></td>
+<td>formula, a match at one revision</td>
+<td>the <strong>condition</strong>: this must hold at that commit for the firing to go on</td>
+</tr>
+<tr>
+<td>gate</td>
+<td>neither: a question put to somebody</td>
+<td>go on when the answers settle it: one yes, a threshold of them, or a clock's default</td>
+</tr>
+</tbody>
+</table>
+<p><code>on</code> and <code>when</code> are the same kind of predicate, asked at different moments. So they share a
+grammar and a type (<a href="../reference/condition/#on-and-when-the-cause-and-the-condition">the condition of a rule</a>).</p>
+<p>A <a href="../glossary/#gate-of-a-rule">gate</a> is neither grammar. A gate asks somebody, and it says how
+the answer settles (<a href="../reference/gates/#gates-whether-it-proceeds">gates</a>).</p>
+<p>The words of a match are <a href="https://signadot.github.io/tony-format/">tony</a>'s, not verse's own.
+In tony, the same operators serve matching, patching and diffing.
+<a href="https://dev.to/scott_cotton_dc9ce3e7e632/structured-matching-patching-and-diffing-done-right-22ci">Structured matching, patching and diffing done right</a>
+argues for that design.</p>
+<h2 id="the-commit-is-the-unit">The commit is the unit<a class="headerlink" href="#the-commit-is-the-unit" title="Permanent link">#</a></h2>
+<p>The sentence in <a href="#the-rule">the rule</a> is a question about the whole store at one
+<a href="../glossary/#revision">revision</a>, not about one address. So verse asks it once per
+<a href="../glossary/#commit">commit</a>. The store reports each commit whole, with one change for each
+address it touched.</p>
+<p>Verse skips a rule at a commit that touched nothing the rule reads. The skip is exact, not a
+guess. If nothing the rule reads changed, <code>on</code> has no edge. A rule with a vacuous <code>on</code> would
+read the same state and write the same values, and those writes make no commit. Either way,
+skipping gives the same result as running. That is why evaluating at every commit is
+affordable.</p>
+<p><a href="https://github.com/signadot/verse/blob/main/docs/change-events.md#one-commit-many-entities-the-entity-is-the-reactive-grain">Change events</a>,
+in the repository, says how the store builds a commit and why only the store can report it
+whole.</p>
+<h2 id="when-a-rule-does-nothing">When a rule does nothing<a class="headerlink" href="#when-a-rule-does-nothing" title="Permanent link">#</a></h2>
+<p>A rule does nothing in four cases. From outside, the four look the same.</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the rule selected nothing</td>
+<td>ordinary</td>
+</tr>
+<tr>
+<td>its condition did not hold</td>
+<td>ordinary</td>
+</tr>
+<tr>
+<td>a gate denied it</td>
+<td>ordinary</td>
+</tr>
+<tr>
+<td>a firing went wrong</td>
+<td>a fault. Verse keeps it on the rule.</td>
+</tr>
+</tbody>
+</table>
+<p>Verse keeps what went wrong at a rule's firings as the rule's <code>trouble</code>. It is not a field you
+write. <code>verse charter</code> prints the rule as its file on stdout, and says its trouble on stderr. Take
+a rule whose patch names a field the pull request does not have:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">copies</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  <span class="na">condition</span><span class="o">:</span> <span class="p">{</span><span class="na">subject</span><span class="o">:</span> <span class="p">{</span><span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span><span class="p">,</span> <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">open</span><span class="p">}}}</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  <span class="na">action</span><span class="o">:</span> <span class="p">{</span><span class="na">patch</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">seen</span><span class="p">,</span> <span class="na">reviewer</span><span class="o">:</span> <span class="sx">.[assignee]</span><span class="p">}}</span>
+</code></pre></div>
+<p>After three failed firings, <code>verse charter</code> writes this on stderr:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>note: baseline: rule copies: failed ×3, last at 2026-09-28T09:14:03Z: … (in copies) about demo.pr.&quot;1&quot;
+</code></pre></div>
+<p>The note says the kind, the count, when it last happened, why, the place in the rule, and the
+subject. There are two kinds.</p>
+<table>
+<thead>
+<tr>
+<th><code>kind</code></th>
+<th>What happened</th>
+<th>What the entry says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>failed</code></td>
+<td>An action did not do what the rule says: a reference did not resolve, a patch or a derive failed, no agent was eligible for a spawn, a gate's <code>pose</code> did not expand.</td>
+<td><code>chain</code>, the place in the rule (<code>copies</code>, <code>copies.onDone</code>, <code>copies.approval.onDenied</code>), and <code>subject</code></td>
+</tr>
+<tr>
+<td><code>unread</code></td>
+<td>The rule could not read the store at a commit. It did not evaluate that commit, and it does not go back to it.</td>
+<td><code>rev</code>, the commit</td>
+</tr>
+</tbody>
+</table>
+<p>Each entry is the latest of its kind. <code>count</code> is how many times it happened since the rule was
+installed or verse started. <code>at</code> is the last time. Installing the rule again clears the entry.</p>
+<p><code>verse status</code> counts both kinds over every charter, as <code>firings: {failed, unread}</code>. The line
+is absent when nothing went wrong.</p>
+<p>A completion hook that fails is written on the record of its task, under <code>hook</code>, and on its
+subject, under <code>verse.charter.&lt;rule&gt;.hook</code>, until a hook of the same rule about that subject
+runs cleanly (<a href="../reference/action/#progress-facts">Progress facts</a>).</p>
+<p>A spawn that starts and then fails is not the rule's trouble. It is a task that failed, such
+as a spawn whose agent no runner offers any more, since the runner that did was removed after
+the rule was installed. The task's record says so (<code>verse task</code>), and the rule's <code>onFailed</code> hook
+fires. A spawn for an agent no runner offers, or one no runner's ceilings hold, is refused at
+install.</p>
+<h2 id="flow-a-subject-match-over-live-tasks">Flow: a subject-match over live tasks<a class="headerlink" href="#flow-a-subject-match-over-live-tasks" title="Permanent link">#</a></h2>
+<p>A <a href="../glossary/#flow">flow</a> is not a stored key. It is a match that verse evaluates over the
+subjects of <em>live</em> tasks:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>verse<span class="w"> </span>flow<span class="w"> </span>-subject<span class="w"> </span>demo.pr.1<span class="w">       </span><span class="c1"># tasks whose subject matches demo.pr.1</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>verse<span class="w"> </span>flow<span class="w"> </span>-subject<span class="w"> </span><span class="s1">&#39;demo.pr.*&#39;</span><span class="w">     </span><span class="c1"># …every pr</span>
+</code></pre></div>
+<p>A match is how verse relates tasks. So a "relational flow" is not a second idea: it is a wider
+match on the subject.</p>
+<p><code>verse flow</code> lists the live tasks a selection names. A verb takes the same selection and acts
+on what it names. A flow is a query, and verse keeps no index for it.
+<a href="../control/">Control</a> says how to hold, suspend and cancel that work.</p>
+<h2 id="lifecycle-how-data-leaves">Lifecycle: how data leaves<a class="headerlink" href="#lifecycle-how-data-leaves" title="Permanent link">#</a></h2>
+<p>Data does not just disappear. First somebody writes the intent to remove it, as
+<code>verse.meta.vanishing</code>. Its value is the instant the intent was written. The removal comes
+later.</p>
+<p>The order follows from what a cause is. A rule fires on the rising edge of a store predicate:
+<em>something matching this now exists</em>. A match asks what is there, so "this stopped existing"
+cannot be said. The written intent turns the negative into a positive, and a departure becomes
+an ordinary rising edge:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">note-a-departure</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="na">on</span><span class="o">:</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>      <span class="na">value</span><span class="o">:</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        <span class="na">verse</span><span class="o">:</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>          <span class="na">meta</span><span class="o">:</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>            <span class="na">vanishing</span><span class="o">:</span> <span class="kc">null</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="na">subject</span><span class="o">:</span> <span class="sx">audit.record.latest</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    <span class="na">patch</span><span class="o">:</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>      <span class="na">saw</span><span class="o">:</span> <span class="s2">&quot;a pull request began to leave&quot;</span>
+</code></pre></div>
+<p>The <code>on</code> rises when some pull request carries the marker and none did at the commit before. So
+<code>audit.record.latest</code> says when the first of them began to leave. A second pull request that starts
+to leave while the first is still there does not make the edge rise again. To record each departure,
+derive one record per leaving pull request, with the marker in the subject
+(<a href="../strata/">strata</a>).</p>
+<p>Match the <em>presence</em> of the marker, not its value. <code>vanishing: null</code> is how tony writes
+"present, with any value". The value is a timestamp today, and it may become a record: who
+asked, why, a grace period. A charter that matches one value would have to change with it.</p>
+<p>Three things follow. The first matters most.</p>
+<p><strong>Vanishing data is not a subject.</strong> A rule acts on what it selects: it patches it, spawns
+about it, raises a gate on it. Work about data that is leaving is work about something that will
+not be there. So <code>subject: {path: "demo.pr.*"}</code> skips an address whose data is vanishing. A rule
+that names the marker opts in, and sees that data again. That is how the reaper below works.</p>
+<p>A <em>named</em> subject (<code>demo.pr.1</code>) is skipped too. You may name an address that holds nothing yet.
+You may not name one whose data is leaving.</p>
+<p>Without this, a rule that reacts to a departure would act on the departing data. A patch at an
+empty address creates data there. So if the removal landed first, the rule would create the data
+again, holding only what the rule wrote, with no marker. To react to a departure, write somewhere
+else: an audit record, or an archive.</p>
+<p><code>verse data</code> still shows vanishing data, because the marker is there to make the intent visible.
+Only a rule's selection hides it.</p>
+<p><strong>The removal itself fires nothing.</strong> When the data goes, a predicate over it falls from
+true to false, and nothing fires on a falling edge. The intent was the moment to react.</p>
+<p><strong>The reaper is an ordinary rule.</strong> It names the marker, so it selects what is leaving, and it
+removes it. <code>!delete null</code> is the removal, at the root as at a field:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">reap</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>      <span class="na">value</span><span class="o">:</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>        <span class="na">verse</span><span class="o">:</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>          <span class="na">meta</span><span class="o">:</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>            <span class="na">vanishing</span><span class="o">:</span> <span class="kc">null</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>    <span class="na">patch</span><span class="o">:</span> <span class="k">!delete</span> <span class="kc">null</span>
+</code></pre></div>
+<p>A bare <code>patch: null</code> writes the payload <code>null</code>. The data then stands at its address and holds
+nothing. It is not gone.</p>
+<table>
+<thead>
+<tr>
+<th>Patch</th>
+<th>What it removes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{tmp: !delete null}</code></td>
+<td>a key</td>
+</tr>
+<tr>
+<td><code>patch: !delete null</code></td>
+<td>the data at the address</td>
+</tr>
+</tbody>
+</table>
+<p>So reaping is a convention, not a mechanism. Nothing in the engine knows how to reap. A
+charter says when to reap, how long to wait, and what happens first.</p>
+<h2 id="limits-today">Limits today<a class="headerlink" href="#limits-today" title="Permanent link">#</a></h2>
+<p><strong>A condition does not combine moments.</strong> Verse asks <code>on</code> and <code>when</code> of the store at a
+revision, so each must be answerable at one revision. Each is a match. Verse refuses the
+operators <code>!until</code>, <code>!quorum</code>, <code>!fact</code> and <code>!deadline</code> by name wherever it reads a charter.</p>
+<table>
+<thead>
+<tr>
+<th>What you want to say</th>
+<th>Where you write it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a threshold</td>
+<td>on a gate's question, as <code>need:</code></td>
+</tr>
+<tr>
+<td>a deadline</td>
+<td>on a gate's question, as <code>deadline:</code></td>
+</tr>
+<tr>
+<td>to wait for a fact</td>
+<td>in the condition's match</td>
+</tr>
+<tr>
+<td>a time</td>
+<td>as a written fact: a <a href="../reference/schedules/#schedules-time-as-a-cause">schedule's tick</a>, or the calendar derived from it</td>
+</tr>
+</tbody>
+</table>
+<p><strong>"Nothing like this exists" has no spelling.</strong> A match asks what is there.</p>
+<table>
+<thead>
+<tr>
+<th>Statement</th>
+<th>Can a match say it?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"some address holds a payload that is not X"</td>
+<td>yes, with <code>!not</code></td>
+</tr>
+<tr>
+<td>"no address matching M holds anything", such as <em>ship when there is no open blocker</em></td>
+<td>no</td>
+</tr>
+</tbody>
+</table>
+<p>The model only says what exists. That is why
+<a href="#lifecycle-how-data-leaves">a departure is written down</a> rather than inferred. A <code>when</code>
+about absence works the same way: somebody writes the absence as a positive fact, such as a
+count or a summary record. That is the author's practice, not part of the grammar.</p>
+<p>All of this rests on <a href="https://github.com/signadot/verse/blob/main/docs/change-events.md">change events</a>. <a href="../convergence/">Convergence</a> says
+whether a charter written on change events settles, and what evaluating at every commit costs.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/groundskeeper/">
+        <link rel="icon" href="../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+
+        <title>Groundskeeper - Verse</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link href="../pygments.css" rel="stylesheet">
+        <link href="../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Groundskeeper - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/groundskeeper/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href=".."><img src="../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="./" class="nav-link active" aria-current="page">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../reference/mcp/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../systems/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#verse-as-groundskeeper" class="nav-link">Verse as groundskeeper</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#the-charters-live-in-the-repository" class="nav-link">The charters live in the repository</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-github-app" class="nav-link">The GitHub App</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-runs-on-verses-own-repository" class="nav-link">What runs on verse's own repository</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#stopping-it" class="nav-link">Stopping it</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="verse-as-groundskeeper">Verse as groundskeeper<a class="headerlink" href="#verse-as-groundskeeper" title="Permanent link">#</a></h1>
+<p>A groundskeeper takes care of a place, so the people who use it do not have to. Verse can do
+this for a repository: it does routine upkeep while your team builds.</p>
+<p>Three things are true of verse as groundskeeper:</p>
+<ul>
+<li>Verse runs on its own. It sees when something needs doing, and does it.</li>
+<li>Everything happens through the repository. Verse reads the repository and its pull requests.
+  Its work appears there as branches, pull requests, issues and comments.</li>
+<li>Each process is small. Something happens in the repository, verse does one piece of work, and
+  you get one result to look at.</li>
+</ul>
+<p>You stay in control as you do today: you review what verse proposes, and you answer what it
+asks.</p>
+<h2 id="the-charters-live-in-the-repository">The charters live in the repository<a class="headerlink" href="#the-charters-live-in-the-repository" title="Permanent link">#</a></h2>
+<p>Each process is a <a href="../glossary/#charter">charter</a>. The charters live in the repository they
+take care of, in <code>.verse/charters/</code>. Each file is one charter, and its <code>at:</code> says where it
+installs (<a href="../reference/charter/#a-charter-can-be-installed-at-an-address">one file is one charter</a>).</p>
+<p>A deployment names the repository in its configuration. Verse then installs one more charter
+for it, the <strong>reconciler</strong> (<a href="https://github.com/signadot/verse/blob/main/docs/reference/up.md"><code>repoCharters</code></a>):</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="na">repoCharters</span><span class="o">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="p">-</span> <span class="na">repo</span><span class="o">:</span> <span class="sx">verse</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  <span class="na">github</span><span class="o">:</span> <span class="sx">signadot/verse</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  <span class="na">at</span><span class="o">:</span> <span class="sx">repos.verse</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  <span class="na">answerers</span><span class="o">:</span> <span class="p">[</span><span class="s2">&quot;user:*&quot;</span><span class="p">]</span>
+</code></pre></div>
+<p>The reconciler keeps one thing true: <strong>what runs in verse is the last state of
+<code>.verse/charters/</code> on main that somebody said yes to.</strong> So a change to a charter is a change to
+the repository, and it is reviewed like any other change.</p>
+<ul>
+<li><strong>A pull request that changes the charters</strong> gets a question: install this? Verse also checks
+  that the new charters install. It reports the answer and the check on the pull request, as the
+  statuses <code>verse</code> and <code>verse/check</code>. Neither holds the merge. A yes given on the pull request
+  installs the charters once it merges, with no second question.</li>
+<li><strong>A change that reached main without a yes</strong>, such as a direct push, gets an issue that asks
+  the question and says how to see the change against what runs. The statuses go on main's
+  commit.</li>
+<li><strong>What is installed follows <code>verse/live</code>.</strong> It is a record the git <a href="../glossary/#iod">iod</a>
+  keeps in the repository, <code>refs/verse/live</code>: not a branch, but a chain of commits, each holding
+  the charters it installs and naming the commit of main they came from. A yes adds the change to
+  it, and the iod installs the charters it holds at <code>repos.verse</code>, removing a charter that is not
+  in the directory. <code>git log refs/verse/live</code> is what ran, and from where.</li>
+<li><strong>Every problem has an issue.</strong> A no, a check that fails, an install that is refused, and
+  installed charters that differ from <code>verse/live</code> each open an issue. The issue closes when the
+  cause is gone. A refused install is asked again when verse's minute check finds it would
+  install.</li>
+</ul>
+<p>The reconciler is itself a charter that verse ships.
+<a href="https://github.com/signadot/verse/blob/main/internal/repocharters/charter.tony.tmpl">Its text</a> explains all of this in its comments, and a
+deployment installs <a href="https://github.com/signadot/verse/blob/main/docs/reference/examples/repo-charters/repo-charters.tony">a rendering of it</a>.</p>
+<h2 id="the-github-app">The GitHub App<a class="headerlink" href="#the-github-app" title="Permanent link">#</a></h2>
+<p>Verse acts on GitHub as a GitHub App. Its pull requests, reviews, comments and statuses are the
+App's, as <code>&lt;app&gt;[bot]</code>. So verse can review a pull request that a person opened, and a person
+can review one that verse opened. With a person's token, neither works: GitHub refuses a review
+from a pull request's own author.</p>
+<p><strong>1. Create the App</strong> in your organization's settings (Developer settings → GitHub Apps). Turn
+its webhook off: the events come from the repository's webhook (step 4). Give it these
+repository permissions:</p>
+<table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Access</th>
+<th>What verse does with it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Metadata</td>
+<td>read</td>
+<td>reads the repository</td>
+</tr>
+<tr>
+<td>Actions</td>
+<td>read</td>
+<td>reads the checks on a pull request</td>
+</tr>
+<tr>
+<td>Contents</td>
+<td>write</td>
+<td>merges, and writes <code>refs/verse/live</code></td>
+</tr>
+<tr>
+<td>Issues</td>
+<td>write</td>
+<td>opens and closes the issues that say what went wrong</td>
+</tr>
+<tr>
+<td>Pull requests</td>
+<td>write</td>
+<td>comments, opens, reviews and closes pull requests</td>
+</tr>
+<tr>
+<td>Commit statuses</td>
+<td>write</td>
+<td>posts <code>verse</code> and <code>verse/check</code></td>
+</tr>
+</tbody>
+</table>
+<p>Leave Workflows off. Then GitHub refuses the App a merge of a pull request that changes
+<code>.github/workflows/</code>. That is what you want from an App that merges.</p>
+<p><strong>2. Install it</strong> on the repository (Configure → Repository access). Verse cannot see a
+repository that the App is not installed on.</p>
+<p><strong>3. Give both iods its keys.</strong> The github iod and the git iod read the same three variables, and
+with them each acts as the App:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GITHUB_APP_ID</code></td>
+<td>the App's id</td>
+</tr>
+<tr>
+<td><code>GITHUB_APP_INSTALLATION_ID</code></td>
+<td>the id of its installation on your organization</td>
+</tr>
+<tr>
+<td><code>GITHUB_APP_PRIVATE_KEY</code></td>
+<td>the App's private key, as PEM</td>
+</tr>
+</tbody>
+</table>
+<p>Run the github iod and the git iod each with <code>-out</code> and <code>-tree .verse/charters</code>. With <code>-tree</code>,
+each iod reports the charters directory, so verse sees a pull request that changes it. With
+<code>-out</code>, each iod carries verse's writes back to GitHub. The git iod installs the charters as
+itself, so it must own the address they install at, or hold <code>child-owner</code> above it
+(<a href="https://github.com/signadot/verse/blob/main/docs/reference/iod.md#the-out-half-of-git">the out half of git</a>).</p>
+<p><strong>4. On the repository</strong>, add a webhook to <code>https://&lt;host&gt;/github/webhook</code>, with the content type
+<code>application/json</code> and the secret that the github iod reads as <code>GITHUB_WEBHOOK_SECRET</code>.</p>
+<p><a href="https://github.com/signadot/verse/blob/main/deploy/README.md#the-github-app">The deployment guide</a> creates verse's own App
+from a manifest and puts its keys on a cluster.</p>
+<h2 id="what-runs-on-verses-own-repository">What runs on verse's own repository<a class="headerlink" href="#what-runs-on-verses-own-repository" title="Permanent link">#</a></h2>
+<p>Three processes, in <a href="https://github.com/signadot/verse/blob/main/.verse/charters">.verse/charters/</a>:</p>
+<table>
+<thead>
+<tr>
+<th>Process</th>
+<th>When it runs</th>
+<th>What you get</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/signadot/verse/blob/main/.verse/charters/comment-drift/drift.tony">Comment drift</a></td>
+<td>new commits land on main</td>
+<td>the Go comments that no longer match the code are fixed, each fix on a branch <code>verse/auto/&lt;task&gt;</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/signadot/verse/blob/main/.verse/charters/comment-drift/merge.tony">The merge gate</a></td>
+<td>there are fixes that still apply to main</td>
+<td>one question, "merge these?", for every fix that applies; a yes fast-forwards main</td>
+</tr>
+<tr>
+<td><a href="https://github.com/signadot/verse/blob/main/.verse/charters/issue-next.tony">Issue next</a></td>
+<td>every three hours</td>
+<td>each open issue gets a proposal for its next step</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Comment drift</strong> reviews everything that landed since the last review, against the code as it
+is now. An agent does the review, and fixes each stale comment in place. The runner delivers the
+work as a branch, <code>verse/auto/&lt;task&gt;</code>. The spawn's environment lets the task push only there, so a
+fix is a proposal, never a change to main. The agent's answer has a fixed shape (an
+<a href="../reference/action/#the-answer-contract">answer contract</a>), so the charter can read the
+findings. A finding stays open until a later review reads main and finds the comment true.</p>
+<p><strong>The merge gate</strong> collects the fixes that still apply to main into one batch, and asks once.
+The question goes to any user, in Slack. If nobody answers in a day, the answer is no
+(<a href="../reference/gates/#a-deadline-settles">a deadline settles</a>). A yes runs a script that rebases
+each fix onto main and pushes. If main moved first, the fixes are dropped, and the next review
+proposes them again.</p>
+<p><strong>Issue next</strong> is the smallest of the three: it writes a proposal for each open issue and runs
+no task.</p>
+<h2 id="stopping-it">Stopping it<a class="headerlink" href="#stopping-it" title="Permanent link">#</a></h2>
+<p>Each process is a charter, so the ways to stop one are the ways to stop any charter:</p>
+<ul>
+<li>
+<p>Suspend it, and lift the suspension later (<a href="../control/">control</a>). With <code>-r</code>, every charter
+  under the address is suspended:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-charter<span class="w"> </span>repos.verse.drift<span class="w"> </span>-why<span class="w"> </span><span class="s2">&quot;a quiet week&quot;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-charter<span class="w"> </span>repos.verse<span class="w"> </span>-r<span class="w"> </span>-why<span class="w"> </span><span class="s2">&quot;a quiet week&quot;</span>
+</code></pre></div>
+</li>
+<li>
+<p>Remove it from <code>.verse/charters/</code> on main. The change is asked about like any other, and a yes
+  uninstalls it.</p>
+</li>
+</ul></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

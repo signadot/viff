@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/reference/representation/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>Representation - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Representation - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/reference/representation/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#representation" class="nav-link">Representation</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#json-as-input" class="nav-link">JSON as input</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#no-json-as-output" class="nav-link">No JSON as output</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#color" class="nav-link">Color</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#which-format-verse-reads" class="nav-link">Which format verse reads</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-default-format" class="nav-link">The default format</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="representation">Representation<a class="headerlink" href="#representation" title="Permanent link">#</a></h1>
+<p>A <a href="../../glossary/#charter">charter</a> is written in <a href="https://signadot.github.io/tony-format/">tony</a>.
+Tony is the document language that verse reads and writes. Like JSON, it has objects, arrays
+and scalars. Unlike JSON, it allows unquoted keys and strings, optional commas and comments.
+A charter is a document of rules and what they need, and comments make it easier to read.</p>
+<p>Tony adds one thing that the charter grammar uses: <em>tags</em>. A tag names what a value is, at
+the place where the value stands: <code>!glob "hotfix-*"</code>, <code>!or [ … ]</code>, <code>!not { … }</code>. With tags, a
+charter is a structure that verse reads as it stands. It is not a string that verse parses a
+second time.</p>
+<p>Verse reads tony, JSON and YAML. It writes tony and YAML, and it does not write JSON, on
+purpose (<a href="#no-json-as-output">no JSON as output</a>).</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>verse<span class="w"> </span>charter<span class="w">             </span><span class="c1"># tony (the default)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>verse<span class="w"> </span>charter<span class="w"> </span>-o<span class="w"> </span>yaml<span class="w">     </span><span class="c1"># yaml</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>verse<span class="w"> </span>charter<span class="w"> </span>-o<span class="w"> </span>json<span class="w">     </span><span class="c1"># refused — see below</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>curl<span class="w"> </span>-s<span class="w"> </span>localhost:9797/status<span class="w">                              </span><span class="c1"># tony</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s1">&#39;Accept: application/yaml&#39;</span><span class="w"> </span>localhost:9797/status<span class="w"> </span><span class="c1"># yaml</span>
+</code></pre></div>
+<h2 id="json-as-input">JSON as input<a class="headerlink" href="#json-as-input" title="Permanent link">#</a></h2>
+<p>You may write your input in JSON. Verse accepts each of these unchanged:</p>
+<ul>
+<li>a <code>.json</code> charter,</li>
+<li>an <code>application/json</code> body,</li>
+<li>a JSON payload typed on the command line.</li>
+</ul>
+<p>Valid JSON is valid <a href="https://signadot.github.io/tony-format/">tony</a>, so verse parses it as tony.
+There is no conversion step and nothing to configure.</p>
+<h2 id="no-json-as-output">No JSON as output<a class="headerlink" href="#no-json-as-output" title="Permanent link">#</a></h2>
+<p>Verse does not write JSON. It refuses each of these:</p>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-o json</code></td>
+<td>refused</td>
+</tr>
+<tr>
+<td><code>VERSE_FORMAT=json</code></td>
+<td>refused</td>
+</tr>
+<tr>
+<td><code>Accept: application/json</code></td>
+<td>406</td>
+</tr>
+</tbody>
+</table>
+<p>The operators of a match are tags, such as <code>!glob "hotfix-*"</code> and <code>!or [...]</code>. JSON has no
+syntax for a tag. So a charter rendered as JSON could not say what the charter says.</p>
+<p>The same fact limits JSON input: a charter written in JSON has no operators. It can write
+paths of names and <code>*</code>, and predicates of plain equality. Write an operator in tony (see
+<a href="../../trigger-model/">the charter reference</a>).</p>
+<h2 id="color">Color<a class="headerlink" href="#color" title="Permanent link">#</a></h2>
+<p>Verse colors its output on a terminal, and writes plain text when the output goes to a pipe.
+So <code>verse charter | o v</code> works.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-color always</code></td>
+<td>color, even into a pipe (for a pager)</td>
+</tr>
+<tr>
+<td><code>-color never</code></td>
+<td>no color</td>
+</tr>
+<tr>
+<td><code>NO_COLOR=1</code></td>
+<td>no color</td>
+</tr>
+</tbody>
+</table>
+<h2 id="which-format-verse-reads">Which format verse reads<a class="headerlink" href="#which-format-verse-reads" title="Permanent link">#</a></h2>
+<p>The suffix of a file decides the format verse reads it in. So <code>verse c -a -f charter.json</code>
+and <code>-f charter.tony</code> both work, whatever the default is.</p>
+<p>Some input names no format: stdin, a file with no extension, a payload typed on the command
+line. For that input, <code>-ifmt</code> decides. Without <code>-ifmt</code>, the default of the config decides.</p>
+<h2 id="the-default-format">The default format<a class="headerlink" href="#the-default-format" title="Permanent link">#</a></h2>
+<p>Three settings name a format to write:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>What it sets</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>format.default</code> in the config file, or <code>VERSE_FORMAT</code></td>
+<td>the default</td>
+</tr>
+<tr>
+<td><code>format.output</code></td>
+<td>the output of the CLI on stdout. It overrides the default.</td>
+</tr>
+<tr>
+<td><code>format.wire</code></td>
+<td>the bodies of HTTP responses. It overrides the default.</td>
+</tr>
+</tbody>
+</table>
+<p>You may want tony over HTTP and YAML on your terminal, so the two are separate settings. All three
+name a format to write, so all three refuse <code>json</code>.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">format</span><span class="o">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="na">default</span><span class="o">:</span> <span class="sx">tony</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  <span class="na">output</span><span class="o">:</span>  <span class="sx">yaml</span>   <span class="c1"># …but render CLI output as yaml</span>
+</code></pre></div></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

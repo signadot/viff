@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/tutorial/data/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>Tutorial -- Data - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Tutorial -- Data - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/tutorial/data/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../questions/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#tutorial----data" class="nav-link">Tutorial -- Data</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#read" class="nav-link">Read</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#write" class="nav-link">Write</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#watch" class="nav-link">Watch</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#everything-verse-keeps-is-data" class="nav-link">Everything verse keeps is data</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="tutorial----data"><a href="../">Tutorial</a> -- Data<a class="headerlink" href="#tutorial----data" title="Permanent link">#</a></h1>
+<p><a href="../../glossary/#data">Data</a> is anything the work refers to, such as a pull request, a build,
+a person or a CI status. Each piece of data has an <a href="../../glossary/#address">address</a>, and it is a
+document. That is the whole data model. The other three parts of the tutorial are built on it.</p>
+<p>On the command line you type the segments of an address as separate words:
+<code>verse-tutorial pr 1</code>. In a document the same address is one path: <code>verse-tutorial.pr."1"</code>.
+<a href="../../reference/entities/#addressing">Addressing</a> has the whole grammar.</p>
+<p>This page needs <a href="../#start">a verse running</a>. Seed some data to read. It goes under
+<code>verse-tutorial</code>, where everything the tutorial makes lives:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./scripts/seed-entities.sh<span class="w">       </span><span class="c1"># a dozen documents, nothing watching them</span>
+</code></pre></div>
+<h2 id="read">Read<a class="headerlink" href="#read" title="Permanent link">#</a></h2>
+<p>The address narrows a read by <em>where</em> the data lives. <code>-if</code> narrows it by <em>what the data
+says</em>, with a <a href="https://signadot.github.io/tony-format/">tony match</a> against the payload.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>verse<span class="w"> </span>data<span class="w">                                                          </span><span class="c1"># the whole verse, one document</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">                                    </span><span class="c1"># by where it lives</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w">                                      </span><span class="c1"># one pull request, whole</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w">                </span><span class="c1"># by what it says</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{stage: !or [open, merged]}&#39;</span><span class="w">  </span><span class="c1"># …with an operator</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-trim<span class="w"> </span><span class="s1">&#39;{stage}&#39;</span><span class="w">                    </span><span class="c1"># …and how much of each to print</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>verse<span class="w"> </span>data<span class="w"> </span>-paths<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">                             </span><span class="c1"># just the addresses</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>verse<span class="w"> </span>data<span class="w"> </span>-paths<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="w"> </span>-L1<span class="w"> </span>verse<span class="w"> </span>data<span class="w">      </span><span class="c1"># …passed straight back</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span><span class="s1">&#39;verse-tutorial.pr.*.stage&#39;</span><span class="w">                          </span><span class="c1"># a whole address as one word</span>
+</code></pre></div>
+<p>Each segment of an address is its own shell word, so nothing needs escaping. A word is always one
+segment: <code>verse data verse-tutorial.pr.1</code> names one segment called <code>verse-tutorial.pr.1</code>. To give
+a whole address as one word, put it after <code>-at</code>.</p>
+<p>The match operators, such as <code>!or</code>, <code>!glob</code> and <code>!not</code>, are tony's. They mean the same thing in a
+read, in a charter and in an answer contract. <a href="../../reference/entities/#reading">Reading</a> has
+the rest.</p>
+<h2 id="write">Write<a class="headerlink" href="#write" title="Permanent link">#</a></h2>
+<p>A put <strong>merges</strong>: the fields you do not name stay as they are. Verse answers with the data as
+it stands after the write:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{owner: dee}&#39;</span><span class="w">        </span><span class="c1"># changes the owner, keeps the stage</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>labels<span class="w"> </span>urgent<span class="w"> </span>-put<span class="w"> </span><span class="nb">true</span><span class="w">    </span><span class="c1"># one field, deep</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>labels<span class="w"> </span>urgent<span class="w"> </span>-rm<span class="w">          </span><span class="c1"># and gone again</span>
+</code></pre></div>
+<p>A write can carry a condition. The store checks it and makes the write in one step:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w"> </span>-create<span class="w">                   </span><span class="c1"># only if nothing is there yet: refused</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="m">4</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{owner: dee}&#39;</span><span class="w"> </span>-expect<span class="w"> </span><span class="s1">&#39;{stage: merged}&#39;</span><span class="w">  </span><span class="c1"># only if it still looks like this</span>
+</code></pre></div>
+<p><a href="../../reference/entities/#writing">Writing</a> and
+<a href="../../reference/entities/#conditional-writes">conditional writes</a> have the detail.</p>
+<h2 id="watch">Watch<a class="headerlink" href="#watch" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>verse<span class="w"> </span>watch<span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w"> </span>verse-tutorial<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span>
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span><span class="na">at</span><span class="o">:</span> <span class="s1">&#39;verse-tutorial.pr.&quot;1&quot;&#39;</span> <span class="na">op</span><span class="o">:</span> <span class="sx">set</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">97</span> <span class="na">to</span><span class="o">:</span> <span class="p">{</span><span class="na">labels</span><span class="o">:</span> <span class="p">{</span><span class="na">area</span><span class="o">:</span> <span class="sx">auth</span><span class="p">}</span> <span class="na">owner</span><span class="o">:</span> <span class="sx">dee</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">open</span> <span class="sx">…</span><span class="p">}}</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="p">{</span><span class="na">at</span><span class="o">:</span> <span class="s1">&#39;verse-tutorial.pr.&quot;3&quot;&#39;</span> <span class="na">op</span><span class="o">:</span> <span class="sx">set</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">97</span> <span class="na">to</span><span class="o">:</span> <span class="p">{</span><span class="na">labels</span><span class="o">:</span> <span class="p">{</span><span class="na">area</span><span class="o">:</span> <span class="sx">store</span> <span class="na">urgent</span><span class="o">:</span> <span class="l">true</span><span class="p">}</span> <span class="na">owner</span><span class="o">:</span> <span class="sx">ana</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">open</span> <span class="sx">…</span><span class="p">}}</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="p">{</span><span class="na">at</span><span class="o">:</span> <span class="s1">&#39;verse-tutorial.pr.&quot;5&quot;&#39;</span> <span class="na">op</span><span class="o">:</span> <span class="sx">set</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">97</span> <span class="na">to</span><span class="o">:</span> <span class="p">{</span><span class="na">labels</span><span class="o">:</span> <span class="p">{</span><span class="na">area</span><span class="o">:</span> <span class="sx">engine</span><span class="p">}</span> <span class="na">owner</span><span class="o">:</span> <span class="sx">cy</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">open</span> <span class="sx">…</span><span class="p">}}</span>
+</code></pre></div>
+<p>The watch <strong>replays</strong>: what already matches arrives first, then each new change. Each change is
+one line, and <code>to</code> is the whole document at that commit. In another terminal, run
+<code>verse data verse-tutorial pr 2 -put '{stage: open}'</code>, and the line arrives. Then write
+<code>'{stage: reviewing}'</code>. Nothing arrives, because the filter tests the state, and the new state does
+not match. <a href="../../reference/entities/">Watching</a> has cursors, <code>-since</code> and the rest.</p>
+<h2 id="everything-verse-keeps-is-data">Everything verse keeps is data<a class="headerlink" href="#everything-verse-keeps-is-data" title="Permanent link">#</a></h2>
+<p>Verse keeps its own state in the same store, at addresses of its own, so the same three verbs
+read it:</p>
+<table>
+<thead>
+<tr>
+<th>Address</th>
+<th>What is there</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verse.ask.&lt;id&gt;</code></td>
+<td>a <a href="../questions/">question</a>, its answers and what it settled on</td>
+</tr>
+<tr>
+<td><code>verse.task.instance.&lt;id&gt;</code></td>
+<td>a <a href="../tasks/">task</a>: its status, its prompt and its answer</td>
+</tr>
+<tr>
+<td><code>verse.trigger.rule.&lt;charter&gt;:&lt;name&gt;</code></td>
+<td>a rule of a <a href="../charters/">charter</a>, as it was installed</td>
+</tr>
+</tbody>
+</table>
+<p>So a rule can react to an answered question or to a finished task as it reacts to any data.
+Nothing in verse is hidden from <code>verse data</code> and <code>verse watch</code>. Next, <a href="../questions/">questions</a>.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

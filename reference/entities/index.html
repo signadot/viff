@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/reference/entities/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>Data - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Data - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/reference/entities/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#data" class="nav-link">Data</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#addressing" class="nav-link">Addressing</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#verses-own-records-and-the-worlds-in-one-tree" class="nav-link">verse's own records, and the world's, in one tree</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#reading" class="nav-link">Reading</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#writing" class="nav-link">Writing</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#conditional-writes" class="nav-link">Conditional writes</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#watching" class="nav-link">Watching</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#why-it-is-this-way" class="nav-link">Why it is this way</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="data">Data<a class="headerlink" href="#data" title="Permanent link">#</a></h1>
+<p><a href="../../glossary/#data">Data</a> is what verse knows about the world: a pull request, a build, a
+person, a CI status, a running task. Each piece of data stands at an
+<a href="../../glossary/#address">address</a> and holds a document. <a href="../../tutorial/data/">The data page of the
+tutorial</a> walks through this. This page is the whole surface, with the
+details the tutorial leaves out.</p>
+<p>The examples on this page follow one team, acme, as it reviews the pull requests of <code>acme/app</code>.
+The team keeps its own review record of each pull request at <code>demo.pr.&lt;n&gt;</code>: a <code>stage</code>, an
+<code>owner</code>, <code>labels</code>, the reviewers' <code>votes</code>, and the <code>checks</code> it ran. The github iod writes what
+GitHub itself says beside it, at <code>github.acme.app.pr."&lt;n&gt;"</code>.</p>
+<p><strong>Data has no fixed unit.</strong> The code calls the data at one address an
+<a href="../../glossary/#entity">entity</a>. An entity is not a kind of node. It is the
+<a href="../../glossary/#node">node</a> that a question is about:</p>
+<ul>
+<li>the subject that a <a href="../../glossary/#rule">rule</a> selects;</li>
+<li>one row of a listing;</li>
+<li>one event of a watch.</li>
+</ul>
+<p>Each of those questions carries an address, and the address says the depth. There is no fixed
+depth: no <code>system</code>, <code>kind</code> and <code>id</code>, and no length other than the length of the address.</p>
+<h2 id="addressing">Addressing<a class="headerlink" href="#addressing" title="Permanent link">#</a></h2>
+<p>An address is a path in a tree.</p>
+<p>An address has two spellings. They are one grammar, written in two ways:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>demo.pr.&quot;1&quot;                a kinded path — any depth, and it carries on into the payload
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>demo pr 1                  steps — one shell word per segment, any depth
+</code></pre></div>
+<p>A <a href="../../glossary/#kinded-path">kinded path</a> is the spelling a parser reads. Its grammar is
+<a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath">kpath</a>. Quoting says where
+a segment ends; nothing scans a word for a delimiter. A segment that would read as something else
+is quoted, and it reads back as itself:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>demo.pr.&quot;a.b&quot;              the name `a.b` — quoted, so the dots are in the name
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>demo.pr.a.b                four segments, because these dots are not quoted
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>demo.pr.&quot;1&quot;                the name `1`, quoted so it is a name rather than a number
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>git.ref.x@a:b              `@` and `:` are ordinary characters in a name; nothing reads them
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>demo.pr.org/repo#42        …and so are `/` and `#`
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>verse.task.instance.run-a1b2   a leading `verse` is a segment like any other
+</code></pre></div>
+<p>Which spelling goes where:</p>
+<table>
+<thead>
+<tr>
+<th>Spelling</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a path</td>
+<td>Anywhere a parser reads one and no shell is involved: inside a document (<code>at: demo.pr."1"</code>), in a charter (<code>subject: demo.pr.1</code>), on the wire (<code>?at=</code>). It has any depth, and it continues into the payload: <code>demo.pr."1".labels.urgent</code>.</td>
+</tr>
+<tr>
+<td>steps</td>
+<td>At a command line, where the shell's quoting is the only quoting: <code>verse data demo pr 1 checks lint</code>. Verse takes steps as input, and every listing answers with steps.</td>
+</tr>
+<tr>
+<td>the same path</td>
+<td>In a charter, as the <code>path</code> of a match beside a predicate: <code>{path: "demo.pr.*", value: {…}}</code></td>
+</tr>
+</tbody>
+</table>
+<p>A listing answers with steps, the same spelling that the command line takes. So you can pass a
+line of a listing straight back:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>verse<span class="w"> </span>data<span class="w"> </span>-paths<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">       </span><span class="c1"># demo pr 1</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">                                    </span><span class="c1"># demo pr a.b</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">                                    </span><span class="c1"># demo pr &#39;a b.txt&#39;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>verse<span class="w"> </span>data<span class="w"> </span>-paths<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="w"> </span>-L1<span class="w"> </span>verse<span class="w"> </span>data
+</code></pre></div>
+<p><code>-kpaths</code> gives the same listing as one kinded path per line. Use it when you keep an address in a
+shell variable. A line of steps works only if something splits it into words, and a variable
+passed as one argument is not split:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>verse<span class="w"> </span>data<span class="w"> </span>-kpaths<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">      </span><span class="c1"># demo.pr.&quot;1&quot;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">                                    </span><span class="c1"># demo.pr.&quot;a.b&quot;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nv">ref</span><span class="o">=</span><span class="k">$(</span>verse<span class="w"> </span>data<span class="w"> </span>-kpaths<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ref</span><span class="s2">&quot;</span><span class="w">               </span><span class="c1"># …one argument, and it reads back</span>
+</code></pre></div>
+<p>What goes in is what comes out. A <a href="../../glossary/#step">step</a> is a whole word, so a dot inside a
+step is part of a name and needs no quoting. This holds at every position:</p>
+<ul>
+<li><code>verse data dotted.sys pr 1</code> begins with the one segment <code>dotted.sys</code>;</li>
+<li><code>verse data a.b.c pr 1</code> begins with the one segment <code>a.b.c</code>.</li>
+</ul>
+<p>You need the shell's quoting only where the shell would split or expand a segment: a space, or a
+<code>*</code>. Use single quotes. The shell expands nothing inside them, and <code>xargs</code> understands them. A
+name that a step clause below would read as something else also needs the quoted clause inside
+the single quotes.</p>
+<p><strong>A positional argument is one step and nothing else.</strong> There is no delimiter scan on the
+command line. So <code>verse data demo.pr.1</code> names the one segment <code>demo.pr.1</code>. The reason is under
+<a href="https://github.com/signadot/verse/blob/main/docs/design/reference-entities.md#a-positional-argument-is-one-step">Why it is this way</a>.</p>
+<p>A step names one place, and its first character says which kind of place. There are four
+clauses, and none of them splits a word:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>votes<span class="w"> </span><span class="s1">&#39;[0]&#39;</span><span class="w">     </span><span class="c1"># the array element   — also {0} sparse, (ana) keyed</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">               </span><span class="c1"># every field there   — the segment wildcard, for a read</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="s1">&#39;&quot;[0]&quot;&#39;</span><span class="w">         </span><span class="c1"># the field named [0] — the name inside the quotes</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>labels<span class="w"> </span>urgent<span class="w">   </span><span class="c1"># a name, as given</span>
+</code></pre></div>
+<p>The bracketed forms open and close, so verse does not guess where one ends. A delimiter would
+change <strong>how many</strong> segments a word is; a bracketed form does not. One word goes in, and one
+place comes out, whatever is inside the word.</p>
+<p>The quoted clause is the escape, and it works for every name. A name that reads as an access or
+as the wildcard, or that begins and ends with a quote, goes inside one more pair of quotes:
+<code>'"[0]"'</code>, <code>'"*"'</code>, <code>'""x""'</code>. A listing prints it that way, so the line still passes back. In
+practice you address array elements; verse writes no field named <code>[0]</code>.</p>
+<p>A whole address in one token goes after <code>-at</code>. The flag declares which grammar applies:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span>demo.pr.1<span class="w">            </span>an<span class="w"> </span>address<span class="w"> </span>copied<span class="w"> </span>out<span class="w"> </span>of<span class="w"> </span>a<span class="w"> </span>document
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span><span class="s1">&#39;demo.pr.*.stage&#39;</span><span class="w">    </span>…wildcards<span class="w"> </span>and<span class="w"> </span>all
+</code></pre></div>
+<p>Give an address once: as steps, or with <code>-at</code>, never both.</p>
+<h3 id="what-stands-at-a-path">What stands at a path<a class="headerlink" href="#what-stands-at-a-path" title="Permanent link">#</a></h3>
+<p>A <strong>node</strong> is whatever stands at an address: an object, an array, a scalar, a null, an empty
+object. All of them count the same. <strong>An address stands</strong> when the store holds a node there.
+The store answers not-found or path-conflict, and that answer is the only definition of absence.</p>
+<p>So a listing is every node that its <a href="../../glossary/#pattern">pattern</a> reaches, and nothing
+else. Empty objects, nulls and scalars are included. A scalar two segments deep is not in the
+listing of a three-segment pattern. It is a node, and two reads answer it: a read of its own
+address, and a read of a pattern that carries <code>..</code>.</p>
+<h3 id="the-two-questions-asked-of-a-pattern">The two questions asked of a pattern<a class="headerlink" href="#the-two-questions-asked-of-a-pattern" title="Permanent link">#</a></h3>
+<p>Verse asks two questions of a pattern, and it asks each question in one way only:</p>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>How verse asks it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>reach</strong>: does this pattern reach that address? Is this write inside that confinement?</td>
+<td>kpath's, <code>Matches</code> and <code>MatchesPrefix</code></td>
+</tr>
+<tr>
+<td><strong>overlap</strong>: can two patterns reach a common address? Two strata, the claims of two iods</td>
+<td>one walk to the shorter length, asking at each position whether the two segments can meet</td>
+</tr>
+</tbody>
+</table>
+<p>The claim of an <a href="../../glossary/#iod">iod</a> may put a literal prefix where kpath has a field
+(<code>ws/*</code>). It is still a match on the field name at that position. The structure around it is
+kpath's: its length, its wildcards, its <code>..</code>. The subject of a charter is a kinded path and takes
+no operator: see <a href="#addressing">addressing</a>.</p>
+<blockquote>
+<p><strong>A limit of descent.</strong> Descent in the tree does not follow this model. A match compares a
+segment as a name, so <code>demo..stage</code> and <code>demo.pr.*.stage</code> do not meet, though the first
+descends to the second. kpath answers false for any pattern that holds <code>..</code>, so
+containment does not use kpath for it. The walk behind <code>List</code> also keeps one fixed arity
+(<code>listWalkArity</code>), because a listing that names no address has nothing to count from; every
+other walk says how far <em>below its own place</em> its records stand. The issues are <code>jabt2frr</code> here
+and <code>17hj5ygkh12ks7j7n5n0</code> upstream. While they are open, this section says what a descent is
+meant to do, not what it does.</p>
+</blockquote>
+<h3 id="-three-layers-three-rules"><code>*</code>: three layers, three rules<a class="headerlink" href="#-three-layers-three-rules" title="Permanent link">#</a></h3>
+<p>A <code>*</code> passes through three layers, and each one reads it differently:</p>
+<ol>
+<li>the shell;</li>
+<li>the address grammar;</li>
+<li>a match in a charter.</li>
+</ol>
+<p>The three agree when you see them together. One at a time, each can surprise you.</p>
+<p>In the address grammar, a whole <code>*</code> segment is the wildcard in both spellings. The name that is
+an asterisk is quoted in both spellings.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span><span class="s1">&#39;demo.pr.*&#39;</span><span class="w">        </span><span class="c1"># every name under demo.pr — a segment wildcard</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">            </span><span class="c1"># the same, as a step</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span><span class="s1">&#39;demo.pr.&quot;*&quot;&#39;</span><span class="w">      </span><span class="c1"># the one node whose name IS an asterisk</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;&quot;*&quot;&#39;</span><span class="w">          </span><span class="c1"># the same, as a step — the quoted clause</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>votes<span class="w"> </span><span class="s1">&#39;[*]&#39;</span><span class="w">  </span><span class="c1"># every element of an array, which a `*` step is not</span>
+</code></pre></div>
+<p>Only a whole segment selects. <code>hotfix-*</code> is a name with an asterisk in it: as a step, in <code>-at</code>
+and in the kinded path of a charter. A <code>*</code> selects every <em>field</em>, which is what the names under
+a node are. <code>[*]</code> selects every array element. So the two are different clauses. A write names
+one place, so a write refuses a <code>*</code> step, and the refusal names the quoted form.</p>
+<p>A family of names is not a segment. An address names places. Which of the places a rule wants
+is a predicate on what each place holds:
+<code>{path: "demo.pr.*", value: {branch: !glob "hotfix-*"}}</code>. The one match that an address can
+spell is the quoted clause, and it names exactly one thing: <code>demo.pr."*"</code> is the node called <code>*</code>
+and nothing else.</p>
+<p>The shell reads the line first, so an unquoted <code>*</code> never reaches verse. It fails in two ways,
+and the second is the one to watch for:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span>*<span class="w"> </span>stage<span class="w">        </span><span class="c1"># the word IS the glob: it becomes every file in the cwd</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">                                  </span><span class="c1">#   argv: demo pr demo.pr.1.stage Makefile notes.txt stage</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span>demo.pr.*.stage<span class="w">    </span><span class="c1"># a glob inside a word: it expands only if a file matches,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">                                  </span><span class="c1">#   and then silently becomes that file</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">                                  </span><span class="c1">#   argv: -at demo.pr.1.stage</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">                                  </span><span class="c1"># with nothing matching, bash passes it through (right by</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">                                  </span><span class="c1">#   luck) and zsh refuses the command outright</span>
+</code></pre></div>
+<p>Quoting fixes both, in either spelling. <code>demo pr '*' stage</code> and <code>-at 'demo.pr.*.stage'</code> give
+verse the asterisk itself. The single quotes belong to the shell, so verse sees a bare <code>*</code>
+segment, which is the wildcard.</p>
+<p><code>'"*"'</code> is a different address, not a safer way to write the same address. The inner <code>"*"</code> is
+the quoted clause of the address grammar: the name that is an asterisk. The outer <code>'…'</code> is the
+quoting of the shell, which keeps the inner quotes intact. <code>-paths</code> prints such a node this way.
+So a listing passes back to that one node, and not to every name beside it:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">            </span><span class="c1"># the wildcard: every name under demo.pr</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;&quot;*&quot;&#39;</span><span class="w">          </span><span class="c1"># the one node named `*`</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>verse<span class="w"> </span>data<span class="w"> </span>--paths<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="w"> </span>-L1<span class="w"> </span>verse<span class="w"> </span>data<span class="w">   </span><span class="c1"># each line reads back as what it names</span>
+</code></pre></div>
+<p>In a charter, an address is the same kinded path that a read takes. The quoting means the same
+thing there, and the same characters mean the same thing in both places:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="na">subject</span><span class="o">:</span> <span class="s2">&quot;demo.pr.*&quot;</span>            <span class="c1"># any name</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="na">subject</span><span class="o">:</span> <span class="s1">&#39;demo.pr.&quot;*&quot;&#39;</span>          <span class="c1"># the name that IS an asterisk — `verse data -at` reads it so too</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="na">subject</span><span class="o">:</span> <span class="s1">&#39;demo.&quot;..&quot;.x&#39;</span>          <span class="c1"># the name that is two dots, where a bare `..` descends</span>
+</code></pre></div>
+<h3 id="verse-at-the-front"><code>verse</code> at the front<a class="headerlink" href="#verse-at-the-front" title="Permanent link">#</a></h3>
+<p>Everything verse keeps about its own running is under <code>verse</code>
+(<a href="#two-halves-one-tree">below</a>). <code>verse</code> is a segment like any other in every spelling, and it
+counts like any other:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>verse<span class="w"> </span>data<span class="w"> </span>verse<span class="w"> </span>task<span class="w"> </span>instance<span class="w"> </span>run-a1b2<span class="w">       </span><span class="c1"># steps</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span>verse.task.instance.run-a1b2<span class="w">   </span><span class="c1"># …the same address copied out of a document</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>verse<span class="w"> </span>data<span class="w"> </span>verse<span class="w"> </span>task<span class="w"> </span>instance<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">            </span><span class="c1"># …and every task record under it</span>
+</code></pre></div>
+<p><strong>What takes what:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it takes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verse data</code> (reading, <code>-put</code> and <code>-rm</code>), <code>verse watch</code></td>
+<td>steps, several arguments at any depth; or one kinded path after <code>-at</code></td>
+</tr>
+<tr>
+<td><code>verse flow show &lt;subject&gt;</code>, and <code>--subject</code> on the flow verbs</td>
+<td>one token: a kinded path, <code>*</code> for any segment</td>
+</tr>
+<tr>
+<td><code>verse runner</code> and <code>verse iod</code> <code>show</code>, <code>check</code> and <code>remove</code>; <code>verse resolver</code> <code>show</code> and <code>remove</code></td>
+<td>one token: the name, or the address as stored (<code>verse.runners.&lt;name&gt;</code>)</td>
+</tr>
+<tr>
+<td><code>verse charter [&lt;address&gt;]</code></td>
+<td>an address in the charter tree, any depth, as steps: <code>verse charter demo pr</code></td>
+</tr>
+<tr>
+<td><code>verse c &lt;address&gt; rules &lt;name&gt;</code></td>
+<td>a path: the address, then into it</td>
+</tr>
+<tr>
+<td><code>verse perms &lt;step&gt;…</code></td>
+<td>the node a record is about, as steps</td>
+</tr>
+</tbody>
+</table>
+<p><code>verse charter</code> and <code>verse perms</code> read steps as <code>verse data</code> does. A word is one segment, and
+<code>'"x"'</code> is the name <code>x</code>. But these two commands name one place made of names. So they refuse an
+access (<code>'[0]'</code>) and a <code>*</code> step.</p>
+<p><a id="two-halves-one-tree"></a></p>
+<h2 id="verses-own-records-and-the-worlds-in-one-tree">verse's own records, and the world's, in one tree<a class="headerlink" href="#verses-own-records-and-the-worlds-in-one-tree" title="Permanent link">#</a></h2>
+<p>The top of the tree has one reserved key: <code>verse</code>. Everything verse writes about its own running
+is under <code>verse</code>. Everything the world is about is beside it, at whatever address a writer
+chooses.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>demo.pr.1                          what the world is about
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>verse.task.instance.run-a1b2       verse&#39;s own
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>verse.trigger.rule.review
+</code></pre></div>
+<p>These are under <code>verse</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Address</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task.instance.*</code></td>
+<td>the mirror of every running task</td>
+</tr>
+<tr>
+<td><code>task.run.*</code></td>
+<td>the record of a run that happened</td>
+</tr>
+<tr>
+<td><code>task.claim.*</code></td>
+<td>the run claim of a sequence</td>
+</tr>
+<tr>
+<td><code>ask.*</code></td>
+<td>the docket: every ask, whoever raised it — a person, a rule's gate, a task's question</td>
+</tr>
+<tr>
+<td><code>resolvers.*</code></td>
+<td>who answers the gates (<a href="https://github.com/signadot/verse/blob/main/docs/reference/resolvers.md">resolvers.md</a>)</td>
+</tr>
+<tr>
+<td><code>for.&lt;principal&gt;</code></td>
+<td>whom a person lets answer for them: the <code>answer</code> grants of their resolvers (<a href="https://github.com/signadot/verse/blob/main/docs/reference/resolvers.md#whom-it-answers-for">resolvers.md</a>)</td>
+</tr>
+<tr>
+<td><code>trigger.rule.*</code></td>
+<td>the installed charter. A rule installed at an address is <code>trigger.rule.&lt;package&gt;:&lt;name&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>trigger.strata.*</code></td>
+<td>the declared levels of the charter</td>
+</tr>
+<tr>
+<td><code>trigger.package.*</code></td>
+<td>what each package declares it reads</td>
+</tr>
+<tr>
+<td><code>trigger.suspension.*</code></td>
+<td>the <a href="../../glossary/#suspension">suspensions</a> that stop work (<a href="../../control/#a-suspension">control</a>)</td>
+</tr>
+<tr>
+<td><code>runners.*</code></td>
+<td>where work can run</td>
+</tr>
+<tr>
+<td><code>iods.*</code></td>
+<td>the installed <a href="../../glossary/#iod">iods</a>: each writes an external system into the store and carries writes back out to it</td>
+</tr>
+<tr>
+<td><code>identity.&lt;provider&gt;.*</code></td>
+<td>the account bindings, the open claims and the trusted iods of each provider (<a href="../perms/#accounts-in-other-systems">perms</a>)</td>
+</tr>
+<tr>
+<td><code>systems.&lt;name&gt;</code></td>
+<td>the document of a <a href="../../glossary/#system">system</a>: its verbs and their params (<a href="../../systems/">systems</a>)</td>
+</tr>
+<tr>
+<td><code>schedule.&lt;name&gt;</code></td>
+<td>a schedule: its period, its phase, and the <code>next</code> that the daemon is armed for. Under <code>schedule.&lt;name&gt;.tick.&lt;instant&gt;</code> stands the tick, written only by the schedule.</td>
+</tr>
+<tr>
+<td><code>schedule.date</code>, <code>schedule.time</code> and the other calendar facts</td>
+<td>what the base charter derives from the hourly tick</td>
+</tr>
+</tbody>
+</table>
+<p>The ballots of a <a href="../../glossary/#question">question</a> are on its record
+(<code>ask.&lt;id&gt;.ballots.&lt;who&gt;</code>). The answer path that counts them writes them.</p>
+<p>Two more are about who.</p>
+<p><code>principal.&lt;kind&gt;.&lt;name&gt;</code> lists every <a href="../../glossary/#principal">principal</a> that has presented
+itself, by the kind its name carries:</p>
+<ul>
+<li><code>user</code> for a person, by email;</li>
+<li><code>runner</code> for a worker that claimed work;</li>
+<li><code>agent</code> for an operator agent.</li>
+</ul>
+<p>A <a href="../../glossary/#group">group</a> stands beside them, at <code>principal.group.&lt;name&gt;</code>.</p>
+<p><code>perms.node.&lt;address&gt;</code> is the <a href="../../glossary/#mirror-of-permissions">mirror of permissions</a>.
+It has a <a href="../../glossary/#record">record</a> wherever ownership changes down the tree, and on a node
+created with grants (<a href="#creating-with-grants">Creating with grants</a>). The record is
+keyed by the node's own address, spelled as one segment. It holds:</p>
+<ul>
+<li><code>owner</code>;</li>
+<li>the <code>grants</code> that its owner holds out;</li>
+<li>for a question, <code>under</code>: the address of what posed the question.</li>
+</ul>
+<p>The root's record, whose address is the empty path, stands beside the mirror at <code>perms.root</code>.</p>
+<p>Only versed writes the mirror, and only the system reads it. Who owns a node, and what a write
+or a read is checked against, is in <a href="../../perms/">perms.md</a>.</p>
+<p>You read what is under <code>verse</code> like anything else. Only the verbs that own it write it.
+<code>verse data verse trigger rule review</code> reads a rule. Verse refuses <code>verse data -put</code> at any
+address under <code>verse</code>, and says which verb to use instead: <code>verse c -a</code>, <code>verse resolver add</code>,
+<code>verse runner add</code>, <code>verse iod add</code>, <code>verse question approve</code>.</p>
+<p>Each verb makes its own checks: what a rule may read, what a runner is, whether the claim of an
+iod overlaps another. Under every verb, the store checks the write against what its place
+permits (<a href="../../perms/">perms.md</a>). So no write that reaches the store can install a rule, stamp a
+task record or answer a question for somebody else.</p>
+<p>A charter that reacts to the state of verse names <code>verse</code> first
+(<a href="../condition/#what-a-match-can-say">what a match can say</a>).</p>
+<p>A rule reads what is under <code>verse</code>, and does not write it. A <code>patch</code> of a subject under
+<code>verse</code>, or a <code>derive</code> into it, is the same write the API refuses, by another route. Verse
+refuses it the same way:</p>
+<ul>
+<li>at install, where the rule names the address (403);</li>
+<li>at the write, whatever address it arrived at.</li>
+</ul>
+<p>A spawn about such a subject is allowed: the task record is verse's own write. The system's
+charter is the exception, because it is how the system writes there: the base charter derives
+the calendar under <code>verse.schedule</code>.</p>
+<h2 id="reading">Reading<a class="headerlink" href="#reading" title="Permanent link">#</a></h2>
+<p>A verse is one document, a tree, and <code>verse data</code> answers it at an address. The address is a
+<a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath">kinded path</a> in any of
+the spellings <a href="#addressing">above</a>. It is the same address at every length: whatever node stands
+there, including a place inside a payload.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>verse<span class="w"> </span>data<span class="w">                                         </span><span class="c1"># the whole document</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w">                                    </span><span class="c1"># the subtree at demo</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">                             </span><span class="c1"># each node under demo.pr, keyed by name</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w">                               </span><span class="c1"># one node</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>labels<span class="w"> </span>urgent<span class="w">                 </span><span class="c1"># one place inside it</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span><span class="s1">&#39;demo.pr.*.stage&#39;</span><span class="w">                   </span><span class="c1"># one field of each, still keyed by name</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>verse<span class="w"> </span>data<span class="w"> </span>-paths<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">                      </span><span class="c1"># one address per line</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w">         </span><span class="c1"># by what it says</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{urgent: true}&#39;</span><span class="w"> </span>-if-at<span class="w"> </span>labels<span class="w">   </span><span class="c1"># …rooted inside the payload</span>
+</code></pre></div>
+<p>The line with the wildcard has a spelling in steps too: <code>verse data demo pr '*' stage</code> is the
+same read. <code>'"*"'</code> is the name that is an asterisk. See
+<a href="#-three-layers-three-rules"><code>*</code>: three layers, three rules</a>.</p>
+<h3 id="--depth-how-far-beneath-the-address"><code>--depth</code>: how far beneath the address<a class="headerlink" href="#--depth-how-far-beneath-the-address" title="Permanent link">#</a></h3>
+<p>A listing walks everything beneath its address, into payloads and arrays. Nothing in an answer
+says where one piece of data ends. <code>--depth</code> limits the walk: one level gives what is at that level, and
+leaves out what is deeper. <strong>It is counted from the address the path names</strong>, so the same number
+means the same thing at every address:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>--paths<span class="w"> </span>--depth<span class="w"> </span><span class="m">1</span><span class="w">        </span><span class="c1"># demo&#39;s children</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span>--paths<span class="w"> </span>--depth<span class="w"> </span><span class="m">1</span><span class="w">     </span><span class="c1"># …one level down, and the SAME number</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span>--paths<span class="w"> </span>--depth<span class="w"> </span><span class="m">0</span><span class="w">     </span><span class="c1"># the address alone: nothing beneath it</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span>--paths<span class="w">               </span><span class="c1"># everything beneath, into payloads</span>
+</code></pre></div>
+<p>To walk deeper, add a step, not a step and a bigger number. An access is a step like any other,
+so <code>--depth 2</code> under <code>demo pr 1</code> reaches <code>votes[0]</code>, and not the fields inside it. Verse
+refuses a negative depth, and a <code>--depth</code> with no listing to limit; it does not ignore them.</p>
+<p><strong>The number belongs to the store.</strong> Verse passes it on as you gave it, whatever the path holds: a
+place, a <code>*</code>, a <code>..</code>, or <code>--if</code> beside it. The store asks the predicate of each node the path
+reached. The listing is the nodes the predicate kept, and what is beneath them.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>--paths<span class="w"> </span>--depth<span class="w"> </span><span class="m">0</span><span class="w">                </span><span class="c1"># the nodes the path reached, alone</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>--paths<span class="w"> </span>--if<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w">     </span><span class="c1"># …the open ones, and what is in them</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span><span class="s1">&#39;..&#39;</span><span class="w"> </span>stage<span class="w"> </span>--paths<span class="w"> </span>--depth<span class="w"> </span><span class="m">1</span><span class="w">            </span><span class="c1"># demo.stage and demo.&lt;x&gt;.stage</span>
+</code></pre></div>
+<p>With a <code>..</code> in the path, the depth is <strong>one budget for the whole path</strong>, counted from the node the
+path names. Only the segments a descent <em>takes</em> use the budget. So <code>demo '..' stage</code> at depth 1
+reaches <code>demo a stage</code>: the descent took <code>a</code>, and the literal <code>stage</code> cost nothing. The budget is
+then used up, so the listing shows nothing beneath it. This is
+<a href="https://signadot.github.io/tony-format/">logd's rule</a>.</p>
+<h3 id="-every-depth-beneath"><code>..</code>: every depth beneath<a class="headerlink" href="#-every-depth-beneath" title="Permanent link">#</a></h3>
+<p>A <code>*</code> opens one position. <code>..</code> opens every depth beneath where it stands, including the node it
+stands at. It asks a question with no depth at all:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>verse<span class="w"> </span>data<span class="w"> </span><span class="s1">&#39;..&#39;</span><span class="w">                              </span><span class="c1"># the whole verse, walked</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span><span class="s1">&#39;..&#39;</span><span class="w">                         </span><span class="c1"># demo and everything under it</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span><span class="s1">&#39;..&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w">     </span><span class="c1"># every node that says it is open, at any depth</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span><span class="s1">&#39;..&#39;</span><span class="w"> </span>stage<span class="w">                   </span><span class="c1"># every `stage` beneath demo</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span><span class="s1">&#39;&quot;..&quot;&#39;</span><span class="w">                       </span><span class="c1"># the node whose NAME is two dots</span>
+</code></pre></div>
+<p>The answer nests each node where it stands, <strong>spelled in full</strong>. <code>demo '..' stage</code> answers
+<code>{pr: {"1": {stage: open}}}</code>, not the <code>{"1": open}</code> that a <code>*</code> gives. A descent reaches nodes at
+different depths, and without the full spelling two of them could land on one key. A node the
+read keeps whole already holds what is beneath it, so nothing is answered twice.</p>
+<p><code>..</code> is a <em>query</em>, so it belongs to reads, watches and the subjects of rules. A write, a claim, a
+grant and a permissions record each name one stored place, and each refuses <code>..</code>.
+<code>verse watch demo '..'</code> reports every node beneath demo that changes, at the depth where each
+one stands. The subject of a rule may descend the same way (see
+<a href="../../trigger-model/">the charter reference</a>).</p>
+<p>The answer is the subtree at the address, as the store holds it, not a shape built for the wire.
+So a name is a key, not a token inside a rendered <code>at:</code>. For the addresses, use <code>-paths</code>: a
+script gets them one per line.</p>
+<p><strong>An address that names nothing answers 404, at every length</strong>, and the command exits non-zero.
+<code>{}</code> is a document that somebody wrote. A read never answers it for an address nobody wrote,
+however long the address is. <code>demo.pr.nosuch</code> is not there, and neither is <code>nosuch.pr</code>.</p>
+<div class="codehilite"><pre><span></span><code>verse data nosuch            in your view, nothing stands at nosuch
+verse data demo pr nosuch    in your view, nothing stands at demo.pr.&quot;nosuch&quot;
+verse data                   in your view, the verse is empty: nothing has been written yet
+</code></pre></div>
+<p>A watch of such an address is refused in the same way. <code>verse watch -wait-if-absent</code> waits for a
+value to arrive there instead.</p>
+<p>The message says "in your view" because a read answers what its reader may read. A wider read
+leaves out a node you may not read, so that node is not in your view. A read <em>at</em> an address you
+may not read into is different: verse refuses it, and the refusal names the nearest owner
+(<a href="../perms/#what-is-checked-on-a-read">permissions</a>).</p>
+<p>A <code>*</code> reaches the children of the node it lands on. Over a node with no children it reaches
+nothing. <code>verse data demo pr 1 labels '*'</code> over <code>labels: {}</code> is a 404 too. Over
+<code>labels: {urgent: {}}</code> it answers <code>{urgent: {}}</code>.</p>
+<p>An <em>empty document</em> means something else: the path reached nodes, and a <code>-if</code> predicate kept
+none of them. That answer is about the filter, not the path, so it is a 200 with <code>{}</code>. A read
+reports null only where somebody wrote a null.</p>
+<p><code>-if</code> keeps some of the nodes the path reached. It works per node, and never prunes inside a node
+it keeps. <strong><code>-if</code> asks about what the path names.</strong> A path of N segments asks about the nodes N
+segments down, for a name and a <code>*</code> alike, so the <code>*</code>s a path carries set the depth of the
+question. An issue the github iod writes stands at <code>github.&lt;org&gt;.&lt;name&gt;.issue.&lt;n&gt;</code>, so the
+<code>*</code> makes each issue the thing asked about:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>verse<span class="w"> </span>data<span class="w"> </span>github<span class="w"> </span>acme<span class="w"> </span>app<span class="w"> </span>issue<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{state: open}&#39;</span><span class="w">         </span><span class="c1"># each open issue</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span><span class="s1">&#39;github.acme.app.issue.*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{state: open}&#39;</span><span class="w">     </span><span class="c1"># the same</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>verse<span class="w"> </span>data<span class="w"> </span>github<span class="w"> </span>acme<span class="w"> </span>app<span class="w"> </span>issue<span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{state: open}&#39;</span><span class="w">             </span><span class="c1"># the map of issues, as one: {}</span>
+</code></pre></div>
+<p><code>-trim</code> projects the same nodes. <code>-if</code> is a
+<a href="https://signadot.github.io/tony-format/">tony match</a> against the payload, the same predicate a
+charter carries in <code>value</code>. So a read answers "what would a rule with this predicate select?".
+The operators (<code>!or</code>, <code>!and</code>, <code>!not</code>, <code>!glob</code>, presence and absence) belong
+to tony, and are documented with
+<a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop">mergeop</a>. What a match can
+say inside a rule is in <a href="../condition/#what-a-match-can-say">the condition of a rule</a>.</p>
+<p><code>-if-at</code> roots the predicate at a dot-separated field path. See
+<a href="../#selecting-by-what-the-data-says">Selecting by what the data says</a>.</p>
+<h3 id="reaching-into-an-array">Reaching into an array<a class="headerlink" href="#reaching-into-an-array" title="Permanent link">#</a></h3>
+<p><code>[0]</code> addresses an array element by position:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>votes<span class="w"> </span><span class="s1">&#39;[0]&#39;</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>votes<span class="w"> </span><span class="s1">&#39;[0]&#39;</span><span class="w"> </span>choice
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span><span class="s1">&#39;demo.pr.1.votes[0].choice&#39;</span><span class="w">     </span><span class="c1"># the same, as one token</span>
+</code></pre></div>
+<p>A step that begins with <code>[</code>, <code>{</code> or <code>(</code> <strong>is</strong> that access. <code>-at</code> carries the kinded path whole.
+Quote the step for the shell, because <code>(</code> and <code>[</code> mean something to the shell too.</p>
+<p><strong>An element is addressed by position, and only by position.</strong> An element by identity is written
+<code>(key)</code>, and only the store can provide that: the store, logd, keys an array in its schema, and
+the schema makes a name mean an element. logd refuses a position on a keyed array. Verse declares
+no such schema, so every array it holds is positional.</p>
+<p>Verse <strong>refuses</strong> a <code>!key(&lt;field&gt;)</code> tag in a written payload. <code>!key</code> is a tony merge operator. If
+verse accepted it, the store would hold a positional array while the value claimed a name for each
+element. There is one keying, and it belongs to the store.</p>
+<p>A listing spells what a read takes. So <code>verse data demo pr 1 votes --paths</code> prints
+<code>demo pr 1 votes '[0]'</code>, and that line reads and writes as it stands.</p>
+<p>A write reaches an element too, and changes it in place:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>votes<span class="w"> </span><span class="s1">&#39;[0]&#39;</span><span class="w"> </span>choice<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;&quot;approve&quot;&#39;</span>
+</code></pre></div>
+<p>The store guards such a write, so the CLI does not:</p>
+<table>
+<thead>
+<tr>
+<th>A write at</th>
+<th>What logd does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>votes[1].choice</code>, in range</td>
+<td>patches it, and it reads back</td>
+</tr>
+<tr>
+<td><code>votes(ana).choice</code>, keyed</td>
+<td>refuses it at the commit; nothing is harmed</td>
+</tr>
+<tr>
+<td><code>votes[2]</code> where two stand</td>
+<td>refuses it at the patch, naming the length</td>
+</tr>
+</tbody>
+</table>
+<p><code>pkg/entity/arraywrite_test.go</code> tests all three answers, so each go-tony upgrade checks them again.
+Why the CLI relies on the third row is under
+<a href="https://github.com/signadot/verse/blob/main/docs/design/reference-entities.md#the-cli-and-array-writes">Why it is this way</a>.</p>
+<p>A precondition applies to an element write as to any other write. It is about the <em>element</em> the
+write names, not the pull request that holds it:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>votes<span class="w"> </span><span class="s1">&#39;[0]&#39;</span><span class="w"> </span>-expect<span class="w"> </span><span class="s1">&#39;{by: ana}&#39;</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{choice: approve}&#39;</span>
+</code></pre></div>
+<p><code>-create</code>, <code>-update</code> and <code>-expect</code> reach the element with tony's <code>!at</code>, which walks the path and
+applies the pattern where it lands. So a precondition on one ballot says nothing about the
+others. (An array-shaped pattern would: tony matches an array by position and by length, so it
+would also require the array to hold exactly that many ballots.)</p>
+<p><code>-create</code> is different, because an element cannot be created in place. Where nothing stands, the
+precondition holds, and the store refuses the write instead, naming the length of the array.
+Where a ballot does stand, <code>-create</code> refuses to commit over it, as it does anywhere else.</p>
+<h2 id="writing">Writing<a class="headerlink" href="#writing" title="Permanent link">#</a></h2>
+<p>A put merges: it leaves the fields it does not name alone. So a put answers with what stands at
+the address it wrote, not an echo of what it sent, and two writers that advance one record do not
+overwrite each other.</p>
+<p>The address may be as deep as the tree. <code>verse data demo pr 1 checks lint -put '{status: pass}'</code>
+writes there, and the answer is that place. A write is a value at an address, so it does not have
+to decide where a piece of data "ends".</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w">       </span><span class="c1"># as steps: nothing needs quoting</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>verse<span class="w"> </span>data<span class="w"> </span>-at<span class="w"> </span>demo.pr.1<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{owner: ana}&#39;</span><span class="w">    </span><span class="c1"># …or in one token: adds an owner, keeps the stage</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>labels<span class="w"> </span>urgent<span class="w"> </span>-put<span class="w"> </span><span class="nb">true</span><span class="w">    </span><span class="c1"># write inside the payload</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>labels<span class="w"> </span>urgent<span class="w"> </span>-rm<span class="w">          </span><span class="c1"># remove one field</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>-rm<span class="w">                        </span><span class="c1"># the whole review record</span>
+</code></pre></div>
+<p>The payload follows <code>-put</code>. Verse reads it as tony, unless <code>-ifmt</code> or the config says
+otherwise. <a href="../representation/">representation.md</a> has the formats verse reads.</p>
+<p>A write is a tony <em>patch</em>, so the
+<a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop">mergeop</a> operators apply to
+it. <code>!delete</code> removes a key, which setting fields cannot do. A charter's <code>patch</code> is the same
+operation, written by a rule.</p>
+<h3 id="what-a-write-descends-through">What a write descends through<a class="headerlink" href="#what-a-write-descends-through" title="Permanent link">#</a></h3>
+<p>A write names a place inside a payload by naming the fields on the way to it. Each field on the
+way must be somewhere a field can live:</p>
+<table>
+<thead>
+<tr>
+<th>What stands on the way</th>
+<th>What the write does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>nothing yet</td>
+<td>builds it</td>
+</tr>
+<tr>
+<td>an object</td>
+<td>merges into it</td>
+</tr>
+<tr>
+<td>an <strong>array or a scalar</strong></td>
+<td>verse refuses the write</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{votes: [{by: ana}, {by: bo}]}&#39;</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>votes<span class="w"> </span>bo<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;&quot;yes&quot;&#39;</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="c1"># the write would replace what it descends through: demo.pr.&quot;1&quot;.votes holds an array,</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># so &quot;bo&quot; is not a place in it — write the whole value AT demo.pr.&quot;1&quot;.votes, or address</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="c1"># an element of it</span>
+</code></pre></div>
+<p>To replace the array, write a put <em>at</em> the array:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>votes<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;[{by: ana}, {by: bo}, {by: cy}]&#39;</span>
+</code></pre></div>
+<p>The check is a precondition carried with the write, so verse decides it at the commit, and
+<code>-create</code>/<code>-update</code>/<code>-expect</code> combine with it. <code>-create</code> does not replace it: <code>-create</code> asks
+whether the <em>node</em> is absent, and under an array the node is absent, so <code>-create</code> alone would
+admit exactly the write that does the damage.</p>
+<p>A charter's <code>patch</code> is checked the same way, one step looser. A <code>patch</code> is a document, not an
+address, so a nested key the subject does not have is built, and verse refuses only a patch that
+lands on an array or a scalar. When verse refuses a rule's patch, the firing fails and the subject
+is unchanged. The rule still selects the subject, and the next commit tries again.</p>
+<p>The reason verse refuses a write through an array is under
+<a href="https://github.com/signadot/verse/blob/main/docs/design/reference-entities.md#a-write-through-an-array">Why it is this way</a>.</p>
+<h3 id="creating-with-grants">Creating with grants<a class="headerlink" href="#creating-with-grants" title="Permanent link">#</a></h3>
+<p>A node you create holds out what the nearest <code>child-grants</code> above it says
+(<a href="../../perms/#grants">perms.md</a>). To create it holding out something else, give <code>-grants</code> with
+the put. It takes the list <code>verse perms -grants</code> takes, and <code>[]</code> holds out nothing.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>drafts<span class="w"> </span>ana<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{text: &quot;the retry loop needs a bound&quot;}&#39;</span><span class="w"> </span>-grants<span class="w"> </span><span class="s1">&#39;[]&#39;</span><span class="w">   </span><span class="c1"># nobody else reads it</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>drafts<span class="w"> </span>bo<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{text: &quot;ask about the timeout&quot;}&#39;</span><span class="w"> </span>-grants<span class="w"> </span><span class="s1">&#39;[{read: [user:ana@example.com]}]&#39;</span>
+</code></pre></div>
+<p>The node and its <a href="../../glossary/#record">record</a> land in one commit, so no reader and no rule ever
+sees the node holding out the default.</p>
+<p>A put with <code>-grants</code> is a create. Where the node stands already, verse refuses the write and
+leaves the node as it is; change what a standing node holds out with <code>verse perms</code>. So <code>-grants</code>
+beside <code>-update</code> or <code>-expect</code> is a usage error. You may give only what an owner may set on the
+node's record, and only where the node will be yours: a writer who creates on <code>read-write</code> makes
+a node that the owner above owns, and verse refuses their grants. Grants change nothing about who
+may create there. A <code>child-owner</code> line held out to a group makes the member
+who wrote the owner, never the group, and the line does not apply above somebody else's place
+(<a href="../perms/#creating-and-taking-a-place">perms reference</a>).</p>
+<h2 id="conditional-writes">Conditional writes<a class="headerlink" href="#conditional-writes" title="Permanent link">#</a></h2>
+<p>Verse checks each condition <em>with</em> the write, in one step at the store, so nothing can change in
+between. A refused write leaves the data unchanged, and the command reports it and exits
+non-zero.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>verse<span class="w"> </span>data<span class="w"> </span>-create<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w"> </span><span class="c1"># only if nothing is there yet</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>verse<span class="w"> </span>data<span class="w"> </span>-update<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w"> </span><span class="c1"># only if something is</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>verse<span class="w"> </span>data<span class="w"> </span>-expect<span class="w"> </span><span class="s1">&#39;{stage: draft}&#39;</span><span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="m">2</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w"> </span><span class="c1"># only if it still looks like this</span>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="c1"># write refused: a condition did not hold</span>
+</code></pre></div>
+<p>The three flags <code>-create</code>, <code>-update</code> and <code>-expect</code> are preconditions on a write. <code>-if</code> is a
+different thing: it filters what a read answers.</p>
+<p>This is compare-and-swap (CAS), written as a predicate rather than a revision number: the write
+says what it believes about the data, not which revision it read.</p>
+<h2 id="watching">Watching<a class="headerlink" href="#watching" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>verse<span class="w"> </span>watch<span class="w">                                        </span><span class="c1"># from now on</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>verse<span class="w"> </span>watch<span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">        </span><span class="c1"># the same selectors as a read</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>verse<span class="w"> </span>watch<span class="w"> </span>-since<span class="w"> </span><span class="m">42</span><span class="w">                              </span><span class="c1"># replay from a revision already in hand</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>verse<span class="w"> </span>watch<span class="w"> </span>-ago<span class="w"> </span><span class="m">50</span><span class="w">                                </span><span class="c1"># …or the last 50 commits, whatever the head is</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>verse<span class="w"> </span>watch<span class="w"> </span>-since<span class="w"> </span><span class="m">0</span><span class="w">                               </span><span class="c1"># replay everything the store still holds</span>
+</code></pre></div>
+<p>With no cursor, a watch starts from now. A cursor asks for history, which is a different act from
+watching. The reason is under <a href="https://github.com/signadot/verse/blob/main/docs/design/reference-entities.md#no-history-without-a-cursor">Why it is this way</a>.</p>
+<p>A watch at an address opens with what stands now, which is not history. It sends a <code>set</code> for
+each node the address reaches, at the revision where the watch opened, and then the changes. So
+<code>-until</code> over a state already reached ends at once, and does not wait for it to happen again.
+<code>-no-init</code> starts from the next change instead.</p>
+<p>A watch with no literal prefix (<code>verse watch</code>, <code>verse watch '*' …</code>) joins the stream of the
+whole verse. That stream has no opening state, and a cursor replays history in its place.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="p">{</span><span class="na">op</span><span class="o">:</span> <span class="sx">set</span> <span class="na">at</span><span class="o">:</span> <span class="sx">demo.pr.</span><span class="s2">&quot;1&quot;</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">1</span> <span class="na">to</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">open</span> <span class="na">owner</span><span class="o">:</span> <span class="sx">ana</span><span class="p">}}</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="p">{</span><span class="na">op</span><span class="o">:</span> <span class="sx">delete</span> <span class="na">at</span><span class="o">:</span> <span class="sx">demo.pr.</span><span class="s2">&quot;9&quot;</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">7</span><span class="p">}</span>
+</code></pre></div>
+<p>There is one line per change, in flow form, so you can grep a watch.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>at</code></td>
+<td>the address the change is about</td>
+</tr>
+<tr>
+<td><code>op</code></td>
+<td><code>set</code> (created <strong>or</strong> updated) or <code>delete</code></td>
+</tr>
+<tr>
+<td><code>to</code></td>
+<td>the whole state of the node at <code>at</code> as of that commit, not the delta that was written</td>
+</tr>
+<tr>
+<td><code>rev</code></td>
+<td>an opaque cursor</td>
+</tr>
+<tr>
+<td><code>gap</code></td>
+<td>on a frame that follows lost events: how many the watch dropped before it, because the reader fell behind</td>
+</tr>
+</tbody>
+</table>
+<p>Verse does not tell a create from an update: a create is a patch onto nothing.</p>
+<p><code>to</code> is the whole state, so a reader that matches on two fields still matches when a write
+changed only one of them.</p>
+<p>Revisions increase, but they are <strong>sparse</strong>. Treat a <code>rev</code> as a bookmark to pass back to
+<code>-since</code>, never as a count.</p>
+<p><code>-ago 50</code> asks the store for the last fifty commits, limited to what it retains. The store
+resolves it; <code>-ago</code> does no arithmetic on a revision. It is its own flag because <code>-since -50</code>
+cannot be written: a leading dash marks an option.</p>
+<p>A watch with a cursor replays. <code>-since &lt;rev&gt;</code> (or <code>-ago &lt;n&gt;</code>) delivers what the store still
+holds from that revision, then streams what is new. So a reader that was away catches up.</p>
+<p>Verse refuses a cursor it cannot replay from, rather than answer with a stream that has no
+history. The refusal says which of two things happened:</p>
+<table>
+<thead>
+<tr>
+<th>What happened</th>
+<th>What the refusal says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The revision is below what the store still retains, so that history is gone.</td>
+<td>It names the commit the store can still serve from. <code>-ago &lt;n&gt;</code> asks for what the store kept without naming a commit.</td>
+</tr>
+<tr>
+<td>The store could not answer.</td>
+<td>The cursor is still valid, and the same request is worth repeating.</td>
+</tr>
+</tbody>
+</table>
+<p>A catch-up costs what the watched address holds, so a watch of one address costs less than a
+watch of the whole verse, in the replay as in the stream.</p>
+<p>The same property makes an installed rule act on the backlog: a rule is a statement about the
+world, not about what happens next. For the same reason, a long hold costs a cursor and not a
+buffer. See <a href="https://github.com/signadot/verse/blob/main/docs/change-events.md">change events</a>.</p>
+<p>A change deeper than the address a watch asks about is reported at the node the address reaches
+above it. A watch of <code>demo pr '*'</code>, while <code>{status: pass}</code> is written at
+<code>demo.pr.1.checks.lint</code> and the record says <code>stage: open</code>, gives:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="p">{</span><span class="na">op</span><span class="o">:</span> <span class="sx">set</span> <span class="na">at</span><span class="o">:</span> <span class="sx">demo.pr.</span><span class="s2">&quot;1&quot;</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">152</span> <span class="na">to</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">open</span> <span class="na">checks</span><span class="o">:</span> <span class="p">{</span><span class="na">lint</span><span class="o">:</span> <span class="p">{</span><span class="na">status</span><span class="o">:</span> <span class="sx">pass</span><span class="p">}}}}</span>
+</code></pre></div>
+<p>The node the address reaches is <code>demo.pr.1</code>. What changed inside it, <code>checks.lint</code>, is nested
+inside <code>to</code>. Nothing inside it is missed. A rule over that subtree still selects the deep node,
+because the rule evaluates again against the store, not against the event's address alone.</p>
+<p>A watch reports a node where the address reaches it, including a scalar:</p>
+<ul>
+<li>After <code>verse data demo pr 1 stage -put merged</code>, <code>verse watch demo pr 1 stage</code> reports a <code>set</code>
+  at <code>demo.pr.1.stage</code> holding <code>merged</code>.</li>
+<li><code>verse watch demo pr 1</code> reports a <code>set</code> at <code>demo.pr.1</code> holding the whole record, <code>stage: merged</code>
+  among it.</li>
+<li><code>verse data -rm demo pr 1 stage</code> is then a <code>delete</code> at <code>demo.pr.1.stage</code> to a watch on
+  <code>demo pr 1 stage</code>.</li>
+</ul>
+<p>A write at <code>demo</code> wakes a rule that reads <code>demo.pr</code>, as a write under <code>demo.pr</code> does. The
+write at <code>demo</code> replaces what the rule reads.</p>
+<p>A <code>delete</code> carries no payload, so a <code>-if</code> filter does not match it. Before a removal, a node on
+its way out is marked <em>vanishing</em>, so a rule does not act on it and bring it back; see
+<a href="../../trigger-model/#lifecycle-how-data-leaves">lifecycle</a>.</p>
+<h2 id="why-it-is-this-way">Why it is this way<a class="headerlink" href="#why-it-is-this-way" title="Permanent link">#</a></h2>
+<p>The reasons for this design are in <a href="https://github.com/signadot/verse/blob/main/docs/design/reference-entities.md">reference-entities.md</a>, in the repository.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

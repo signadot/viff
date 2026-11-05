@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/reference/tasks/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>Tasks - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Tasks - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/reference/tasks/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../../tutorial/charters-2/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../../asking/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#tasks" class="nav-link">Tasks</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#running-one" class="nav-link">Running one</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#who-does-the-work-and-with-what" class="nav-link">Who does the work, and with what</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-autonomy" class="nav-link">The autonomy</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-mirror" class="nav-link">The mirror</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-question-record" class="nav-link">The question record</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#steering" class="nav-link">Steering</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#where-a-task-runs-is-a-seam" class="nav-link">Where a task runs is a seam</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#why-it-is-this-way" class="nav-link">Why it is this way</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="tasks">Tasks<a class="headerlink" href="#tasks" title="Permanent link">#</a></h1>
+<p>A <a href="../../glossary/#task">task</a> is a unit of work that verse governs. An agent, a script or a
+remote <a href="../../glossary/#worker">worker</a> does the work.
+<a href="../../tutorial/tasks/">The tasks page of the tutorial</a> runs one task. This page is what you need
+to run a task, watch it, steer it and answer its questions.</p>
+<h2 id="running-one">Running one<a class="headerlink" href="#running-one" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>spawn.tony<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="s">prompt: summarize the open pull requests of acme/app</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="s">environment:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="s">  systems:</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="s">    network: {mode: open}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s">    git: [{repo: acme/app, fetch: {}}]</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="s">    github: [{repo: acme/app, list-prs: {}, read-pr: {}}]</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="s">autonomy:</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="s">- {then: allow}</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="s">EOF</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>verse<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>-f<span class="w"> </span>spawn.tony<span class="w">               </span><span class="c1"># prints a run-… id</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>verse<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>-f<span class="w"> </span>spawn.tony<span class="w"> </span>--wait<span class="w">        </span><span class="c1"># …and block for the final output</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>verse<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>-f<span class="w"> </span>spawn.tony<span class="w"> </span>--attach<span class="w">      </span><span class="c1"># …and stream it</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{script: &quot;cd app &amp;&amp; go test ./...&quot;, environment: {systems: {network: {mode: open}, git: [{repo: acme/app, fetch: {}}]}}}&#39;</span><span class="w"> </span><span class="p">|</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span>verse<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>-f<span class="w"> </span>-<span class="w">                      </span><span class="c1"># a script, no model, from stdin</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>verse<span class="w"> </span>task
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>verse<span class="w"> </span>task<span class="w"> </span>get<span class="w"> </span>&lt;id&gt;<span class="w">        </span><span class="c1"># snapshot: status, prompt, agent, runner, result, pending gates, autonomy</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>verse<span class="w"> </span>task<span class="w"> </span>say<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="s2">&quot;also say which ones wait on a review&quot;</span><span class="w">   </span><span class="c1"># an ask to the task: said to &lt;id&gt;: &lt;ask id&gt;</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>verse<span class="w"> </span>task<span class="w"> </span>autonomy<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="s1">&#39;[{match: {system: github, verb: read-pr}, then: ask}, {then: allow}]&#39;</span><span class="w"> </span>--as<span class="w"> </span>you@example.com
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>verse<span class="w"> </span>task<span class="w"> </span>autonomy<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--file<span class="w"> </span>autonomy.tony
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>verse<span class="w"> </span>task<span class="w"> </span>cancel<span class="w"> </span>&lt;id&gt;
+</code></pre></div>
+<p>The spawn checks out acme/app, which the task may only fetch, and gives the two reads of its pull
+requests. Its environment gives nothing that writes, so its autonomy lets every step go
+unasked.</p>
+<p><code>task run</code> takes a spawn, written as a charter's <code>spawn:</code> is: the work (<code>prompt</code> or <code>script</code>),
+the <code>agent</code> a prompt is for, the <code>environment</code> the run works in, its <code>autonomy</code>, and the rest
+(<a href="../action/#action-what-fires">the action of a rule</a>). It means only what it says: a spawn that
+names no network has none, and a runner that builds only the host's network, as <code>verse up</code>'s
+does, refuses it until it writes <code>network: {mode: open}</code>. Only how this terminal follows the run
+is a flag: <code>--attach</code>, <code>--wait</code>, <code>--converse</code>, <code>--name</code> and <code>--as</code>.</p>
+<p><code>say</code> and <code>autonomy</code> do different things:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>say</code></td>
+<td>gives the agent new instructions</td>
+</tr>
+<tr>
+<td><code>autonomy</code></td>
+<td>replaces the <a href="../../glossary/#autonomy">autonomy</a>, what each step gets, with a whole one. The runner checks each row against the task's environment, which is fixed for the run, and applies it at the next <a href="../../glossary/#boundary">boundary</a>, with no restart. A replacement decides among what the environment gives and adds nothing to it: a row that can match nothing the environment gives is refused.</td>
+</tr>
+</tbody>
+</table>
+<p><code>autonomy --as</code> names who made the change. <code>say</code> is made as whoever <code>verse</code> acts as. Both
+commands work wherever the task runs: its runner gets them.</p>
+<p>The <code>spawn</code> of a <a href="../../glossary/#rule">rule</a> runs a task the same way. What a charter may say
+in a spawn is in <a href="../action/#action-what-fires">the action of a rule</a>.</p>
+<h3 id="answer-what-finished-means"><code>answer</code>: what finished means<a class="headerlink" href="#answer-what-finished-means" title="Permanent link">#</a></h3>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">prompt</span><span class="o">:</span> <span class="sx">check</span> <span class="sx">every</span> <span class="sx">link</span> <span class="sx">in</span> <span class="sx">app/docs/install.md</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="na">answer</span><span class="o">:</span> <span class="p">{</span><span class="na">broken</span><span class="o">:</span> <span class="k">!irtype</span> <span class="p">[]}</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="na">git</span><span class="o">:</span> <span class="p">[{</span><span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span><span class="p">,</span> <span class="na">fetch</span><span class="o">:</span> <span class="p">{}}]</span>
+</code></pre></div>
+<p>A spawn's <code>answer</code> is a tony match pattern. It is the run's definition of <strong>done</strong>, whether a
+charter or <code>task run</code> wrote the spawn.</p>
+<p>Without a contract, a run is finished when the model stops calling tools. A model that only
+describes its next step also stops calling tools, and from outside the two look the same. So a
+run can end in the middle of its work, with a page of notes as its <code>result</code>.</p>
+<p>With a contract, verse:</p>
+<ul>
+<li>checks the final message as soon as the model stops;</li>
+<li>on a mismatch, tells the model what is wrong, so it can answer again;</li>
+<li>fails the run if it never satisfies the contract.</li>
+</ul>
+<p>A contract also tells <em>nothing to do</em> apart from <em>something went wrong</em>, which look the same in
+an exit status.</p>
+<p>Keep the contract small: let it cover only what a rule will match on. A field such as
+<code>summary: !irtype string</code> looks harmless, and it is a trap: a model writes
+<code>summary: nothing was wrong</code>, which is not valid tony, and the run fails for a reason that has
+nothing to do with the work. Put the prose outside the governed part instead. Verse reads the
+answer from a fenced block in the final message, so the rest of the message can be free text
+(<a href="../action/#the-answer-contract">the answer contract</a>).</p>
+<p>A contract is for an agent. A script's output is its result as it is, so verse refuses a spawn
+that gives a script a contract.</p>
+<p><a id="the-drivers"></a>
+<a id="the-doer"></a></p>
+<h2 id="who-does-the-work-and-with-what">Who does the work, and with what<a class="headerlink" href="#who-does-the-work-and-with-what" title="Permanent link">#</a></h2>
+<p>A task's work is a <code>prompt</code>, for an agent, or a <code>script</code>, which is its own doer.</p>
+<table>
+<thead>
+<tr>
+<th>Spawn</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prompt: …</code>, <code>agent: {name: &lt;name&gt;}</code></td>
+<td>gives the prompt to the agent of that name, on a runner that offers it (<code>verse</code> is verse's own; a runner may offer <code>claude</code> or <code>codex</code>). The agent decides what to do, one turn at a time. Without <code>agent</code>, the prompt is for verse's default agent (<code>defaultAgent</code>, <code>verse</code> by default).</td>
+</tr>
+<tr>
+<td><code>script: "…"</code></td>
+<td>runs the script once, by its <code>#!</code> line or with bash. Its output is the result. It takes no <code>agent</code>: data reaches it as the environment's <code>vars</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>An agent's settings are written beside its name, <code>agent: {name: codex, model: gpt-5-codex,
+effort: high}</code>, each one its runner's offer takes, with a value it takes. The task's record says
+which agent ran and with what, the runner's defaults filled in.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  <span class="na">script</span><span class="o">:</span> <span class="p">|</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="sh">    git -C app merge --ff-only &quot;mirror/$BRANCH&quot;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="sh">    verse-call-tool git-push -branch main</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="na">vars</span><span class="o">:</span> <span class="p">{</span><span class="na">BRANCH</span><span class="o">:</span> <span class="sx">$[branch]</span><span class="p">}</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>      <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>      <span class="na">git</span><span class="o">:</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>      <span class="p">-</span> <span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>        <span class="na">from</span><span class="o">:</span> <span class="sx">main</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>        <span class="na">fetch</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>        <span class="na">push</span><span class="o">:</span> <span class="p">{</span><span class="na">ref</span><span class="o">:</span> <span class="sx">refs/heads/main</span><span class="p">,</span> <span class="na">force</span><span class="o">:</span> <span class="l">false</span><span class="p">,</span> <span class="na">delete</span><span class="o">:</span> <span class="l">false</span><span class="p">}</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>  <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>  <span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<p><code>environment</code> is what the run works in, and the runner enforces it. <code>vars</code> are variables set in
+the task's shell: how a script gets data from the subject without putting it into its text.
+<code>systems</code> is what the task may do, one block per system, and it is the whole of it: a step no
+block gives is refused before any row is read (<a href="../../systems/#a-block-gives-verbs">systems</a>).</p>
+<table>
+<thead>
+<tr>
+<th>System</th>
+<th>What its block says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>git</code></td>
+<td>a repository checked out in the task's workspace: <code>repo</code> (<code>owner/name</code>, or <code>host/owner/name</code>), <code>from</code> (the branch the checkout starts on; absent is the default branch), and the verbs it gives with their shapes, <code>fetch: {}</code> and the <code>push</code> shapes (<a href="../../systems/git/">git</a>).</td>
+</tr>
+<tr>
+<td><code>git-issue</code></td>
+<td>a repository's own tracker, of a repository <code>git</code> checks out. <code>{repo: acme/app}</code> gives every one of its verbs (<a href="../../systems/git-issue/">git-issue</a>).</td>
+</tr>
+<tr>
+<td><code>network</code></td>
+<td>what the run may reach: <code>{mode: none}</code>, <code>{mode: open}</code> (the host's network), or <code>{mode: allow, tcp-client: [{host: …, port: …}]}</code>. Absent is <code>none</code>. It is built once, when the run starts, and the runner refuses a mode its sandbox cannot build (<a href="../../systems/inside/#the-network">the network</a>).</td>
+</tr>
+<tr>
+<td><code>github</code></td>
+<td>a GitHub repository's pull requests, of a repository <code>git</code> checks out: <code>create-pr</code>, <code>update-pr</code>, <code>list-prs</code> and <code>read-pr</code>, where the runner's forge is GitHub (<a href="../../systems/github/">github</a>).</td>
+</tr>
+<tr>
+<td><code>github-issue</code></td>
+<td>a GitHub repository's issues, of a repository <code>git</code> checks out: <code>create</code>, <code>comment</code> and <code>close</code> (<a href="../../systems/github-issue/">github-issue</a>).</td>
+</tr>
+<tr>
+<td><code>linear-issue</code></td>
+<td>Linear's issues: <code>create</code> in a <code>team</code>, <code>comment</code> and <code>close</code> on an <code>issue</code> (<a href="../../systems/linear-issue/">linear-issue</a>).</td>
+</tr>
+<tr>
+<td><code>slack</code></td>
+<td>Slack's channels: <code>post</code>, <code>reply</code>, <code>read</code> and <code>react</code>, each in a <code>channel</code> (<a href="../../systems/slack/">slack</a>).</td>
+</tr>
+<tr>
+<td><code>verse</code></td>
+<td>verse itself, acted on as the person the task runs for: <code>ask-create</code>, <code>ask-get</code>, <code>ask-list</code>, <code>data-get</code>, <code>data-put</code>, <code>data-rm</code>, <code>charter-get</code>, <code>charter-check</code>, <code>charter-install</code> and <code>charter-remove</code>, the verbs of <code>verse mcp</code> (<a href="../../systems/verse/">verse</a>).</td>
+</tr>
+<tr>
+<td><code>files</code>, <code>commands</code>, <code>agent</code>, <code>question</code></td>
+<td>what a doer does inside its run. <code>files: {}</code> gives every write, <code>commands: {run: {command: !regexp "^make "}}</code> the commands it names (<a href="../../systems/inside/">files, commands and agent</a>, <a href="../../systems/question/">question</a>).</td>
+</tr>
+</tbody>
+</table>
+<p>A script calls the task's tools from its shell with <code>verse-call-tool</code>: <code>git-push</code>, <code>git-fetch</code>,
+<code>github-create-pr</code>, <code>question-ask</code>, and the others its environment gives. Each call is an action
+of the task. Verse decides it, and reports it on the event stream, exactly as it does an agent's.
+So a row written for an agent's push also holds a push that a script makes. A refused call is
+an answer the script reads (a non-zero exit, and the reason on stdout). It does not end the
+run.</p>
+<p>The runner refuses a spawn with both a prompt and a script, neither, or an agent for a script.
+It refuses what it does not offer: an agent it does not have, a setting its agent does not take,
+a system it does not hold, an environment beyond its ceilings, and an environment missing a step
+its agent can't run without (Codex needs <code>commands</code> and <code>files</code>).</p>
+<p><a id="the-dial"></a>
+<a id="the-policy"></a></p>
+<h2 id="the-autonomy">The autonomy<a class="headerlink" href="#the-autonomy" title="Permanent link">#</a></h2>
+<p>A task decides before each <strong>step</strong>: a write to a file, a command, a push, a pull request, a
+call to a sub-agent, asking a person (<code>question.ask</code>), a connection under a network of <code>allow</code>.
+Reading a file or listing a directory is no step, and nothing decides before it.</p>
+<p>A step outside the environment is refused first, saying what the environment gives. Within it, a
+spawn's <code>autonomy</code> says what happens to each step. It is one ordered list of rows. The first row
+that matches a step decides it.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">git</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">push</span><span class="p">,</span> <span class="na">ref</span><span class="o">:</span> <span class="k">!glob</span> <span class="s2">&quot;refs/heads/verse/auto/*&quot;</span><span class="p">,</span> <span class="na">exists</span><span class="o">:</span> <span class="l">false</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">git</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">push</span><span class="p">,</span> <span class="na">ref</span><span class="o">:</span> <span class="k">!glob</span> <span class="s2">&quot;refs/heads/verse/auto/*&quot;</span><span class="p">,</span> <span class="na">own</span><span class="o">:</span> <span class="l">true</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">git</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">push</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="p">{</span><span class="na">ask</span><span class="o">:</span> <span class="p">{</span><span class="na">need</span><span class="o">:</span> <span class="mi">2</span><span class="p">,</span> <span class="na">answerers</span><span class="o">:</span> <span class="p">[</span><span class="sx">group:release</span><span class="p">],</span> <span class="na">within</span><span class="o">:</span> <span class="sx">4h</span><span class="p">,</span> <span class="na">default</span><span class="o">:</span> <span class="sx">deny</span><span class="p">}}}</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Row</th>
+<th>What it says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>then: deny</code></td>
+<td>the step is refused in the row's name, and nobody is asked</td>
+</tr>
+<tr>
+<td><code>then: ask</code></td>
+<td>the step waits for a person first. <code>{ask: {…}}</code> says how: who is asked, how many ballots, and how long the question stands. It starts nothing of its own: the task waits on the answer, and what it does about a yes is the step</td>
+</tr>
+<tr>
+<td><code>then: allow</code></td>
+<td>the step goes ahead</td>
+</tr>
+<tr>
+<td>the last row, with no <code>match</code></td>
+<td>what every step no row above matched gets: the task's dial</td>
+</tr>
+</tbody>
+</table>
+<p><strong>No autonomy asks on every step.</strong> A spawn that writes none is decided by the default row
+alone, <code>{then: ask}</code>, so each step the environment gives waits for a person. The last row is the
+one place a run is made unattended: <code>{then: allow}</code> lets every step the environment gives go
+ahead unasked, and the rows above it are the exceptions.</p>
+<p><strong>The environment is what the task may do; the autonomy decides among it.</strong> A row never gives
+a step the environment does not: "never <code>main</code>" is a <code>git</code> block whose push shapes leave <code>main</code>
+out, and "no shell" is an environment with no <code>commands</code>. A row that can match nothing the
+environment gives is refused where it is written, since it would never decide.</p>
+<p><strong>A connection is decided too.</strong> Under <code>network: {mode: allow}</code>, the task's proxy decides each
+connection as the step <code>network.tcp-client</code>: outside the environment's <code>tcp-client</code> shapes it is
+refused, and within them a row on the network allows or denies it. A connection can't wait for an
+answer, so such a row never asks, and the default row doesn't decide a connection: a host the
+shapes give is reached unless a row on the network denies it. What the proxy refused is on the
+task's record. Under <code>open</code> or <code>none</code> there is nothing to decide
+(<a href="../../systems/inside/#the-network">the network</a>).</p>
+<p><strong>A script is one action, and not a step.</strong> It runs whatever the autonomy says. What is decided
+is each call it makes.</p>
+<p><strong>An agent asks before a step it chose.</strong> Its reads run freely. Under rows that <code>ask</code> on
+<code>files</code>, <code>commands</code>, <code>git</code> and <code>agent</code>, each write, command, push and call to a sub-agent waits
+until somebody approves it. Approving a command the agent made up is a real decision.</p>
+<p><strong>A row on <code>files</code> or <code>commands</code> is advisory.</strong> It decides the act as the doer names it. A
+write through the shell is a <code>commands.run</code> step, not <code>files.write</code>, and a <code>command</code> pattern
+matches the whole string, so <code>git push*</code> misses <code>cd x &amp;&amp; git push</code>. A push is the runner's own
+act, and the network is built into the run
+(<a href="../../systems/inside/#a-row-on-files-or-commands-is-advisory">files, commands and agent</a>).</p>
+<p>An <code>allow</code> row is how a charter says "the firing already decided this":
+<code>{match: {system: git, verb: push}, then: allow}</code>. The rule's own <code>gates:</code> run before the
+action, once for each firing. The allow stops the same decision from being made twice. A runner
+that ignored a spawn's <code>autonomy:</code> would silently disobey a charter that asks to be asked.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>verse<span class="w"> </span>question<span class="w">                              </span><span class="c1"># task questions, and engine gates that ASK</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># - gate: autonomy[1]</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1">#   id: run-f3e31ed0390f~d1</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1">#   from: {task: run-f3e31ed0390f}</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1">#   reason: &quot;files.write path=docs/x.md&quot;</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1">#   step: files.write</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1">#   fields: {path: docs/x.md}</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="c1">#   tool: write_file</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>verse<span class="w"> </span>question<span class="w"> </span>approve<span class="w"> </span>run-f3e31ed0390f~d1<span class="w"> </span>--as<span class="w"> </span>you@example.com<span class="w">  </span><span class="c1"># or: task approve run-… run-…~d1</span>
+</code></pre></div>
+<p>A question names the row that asked it: the row's <code>name</code>, or its place in the list, such as
+<code>autonomy[1]</code>. Its clock, its default and its <code>need</code> are the row's, whatever the runner sends.
+<code>turn</code>, <code>ask</code> and <code>question-ask</code> name the questions that are no row's, a conversation's turn and
+a task's own. <code>environment</code> names the refusal of a step outside the environment, which no row
+decides. So no row takes one of those four names.
+The <code>~</code> between the task and the gate needs no quotes, in a shell or in a URL.</p>
+<p><strong>Verse checks who may answer before it delivers the answer</strong> (<a href="../../perms/#tasks-and-gates">tasks and
+gates</a>). The worker that works the task may not answer the question
+it raised. A person may answer through a <a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md">resolver</a> they granted, and
+the answer is still theirs. A charter gate is listed here too, with its <code>options</code>, <code>ballots</code> and
+<code>deadline</code> (<a href="../gates/#the-tally">the tally</a>).</p>
+<p>With an identity, <code>run --attach</code> and <code>attach</code> ask inline instead
+(<code>⏸ gate "autonomy[1]" (write_file) — approve? [y/n]</code>). Answer <code>y</code> to allow and <code>n</code> to deny. Any
+other answer is asked again; it is not read as a no. A denied step comes back to the agent as an
+error, and the agent makes a new plan. Without an identity, <code>attach</code> only streams, and prints
+the <code>verse question</code> command that answers. It is the same question either way: it stays in
+<code>verse question</code>, and anybody who may answer it can, by id, from anywhere.</p>
+<h3 id="a-rows-question">A row's question<a class="headerlink" href="#a-rows-question" title="Permanent link">#</a></h3>
+<p>An <code>ask</code> row poses the same record that a charter gate poses. It says how many ballots settle
+it, what silence settles on, and how long it stands. It is a row of a spawn's <code>autonomy:</code>, a
+charter's or one given to <code>task run</code>:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">shell</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  <span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">commands</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">run</span><span class="p">}</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  <span class="na">then</span><span class="o">:</span> <span class="p">{</span><span class="na">ask</span><span class="o">:</span> <span class="p">{</span><span class="na">need</span><span class="o">:</span> <span class="mi">2</span><span class="p">,</span>                            <span class="c1"># proceed takes two ballots; one deny refuses</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>               <span class="na">within</span><span class="o">:</span> <span class="s2">&quot;4h&quot;</span><span class="p">,</span> <span class="na">default</span><span class="o">:</span> <span class="sx">deny</span><span class="p">}}</span>      <span class="c1"># and the clock decides silence</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">main</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  <span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">git</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">push</span><span class="p">,</span> <span class="na">ref</span><span class="o">:</span> <span class="sx">refs/heads/main</span><span class="p">}</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  <span class="na">then</span><span class="o">:</span> <span class="p">{</span><span class="na">ask</span><span class="o">:</span> <span class="p">{</span><span class="na">answerers</span><span class="o">:</span> <span class="p">[</span><span class="sx">group:release</span><span class="p">]}}</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">sub-agents</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>  <span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">agent</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">call-sub-agent</span><span class="p">}</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>  <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">git</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">push</span><span class="p">,</span> <span class="na">ref</span><span class="o">:</span> <span class="k">!glob</span> <span class="s2">&quot;refs/heads/release/*&quot;</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">deny</span><span class="p">}</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<p><code>match</code> names a step by its system and, if it wants to, by its verb and the step's params. A
+verb or a param the row leaves out matches anything: <code>{system: git}</code> is every git call. Each
+param is a tony match pattern:</p>
+<ul>
+<li><strong>A plain value matches itself.</strong> <code>true</code>, <code>false</code> and a port are written unquoted. A plain
+  value with a <code>*</code> in it is refused, since it would match only itself: the pattern it means is
+  a <code>!glob</code> or a <code>!regexp</code>, and the refusal names it.</li>
+<li><strong><code>null</code> matches any value</strong> the step carries.</li>
+<li><strong><code>!glob "refs/heads/release/*"</code> is a glob.</strong> Its <code>*</code> stops at a <code>/</code>, so <code>refs/heads/*</code> is
+  every branch.</li>
+<li><strong><code>!regexp "^refs/heads/verse/"</code> is a Go regexp.</strong> It is unanchored unless it says <code>^</code> or <code>$</code>,
+  so <code>!regexp "git push"</code> is every command with a push in it.</li>
+<li><strong><code>!or [a, b]</code> takes either.</strong> <code>!and</code> and <code>!not</code> work as they do in tony.</li>
+<li><strong>An address is a list of segments,</strong> <code>[play, secret]</code> or <code>play.secret</code>, each a name, <code>*</code> for
+  any one, or a pattern over one. A step at an address reaches everything under it, so a row
+  that allows matches only a step whose whole reach lies under the pattern, and a row that
+  denies or asks matches one that reaches anything under it (<a href="../../systems/verse/">verse</a>).</li>
+</ul>
+<p>The verb can be a pattern too: <code>verb: !or [fetch, push]</code>. The last row names no step, and is
+what a call of a named verb gets when no row above matched it. Verse refuses an autonomy that ends with a named step, or that puts a row
+with no match before the end.</p>
+<p>Each step is a verb of a system, written <code>&lt;system&gt;.&lt;verb&gt;</code>. The tool a doer calls for it is
+<code>&lt;system&gt;-&lt;verb&gt;</code>: <code>git-push</code> is the call, and <code>git.push</code> is the step a row matches. The step's
+params are the verb's:</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Params</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>git.push</code></td>
+<td><code>repo</code>, <code>from</code>, <code>ref</code>, <code>delete</code>, <code>force</code>; <code>exists</code> and <code>own</code>, filled by the runner</td>
+</tr>
+<tr>
+<td><code>github.create-pr</code></td>
+<td><code>repo</code>, <code>base</code>, <code>head</code>, <code>draft</code>; <code>own</code>, filled by the runner</td>
+</tr>
+<tr>
+<td><code>github.update-pr</code></td>
+<td><code>repo</code>, <code>head</code>, <code>base</code>; <code>own</code>, filled by the runner</td>
+</tr>
+<tr>
+<td><code>github.list-prs</code></td>
+<td><code>repo</code></td>
+</tr>
+<tr>
+<td><code>github.read-pr</code></td>
+<td><code>repo</code>, <code>pr</code></td>
+</tr>
+<tr>
+<td><code>files.write</code></td>
+<td><code>path</code></td>
+</tr>
+<tr>
+<td><code>commands.run</code></td>
+<td><code>command</code></td>
+</tr>
+<tr>
+<td><code>agent.call-sub-agent</code></td>
+<td><code>agent</code></td>
+</tr>
+<tr>
+<td><code>network.tcp-client</code></td>
+<td><code>host</code>, <code>port</code> (under a network of <code>allow</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>The issue trackers' verbs (<code>git-issue</code>, <code>github-issue</code>, <code>linear-issue</code>), Slack's and verse's
+are on <a href="../../systems/">their pages</a>, one page for each system. Verse keeps each system's verbs
+and params as a document at <code>verse.systems.&lt;name&gt;</code> (<code>verse d verse systems git</code> reads one).
+A runner's tools are checked against these documents when it starts.</p>
+<p>An ask's <code>need</code>, <code>within</code>, <code>default</code>, <code>answerers</code> and <code>labels</code> mean what <code>need</code>, <code>deadline</code>,
+<code>answerers</code> and <code>labels</code> mean on a <a href="../gates/#gates-whether-it-proceeds">charter gate</a>. Verse
+refuses them the same way when they cannot be posed as written: at the spawn, or at
+<code>task autonomy</code>, and never in the middle of a run. A row's question is answered <code>proceed</code> or
+<code>deny</code>, so <code>default</code> is one of the two. It also refuses a param the step does not have,
+a pattern its field is never spelled as, and a system or a verb that no document describes. A
+<code>repo</code> is <code>host/owner/name</code> in lower case (<code>github.com/acme/app</code>), a
+<code>ref</code> is a full ref (<code>refs/heads/main</code>, never <code>main</code>), a pull request's <code>base</code> and <code>head</code> are
+branch names (<code>main</code>), <code>delete</code>, <code>force</code>, <code>exists</code> and <code>own</code> are <code>true</code> or <code>false</code>, a Linear <code>team</code> or <code>issue</code> is
+uppercase (<code>ENG</code>, <code>ENG-42</code>), and a Slack <code>channel</code> is lowercase with no <code>#</code> (<code>deploys</code>). A
+param written <code>null</code> is refused rather than dropped: to match any value, leave it out.</p>
+<p><strong>Whom a row asks.</strong> A row that names nobody asks the docket. <code>answerers: [$principal]</code> asks
+whom the task acts for, which for a run you start is you. Verse refuses <code>$principal</code> for a task
+that acts for nobody: one run as the system, or a rule's task without <code>as: subject</code>. A task that
+acts for somebody else asks them with every question that names nobody: a task an ask's row
+starts asks its asker, and a spawn <code>as: subject</code> asks the subject's owner. The task's record shows it, as
+<code>answerers: [$principal]</code> beside <code>actsFor:</code>. A row's answerers are checked as a gate's are
+(<a href="../gates/#gates-whether-it-proceeds">gates</a>): a group it names has to exist, as
+<code>group:release</code> does above only where somebody made it, and <code>need</code> can be no more than the
+people it names.</p>
+<p><strong>A run that asks before its one command.</strong> An agent told to run the tests runs a command, which
+is <code>commands.run</code>. So a row over it stops the command before it runs:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>tests.tony<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="s">prompt: run the tests of app</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="s">environment:</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="s">  systems:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="s">    network: {mode: open}</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="s">    git: [{repo: acme/app, fetch: {}}]</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="s">    commands: {}</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="s">autonomy:</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="s">- name: shell</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="s">  match: {system: commands, verb: run}</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="s">  then: {ask: {within: &quot;10m&quot;, default: deny}}</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="s">- then: allow</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="s">EOF</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>verse<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span>-f<span class="w"> </span>tests.tony<span class="w">                                      </span><span class="c1"># run-4e919ce01f99</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>verse<span class="w"> </span>question
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="c1"># - gate: shell</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="c1">#   id: run-4e919ce01f99~d1</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="c1">#   reason: &quot;commands.run command=go test ./...&quot;</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="c1">#   step: commands.run</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="c1">#   fields: {command: &quot;go test ./...&quot;}</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="c1">#   tool: run_bash</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="c1">#   deadline:</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="c1">#     default: deny</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="c1">#     within: 10m</span>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>verse<span class="w"> </span>question<span class="w"> </span>approve<span class="w"> </span>run-4e919ce01f99~d1<span class="w"> </span>--as<span class="w"> </span>ana@example.com<span class="w">   </span><span class="c1"># the command runs</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>verse<span class="w"> </span>task<span class="w"> </span>get<span class="w"> </span>run-4e919ce01f99<span class="w">                                   </span><span class="c1"># status: done</span>
+</code></pre></div>
+<p>The environment gives a checkout of acme/app that the task may only fetch, and <code>commands</code>. So
+the run has the repository and a shell, and nothing else: no <code>write_file</code>, no sub-agent, no push.
+The last row is the dial. It lets a fetch go, and decides no command, since the <code>shell</code> row
+matches every command.</p>
+<p>If nobody answers, the deadline settles the question on <code>deny</code> after ten minutes. The command
+never runs. The question's record says <code>by: deadline</code> and <code>verdict: deny</code>. The refusal comes back
+to the agent, which makes a new plan, as it does after a person's no. So a run that nobody is
+watching does not wait for ever (<a href="../gates/#a-deadline-settles">a deadline settles</a>).</p>
+<p>The runner reads the deadline's duration and refuses the step when it passes. What silence
+settles on, and the <code>labels</code>, are verse's: verse adds them when it records the question.</p>
+<p>A resolver's own <code>deadline</code> is a different clock. It passes the question up to the next layer,
+and does not settle it. Both times are on the record, and the earlier one fires first.</p>
+<h3 id="a-question-for-the-person">A question for the person<a class="headerlink" href="#a-question-for-the-person" title="Permanent link">#</a></h3>
+<p>A task can ask the person it runs for. The <code>question-ask</code> tool poses a question and waits until
+it is answered, and the answer is the tool's result. It is the step <code>question.ask</code>, the task's
+where its environment gives <code>question</code> (<code>question: {}</code>), and a row such as
+<code>{match: {system: question}, then: allow}</code> lets it put the question unasked. An agent has it
+as a tool, and a script calls it with <code>verse-call-tool question-ask</code>. The question is an ordinary ask: on the docket, in
+<code>verse question</code>, in Slack, answerable from any of them, and withdrawn if the task is cancelled.</p>
+<p>It waits on whom the task acts for: whoever started it, or the asker it runs for. A task that
+acts for nobody, such as a rule's task without <code>as: subject</code>, asks the docket. A call that names
+<code>answerers</code> (grantees, as a gate names them: <code>user:*</code>, <code>group:owners</code>) asks them instead. This is
+how a system charter's script asks anybody at all. Its one option, <code>reply</code>, takes words:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>verse<span class="w"> </span>question<span class="w"> </span>run-4708ef20b92d~2<span class="w"> </span>--answer<span class="w"> </span>reply<span class="w"> </span>--say<span class="w"> </span><span class="s2">&quot;the second one&quot;</span><span class="w"> </span>--as<span class="w"> </span>you@example.com
+</code></pre></div>
+<p>Attached, you see the question as a prompt:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>{cursor: 4 kind: pending id: run-4708ef20b92d~2 tool: question-ask text: &quot;which one?&quot; …}
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>  ❓ which one?
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>  &gt; the second one
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>  → sent
+</code></pre></div>
+<p>A line you type while no prompt is up waits for the task's next question. It never answers a
+question you had not seen yet, which on a yes-or-no gate would deny an action you never saw. A
+<code>reply</code> takes everything waiting as one message, with its paragraphs. <code>options</code> on the ask makes
+it a menu instead of words.</p>
+<p>A question waits until it is answered, unless the task gives it a deadline. <code>within</code> (a
+duration, such as <code>30m</code>) limits the wait, and with <code>options</code>, <code>default</code> names the option that
+silence settles on. When the time passes, the task reads <code>nobody answered within 30m</code>, and the
+default if there was one, and goes on.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>verse-call-tool<span class="w"> </span>question-ask<span class="w"> </span>-question<span class="w"> </span><span class="s2">&quot;ship it?&quot;</span><span class="w"> </span>-options<span class="w"> </span>yes<span class="w"> </span>-options<span class="w"> </span>no<span class="w"> </span>-within<span class="w"> </span>30m
+</code></pre></div>
+<p>An autonomy row on <code>question</code> decides the asking as any autonomy row decides its step: an
+<code>allow</code> puts the question at once, and an <code>ask</code> would ask before the question is put.</p>
+<h3 id="an-ask-for-the-person">An ask for the person<a class="headerlink" href="#an-ask-for-the-person" title="Permanent link">#</a></h3>
+<p>A task that asks as the person it runs for, and goes on, uses the
+<a href="../../systems/verse/">verse system</a>'s <code>verse-ask-create</code>, as they would use <code>verse ask</code>. The
+ask's <code>from</code> is <code>{principal: &lt;them&gt;, task: &lt;this task&gt;}</code>, and it stands after the task ends. Its
+rows run as them when it settles, and the task reads it back with <code>verse-ask-get</code> to see
+whether it was answered. A spawn in any of its rows is held within the task:
+an environment no wider than the task's, less <code>verse.charter-install</code>, an autonomy no looser, the task's runner (<code>runner:</code>
+names it) and the task's credential where it spends one. An answer in any of its rows is
+refused, at any depth: it would be theirs, on any ask that waits on them. Once raised, the ask is theirs, and they change it as any
+of their own. The task's record carries its launch, <code>environment</code> and <code>virtualKey</code> (the address
+its spawn named, never the key), so a restart that resumes the task holds a row's spawn within
+it as before.</p>
+<p>A task may also install charters as that person, with <code>verse-charter-install</code>. A spawn among
+their rules is held within the task in the same way, on any runner, and never gives
+<code>verse.charter-install</code>: what a task installs cannot install charters
+(<a href="../../systems/verse/">the verse system</a>).</p>
+<h3 id="a-conversation">A conversation<a class="headerlink" href="#a-conversation" title="Permanent link">#</a></h3>
+<p><code>task run --attach</code> is a conversation, unless you pass <code>--no-converse</code>. Whenever the model goes
+quiet, you get the turn: the same kind of record, <code>gate: turn</code>, with the options <code>reply</code> and
+<code>end</code>. The run ends when you end it, not when the model stops.</p>
+<ul>
+<li>At the terminal, the turn is a bare prompt. A line is your next message, and Ctrl-D ends the
+  conversation.</li>
+<li>From anywhere else, answer with <code>verse question &lt;id&gt; --answer reply --say "…"</code> or
+  <code>--answer end</code>. A <code>task say</code> while the turn waits is your reply.</li>
+</ul>
+<p>Every agent holds a conversation: verse's own, Claude and Codex. The verse agent is told it is
+in one, so it says its piece and stops, rather than calling <code>question-ask</code>, and <code>yield</code> with
+reason <code>done</code> is the model ending the conversation. Claude and Codex go quiet at the end of each
+turn, and your reply is their next. The last message is the result.
+If the run has a finisher, it runs once, after the end.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>{cursor: 2 kind: say task: run-… text: &quot;Hey there! What&#39;s on your mind?&quot;}
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>{cursor: 3 gate: turn id: run-…~t1 kind: pending options: [{id: reply says: &quot;say something&quot;} {id: end says: &quot;end the conversation&quot;}] text: &quot;your turn&quot; …}
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>  &gt; tell me a joke
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  → sent
+</code></pre></div>
+<p>Without <code>--attach</code>, nobody is there to take a turn, so the run ends when the model stops. A
+charter cannot ask for a conversation, because nobody would be on the other end. A turn has no
+deadline: an abandoned conversation stays on the docket until <code>task cancel</code>, and a restart
+orphans it like any question.</p>
+<p><a id="who-you-addressed"></a></p>
+<h3 id="which-one-you-meant-an-agent-or-a-command">Which one you meant: an agent or a command<a class="headerlink" href="#which-one-you-meant-an-agent-or-a-command" title="Permanent link">#</a></h3>
+<p>When you ask an <em>agent</em> to do something, you expect it to ask before it writes. When you give a
+<em>command</em>, you expect it to run. A spawn says which: <code>prompt: "go test ./..."</code> goes to an agent,
+and with no <code>commands</code> in its environment the agent has no shell to run it in. So you write it:</p>
+<table>
+<thead>
+<tr>
+<th>You want</th>
+<th>You write</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>to run it as a command</td>
+<td><code>script: "go test ./..."</code></td>
+</tr>
+<tr>
+<td>to keep the agent and not be asked</td>
+<td><code>commands: {}</code> in the environment, and a row allowing what it may do, <code>{match: {system: commands}, then: allow}</code></td>
+</tr>
+<tr>
+<td>to change how it is decided after the task starts</td>
+<td><code>task autonomy &lt;id&gt;</code> with the rows, each reaching what the task's environment gives</td>
+</tr>
+</tbody>
+</table>
+<p>A rule meets the same problem from the other side. Its gates approve <em>the firing</em>, not the
+actions that the agent then chooses. The rule says it already decided with <code>allow</code> rows on the
+spawn, and asks with rows about the steps it did not decide. Verse takes the charter's word for
+that.</p>
+<h2 id="the-mirror">The mirror<a class="headerlink" href="#the-mirror" title="Permanent link">#</a></h2>
+<p>The <a href="../../glossary/#mirror-of-tasks">mirror</a> writes every task into the store as
+<code>verse.task.instance.&lt;id&gt;</code>. So you watch tasks as you watch any data. A task that completes is
+data that changes, and a rule reacts to it as it reacts to any data.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>verse<span class="w"> </span>watch<span class="w"> </span>verse<span class="w"> </span>task<span class="w"> </span>instance<span class="w"> </span><span class="s1">&#39;*&#39;</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>verse<span class="w"> </span>data<span class="w"> </span>verse<span class="w"> </span>task<span class="w"> </span>instance<span class="w"> </span>&lt;id&gt;
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="na">payload</span><span class="o">:</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>  <span class="na">autonomy</span><span class="o">:</span> <span class="p">[{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">github</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">read-pr</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">},</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}]</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>  <span class="na">autonomyBy</span><span class="o">:</span> <span class="sx">user:you@example.com</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>  <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">,</span> <span class="na">model</span><span class="o">:</span> <span class="sx">claude-sonnet-5</span><span class="p">}</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>  <span class="na">lastAction</span><span class="o">:</span> <span class="sx">github-list-prs</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>  <span class="na">lastOutput</span><span class="o">:</span> <span class="sx">summarizing</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>  <span class="na">runner</span><span class="o">:</span> <span class="sx">http://127.0.0.1:9803</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>  <span class="na">runnerName</span><span class="o">:</span> <span class="sx">verse.runners.local</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>  <span class="na">status</span><span class="o">:</span> <span class="sx">done</span>
+</code></pre></div>
+<p><code>agent</code> is who did the work and with what: the agent's name and its settings, as the spawn asked
+until the runner reports and as the runner resolved them once the task runs, the runner's
+defaults filled in. A script's record says <code>script: true</code> instead. <code>git</code> is the repositories the
+spawn gave the task, in the spawn's words, and <code>refused</code> the connections its proxy refused.</p>
+<p><code>observed: false</code> appears while the mirror cannot reach the runner that holds the task. The
+other fields are then the last thing the mirror heard, not the current state.</p>
+<p>The record outlives the task. After the task ends, it keeps the result, the last <code>say</code>, the
+last tool output and the final <code>status</code>. <code>verse flow show</code> reads them for history. The mirror is
+an index, not a transcript: it keeps what an observer needs.</p>
+<h3 id="one-id-many-runs">One id, many runs<a class="headerlink" href="#one-id-many-runs" title="Permanent link">#</a></h3>
+<p>A task id names the <em>work</em>, not one run of it. Verse derives the id from the spawning action and
+the subject. So a rule that fires twice about one subject spawns the same id twice, and the
+second firing changes nothing that the first did not. <code>verse flow show demo.pr.1</code> addresses the
+work by this id.</p>
+<p><code>verse.task.instance.&lt;id&gt;</code> is the latest <a href="../../glossary/#run">run</a>. Each run also has a record
+of its own:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>verse<span class="w"> </span>data<span class="w"> </span>verse<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span><span class="s1">&#39;&lt;id&gt;@&lt;occurrence&gt;&#39;</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>verse<span class="w"> </span>data<span class="w"> </span>verse<span class="w"> </span>task<span class="w"> </span>run<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{flow: &quot;demo.pr.1&quot;}&#39;</span>
+</code></pre></div>
+<p>The <code>occurrence</code> is the store revision the run is about. For a firing, it is the commit that
+caused the firing. For a task you started by hand, it is the revision at which verse created the
+record. Both records carry it.</p>
+<p>Read the instance to see what the work is doing now. Read the runs to see what happened the
+other times: a failed run and the successful one after it leave two run records, and the
+instance holds only the newest.</p>
+<p>Verse writes a run record at the start of the run and again at its end, so a run that never
+finishes still leaves a record. <strong>Nothing removes run records.</strong> They are small. To remove them,
+use <code>verse data -rm</code>, or a charter that marks the old ones <a href="https://github.com/signadot/verse/blob/main/docs/change-events.md">vanishing</a>.</p>
+<h2 id="the-question-record">The question record<a class="headerlink" href="#the-question-record" title="Permanent link">#</a></h2>
+<p>A gate that stops for an answer is an <a href="../../glossary/#ask">ask</a>, at <code>verse.ask.&lt;id&gt;</code>, on the
+docket beside every other ask. The task points at it (<code>pending: verse.ask.&lt;id&gt;</code>).</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="na">payload</span><span class="o">:</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>  <span class="na">id</span><span class="o">:</span>      <span class="sx">review@demo.pr.1~d3</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>  <span class="na">from</span><span class="o">:</span>    <span class="p">{</span><span class="na">task</span><span class="o">:</span> <span class="sx">review@demo.pr.1</span><span class="p">}</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>  <span class="na">gate</span><span class="o">:</span>    <span class="sx">write-guard</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>  <span class="na">status</span><span class="o">:</span>  <span class="sx">pending</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>  <span class="na">subject</span><span class="o">:</span> <span class="sx">demo.pr.1</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a>  <span class="na">tool</span><span class="o">:</span>    <span class="sx">write_file</span>
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>  <span class="na">step</span><span class="o">:</span>    <span class="sx">files.write</span>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>  <span class="na">fields</span><span class="o">:</span>  <span class="p">{</span><span class="na">path</span><span class="o">:</span> <span class="sx">cfg/app.tony</span><span class="p">}</span>
+</code></pre></div>
+<p><code>step</code> and <code>fields</code> are what the action <em>would do</em>. The runner derives them before it asks. So a
+rule can select the questions it cares about without reading prose:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>verse<span class="w"> </span>data<span class="w"> </span>verse<span class="w"> </span>ask<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{status: pending, step: files.write}&#39;</span>
+</code></pre></div>
+<p>The question record is a record, not a mailbox. Answers go through <code>verse question</code>. After an
+answer, the record says <code>status: answered</code>, with the verdict and who gave it. A settled question
+stays for its keep, like any ask, and is then removed (<a href="../../asking/">asking</a>). An answer
+through a resolver carries <code>via</code> beside <code>by</code>: <code>by</code> is the party it answered for, and <code>via</code> the
+resolver (<a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md#answering">resolvers</a>).</p>
+<p>Every answer names who gave it: <code>verse question approve &lt;id&gt; --as you@example.com</code>. Two people
+may answer at once:</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>What verse answers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>two answers at once</td>
+<td>exactly one applies. Verse records the other under <code>stale</code> and tells its sender (<code>409</code>, naming who won).</td>
+</tr>
+<tr>
+<td>an answer to an id that nobody asked</td>
+<td><code>404</code></td>
+</tr>
+</tbody>
+</table>
+<p>A <code>404</code> usually means a typo. A <code>409</code> means somebody else answered first.</p>
+<p>At a restart, a question that a task raised survives exactly as its task does. A question that a
+firing raised is settled <code>orphaned</code>, because what waited on its answer was inside the verse
+process (<a href="https://github.com/signadot/verse/blob/main/docs/task-control.md">task control</a>). If its rule still selects the subject, the
+reinstalled charter poses it again under the same id, with the ballots already cast
+(<a href="../gates/#a-question-outlives-the-verse-that-asked-it">a question outlives the verse that asked it</a>).
+If not, it stays orphaned.</p>
+<p><strong><code>status: done</code> means that the task <em>stopped</em>, not that the work succeeded.</strong> A hook that moves
+state on should name evidence (<code>patch: {stage: reviewed, severity: .[data.severity]}</code>), not trust
+a bare claim (<a href="../action/#bindings">bindings</a>, <a href="../action/#the-answer-contract">the answer contract</a>).</p>
+<h2 id="steering">Steering<a class="headerlink" href="#steering" title="Permanent link">#</a></h2>
+<p>A <a href="../../glossary/#flow">flow</a> is a query over live tasks, so steering takes a selection, not one
+task. A task you run by hand is a flow too: the flow of its spawn's <code>subject</code>, or of its own id when
+it names none. The verbs, their flags, and how a hold differs from a suspension are in
+<a href="../../control/">control</a>. This section says what they do to a task.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>verse<span class="w"> </span>flow<span class="w">                                     </span><span class="c1"># live tasks and suspensions</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>verse<span class="w"> </span>flow<span class="w"> </span>show<span class="w"> </span>demo.pr.2<span class="w">                      </span><span class="c1"># the tree: what ran, what is running, what comes next</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-task<span class="w"> </span>review@demo.pr.2<span class="w">      </span><span class="c1"># hold that run at its next boundary</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>verse<span class="w"> </span>flow<span class="w"> </span>resume<span class="w">  </span>-task<span class="w"> </span>review@demo.pr.2
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>verse<span class="w"> </span>flow<span class="w"> </span>say<span class="w">     </span>-subject<span class="w"> </span>demo.pr.2<span class="w"> </span><span class="s2">&quot;hurry&quot;</span><span class="w"> </span><span class="c1"># to every live task about it</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>verse<span class="w"> </span>flow<span class="w"> </span>cancel<span class="w">  </span>-task<span class="w"> </span>review@demo.pr.2<span class="w">      </span><span class="c1"># end that run (destructive)</span>
+</code></pre></div>
+<p><code>say</code> and <code>cancel</code> answer with how many tasks they reached, the selection, and the verb.
+<code>suspend</code> and <code>resume</code> answer with the row they held or lifted.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="na">affected</span><span class="o">:</span> <span class="mi">1</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="na">subject</span><span class="o">:</span> <span class="sx">demo.pr.2</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="na">verb</span><span class="o">:</span> <span class="sx">say</span>
+</code></pre></div>
+<p>The verbs land at each task's next boundary. So you can hold, redirect or stop a run while it
+runs, and every <em>other</em> flow keeps going (<a href="../../control/#a-hold-on-a-run">a hold on a run</a>).</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-subject<span class="w"> </span>demo.pr.2<span class="w"> </span>-why<span class="w"> </span><span class="s2">&quot;a person is reviewing it by hand&quot;</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>verse<span class="w"> </span>flow<span class="w"> </span>show<span class="w"> </span>demo.pr.2<span class="w">                      </span><span class="c1"># heldBy: [&lt;the suspension&gt;] on the live task</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>verse<span class="w"> </span>flow<span class="w"> </span>resume<span class="w"> </span>-task<span class="w"> </span>review@demo.pr.2<span class="w">       </span><span class="c1"># refused, 409: a suspension holds it</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>verse<span class="w"> </span>flow<span class="w"> </span>resume<span class="w"> </span>-subject<span class="w"> </span>demo.pr.2
+</code></pre></div>
+<p>Every verb here needs <code>control</code> of each task it reaches (<a href="../../control/#who-may">who may</a>).
+With <code>-scope</code>, a verb reaches only the tasks that the scope started
+(<a href="../scopes/#what-a-scope-owns">what a scope owns</a>). So
+<code>verse flow cancel -scope me -task review@demo.pr.2</code> never stops baseline's review of that pull
+request by accident. Drop the flag to address baseline.</p>
+<h2 id="where-a-task-runs-is-a-seam">Where a task runs is a seam<a class="headerlink" href="#where-a-task-runs-is-a-seam" title="Permanent link">#</a></h2>
+<p>A task runs in the verse process by default. A spawn can name another place with <code>runner:</code>, and
+<code>verse task</code> shows where each task runs. Every command on this page works wherever the task
+runs. How a runner works is in <a href="https://github.com/signadot/verse/blob/main/docs/runners.md">runners.md</a>.</p>
+<h2 id="why-it-is-this-way">Why it is this way<a class="headerlink" href="#why-it-is-this-way" title="Permanent link">#</a></h2>
+<p>The reasons for this design are in <a href="https://github.com/signadot/verse/blob/main/docs/design/reference-tasks.md">reference-tasks.md</a>, in the
+repository.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

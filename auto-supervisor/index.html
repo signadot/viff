@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/auto-supervisor/">
+        <link rel="icon" href="../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+
+        <title>An automatic supervisor - Verse</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link href="../pygments.css" rel="stylesheet">
+        <link href="../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="An automatic supervisor - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/auto-supervisor/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href=".."><img src="../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#an-automatic-supervisor" class="nav-link">An automatic supervisor</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#two-supervisors-one-word" class="nav-link">Two supervisors, one word</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-charter" class="nav-link">The charter</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#three-things-keep-it-honest" class="nav-link">Three things keep it honest</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-when-means-here" class="nav-link">What "when" means here</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#drive-it" class="nav-link">Drive it</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#where-this-stops" class="nav-link">Where this stops</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#why-it-is-this-way" class="nav-link">Why it is this way</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="an-automatic-supervisor">An automatic supervisor<a class="headerlink" href="#an-automatic-supervisor" title="Permanent link">#</a></h1>
+<p>A <a href="../glossary/#gate-of-a-rule">gate</a> of a charter has a <a href="../glossary/#mode">mode</a>, and the mode
+is set per gate:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto</code></td>
+<td>the action runs</td>
+</tr>
+<tr>
+<td><code>ask</code></td>
+<td>a person is asked</td>
+</tr>
+</tbody>
+</table>
+<p>Most flows want a third behaviour, between "every change lands on its own" and "a person looks
+at every change": <em>an agent decides, and promotes what is not its to decide</em>. To promote a
+change is to send it to a person.</p>
+<p>This page is a worked example. In its charter, a supervisor agent assesses each change. The
+supervisor clears the changes it may clear. The charter puts a person's gate in front of the
+rest.</p>
+<p>The supervisor can approve, but the charter stops it from approving everything, in two ways:</p>
+<ul>
+<li>The supervisor's remit is written in the charter, not in the supervisor.</li>
+<li>A supervisor that fails to decide promotes the change.</li>
+</ul>
+<p>This is a simple pattern. For supervision as a live conversation, rather than a rule fixed at
+install, see <a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md">resolvers</a>.</p>
+<p>A test drives the charter below through each of its routes
+(<a href="https://github.com/signadot/verse/blob/main/internal/trigger/supervise_test.go"><code>internal/trigger/supervise_test.go</code></a>). The last section names the gaps.</p>
+<h2 id="two-supervisors-one-word">Two supervisors, one word<a class="headerlink" href="#two-supervisors-one-word" title="Permanent link">#</a></h2>
+<p>Verse has a Go type called <code>Supervisor</code>, and it is not the supervisor of this page:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>what it decides</th>
+<th>who writes it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task.Supervisor</code> (+ a <code>Resolver</code>)</td>
+<td>whether <em>one step</em> inside a running task proceeds</td>
+<td>Go code, per runtime. It applies the task's <a href="../reference/tasks/#the-autonomy">autonomy</a> within what its environment gives: a row that asks asks whom it names, and a <a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md">resolver</a> they grant may answer for them.</td>
+</tr>
+<tr>
+<td>the supervisor here</td>
+<td>whether <em>a firing</em> proceeds. This is the question at the level of the charter that a gate would put to a person.</td>
+<td>a rule of a charter, which you can install over the wire</td>
+</tr>
+</tbody>
+</table>
+<p>An automatic supervisor of the second kind needs nothing new. A charter can already do each
+step:</p>
+<ol>
+<li>spawn an agent;</li>
+<li>enforce the shape of the agent's answer;</li>
+<li>patch that answer onto the subject as an ordinary fact;</li>
+<li>route on the answer.</li>
+</ol>
+<p>The example is those four steps and nothing more.</p>
+<h2 id="the-charter">The charter<a class="headerlink" href="#the-charter" title="Permanent link">#</a></h2>
+<p>The subject is a change, <code>change.pr.&lt;n&gt;</code>. It carries a <code>stage</code> and a <code>tests</code> fact. After the
+assessment, it also carries the supervisor's <code>review</code>. Install the charter:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>verse<span class="w"> </span>c<span class="w"> </span>-a<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;TONY&#39;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="s">- name: assess                 # the supervisor decides, and decides whether to promote</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="s">  condition:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="s">    subject: {path: &quot;change.pr.*&quot;, value: { stage: proposed }}</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="s">  action:</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s">    patch: { stage: assessing }</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="s">    spawn:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="s">      agent: {name: verse}</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="s">      environment: {systems: {network: {mode: open}}}</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="s">      prompt: |</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="s">        Assess $[subject.ref] for landing. Read the change and the tests it touches.</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="s">        You are a review supervisor. Decide what is yours to decide and promote what is</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="s">        not: answer `escalate` whenever a person should look at this, `reject` when it</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="s">        should not land at all, and `approve` only when you would defend landing it</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="s">        unattended. Say why in one sentence. Do not approve to be agreeable.</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="s">      answer:</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="s">        decision: !or [approve, escalate, reject]</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="s">        risk:     !or [low, medium, high]</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="s">        why:      !irtype string</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="s">      autonomy:</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="s">      - {then: allow}</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="s">    onDone:</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="s">      patch:</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="s">        stage:  assessed</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="s">        review: { decision: .[data.decision], risk: .[data.risk], why: .[data.why], by: .[chain] }</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="s">    onFailed:</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="s">      patch:</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="s">        stage:  assessed</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="s">        review:</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="s">          decision: escalate</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="s">          risk:     high</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="s">          why:      &quot;the supervisor did not decide: $[err]&quot;</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="s">          by:       .[chain]</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="s">- name: remit                  # the ceiling: an approval outside the remit becomes a promotion</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="s">  condition:</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="s">    subject:</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="s">      path: &quot;change.pr.*&quot;</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="s">      value: !and</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="s">      - { stage: assessed, review: { decision: approve } }</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="s">      - !not { tests: green, review: { risk: low } }</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="s">  action:</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="s">    patch: { review: { decision: escalate, promoted: &quot;outside the supervisor&#39;s remit&quot; } }</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="s">- name: land-auto              # cleared, and within the remit: no gate, no question, no wait</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="s">  condition:</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a><span class="s">    subject:</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="s">      path: &quot;change.pr.*&quot;</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a><span class="s">      value: { stage: assessed, tests: green, review: { decision: approve, risk: low } }</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="s">  action:</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a><span class="s">    patch: { stage: landed }</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="s">- name: land-ask               # promoted: one human decision, in `verse question`</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a><span class="s">  condition:</span>
+<a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="s">    subject:</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a><span class="s">      path: &quot;change.pr.*&quot;</span>
+<a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a><span class="s">      value: { stage: assessed, review: { decision: escalate } }</span>
+<a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a><span class="s">  gates:</span>
+<a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a><span class="s">  - { name: sign-off, mode: ask }</span>
+<a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a><span class="s">  action:</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a><span class="s">    patch: { stage: landed }</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a>
+<a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a><span class="s">- name: close                  # rejected: closing is cheap and reversible, so it is auto</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a><span class="s">  condition:</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a><span class="s">    subject:</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a><span class="s">      path: &quot;change.pr.*&quot;</span>
+<a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a><span class="s">      value: { stage: assessed, review: { decision: reject } }</span>
+<a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a><span class="s">  action:</span>
+<a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a><span class="s">    patch: { stage: closed }</span>
+<a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a><span class="s">TONY</span>
+</code></pre></div>
+<p>The charter has five <a href="../glossary/#rule">rules</a>. The routing between them is the whole design:</p>
+<table>
+<thead>
+<tr>
+<th>the supervisor answered</th>
+<th><code>tests</code></th>
+<th>what happens</th>
+<th>who decided</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>approve</code>, risk <code>low</code></td>
+<td><code>green</code></td>
+<td><code>land-auto</code> fires. No gate poses a question.</td>
+<td>the supervisor</td>
+</tr>
+<tr>
+<td><code>approve</code>, risk <code>medium</code>/<code>high</code></td>
+<td>any</td>
+<td><code>remit</code> rewrites the decision to <code>escalate</code>, then <code>land-ask</code> fires</td>
+<td>the charter, over the supervisor</td>
+</tr>
+<tr>
+<td><code>approve</code>, risk <code>low</code></td>
+<td>not <code>green</code></td>
+<td>the same: <code>remit</code>, then <code>land-ask</code></td>
+<td>the charter, over the supervisor</td>
+</tr>
+<tr>
+<td><code>escalate</code></td>
+<td>any</td>
+<td><code>land-ask</code> fires, with one <code>sign-off</code> gate in <code>verse question</code></td>
+<td>the supervisor, promoting</td>
+</tr>
+<tr>
+<td><code>reject</code></td>
+<td>any</td>
+<td><code>close</code> fires</td>
+<td>the supervisor</td>
+</tr>
+<tr>
+<td>nothing (the run failed)</td>
+<td>any</td>
+<td><code>onFailed</code> writes <code>escalate</code>, then <code>land-ask</code> fires</td>
+<td>nobody: this is the default</td>
+</tr>
+</tbody>
+</table>
+<p>Two routes are <em>not</em> in the table:</p>
+<ul>
+<li>No route lands a change on the supervisor's approval unless the charter also clears it.</li>
+<li>No route leaves a change stuck with nobody looking at it.</li>
+</ul>
+<p><strong>Both are properties of the rules, not of the agent's judgment.</strong></p>
+<h2 id="three-things-keep-it-honest">Three things keep it honest<a class="headerlink" href="#three-things-keep-it-honest" title="Permanent link">#</a></h2>
+<p><strong>The supervisor cannot act. It can only answer.</strong> Its environment gives the network and
+nothing else: no repository, so it has nothing to push, and no files or commands, so it has no
+tool to write with or run. So the supervisor cannot write the field that routes its own decision.</p>
+<p>Its one way to reach the store is its final message. The <code>answer</code> field gives that message a
+type: <code>decision</code> is one of three words, or the run fails and <code>onFailed</code> takes over. A
+supervisor that talks instead of deciding gets no vote. Its environment gives it the network
+and nothing to write with, so the one row of its autonomy, <code>then: allow</code>, lets it read without
+asking anybody: there is nothing else it could do.</p>
+<p><strong>The remit belongs to the charter.</strong> <code>land-auto</code> requires three things, and the supervisor
+writes only one of them:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Who writes it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>review.decision</code></td>
+<td>the supervisor</td>
+</tr>
+<tr>
+<td><code>review.risk</code></td>
+<td>the supervisor: it is the supervisor's own claim</td>
+</tr>
+<tr>
+<td><code>tests: green</code></td>
+<td>an iod that writes CI's state into the store (<a href="https://github.com/signadot/verse/blob/main/docs/io.md">iods</a>). The supervisor may not write it.</td>
+</tr>
+</tbody>
+</table>
+<p>So <code>review.decision: approve</code> alone does not land a change. That is the property you want, and
+it is the reason <code>remit</code> is a rule of its own. <code>remit</code> is the complement of <code>land-auto</code>, written once, in one place. For
+any assessed change that the supervisor approved, either <code>land-auto</code> matches or <code>remit</code> matches.
+Never both match, and never neither. <code>remit</code> rewrites <code>decision</code> and leaves <code>why</code> as it is. So
+the person at the gate reads the supervisor's reasoning, <em>and</em> the note that says the charter
+overrode it.</p>
+<p><strong>Failure promotes.</strong> <code>onFailed</code> writes <code>escalate</code> and <code>risk: high</code>, and carries <code>err</code> into
+<code>why</code>. A supervisor can fail in several ways:</p>
+<ul>
+<li>it crashed;</li>
+<li>it could not produce an answer of the right shape;</li>
+<li>its runner could not run it.</li>
+</ul>
+<p>In each case the change is not left unassessed. The rule sends the change up, with the reason. Point this charter at an agent that cannot see the change it was asked about, and you
+get this, in the agent's own words:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">review</span><span class="o">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="na">by</span><span class="o">:</span>       <span class="sx">assess</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  <span class="na">decision</span><span class="o">:</span> <span class="sx">escalate</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  <span class="na">risk</span><span class="o">:</span>     <span class="sx">high</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  <span class="na">why</span><span class="o">:</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="s2">&quot;the supervisor did not decide: No files are accessible in the working directory;&quot;</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="s2">&quot; the PR diff and test files for change.pr.9 could not be found under any path tried.&quot;</span>
+</code></pre></div>
+<p>One failure does not reach this route. With no model credentials, the runner offers no
+<code>verse</code> agent, and verse refuses to install the charter at all: <code>this runner offers no agent
+"verse"</code>. Nothing is installed, so nothing lands. <strong>A supervisor that goes wrong must fail
+toward the person.</strong> That is a property of where <code>onFailed</code> points, not of the agent behaving
+well.</p>
+<h2 id="what-when-means-here">What "when" means here<a class="headerlink" href="#what-when-means-here" title="Permanent link">#</a></h2>
+<p>The promotion happens <em>before</em> the action, not after it. <code>land-ask</code> asks its gate's question
+while the change is still <code>assessed</code>. The person's answer is what makes the change <code>landed</code>.</p>
+<p>A second question of timing needs its own rule: some changes should not cost a supervisor
+run at all. A release change, for example, is never an agent's to clear. The charter can route
+it straight to a gate and spawn nothing. To do this, narrow what <code>assess</code> is about:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="na">value</span><span class="o">:</span> <span class="k">!and</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="p">-</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">proposed</span> <span class="p">}</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="p">-</span> <span class="k">!not</span> <span class="p">{</span> <span class="na">area</span><span class="o">:</span> <span class="sx">release</span> <span class="p">}</span>
+</code></pre></div>
+<p>Add a companion rule that matches <code>{ stage: proposed, area: release }</code>. Its action marks the
+change <code>assessed</code> with <code>decision: escalate</code>. There is no spawn and no model is used: the change
+goes straight to the gate of <code>land-ask</code>. The mode works the same way, only earlier. The cheapest
+promotion is the one that skips the assessment.</p>
+<h2 id="drive-it">Drive it<a class="headerlink" href="#drive-it" title="Permanent link">#</a></h2>
+<p>The charter needs model credentials to install, because its <code>assess</code> rule names the <code>verse</code>
+agent. <code>verse up</code> reads them: see <a href="https://github.com/signadot/verse/blob/main/docs/reference/up.md#the-local-runner">the local runner</a>.
+The <em>routing</em> needs nothing more. A <code>review</code> is an ordinary fact, so you can write one yourself
+and watch where it goes. Start with a review that the supervisor cleared inside its remit:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>verse<span class="w"> </span>data<span class="w"> </span>change<span class="w"> </span>pr<span class="w"> </span><span class="m">7</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: assessed, tests: green, review: {decision: approve, risk: low}}&#39;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>verse<span class="w"> </span>data<span class="w"> </span>change<span class="w"> </span>pr<span class="w"> </span><span class="m">7</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># payload:</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1">#   review: { decision: approve, risk: low }</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1">#   stage: landed            ← land-auto fired; `verse question` is empty</span>
+</code></pre></div>
+<p>Next, write the same approval on a change that CI does not support:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>verse<span class="w"> </span>data<span class="w"> </span>change<span class="w"> </span>pr<span class="w"> </span><span class="m">8</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: assessed, tests: red, review: {decision: approve, risk: low, why: &quot;docs only&quot;}}&#39;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>verse<span class="w"> </span>data<span class="w"> </span>change<span class="w"> </span>pr<span class="w"> </span><span class="m">8</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># payload:</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1">#   review:</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1">#     decision: escalate</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1">#     promoted: &quot;outside the supervisor&#39;s remit&quot;</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1">#     risk: low</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="c1">#     why: &quot;docs only&quot;       ← the supervisor&#39;s reasoning survives the override</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="c1">#   stage: assessed          ← waiting on a person</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>verse<span class="w"> </span>question
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="c1"># - from: {rule: land-ask}</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="c1">#   gate: sign-off</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="c1">#   id: verse.trigger.land-ask.sign-off~090ea377</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="c1">#   mode: ASK</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="c1">#   reason: &quot;trigger land-ask gate sign-off on change.pr.8&quot;</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="c1">#   subject: change.pr.8</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>verse<span class="w"> </span>question<span class="w"> </span>approve<span class="w"> </span>verse.trigger.land-ask.sign-off~090ea377<span class="w"> </span>--as<span class="w"> </span>you@example.com
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="c1"># approved verse.trigger.land-ask.sign-off~090ea377</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>verse<span class="w"> </span>data<span class="w"> </span>change<span class="w"> </span>pr<span class="w"> </span><span class="m">8</span><span class="w">      </span><span class="c1"># stage: landed</span>
+</code></pre></div>
+<p>Verse derives the suffix of the id from the subjects of the firing. It does not count. So when
+the same decision is reached again, it is the same <a href="../glossary/#question">question</a>, and not a
+second one.</p>
+<p>With credentials, <code>verse data change pr 9 -put '{stage: proposed, tests: green}'</code> runs the real
+supervisor. Three things show the result:</p>
+<ul>
+<li><code>verse flow</code> shows the assessment while it runs.</li>
+<li><code>verse data verse task instance assess@change.pr.9</code> shows what the supervisor read and said.</li>
+<li>The change ends <code>landed</code>, <code>closed</code>, or waiting at a gate.</li>
+</ul>
+<h2 id="where-this-stops">Where this stops<a class="headerlink" href="#where-this-stops" title="Permanent link">#</a></h2>
+<ul>
+<li><strong>This charter sets no clock on the supervisor.</strong> A supervisor task that never ends leaves
+  its change at <code>stage: assessing</code>. <code>onFailed</code> covers failure, not a task that hangs. A spawn
+  can carry the clock: <code>timeout: "30m"</code> cancels the run once it has run that long, not
+  counting time spent waiting for an answer, and an <code>onCancelled</code> hook can then write
+  <code>escalate</code> as <code>onFailed</code> does (<a href="../reference/action/#completion-hooks-one-trigger-chaining-visible">completion hooks</a>).</li>
+<li><strong>The decision is a field, not a ballot.</strong> <code>review.by</code> records which rule's supervisor wrote
+  the decision. That is weaker than what a gate gives. A gate with <code>need: 2</code> keeps a
+  <a href="../glossary/#ballot">ballot</a> for each voter, and each ballot names who cast it
+  (<a href="../tutorial/charters/#no-is-a-real-outcome">the tutorial</a>). A principal of kind <code>agent</code> can
+  cast one of those ballots, as a person can (<code>verse question approve &lt;id&gt; --as agent:&lt;name&gt;</code>). So
+  an agent can be one of the two approvals on a gate with <code>need: 2</code>. The supervisor in this
+  example is a task that writes a field, and it casts no ballot.</li>
+<li><strong>No second opinion, as written.</strong> Two supervisors that must agree would be one gate with
+  <code>need: 2</code> that both answer. This example does not do that. The shape it uses is two
+  <code>assess</code>-style rules that write to different fields, with <code>land-auto</code> requiring both.</li>
+<li><strong>The inside is a different layer.</strong> The supervisor here decides whether a change lands, by
+  writing to the subject. What the <em>worker</em> agent may do while it produces the change is the
+  other layer of supervision: the rows of the run's autonomy, which ask whom they name, and the
+  <a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md">resolvers</a> those people grant. The two layers compose. This charter decides
+  about the change. A resolver decides about the actions taken to produce it.</li>
+</ul>
+<h2 id="why-it-is-this-way">Why it is this way<a class="headerlink" href="#why-it-is-this-way" title="Permanent link">#</a></h2>
+<p>The reasons for this design are in <a href="https://github.com/signadot/verse/blob/main/docs/design/auto-supervisor.md">auto-supervisor.md</a>, in the repository.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

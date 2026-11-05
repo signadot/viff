@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/systems/verse/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>verse - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="verse - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/systems/verse/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">verse</a>
+</li>
+                                    
+<li>
+    <a href="../inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../question/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../inside/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#verse" class="nav-link">verse</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-task-can-do" class="nav-link">What a task can do</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#where-the-credential-lives" class="nav-link">Where the credential lives</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="verse">verse<a class="headerlink" href="#verse" title="Permanent link">#</a></h1>
+<p>The <code>verse</code> system is verse itself, acted on by a task as the person it runs for would act on it.
+Each verb is a verb of <code>verse</code> and of <a href="../../reference/mcp/"><code>verse mcp</code></a>, and its tool takes what
+that MCP tool takes. An agent uses verse the same way whether it runs outside verse, through
+<code>verse mcp</code>, or inside a task, through this system.</p>
+<p>A task's own questions, which it waits on as a task, are the <a href="../question/">question system</a>'s.</p>
+<h2 id="what-a-task-can-do">What a task can do<a class="headerlink" href="#what-a-task-can-do" title="Permanent link">#</a></h2>
+<p>A task has the verse system's tools when its environment gives <code>verse</code> and its runner reaches
+verse with a token of its own. Each is a step, decided by the autonomy row that matches it.</p>
+<p>The example on this page is one team's release. A task drafts the release notes for v1.3 from
+<code>acme/app</code>'s history and asks dana whether to post them in <code>#deploys</code>. It does not wait for the
+answer: the post happens when dana says yes, after the task has ended.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">verse</span><span class="p">}</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      <span class="na">verse</span><span class="o">:</span> <span class="p">{</span><span class="na">ask-create</span><span class="o">:</span> <span class="p">{},</span> <span class="na">ask-get</span><span class="o">:</span> <span class="p">{}}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>      <span class="na">slack</span><span class="o">:</span> <span class="p">{</span><span class="na">post</span><span class="o">:</span> <span class="p">{</span><span class="na">channel</span><span class="o">:</span> <span class="sx">deploys</span><span class="p">}}</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>      <span class="na">git</span><span class="o">:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>      <span class="p">-</span> <span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="na">from</span><span class="o">:</span> <span class="sx">main</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="na">fetch</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  <span class="na">prompt</span><span class="o">:</span> <span class="s2">&quot;Draft the release notes for v1.3 from the commits since v1.2, and ask dana whether to post them in #deploys.&quot;</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  <span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Mirrors</th>
+<th>What it does</th>
+<th>Step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verse-ask-create</code></td>
+<td><code>verse ask [&lt;name&gt;] -q</code>, <code>verse_ask_create</code></td>
+<td>raises an ask as the person the task runs for: <code>name</code>, <code>question</code>, <code>to</code>, <code>due</code>, <code>on_silence</code>, <code>on</code>, <code>about</code>, <code>keep</code>, <code>label</code> (<a href="../../asking/">asking</a>). It does not wait: the result is <code>raised question &lt;id&gt;: &lt;question&gt;</code>, and the ask stands after the task ends. Without a <code>name</code>, verse names it <code>run-&lt;nonce&gt;</code>.</td>
+<td><code>verse.ask-create</code>, with <code>to</code>, <code>labels</code> and <code>on</code></td>
+</tr>
+<tr>
+<td><code>verse-ask-get</code></td>
+<td><code>verse ask &lt;name\|id&gt;</code>, <code>verse_ask_get</code></td>
+<td>reads one of the person's asks, by <code>name_or_id</code>: the name it was asked under or its id. The result is the ask as <code>verse ask</code> shows it: its <code>status</code> and <code>answer</code>, <code>pending</code> until it settles (or <code>why</code>, where it settled with no answer), what it asked and of whom, its due, and what its <code>on</code> ran.</td>
+<td><code>verse.ask-get</code></td>
+</tr>
+<tr>
+<td><code>verse-ask-list</code></td>
+<td><code>verse ask</code>, <code>verse_ask_list</code></td>
+<td>lists the person's asks, each as <code>verse ask</code> lists it: its id, question, who is asked, its due, its <code>status</code>, and its <code>answer</code>, <code>pending</code> until it settles.</td>
+<td><code>verse.ask-list</code></td>
+</tr>
+<tr>
+<td><code>verse-data-get</code></td>
+<td><code>verse data</code>, <code>verse_data</code></td>
+<td>reads the verse at an address as the person: <code>at</code>, <code>if</code>, <code>if_at</code>, <code>trim</code>, and with <code>paths</code> the addresses beneath it, <code>depth</code> levels deep, one kinded path per line.</td>
+<td><code>verse.data-get</code>, with <code>path</code></td>
+</tr>
+<tr>
+<td><code>verse-data-put</code></td>
+<td><code>verse data &lt;address&gt; --put</code>, <code>verse_data_put</code></td>
+<td>writes a <code>value</code> at an address <code>at</code> as the person, merged into what stands there; with <code>create</code>, <code>update</code> or <code>expect</code> only on that condition, with <code>grants</code> for a node it creates. The result is what stands there after the write.</td>
+<td><code>verse.data-put</code>, with <code>path</code> and <code>value</code></td>
+</tr>
+<tr>
+<td><code>verse-data-rm</code></td>
+<td><code>verse data &lt;address&gt; --rm</code>, <code>verse_data_rm</code></td>
+<td>removes what stands at an address <code>at</code> as the person: the data there, or one field of it.</td>
+<td><code>verse.data-rm</code>, with <code>path</code></td>
+</tr>
+<tr>
+<td><code>verse-charter-get</code></td>
+<td><code>verse charter</code>, <code>verse_charter</code></td>
+<td>reads the charter at a <code>path</code> as the person: an installed charter as its file, with what the file cannot say (a rule held, suspended or in trouble, the charters under the address) as notes after it; a rule or level of one as it stands; with <code>paths</code> one kinded path per rule and level, <code>depth</code> levels deep. <code>at</code>, <code>if</code> and <code>trim</code> as <code>verse charter</code> takes them.</td>
+<td><code>verse.charter-get</code></td>
+</tr>
+<tr>
+<td><code>verse-charter-check</code></td>
+<td><code>verse charter --check</code>, <code>verse_charter_check</code></td>
+<td>asks whether <code>charters</code>, one tony document apiece, would install at the address <code>at</code>: each charter's verdict, and what the install would add, change and take away. Nothing is installed.</td>
+<td><code>verse.charter-check</code></td>
+</tr>
+<tr>
+<td><code>verse-charter-install</code></td>
+<td><code>verse charter -a</code>, <code>verse_charter_install</code></td>
+<td>installs <code>charters</code> as the person: one charter, or a rule, a level or a list of them, at the address <code>at</code>; several, each at its own <code>at:</code>; with <code>prune</code>, what they leave out at and under <code>at</code> goes, in the same step. The result says what went where, the rules held, and when a charter with a <code>ttl:</code> goes.</td>
+<td><code>verse.charter-install</code>, with <code>at</code></td>
+</tr>
+<tr>
+<td><code>verse-charter-remove</code></td>
+<td><code>verse charter -r</code>, <code>verse_charter_remove</code></td>
+<td>removes a package at a <code>path</code>, or one rule, level or schedule of it, as the person. What it wrote stays. <code>at</code> as <code>verse charter</code> takes it.</td>
+<td><code>verse.charter-remove</code></td>
+</tr>
+</tbody>
+</table>
+<p>The ask is the person's, not the task's. Its <code>from</code> names them, with the task beside them, and
+nothing waits on it. Its rows run as that person when it settles. A spawn in any of them
+is held within the task when the ask is raised: an environment no wider than the task's, less
+<code>verse.charter-install</code>, an autonomy no looser, and the task's credential where it spends one, and it runs on the task's runner. An answer in any of them is refused,
+since it would be the person's, on any ask that waits on them, another task's gate among them. A task that needs the answer to
+go on uses <code>question-ask</code>. One that looks again later reads the ask back with <code>verse-ask-get</code>,
+which says whether it was answered.</p>
+<p>A task reads and writes with the data tools as the person: what they cannot see, the task cannot
+either, and what they may not write is refused in verse's words. What a task does on verse is done in
+baseline, whatever scope the task runs in, and the runner refuses a request that names a scope.</p>
+<p>A row decides these steps by what they carry. <code>verse.ask-create</code> carries the ask's <code>to</code>,
+<code>labels</code> and <code>on</code> as the ask has them. Each data step carries its address as <code>path</code>, and
+<code>verse.data-put</code> carries the <code>value</code> it writes:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">verse</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">ask-create</span><span class="p">,</span> <span class="na">on</span><span class="o">:</span> <span class="k">!not.all.not</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="p">{</span><span class="na">ask</span><span class="o">:</span> <span class="kc">null</span><span class="p">}}},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">deny</span><span class="p">}</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">verse</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">data-put</span><span class="p">,</span> <span class="na">path</span><span class="o">:</span> <span class="p">[</span><span class="sx">scratch</span><span class="p">]},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">verse</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="k">!or</span> <span class="p">[</span><span class="sx">data-put</span><span class="p">,</span> <span class="sx">data-rm</span><span class="p">]},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<p>The first row refuses a raise with a row that raises a further ask. The second lets writes under
+<code>scratch</code> go unasked, and the third asks before every other write or removal.</p>
+<p>A step at an address reaches everything under it: a read of <code>play</code> returns <code>play.secret</code>, a
+read of the root returns all of verse, and a write at an address can change what lies under it.
+In the step's address, <code>*</code> is any one child and <code>..</code> any depth. So a row reads <code>path</code> toward
+refusing: a row that allows matches a step whose whole reach lies under its pattern, and a row
+that denies or asks matches a step that reaches anything under it. With these rows, a read of
+<code>play.notes</code> is allowed, and a read of <code>play.secret.x</code>, <code>play</code>, <code>play.*</code> or the root is denied:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">verse</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">data-get</span><span class="p">,</span> <span class="na">path</span><span class="o">:</span> <span class="p">[</span><span class="sx">play</span><span class="p">,</span> <span class="sx">secret</span><span class="p">]},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">deny</span><span class="p">}</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">verse</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">data-get</span><span class="p">,</span> <span class="na">path</span><span class="o">:</span> <span class="p">[</span><span class="sx">play</span><span class="p">]},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">verse</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">data-get</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">deny</span><span class="p">}</span>
+</code></pre></div>
+<p>An address the runner cannot read is refused before any row decides it.</p>
+<p>A task reads the charters with <code>verse-charter-get</code>, asks whether its own would install with
+<code>verse-charter-check</code>, and installs and removes them with <code>verse-charter-install</code> and
+<code>-remove</code>, all as the person. A charter the task installs stands after the task ends, and every
+spawn among its rules is held within the task: an environment no wider than the task's, less
+<code>verse.charter-install</code>, an autonomy no looser, and the task's credential where it spends one, on whichever runner verse routes it to. The
+install refuses a spawn beyond the task, and each firing is held to the task's environment again,
+bound (<a href="../../reference/charter/">a charter a task installs</a>). So neither what a task installs nor
+what follows its asks can install charters. The hold is on spawns: a rule's <code>patch</code> and <code>derive</code>,
+a write into an outbox among them, are the person's writes, as any charter's are, whether or not
+the task has <code>verse.data-put</code>. Giving a task <code>verse.charter-install</code> gives it that.</p>
+<p>Where a task may install is the spawn's to bound, with <code>at</code>: the address the install acts at,
+which everything it installs lies at or under. With <code>prune</code> it is the prune's address; otherwise
+it is the deepest address the charters it installs all share. An address matches a pattern when
+it is at or under it, and a <code>*</code> in the pattern takes any one segment. This task may install at
+<code>play.issues.issue</code> and under it, as a prune of one charter per issue would, and nowhere else:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="na">verse</span><span class="o">:</span> <span class="p">{</span><span class="na">data-get</span><span class="o">:</span> <span class="p">{},</span> <span class="na">charter-install</span><span class="o">:</span> <span class="p">{</span><span class="na">at</span><span class="o">:</span> <span class="sx">play.issues.issue</span><span class="p">}}</span>
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>verse-call-tool<span class="w"> </span>verse-ask-create<span class="w"> </span>-question<span class="w"> </span><span class="s2">&quot;Post these release notes for v1.3 in #deploys?&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>-to<span class="w"> </span>user:dana@example.com<span class="w"> </span>-due<span class="w"> </span>48h<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>-on<span class="w"> </span><span class="s1">&#39;[{match: {verdict: proceed}, then: {spawn: {script: &quot;verse-call-tool slack-post -channel deploys -text \&quot;v1.3: …\&quot;&quot;,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="s1">    autonomy: [{then: allow}], environment: {systems: {slack: {post: {channel: deploys}}}}}}}]&#39;</span>
+</code></pre></div>
+<p>The row above runs on the task's runner, with an environment that gives no more of Slack than
+the task's, and an autonomy no looser. A spawn whose doer the task's runner does not offer, or
+naming a channel the task's environment does not give, is refused when the ask is raised. So what follows the ask can do no
+more than the task could have done itself: the ask lets the task end now and leave the post to
+dana's answer, which may come days later.</p>
+<p>A charter the task installs follows the same rule. Here, for the three days after the release, a
+failed run on <code>main</code> is posted in <code>#deploys</code> (the task's environment would also give
+<code>charter-install</code>):</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>verse-call-tool<span class="w"> </span>verse-charter-install<span class="w"> </span>-charters<span class="w"> </span><span class="s1">&#39;at: releases.v1-3.watch</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="s1">ttl: 72h</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="s1">rules:</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="s1">- name: main-failed</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="s1">  condition: {subject: {path: &quot;github.acme.app.run.*&quot;, value: {branch: main, conclusion: failure}}}</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="s1">  action:</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="s1">    spawn: {script: &quot;verse-call-tool slack-post -channel deploys -text \&quot;main failed after v1.3: $RUN\&quot;&quot;,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="s1">      autonomy: [{then: allow}],</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="s1">      environment: {vars: {RUN: $[subject.ref]}, systems: {slack: {post: {channel: deploys}}}}}&#39;</span>
+</code></pre></div>
+<h2 id="where-the-credential-lives">Where the credential lives<a class="headerlink" href="#where-the-credential-lives" title="Permanent link">#</a></h2>
+<p>In the runner. The task holds none. Each verb is a request to verse's API, which the runner
+carries for the task with its own token, naming the task
+(<a href="../../reference/perms/#runners-at-the-door">permissions</a>). Verse makes the request as the task's
+owner, only while the task runs. A runner carries nothing but these verbs for a task. A refusal
+of the runner itself, its token or the task, is an error to the task, and a refusal of the ask
+is a no. A runner that reaches no verse doesn't offer the system, and refuses a launch that
+names it.</p>
+<p><strong>The operator</strong> opens the system to each doer whose tasks may use it, in the runner's
+configuration, as any system is opened. A doer whose section names no <code>verse</code> has the system
+closed, and a spawn that gives that doer <code>verse</code> is refused where it is written. The runner needs
+no credential for it beyond the token it proves itself to verse with. For the release task above
+and the charter it installs, beside its <code>git</code> and <code>slack</code> ceilings:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="na">agents</span><span class="o">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="na">verse</span><span class="o">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>      <span class="na">verse</span><span class="o">:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>        <span class="na">ceiling</span><span class="o">:</span> <span class="p">{</span><span class="na">ask-create</span><span class="o">:</span> <span class="p">{},</span> <span class="na">ask-get</span><span class="o">:</span> <span class="p">{},</span> <span class="na">charter-install</span><span class="o">:</span> <span class="p">{}}</span>
+</code></pre></div>
+<p>A ceiling lists what it allows: this one gives no <code>data-put</code> or <code>charter-remove</code>, so no task of
+the verse agent's on this runner writes data or removes a charter through the system.
+<code>ceiling: {}</code> gives every verb.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

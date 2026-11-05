@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/control/">
+        <link rel="icon" href="../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+
+        <title>Control: holding work - Verse</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link href="../pygments.css" rel="stylesheet">
+        <link href="../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Control: holding work - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/control/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href=".."><img src="../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#control-holding-work" class="nav-link">Control: holding work</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#the-flags" class="nav-link">The flags</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#a-hold-on-a-run" class="nav-link">A hold on a run</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#a-suspension" class="nav-link">A suspension</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#whose-hold-it-is" class="nav-link">Whose hold it is</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#who-may" class="nav-link">Who may</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#scopes" class="nav-link">Scopes</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-is-not-held" class="nav-link">What is not held</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#seeing-it" class="nav-link">Seeing it</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#suspending" class="nav-link">Suspending</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="control-holding-work">Control: holding work<a class="headerlink" href="#control-holding-work" title="Permanent link">#</a></h1>
+<p>Two acts stop work without ending it. They differ in how long they last and in how much they
+reach.</p>
+<p><strong>A hold on a run</strong> stops one task, at its next boundary. It lasts until somebody resumes the
+task, or until verse restarts.</p>
+<p><strong>A suspension</strong> stops all the work about a charter and a subject: firings, tasks, questions,
+and what a hook would start. It lasts until somebody lifts it, and it survives a restart.</p>
+<p>Both acts are verbs of <code>verse flow</code>, and both take the same flags. A <em>flow</em> is a query over the
+work in progress. A <em>suspension</em> is a query over the work to come, and it names the same things
+that a live task carries. So <code>verse flow</code> with some flags lists what an act with the same flags
+reaches.</p>
+<p>Cancelling ends the work. It is a verb of <code>verse flow</code> too.</p>
+<h2 id="the-flags">The flags<a class="headerlink" href="#the-flags" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>What it names</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-task &lt;id&gt;</code></td>
+<td>one run only. It combines with neither of the other two.</td>
+</tr>
+<tr>
+<td><code>-charter &lt;address&gt;[:&lt;rule&gt;]</code></td>
+<td>the address of an installed charter, and one rule of it after the colon</td>
+</tr>
+<tr>
+<td><code>-subject &lt;address&gt;</code></td>
+<td>an address, with <code>*</code> for any segment. It covers what stands at the address and beneath it.</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>-task</code></strong> combines with no other flag. So the flags alone say whether an act is about one run,
+or lasts.</p>
+<p><strong><code>-charter</code></strong>: the baseline charter has no address, so one of its rules is <code>:&lt;rule&gt;</code>, and all
+its rules are <code>:</code>. Every charter is <code>'*'</code>. With <code>-r</code> (<code>-recursive</code>), the flag names the charter
+at the address and every charter installed beneath it.</p>
+<p><strong><code>-subject</code></strong>: for example <code>demo.pr.1</code>, <code>demo.pr.*</code> or <code>demo.*.1</code>. Every subject is <code>'*'</code>. A
+subject takes no predicate on the payload. With one, an ordinary write that moved the subject
+out of the match would lift the suspension.</p>
+<h3 id="an-act-names-something">An act names something<a class="headerlink" href="#an-act-names-something" title="Permanent link">#</a></h3>
+<p>An act that names nothing is refused. Otherwise, somebody who typed a bare verb to see its usage
+would suspend the whole verse.</p>
+<table>
+<thead>
+<tr>
+<th>Verb</th>
+<th>What it takes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>suspend</code>, <code>resume</code>, <code>say</code></td>
+<td><code>-task</code>, or <code>-charter</code>, or <code>-subject</code>, or <code>-charter</code> and <code>-subject</code></td>
+</tr>
+<tr>
+<td><code>cancel</code></td>
+<td><code>-task</code></td>
+</tr>
+</tbody>
+</table>
+<p>A bare verb prints its usage and sends nothing.</p>
+<p>When you give one of <code>-charter</code> and <code>-subject</code>, the other is <code>'*'</code>. So <code>-charter :review</code> is
+that rule about every subject, and <code>-subject demo.pr.2</code> is that subject for every charter.
+<code>'*'</code> for both is refused.</p>
+<p>Only the listing covers everything when no flag narrows it, because the listing is a read.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>verse<span class="w"> </span>flow<span class="w">                                           </span><span class="c1"># every live task and every suspension</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>verse<span class="w"> </span>flow<span class="w"> </span>-charter<span class="w"> </span>repos.verse.drift<span class="w">                </span><span class="c1"># its live tasks, and its suspension about everything</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-task<span class="w"> </span>review@demo.pr.2<span class="w">            </span><span class="c1"># hold one run at its next boundary</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>verse<span class="w"> </span>flow<span class="w"> </span>resume<span class="w">  </span>-task<span class="w"> </span>review@demo.pr.2
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>verse<span class="w"> </span>flow<span class="w"> </span>say<span class="w">     </span>-subject<span class="w"> </span><span class="s1">&#39;demo.pr.*&#39;</span><span class="w"> </span><span class="s2">&quot;hurry&quot;</span><span class="w">      </span><span class="c1"># to every live task about a PR</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>verse<span class="w"> </span>flow<span class="w"> </span>cancel<span class="w">  </span>-task<span class="w"> </span>review@demo.pr.2<span class="w">            </span><span class="c1"># end one run (destructive)</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-charter<span class="w"> </span>repos.verse.drift<span class="w"> </span>-why<span class="w"> </span><span class="s2">&quot;…&quot;</span><span class="w">                        </span><span class="c1"># a charter, about everything</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-subject<span class="w"> </span>github.signadot.verse.pr.<span class="s1">&#39;&quot;42&quot;&#39;</span><span class="w"> </span>-why<span class="w"> </span><span class="s2">&quot;…&quot;</span><span class="w">           </span><span class="c1"># a subject, for every charter</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-charter<span class="w"> </span>repos.verse.drift:claim<span class="w"> </span>-subject<span class="w"> </span>git.verse.head<span class="w"> </span>-why<span class="w"> </span><span class="s2">&quot;…&quot;</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-charter<span class="w"> </span>repos.verse<span class="w"> </span>-r<span class="w"> </span>-why<span class="w"> </span><span class="s2">&quot;…&quot;</span><span class="w">                            </span><span class="c1"># every package under repos.verse</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>verse<span class="w"> </span>flow<span class="w"> </span>resume<span class="w">  </span>-charter<span class="w"> </span>repos.verse.drift<span class="w">                                  </span><span class="c1"># the same flags lift it</span>
+</code></pre></div>
+<h3 id="-args-the-listing-as-flags"><code>-args</code>: the listing as flags<a class="headerlink" href="#-args-the-listing-as-flags" title="Permanent link">#</a></h3>
+<p><code>-args</code> prints each row of the listing as the flags that name it, one row to a line, quoted so
+that a shell and <code>xargs</code> read it back. So an act reaches what the listing showed.</p>
+<p>The row of a task is <code>-task &lt;id&gt;</code>. The row of a suspension is <code>-charter … -subject …</code>. A <code>grep</code>
+picks one kind:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>verse<span class="w"> </span>flow<span class="w"> </span>-args<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span><span class="s1">&#39;^-task &#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="w"> </span>-L1<span class="w"> </span>verse<span class="w"> </span>flow<span class="w"> </span>resume<span class="w">               </span><span class="c1"># lift every suspension</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>verse<span class="w"> </span>flow<span class="w"> </span>-subject<span class="w"> </span>demo.pr.2<span class="w"> </span>-args<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">&#39;^-task &#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>xargs<span class="w"> </span>-L1<span class="w"> </span>verse<span class="w"> </span>flow<span class="w"> </span>cancel<span class="w">     </span><span class="c1"># end every run about PR 2</span>
+</code></pre></div>
+<h3 id="the-rows-of-the-listing">The rows of the listing<a class="headerlink" href="#the-rows-of-the-listing" title="Permanent link">#</a></h3>
+<p>The listing has rows of two kinds.</p>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a live task</td>
+<td><code>{kind: task, task, charter, subject, heldBy}</code></td>
+</tr>
+<tr>
+<td>a suspension</td>
+<td><code>{kind: suspension, id, charter, subject, held, holding, covers}</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>charter</code> of a task is the rule that spawned it, such as <code>repos.verse.drift:claim</code> or
+<code>:review</code>. A task run by hand has none.</p>
+<p>A suspension says four things:</p>
+<ul>
+<li>who holds it, why, and since when;</li>
+<li>how far the store has moved while it stood;</li>
+<li>what it holds now: tasks paused, questions withdrawn, launches parked;</li>
+<li>whether it names anything that is installed.</li>
+</ul>
+<p>A suspension usually holds work that is not running yet, so it is a row of its own, and not a
+field on a task.</p>
+<h3 id="what-a-narrowed-listing-shows">What a narrowed listing shows<a class="headerlink" href="#what-a-narrowed-listing-shows" title="Permanent link">#</a></h3>
+<p>A narrowed listing shows what an act with the same flags reaches. A flag that is absent is
+<code>*</code>.</p>
+<ul>
+<li>The task rows are the live tasks that a suspension in those words would hold.</li>
+<li>The suspension row is the one that a resume in those words would lift. It is the record the
+  flags spell. It is not a wider record that holds the same work.</li>
+</ul>
+<p>For example, <code>-subject demo.pr.2</code> lists <code>*:*@demo.pr."2"</code> and not <code>:review@*</code>. And
+<code>-subject 'demo.pr.*'</code> lists the suspension spelled that way, not the suspension of each PR.</p>
+<p>To see everything that holds the work of a subject, however it is spelled, use
+<code>verse flow show &lt;subject&gt;</code>. It works for a subject with no work yet, too.</p>
+<h2 id="a-hold-on-a-run">A hold on a run<a class="headerlink" href="#a-hold-on-a-run" title="Permanent link">#</a></h2>
+<p><code>verse flow suspend -task &lt;id&gt;</code> holds one run at its next boundary. Use it to look at a run
+before it goes on. <code>verse flow resume -task &lt;id&gt;</code> lets the run continue from there.</p>
+<p>The hold is the operator's: the task's <code>heldBy</code> says <code>operator</code>, on its record and in
+<code>flow show</code>.</p>
+<p><strong>It lands at a boundary.</strong> A boundary is a point between two actions of a task.</p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Where a hold lands</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a task with many steps, such as an agent's, where every tool call is a step</td>
+<td>in the middle of the run</td>
+</tr>
+<tr>
+<td>a script, which is one action</td>
+<td>at its end, when the script finishes</td>
+</tr>
+</tbody>
+</table>
+<p>When a hold lands, a question the task is asking is withdrawn, because a held task must not leave
+a question in front of somebody. The task asks it again when it resumes. A pause is not an
+answer.</p>
+<p><strong>It does not last.</strong> The hold holds that run and nothing else. The rule that spawned the run
+goes on firing, and may fire about the same subject again when the run has ended. A restart of
+verse does not keep the hold.</p>
+<p><strong>Three acts that are not a hold.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Act</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>say</code></td>
+<td>gives the runs it reaches an instruction. It lands at the same boundary.</td>
+</tr>
+<tr>
+<td><code>cancel</code></td>
+<td>ends one run. For a script it ends at once, by killing the process.</td>
+</tr>
+<tr>
+<td>an <code>ask</code> gate</td>
+<td>a stop that the <em>charter</em> declares on an action. It is answered on the docket (<a href="../reference/gates/#gates-whether-it-proceeds">the gates of a rule</a>).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="a-suspension">A suspension<a class="headerlink" href="#a-suspension" title="Permanent link">#</a></h2>
+<p>A suspension is one record. It names a charter, a rule of the charter, and a subject. It
+covers <strong>the work about that subject</strong> in every form, by one test.</p>
+<table>
+<thead>
+<tr>
+<th>Work about the subject</th>
+<th>While suspended</th>
+<th>When the suspension lifts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a rule about to fire</td>
+<td>starts no firing</td>
+<td>the rule is armed again</td>
+</tr>
+<tr>
+<td>a firing waiting at its gate</td>
+<td>its question is withdrawn and its ballots are kept. The firing waits.</td>
+<td>it asks the same question again, if the rule still selects the subject</td>
+</tr>
+<tr>
+<td>a live task</td>
+<td>holds at its next boundary. Its <code>heldBy</code> names the suspension.</td>
+<td>resumes, unless an operator's hold holds it too</td>
+</tr>
+<tr>
+<td>a completion hook, or a <code>seq</code> step</td>
+<td>its writes land. What it would start is parked.</td>
+<td>the parked launch starts</td>
+</tr>
+<tr>
+<td>a deadline on a withdrawn question</td>
+<td>its clock stops</td>
+<td>it has the time it had left</td>
+</tr>
+</tbody>
+</table>
+<p><code>-why</code> is required. A suspension does not expire. It ends only when somebody lifts it.</p>
+<p>The same suspension held twice is one record with two holders, and each holder has a reason.
+A resume by a person lifts it, whoever holds it. A resume by the system removes only the
+system's own hold.</p>
+<p>A suspension of every charter about every subject is refused.</p>
+<p><strong>Suspensions add up.</strong> Work is held while any suspension covers it, and nothing exempts work
+from a wider suspension. If you lift a suspension and a wider one covers the same work, the work
+stays held, and the answer names the wider one under <code>still</code>.</p>
+<p><strong>A lift acts on the world as it stands.</strong> A lift goes in this order:</p>
+<ol>
+<li>The record is deleted, and the suspension drains. New firings about its work are still
+   refused.</li>
+<li>What it held is released. Tasks resume, parked launches start in order, and withdrawn
+   questions are asked again.</li>
+<li>The suspension is removed, and every rule it covered is armed again. An install and a
+   restart arm a rule in the same way.</li>
+</ol>
+<p>Nothing that happened during the suspension is replayed.</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>What it does at the lift</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a level rule whose condition still holds</td>
+<td>acts once</td>
+</tr>
+<tr>
+<td>a rule whose condition held and then stopped holding</td>
+<td>does nothing</td>
+</tr>
+<tr>
+<td>a rule with an <code>on</code> edge that rose during the suspension</td>
+<td>does not see the edge</td>
+</tr>
+</tbody>
+</table>
+<p>A wide lift costs as much evaluation as a restart, at a moment that somebody chose.
+<a href="https://github.com/signadot/verse/blob/main/docs/platform/control.md#suspending">control.md</a>, in the repository, says how a suspension acts on
+rules, rule by rule.</p>
+<h2 id="whose-hold-it-is">Whose hold it is<a class="headerlink" href="#whose-hold-it-is" title="Permanent link">#</a></h2>
+<p>A task knows which holds it is under: its <code>heldBy</code> lists <code>operator</code> and the suspensions that
+paused it. So the two kinds of hold do not undo each other.</p>
+<ul>
+<li><code>verse flow resume -task</code> is refused with <code>409</code> for a run that a suspension holds. The
+  refusal names the suspension. Resuming the run would run work that is covered.</li>
+<li>A lift resumes only what nothing else holds. So an operator's hold outlasts a suspension,
+  whichever came first.</li>
+</ul>
+<h2 id="who-may">Who may<a class="headerlink" href="#who-may" title="Permanent link">#</a></h2>
+<p>Every verb over a task asks for <code>control</code> of the task. The owner of the task holds <code>control</code>,
+and so does the runner that its claim granted.</p>
+<p>A <code>say</code> over many tasks asks for <code>control</code> of each task before it says anything. If one is
+refused, the whole act is refused, and the refusal names that task.</p>
+<p>A suspension needs <code>control</code> over the charter or at the subject, both when it is written and
+every time it would apply (<a href="../reference/perms/#suspending">suspending</a>).</p>
+<h2 id="scopes">Scopes<a class="headerlink" href="#scopes" title="Permanent link">#</a></h2>
+<p>A scope owns what it creates (<a href="../reference/scopes/#what-a-scope-owns">scopes</a>).</p>
+<table>
+<thead>
+<tr>
+<th>You act</th>
+<th>What a verb reaches</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>with <code>-scope</code></td>
+<td>the runs that scope started. It does not reach runs that the scope only sees through the overlay.</td>
+</tr>
+<tr>
+<td>without <code>-scope</code></td>
+<td>the work of baseline and of every package</td>
+</tr>
+</tbody>
+</table>
+<p>A verb addressed at the work of the other side is refused with <code>409</code>. The refusal names whose
+the work is, and how to address it.</p>
+<p>A suspension belongs to the scope it was made in, and covers the work of that scope only. A
+scope may not name the charter of a package, because a package belongs to baseline.</p>
+<h2 id="what-is-not-held">What is not held<a class="headerlink" href="#what-is-not-held" title="Permanent link">#</a></h2>
+<ul>
+<li><strong>A task that cannot hold.</strong> A script runs to its end. A suspension holds what follows
+  from the task, which is its hooks. It does not hold the script that is already running.</li>
+<li><strong>A step between deciding and doing.</strong> An answer that was accepted a moment before a
+  suspension lands still acts. So does a firing that had passed its checks.</li>
+<li><strong>An <code>on</code> edge during a suspension</strong>, for a firing that had not started.</li>
+<li><strong>A parked launch across a restart.</strong> A suspension parks the spawn of a hook. If verse
+  restarts before the lift, the spawn is lost.</li>
+<li><strong>Names that moved.</strong> A suspension names an address, a rule and a subject, and keeps those
+  names. When a package moves or a rule is renamed, the suspension names nothing. The listing
+  marks it <code>covers: false</code>.</li>
+<li><strong>Work held by a holder whose authority ended.</strong> A holder that loses its authority stops
+  covering new work. What it already held stays held until somebody resumes it.</li>
+</ul>
+<h2 id="seeing-it">Seeing it<a class="headerlink" href="#seeing-it" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verse flow</code></td>
+<td>live tasks with <code>heldBy</code>, and suspensions with their holders, their reasons, what they hold, and whether they cover anything</td>
+</tr>
+<tr>
+<td><code>verse status</code></td>
+<td>counts of what is live and what is held, and of what has gone wrong</td>
+</tr>
+<tr>
+<td><code>verse charter</code></td>
+<td>a rule that is suspended about every subject, and a rule in trouble</td>
+</tr>
+<tr>
+<td><code>verse flow show &lt;subject&gt;</code></td>
+<td>what holds the work of one subject, as a tree</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>verse status</code></strong> has three counts.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it counts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>flows: {tasks, subjects}</code></td>
+<td>the live tasks, and the distinct subjects they are about</td>
+</tr>
+<tr>
+<td><code>suspensions: {count, tasks, subjects, questions, launches}</code></td>
+<td>how many suspensions are in force, and what they hold: tasks, their subjects, questions withdrawn, launches parked. Each is counted once. The field is absent when nothing is suspended.</td>
+</tr>
+<tr>
+<td><code>firings: {failed, unread}</code></td>
+<td>what has gone wrong at the firings of the rules (<a href="../trigger-model/#when-a-rule-does-nothing">when a rule does nothing</a>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>verse flow show &lt;subject&gt;</code></strong> puts what holds the work of the subject at the top of the
+tree. That is what would hold an installed rule whose subject could select it, and what holds
+its live tasks. The tree marks <code>heldBy</code> on a live task, and <code>suspended</code> on each position whose
+work is held.</p>
+<p>A subject with no work gets a tree too, if something would hold its work. The tree has no
+branches: it is the address itself, or each address with data that a pattern selects.</p>
+<p>A tree with a live task says <code>active: true</code>. <code>-active</code> shows only those trees, <code>-no-active</code>
+shows only the others, and neither flag shows every tree.</p>
+<p>The record of a withdrawn question says which suspension withdrew it.</p>
+<p><a href="https://github.com/signadot/verse/blob/main/docs/deployment-and-steering.md">Deployment and steering</a> says why none of this travels on the
+stream of changes.</p>
+<h2 id="suspending">Suspending<a class="headerlink" href="#suspending" title="Permanent link">#</a></h2>
+<p>See <a href="#a-suspension">a suspension</a>.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

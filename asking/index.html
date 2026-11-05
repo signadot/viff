@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/asking/">
+        <link rel="icon" href="../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+
+        <title>Asking - Verse</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link href="../pygments.css" rel="stylesheet">
+        <link href="../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Asking - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/asking/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href=".."><img src="../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../reference/tasks/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../perms-guide/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#asking" class="nav-link">Asking</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#the-words" class="nav-link">The words</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#asking_1" class="nav-link">Asking</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-follows-the-answer" class="nav-link">What follows the answer</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#composing-asks" class="nav-link">Composing asks</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#how-long-it-stands" class="nav-link">How long it stands</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#who-reads-it" class="nav-link">Who reads it</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#following-your-asks" class="nav-link">Following your asks</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#changing-your-mind" class="nav-link">Changing your mind</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#whose-authority-what-follows-runs-with" class="nav-link">Whose authority what follows runs with</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#saying-something-to-a-running-task" class="nav-link">Saying something to a running task</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#where-the-rest-is" class="nav-link">Where the rest is</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="asking">Asking<a class="headerlink" href="#asking" title="Permanent link">#</a></h1>
+<p><code>verse ask</code> asks somebody something. The ask goes to the people you name, with a date if you
+give one. Their answer is written back on your ask, and what you said should follow that answer
+runs for you. Every verse can ask: nothing has to be installed for it.</p>
+<p>An ask is how anything in verse waits for a person. You raise one with <code>verse ask</code>. A rule's
+gate raises one when it stops for a person. A task raises one with its <code>question-ask</code> tool and
+waits on it, or with <code>verse-ask-create</code> as the person it runs for. All of them are the same
+record, on one docket.</p>
+<h2 id="the-words">The words<a class="headerlink" href="#the-words" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ask</strong></td>
+<td>a record at <code>verse.ask.&lt;id&gt;</code>: what is asked, of whom, by when, and what follows. <code>verse ask</code> writes yours, and its id comes from the name you give it</td>
+</tr>
+<tr>
+<td><strong>asker</strong></td>
+<td>whoever raised the ask: its record's <code>from</code>, <code>{principal: &lt;you&gt;}</code>. Your ask is your record</td>
+</tr>
+<tr>
+<td><strong>to</strong></td>
+<td>whom the ask is put to: a name or a list, in the <a href="../perms/#principals-and-grantees">grammar a grant uses</a>. Absent, anyone may answer. The record keeps it as <code>to: {grantees: […]}</code></td>
+</tr>
+<tr>
+<td><strong>due</strong></td>
+<td>the date the ask settles at if nobody answers. Absent, it has no date and waits for an answer</td>
+</tr>
+<tr>
+<td><strong>on silence</strong></td>
+<td>the option the ask settles on at its date if nobody answers: <code>deny</code>, unless you say <code>--on-silence proceed</code></td>
+</tr>
+<tr>
+<td><strong>question</strong></td>
+<td>an ask as the person asked sees it: one that waits on you. <code>verse question</code> lists them</td>
+</tr>
+<tr>
+<td><strong>docket</strong></td>
+<td>every pending ask you can read, whoever raised it and whoever it waits on. <code>verse question --all</code> lists it</td>
+</tr>
+<tr>
+<td><strong>on</strong></td>
+<td>what follows the answer: a list of rows, read in order. Each row is a <code>match</code> on the answer and a <code>then</code>. The first row whose match the answer meets runs its <code>then</code> (<a href="#what-follows-the-answer">what follows</a>). Absent, or met by no row, the ask is a <strong>vote</strong></td>
+</tr>
+<tr>
+<td><strong>then</strong></td>
+<td>what a row runs, as one key: <code>{spawn: {…}}</code> is a task, written as a charter's spawn is (<code>prompt</code> or <code>script</code>, <code>agent</code>, <code>environment</code>, <code>autonomy</code>, …) and meaning only what it says; <code>{answer: {ask: &lt;id&gt;, choice: &lt;option&gt;}}</code> answers another ask as you; <code>{ask: {…}}</code> raises another ask. <code>null</code> or <code>{}</code> runs nothing</td>
+</tr>
+<tr>
+<td><strong>answer</strong></td>
+<td>what is written back: <code>yes</code> or <code>no</code></td>
+</tr>
+<tr>
+<td><strong>ran</strong></td>
+<td>what the row that met the answer ran: <code>{row, at}</code> and the task it started, the answer or ask it made, or why it failed</td>
+</tr>
+<tr>
+<td><strong>edit</strong></td>
+<td>which version of your ask an answer agreed to: 1 as first asked, and one more each time you change what it asks</td>
+</tr>
+<tr>
+<td><strong>labels</strong></td>
+<td>what the ask says about itself, for whoever watches asks: <code>--label team=payments,kind=deploy</code>. Verse routes nothing by them</td>
+</tr>
+</tbody>
+</table>
+<p>Every question on the docket, yours or not, says its parties the same way. <code>from</code> is who raised
+it, exactly one of <code>{rule, at}</code> (a rule's gate, and the charter it is installed at), <code>{task}</code> (a
+task's question), <code>{principal}</code> (an ask, or words said to a task: a person, an agent, or a
+resolver acting as <code>via:…</code>) or <code>{principal, task}</code> (an ask a task raised as the person it runs
+for). <code>to</code> is whom it is put to, <code>{grantees: […]}</code> or, for words said to a
+task, <code>{task}</code>, and is absent where it names nobody. <code>by</code> is who settled it.</p>
+<h2 id="asking_1">Asking<a class="headerlink" href="#asking_1" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>on.tony<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="s">- match: {verdict: proceed}</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="s">  then:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="s">    spawn:</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="s">      prompt: fast-forward main to ask-ui, run the tests, and push main</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s">      environment:</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="s">        systems:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="s">          network: {mode: open}</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="s">          commands: {}</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="s">          git:</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="s">          - repo: acme/app</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="s">            from: main</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="s">            fetch: {}</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="s">            push: {ref: refs/heads/main, force: false, delete: false}</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="s">      autonomy:</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="s">      - {match: {system: commands}, then: allow}</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="s">      - {match: {system: git, verb: fetch}, then: allow}</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="s">      - {then: ask}</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="s">EOF</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>verse<span class="w"> </span>ask<span class="w"> </span>land<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;Merge ask-ui into main of acme/app? No answer in 48h is a yes.&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span>--to<span class="w"> </span>dana@example.com<span class="w"> </span>--due<span class="w"> </span>48h<span class="w"> </span>--on-silence<span class="w"> </span>proceed<span class="w"> </span>--on<span class="w"> </span>@on.tony
+</code></pre></div>
+<p><code>on.tony</code> has one row. Its match, <code>{verdict: proceed}</code>, meets a yes, and its <code>then</code> is what
+follows: an agent given the prompt, in an environment that gives it the network, the shell, and
+a checkout of acme/app that it may fetch and push to <code>main</code> without a rewrite. The autonomy runs the shell and the fetch unasked, and asks you before the push. A spawn
+means only what it says: one that names no network has none, and verse checks it against the
+runner it would run on when you ask, not after the yes.</p>
+<p><code>verse ask</code> answers with the ask's id: <code>land-</code> and a suffix. Commands take the name or the id.
+If you have used one name for two asks, verse refuses the name and prints both ids, so you can
+pick one.</p>
+<p>The ask goes to Dana. It is on the docket, and in Slack where the deployment runs the Slack iod.
+Dana answers it like any ask: <code>verse question &lt;id&gt; --answer proceed</code> for yes, or <code>deny</code> for no.
+You do not answer your own ask, unless you named yourself in <code>--to</code>.</p>
+<p><code>--due</code> takes a date (<code>2026-10-02T17:00:00Z</code>) or a duration from now. If Dana answers yes, the
+ask gets <code>answer: yes</code>, and the row's <code>then</code> runs as a task for you. A no gets <code>answer: no</code>,
+meets no row, and runs nothing. No answer by the date settles on <code>deny</code>, unless you said
+otherwise. Here silence means nobody objects, so <code>--on-silence proceed</code> makes silence a yes. You
+choose it when you ask, and it stays when the date moves.</p>
+<p>Leave out <code>--to</code>, and anyone may answer. Leave out <code>--on</code>, and the ask is a vote: the answer is
+all it leaves.</p>
+<p>A <code>then</code> that is a script runs exactly what it says, as <code>verse task run</code> runs one:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>release.tony<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="s">- match: {verdict: proceed}</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="s">  then:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="s">    spawn:</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="s">      script: |</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="s">        git -C app merge --ff-only mirror/main</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="s">        verse-call-tool git-push -repo app -branch release</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="s">      environment:</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="s">        systems:</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="s">          network: {mode: open}</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="s">          git:</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="s">          - repo: acme/app</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="s">            from: release</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="s">            fetch: {}</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="s">            push: {ref: refs/heads/release, force: false, delete: false}</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="s">      autonomy:</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="s">      - {then: allow}</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="s">EOF</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>verse<span class="w"> </span>ask<span class="w"> </span>release<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;Fast-forward release to main for v1.2?&quot;</span><span class="w"> </span>--to<span class="w"> </span>dana@example.com<span class="w"> </span>--on<span class="w"> </span>@release.tony
+</code></pre></div>
+<p>The script fast-forwards the checkout's <code>release</code> to <code>main</code>, and the runner pushes it. A push is
+the runner's act, with the runner's credential, so the script asks for it with
+<code>verse-call-tool git-push</code>, and the <code>git</code> block gives that one push.</p>
+<p>A prompt lets an agent choose its own actions, so that task's own rows ask you. A script is
+what you wrote, so its autonomy lets it run as you wrote it.</p>
+<p>A <code>then</code> may also answer another ask, or raise one, as you (<a href="#composing-asks">composing asks</a>).</p>
+<p>Verse checks what you give before it writes anything: the names, the date, that each <code>match</code> is
+a pattern it can apply, and that each <code>then</code> is one key an ask can run. If it refuses, nothing is
+written.</p>
+<h2 id="what-follows-the-answer">What follows the answer<a class="headerlink" href="#what-follows-the-answer" title="Permanent link">#</a></h2>
+<p><code>on</code> is a list of rows. When the ask settles, verse reads the rows in order, and the first row
+whose <code>match</code> meets the answer runs its <code>then</code>. No later row runs. A row with no <code>match</code> meets
+every answer, so it belongs last. A row whose <code>then</code> is <code>null</code> or <code>{}</code> runs nothing, and the rows
+after it do not run either.</p>
+<p>The <code>match</code> is a tony match pattern, the one <code>verse data --if</code> takes. It is matched against the
+answer as the ask's record holds it under <code>followed</code>:</p>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>what it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verdict</code></td>
+<td>the option the ask settled on: <code>proceed</code> or <code>deny</code></td>
+</tr>
+<tr>
+<td><code>by</code></td>
+<td>who settled it, or <code>deadline</code> where silence did at the date</td>
+</tr>
+<tr>
+<td><code>via</code></td>
+<td>the resolver or io the answer came through, where one did</td>
+</tr>
+<tr>
+<td><code>why</code>, <code>say</code></td>
+<td>the reason given and the words said with the answer, where there were any</td>
+</tr>
+</tbody>
+</table>
+<p>So <code>{verdict: proceed}</code> meets a yes, and <code>{verdict: deny}</code> meets a no, answered or by silence.
+<code>{by: deadline}</code> meets silence alone, and <code>{verdict: !not proceed}</code> meets anything but a yes.
+Rows can tell an answered no from silence:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">-</span> <span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">verdict</span><span class="o">:</span> <span class="sx">proceed</span><span class="p">}</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  <span class="na">then</span><span class="o">:</span> <span class="p">{</span><span class="na">spawn</span><span class="o">:</span> <span class="p">{</span><span class="sx">…</span><span class="p">}}</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="p">-</span> <span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">by</span><span class="o">:</span> <span class="sx">deadline</span><span class="p">}</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  <span class="na">then</span><span class="o">:</span> <span class="p">{</span><span class="na">ask</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">ship-lead</span><span class="p">,</span> <span class="na">question</span><span class="o">:</span> <span class="s2">&quot;Nobody answered: ship the hotfix?&quot;</span><span class="p">,</span> <span class="na">to</span><span class="o">:</span> <span class="p">[</span><span class="sx">lead@example.com</span><span class="p">]}}</span>
+</code></pre></div>
+<p>A yes runs the first row. Silence at the date runs the second. An answered no meets neither, so
+it runs nothing.</p>
+<h2 id="composing-asks">Composing asks<a class="headerlink" href="#composing-asks" title="Permanent link">#</a></h2>
+<p>A <code>then</code> may be one more act of yours: an answer to another ask, or another ask. Verse makes it
+as you when the answer meets its row. It gives you no right you do not already have. The answer
+is only the condition.</p>
+<p><strong>Your answer waits on somebody else's.</strong> Alice asks you to ship the hotfix. You will say yes,
+but only once Dana has looked at the UI:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># alice</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>verse<span class="w"> </span>ask<span class="w"> </span>ship<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;Ship the hotfix?&quot;</span><span class="w"> </span>--to<span class="w"> </span>you@example.com
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1">#   raised question ship-3f2a…: Ship the hotfix?</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># you</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>verse<span class="w"> </span>ask<span class="w"> </span>ui-ok<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;Is the UI ok to ship?&quot;</span><span class="w"> </span>--to<span class="w"> </span>dana@example.com<span class="w"> </span>--due<span class="w"> </span>24h<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span>--on<span class="w"> </span><span class="s1">&#39;[{match: {verdict: proceed}, then: {answer: {ask: ship-3f2a…, choice: proceed, say: &quot;dana checked the UI&quot;}}}]&#39;</span>
+</code></pre></div>
+<p>When Dana answers <code>proceed</code>, verse answers <code>ship</code> with <code>proceed</code> as you, with your words, as if
+you had answered it yourself. <code>verse ask ui-ok</code> says what happened:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>answer: yes
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>…
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>ran:
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  row: 0
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  at: &quot;2026-09-30T10:12:00Z&quot;
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  answered:
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    ask: ship-3f2a…
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    at: &quot;2026-09-30T10:12:00Z&quot;
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    status: 204
+</code></pre></div>
+<p>Alice's <code>verse ask ship</code> reads <code>answer: yes</code>, and its record says it was answered
+<code>by: user:you@example.com</code>. If Dana says no, or nobody answers by the date, nothing is answered,
+and <code>ship</code> still waits on you. If <code>ship</code> needs two proceeds, yours is one ballot, and it waits
+for another.</p>
+<p><strong>Asks chain.</strong> <code>{ask: {…}}</code> takes what <code>verse ask</code> takes (name, question, to, due,
+onSilence, on, about, labels, keep), and raises that ask as you when its row is met. A <code>due</code>
+that is a duration counts from the answer. Its own rows may answer or ask in turn. Here Dana's
+yes asks Ann to deploy, and Ann's yes answers <code>ship</code>:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>verse<span class="w"> </span>ask<span class="w"> </span>ui-ok<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;Is the UI ok to ship?&quot;</span><span class="w"> </span>--to<span class="w"> </span>dana@example.com<span class="w"> </span>--due<span class="w"> </span>24h<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--on<span class="w"> </span><span class="s1">&#39;[{match: {verdict: proceed}, then: {ask: {name: deploy, question: &quot;Deploy the hotfix to staging?&quot;,</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="s1">          to: [ann@example.com], due: 4h,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="s1">          on: [{match: {verdict: proceed}, then: {answer: {ask: ship-3f2a…, choice: proceed}}}]}}}]&#39;</span>
+</code></pre></div>
+<p><code>verse ask ui-ok</code> then reads <code>ran: {row: 0, asked: {id: deploy-…}}</code>. <code>deploy</code> is your ask, to
+Ann, due four hours after Dana's yes.</p>
+<p><strong>Verse checks when you ask, and again when it acts.</strong> When you ask <code>ui-ok</code>, verse checks that
+<code>ship</code> exists, waits on you, and has a <code>proceed</code> option, and that Ann can read what <code>deploy</code> is
+about. If any check fails, verse refuses the ask and writes nothing. When the yes comes, verse
+makes the answer or the ask as you would make it at that moment:</p>
+<ul>
+<li>The answer is to <code>ship</code> as you saw it. If Alice changes <code>ship</code> before Dana answers, <code>ship</code> is
+  asked again, and your answer to the old words is refused.</li>
+<li>If <code>ship</code> has settled in the meantime, there is nothing to answer.</li>
+</ul>
+<p>What was refused, and why, is on your ask, under <code>ran</code>, as <code>answered</code> or <code>asked</code> with
+<code>refused</code>.</p>
+<p><strong>A no can run something too.</strong> This is how you escalate. Ask Ann, and if she says no or nobody
+answers in four hours, ask the lead:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>verse<span class="w"> </span>ask<span class="w"> </span>ship<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;Ship the hotfix?&quot;</span><span class="w"> </span>--to<span class="w"> </span>ann@example.com<span class="w"> </span>--due<span class="w"> </span>4h<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>--on<span class="w"> </span><span class="s1">&#39;[{match: {verdict: deny}, then: {ask: {name: ship-lead, question: &quot;Ann said no, or did not answer: ship the hotfix?&quot;,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="s1">          to: [lead@example.com], due: 4h}}}]&#39;</span>
+</code></pre></div>
+<p><code>verse ask ship</code> then reads <code>ran: {row: 0, asked: {id: ship-lead-…}}</code>. An ask withdrawn before
+anybody answered runs nothing. The message in Slack shows each row: what it meets, and what it
+runs.</p>
+<h2 id="how-long-it-stands">How long it stands<a class="headerlink" href="#how-long-it-stands" title="Permanent link">#</a></h2>
+<p>An ask that has settled, answered or not, stays for a week and is then removed. That holds for
+every ask on the docket, whoever raised it. For your own ask, <code>--keep 72h</code> sets another time.
+<code>verse ask</code> shows when it goes, as <code>expires</code>. A task its row started stays as tasks do.</p>
+<p>An ask settles once, on the first answer that settles it. Verse writes that answer on the ask as
+<code>followed</code> before the row it meets runs, and before whoever asked hears it. So what runs,
+what the asker hears and what the ask says are that one answer's. An answer that lands after it
+is refused, and the refusal names whose answer stands. If the answer cannot reach whoever waits
+on the ask, <code>followed</code> says why, as <code>undelivered</code>. The answer still stands: it reaches them when
+the ask is asked again, and answering it again meanwhile says <code>the answer stands</code>.</p>
+<p>If a rule's gate fires again after its ask settled, it raises a new ask with its own id. The
+settled ask keeps its answer until it goes. An ask that is asked again while it still waits,
+because a restart or a lifted suspension brings its gate back, is not removed: it stays while it
+waits.</p>
+<h2 id="who-reads-it">Who reads it<a class="headerlink" href="#who-reads-it" title="Permanent link">#</a></h2>
+<p>You read your ask, and so do the people it asks. Nobody else does. An ask that names nobody,
+which anyone may answer, is read by everyone.</p>
+<p>An ask <code>--about</code> something is read by whoever may read that thing instead. If it also names
+nobody, whoever may write that thing may answer it. You, and everybody you ask, must be able to
+read what the ask is about, or verse refuses it.</p>
+<h2 id="following-your-asks">Following your asks<a class="headerlink" href="#following-your-asks" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>verse<span class="w"> </span>ask<span class="w">                </span><span class="c1"># your asks: the question, who is asked, the date, the answer or pending</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>verse<span class="w"> </span>ask<span class="w"> </span>land<span class="w">           </span><span class="c1"># one of them, and whom it waits on</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>verse<span class="w"> </span>ask<span class="w"> </span>--watch<span class="w">        </span><span class="c1"># a line for each event, until stopped</span>
+</code></pre></div>
+<p>An ask that settles with nobody to answer it, because verse could not put it to whom it names,
+has no answer: it shows its <code>status</code>, <code>orphaned</code>, and <code>why</code>.</p>
+<p><code>--watch</code> prints a line when an ask of yours is asked, asked again, answered or withdrawn. Each
+line starts with its revision. Pass the last one you saw as <code>--since</code> on the next run, and
+verse replays what happened in between. The store can replay for as long as it keeps its full
+log: an hour by default (<code>verse up --logd-config</code> changes it).</p>
+<p>What others ask of you is the other side, <code>verse question</code>:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>verse<span class="w"> </span>question<span class="w">            </span><span class="c1"># the asks waiting on you, that you did not raise</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>verse<span class="w"> </span>question<span class="w"> </span>&lt;id&gt;<span class="w">       </span><span class="c1"># one of them, with its options and ballots</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>verse<span class="w"> </span>question<span class="w"> </span>--watch<span class="w">    </span><span class="c1"># a line when one starts waiting on you, and when it settles</span>
+</code></pre></div>
+<p><code>verse question</code> leaves out an ask that a resolver answers for you; <code>--served</code> adds it
+(<a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md">resolvers</a>). <code>--all</code> lists the whole docket. <code>verse question --watch</code>
+takes <code>--since</code> as <code>verse ask --watch</code> does.</p>
+<p>Either watch takes <code>--notify</code> to say what needs you on the desktop too: a question that starts
+waiting on you (urgent, so it stays until you dismiss it where the desktop keeps such ones), and
+an ask of yours answered. A question that settles closes its notification rather than adding one;
+the watch's line says how it settled. What stands when the watch opens, or what <code>--since</code> and a
+reconnect catch up on, is one quiet summary ("2 questions wait on you"), not a notification each; the summary
+is closed once every question it counted has settled.</p>
+<p>On Linux and the BSDs it goes to the notification service on the session bus
+(<code>org.freedesktop.Notifications</code>, which GNOME, KDE, dunst, mako and swaync serve), with a
+question's text escaped where the service reads markup. On macOS it goes to Notification Center
+through <code>osascript</code>, which attributes it to Script Editor: allow Script Editor under System
+Settings › Notifications, or nothing appears. With no such service the watch refuses to start. A
+desktop that refuses or falls behind is said once, on a line; the lines are the same either way.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>verse<span class="w"> </span>question<span class="w"> </span>--watch<span class="w"> </span>--notify
+</code></pre></div>
+<h2 id="changing-your-mind">Changing your mind<a class="headerlink" href="#changing-your-mind" title="Permanent link">#</a></h2>
+<p>While an ask waits, you can change it, or take it back:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>verse<span class="w"> </span>ask<span class="w"> </span>land<span class="w"> </span>--due<span class="w"> </span>72h<span class="w">                               </span><span class="c1"># move its date: nothing is asked again</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>verse<span class="w"> </span>ask<span class="w"> </span>land<span class="w"> </span>--on<span class="w"> </span>@on.tony<span class="w">                           </span><span class="c1"># change what follows: it is asked again</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>verse<span class="w"> </span>ask<span class="w"> </span>land<span class="w"> </span>--to<span class="w"> </span>peggy@example.com<span class="w">                    </span><span class="c1"># ask somebody else: asked again, of them</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>verse<span class="w"> </span>ask<span class="w"> </span>land<span class="w"> </span>--withdraw<span class="w">                              </span><span class="c1"># take it back</span>
+</code></pre></div>
+<p>An answer agrees to what was asked, not to when. So a new date moves the clock and keeps any
+answer already given. A new <code>--on</code> or a new <code>--to</code> changes what is asked, so the ask is asked
+again as its next <strong>edit</strong>. Answers to the earlier edit do not count, and an answer that names
+that edit is refused. So nobody answers words they were not asked.</p>
+<p>Withdrawing an ask takes it off the docket and removes it. Nothing is written on anybody's
+behalf.</p>
+<p>Once an ask has an answer, it does not change, even before the answer reaches you. Anything more
+is a new ask.</p>
+<p>In Slack, the message says who asked and what each row runs, and a reply answers that edit. The
+message is drawn again when the ask changes. A reply to the old words is refused. A reply to the
+new message answers what it now says.</p>
+<h2 id="whose-authority-what-follows-runs-with">Whose authority what follows runs with<a class="headerlink" href="#whose-authority-what-follows-runs-with" title="Permanent link">#</a></h2>
+<p>Yours alone. You raised the ask, so what follows it is yours to answer for. Ask Dana "may I merge this?", and her yes lets you merge what you may merge. Dana does not
+need that right. The task is your record, so its own gates ask you.</p>
+<p>Nobody but you writes your ask. It is yours, and nobody owns a place above it.</p>
+<p>What follows runs before your wait is released, and a spawn has run once it is launched.</p>
+<p>A task's <code>verse-ask-create</code> is your ask too, when the task runs for you. Its rows run with your
+authority, so a spawn in any of them is held within the task: its environment no wider than the
+task's, less installing charters (<code>verse.charter-install</code>), its autonomy no looser, on the
+task's runner, spending the task's credential where it spends one (a script spends none). The
+same holds for an ask a row raises, and for its rows. An answer in any of them is refused: it
+would be yours, on any ask that waits on you, another task's gate among them. A task cannot
+raise past what you let it do. Once raised, the ask is yours to change as any of yours.</p>
+<p>Only an ask has an <code>on</code>. You need not be there when the answer comes, so the ask carries what
+follows it. A rule's gate has none: what a rule does about a yes is its action
+(<a href="../reference/gates/#ondenied-what-a-no-means">gates</a>). An autonomy row's ask has none either:
+the task waits on it, and what the task does about a yes is the step it asked about
+(<a href="../reference/tasks/#the-autonomy">tasks</a>).</p>
+<h2 id="saying-something-to-a-running-task">Saying something to a running task<a class="headerlink" href="#saying-something-to-a-running-task" title="Permanent link">#</a></h2>
+<p>Words you say to a running task are an ask to the task:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>verse<span class="w"> </span>task<span class="w"> </span>say<span class="w"> </span>run-7<span class="w"> </span><span class="s2">&quot;use the staging bucket&quot;</span><span class="w">     </span><span class="c1"># said to run-7: say-3f2a…</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>verse<span class="w"> </span>ask<span class="w"> </span>say-3f2a…<span class="w">                               </span><span class="c1"># answer: heard, once the task has taken them</span>
+</code></pre></div>
+<p>The ask is yours, about the task, and whoever may read the task may read it. It has no date: a
+turn in a conversation has none. If the task is waiting for your turn, the words are your
+reply, and the turn is answered. Otherwise the task takes them at its next boundary, and the ask
+settles as <code>heard</code>. If the task ends before it takes them, the ask is withdrawn, and says so.
+Words to a task on a remote runner are heard when verse passes them to the runner.
+<code>verse flow say</code> says the words to each task the flow reaches, as one ask to each.</p>
+<p>Nobody else answers these asks, so they are not on the docket.</p>
+<h2 id="where-the-rest-is">Where the rest is<a class="headerlink" href="#where-the-rest-is" title="Permanent link">#</a></h2>
+<ul>
+<li><a href="../reference/gates/">Gates</a>: how a rule raises an ask, and who may answer one.</li>
+<li><a href="../reference/tasks/#a-question-for-the-person">A question for the person</a>: how a task raises
+  one, with a clock of its own (<code>within</code>, <code>default</code>) or none.</li>
+<li><a href="../reference/perms/#questions">Permissions</a>: who reads and who answers an ask.</li>
+</ul></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

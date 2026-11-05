@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/reference/perms/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>Permissions reference - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Permissions reference - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/reference/perms/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#permissions-reference" class="nav-link">Permissions reference</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#the-grammar" class="nav-link">The grammar</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#records" class="nav-link">Records</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#levels" class="nav-link">Levels</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#creating-and-taking-a-place" class="nav-link">Creating, and taking a place</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-is-checked-on-a-write" class="nav-link">What is checked on a write</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-is-checked-on-a-read" class="nav-link">What is checked on a read</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#installed-things" class="nav-link">Installed things</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#questions" class="nav-link">Questions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#who-a-request-is-from" class="nav-link">Who a request is from</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#accounts-in-other-systems" class="nav-link">Accounts in other systems</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-each-act-writes" class="nav-link">What each act writes</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-root-and-the-config" class="nav-link">The root, and the config</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#verse-perms" class="nav-link">verse perms</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#suspending" class="nav-link">Suspending</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#scopes" class="nav-link">Scopes</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="permissions-reference">Permissions reference<a class="headerlink" href="#permissions-reference" title="Permanent link">#</a></h1>
+<p>This page is the detail of permissions. <a href="../../perms/">The model</a> defines the words, and
+<a href="../../perms-guide/">Permissions, walked</a> shows them by example. This page has:</p>
+<ul>
+<li>the grammar of names;</li>
+<li>the fields of a record;</li>
+<li>what verse checks, and when;</li>
+<li>who a request is from, and accounts in other systems;</li>
+<li>what each act writes.</li>
+</ul>
+<p>The reason for each rule is in the source, beside the code that enforces it
+(<code>pkg/entity/attribution.go</code>, <code>internal/versed/perms.go</code>, <code>internal/versed/place.go</code>).</p>
+<h2 id="the-grammar">The grammar<a class="headerlink" href="#the-grammar" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>principal ::= user:&lt;email&gt;          # a person
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>            | agent:&lt;name&gt;          # an agent driving verse through the api
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>            | runner:&lt;identity&gt;     # a runner
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>            | system:&lt;part&gt;         # verse itself
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>            | via:&lt;address&gt;         # something installed, acting as whoever installed it
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>            | pair:&lt;asker&gt; &lt;rule&gt;   # a rule&#39;s task, acting for whoever wrote what it is about
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>grantee   ::= principal
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>            | *                     # everyone, a read that names nobody included
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>            | &lt;kind&gt;:*              # every principal of the kind
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>            | group:&lt;name&gt;          # the group&#39;s members, each as themselves
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>            | audience:&lt;address&gt;    # whoever holds the same level at the address
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>            | answering:&lt;address&gt;   # the resolvers granted `answer` at the address
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>            | &lt;email&gt;               # shorthand for user:&lt;email&gt;, at the keyboard only
+</code></pre></div>
+<p>Every place that takes a name reads this grammar, and refuses what it does not read:</p>
+<ul>
+<li><code>-as</code>;</li>
+<li>the config's <code>user:</code> and <code>agent:</code>;</li>
+<li>a grant line and a <code>child-grants</code>;</li>
+<li>a group's members;</li>
+<li>a gate's <code>answerers</code>, and an <code>ask</code> row's;</li>
+<li>a resolver grant's <code>answer</code> line.</li>
+</ul>
+<p>The rules of the grammar:</p>
+<ul>
+<li>A bare email is read as <code>user:&lt;email&gt;</code> and stored with its kind. Any other bare word names
+  nothing. A bare <code>verse.…</code> address names nothing too.</li>
+<li><strong>A request presents <code>user:</code>, <code>agent:</code> or <code>runner:</code>.</strong> <code>via:</code>, <code>pair:</code> and <code>system:</code> are
+  names that verse makes. Verse refuses a request that carries one of them with 400, and the
+  same for a name the grammar does not read.</li>
+<li><strong>A request that is not a read presents one.</strong> Verse refuses it with 400 when it names
+  nobody. Some routes name their own party
+  (<a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#routes-that-name-their-own-party">routes that name their own party</a>, in
+  the repository).</li>
+<li>Verse lists a <a href="../../glossary/#principal">principal</a> the first time it presents itself, under
+  <code>verse.principal.&lt;kind&gt;.&lt;name&gt;</code>.</li>
+<li><code>pair:&lt;asker&gt; &lt;rule&gt;</code> is the task of a rule whose spawn says <code>as: subject</code>. The asker is the
+  owner on record of the subject, and the rule is named as it acts, <code>via:&lt;its address&gt;</code>. The task
+  acts on the asker's authority alone, and the rule's name says what it acted through. A space
+  separates the two, since no principal holds one. It is never a grantee.</li>
+<li><code>system:&lt;part&gt;</code> names the part of verse that wrote, such as <code>system:docket</code> for questions.
+  All the parts are one owner
+  (<a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#the-system-parts">the system parts</a>, in the repository).</li>
+</ul>
+<p><strong>How a grantee matches.</strong></p>
+<table>
+<thead>
+<tr>
+<th>grantee</th>
+<th>admits</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;kind&gt;:&lt;id&gt;</code></td>
+<td>the principal named exactly that, and anything installed that acts as them</td>
+</tr>
+<tr>
+<td><code>&lt;kind&gt;:*</code></td>
+<td>any principal of the kind, and anything installed that acts as one</td>
+</tr>
+<tr>
+<td><code>via:&lt;address&gt;</code></td>
+<td>the installed thing at that address and nothing else. It does not admit the thing's owner. A trailing <code>*</code> covers what acts beneath (<code>via:verse.iods.*</code>). Only a rule, an iod or a resolver is named this way. A runner acts as <code>runner:&lt;identity&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>group:&lt;name&gt;</code></td>
+<td>the group's members, each matched as above. A member may be another group, and verse follows it. Verse does not enter a group it already met on the walk, so groups that name each other do not loop. They admit exactly the members found along the walk.</td>
+</tr>
+<tr>
+<td><code>audience:&lt;address&gt;</code></td>
+<td>whoever holds, at the address, the level this grantee is listed under: in <code>read</code>, whoever may read the address, and in <code>read-write</code>, whoever may write it. It is allowed in <code>read</code> and <code>read-write</code> only, since owning a place is not owning what is about it. Verse follows it one address deep: an <code>audience:</code> met while answering another admits nobody. It is never a principal.</td>
+</tr>
+<tr>
+<td><code>answering:&lt;address&gt;</code></td>
+<td>whoever holds <code>answer</code> at the address: the resolvers answering for a person at <code>verse.for.&lt;person&gt;</code>, or for a place. It is allowed in <code>read</code> only. An ask's <code>read</code> names <code>answering:</code> for each of its parties, so the resolvers serving it can read it. Verse follows it one address deep, as it does <code>audience:</code>. It is never a principal.</td>
+</tr>
+<tr>
+<td><code>*</code></td>
+<td>everyone</td>
+</tr>
+</tbody>
+</table>
+<p>A stored name that the grammar does not read admits nobody. Nothing rewrites it. <code>verse status</code>
+counts each check that meets one under <code>perms.unparsed</code>, and versed logs it once per record.</p>
+<h2 id="records">Records<a class="headerlink" href="#records" title="Permanent link">#</a></h2>
+<p>Records live at <code>verse.perms.node.&lt;address&gt;</code>. The root's record is at <code>verse.perms.root</code>. Only
+verse writes records, and only the system reads them directly. Everybody else reads and sets
+them with <code>verse perms</code>.</p>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>owner</code></td>
+<td>the principal who owns the node. It is absent on a record that only holds grants (a seed row).</td>
+</tr>
+<tr>
+<td><code>grants</code></td>
+<td>a list of lines. <code>[]</code> grants nothing.</td>
+</tr>
+<tr>
+<td><code>child-grants</code></td>
+<td>permission levels mapped to grantees: the grants a record made beneath this node starts with. Verse copies it when that record is written, unless the creation gives grants of its own. It is not a fallback: a change to it touches nothing that exists. The nearest <code>child-grants</code> up the tree applies, and the root's is the last. It never holds <code>answer</code>, which only the party a resolver answers for can grant.</td>
+</tr>
+<tr>
+<td><code>under</code></td>
+<td>an address. Whoever co-owns that node co-owns this one. Verse writes it on a question: what asked it.</td>
+</tr>
+</tbody>
+</table>
+<p>A grant line:</p>
+<table>
+<thead>
+<tr>
+<th>field</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>read</code>, <code>read-write</code>, <code>control</code>, <code>answer</code></td>
+<td>grantees of that level</td>
+</tr>
+<tr>
+<td><code>child-owner</code></td>
+<td>grantees who may create beneath, and own what they create. It is always about what is beneath, so it takes no <code>below</code>. There is no grant of <code>owner</code> at a node.</td>
+</tr>
+<tr>
+<td><code>below: true</code></td>
+<td>the line covers what is beneath the node, and not the node</td>
+</tr>
+<tr>
+<td><code>at: [segs…]</code></td>
+<td>the line is about another address, with at most a trailing <code>*</code>. Without <code>at</code>, the line is about the node the record is on, as nearly every line is.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>A grant does not reach through an owner record.</strong> Verse walks up from a node. The grants on
+each record apply, up to and including the first record that names an owner. The grants above
+that record do not apply.</p>
+<p><strong>A group</strong> is <code>verse.principal.group.&lt;name&gt;</code>. It has <code>members</code>, a list of grantees, and whoever
+made it owns it. Verse reads the membership when it checks the group.</p>
+<h2 id="levels">Levels<a class="headerlink" href="#levels" title="Permanent link">#</a></h2>
+<p>A permission level is what a principal may do at a node.</p>
+<table>
+<thead>
+<tr>
+<th>level</th>
+<th>admits</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>read</code></td>
+<td>reading the node and what is beneath it</td>
+</tr>
+<tr>
+<td><code>read-write</code></td>
+<td>writing into the node, with fields removed as well as set</td>
+</tr>
+<tr>
+<td><code>owner</code></td>
+<td>everything: deleting the node (which takes what is beneath it), replacing it whole, and setting its record. The owner on record and the owners above hold it. <code>child-owner</code> gives it only on a creation.</td>
+</tr>
+<tr>
+<td><code>control</code></td>
+<td>steering work: run, cancel, pause, resume, say, change an autonomy, suspend. An owner by record holds it, and so does whoever it is granted to.</td>
+</tr>
+<tr>
+<td><code>answer</code></td>
+<td>which resolvers may answer for the party the node stands for: a place's owner, at the place, or a person, at <code>verse.for.&lt;person&gt;</code>. It is held only by being named: owning the node gives none of it, and a resolver gets none through whoever installed it. An owner above may take it back but not give it, and no <code>child-grants</code> passes it down. It reaches beneath its node as a grant does. <code>verse resolver grant</code> writes it.</td>
+</tr>
+</tbody>
+</table>
+<p>A spawn carries the identity of whoever runs it, and verse writes the task's record as that
+identity. That write is the check for <code>run</code>.</p>
+<p>A refusal that says "needs owner" about a creation means that no <code>child-owner</code> line reaches
+there.</p>
+<h2 id="creating-and-taking-a-place">Creating, and taking a place<a class="headerlink" href="#creating-and-taking-a-place" title="Permanent link">#</a></h2>
+<ul>
+<li><strong>Who owns a created node.</strong> A writer may hold <code>owner</code> where they write, by owning above or by
+  a <code>child-owner</code> line. That writer owns what they create. Verse writes a record if the writer
+  is not the owner above, or if the write gives the node grants
+  (<code>verse data … -put … -grants</code>). A writer who holds only <code>read-write</code> creates the node too, but
+  the node belongs to the owner of the place. Verse writes no record, and refuses grants on the
+  write.</li>
+<li><strong>Where the record goes.</strong> At the topmost node that the write brought into being. The walk up
+  stops at anything already there, as a node or as a place somebody took. A node created with
+  grants has its own record too, written in the same commit as the node.</li>
+<li><strong><code>child-owner</code> applies to a creation only.</strong> Verse commits a write that only that line admits
+  only if nothing stands where the write lands: at the node, and at each node its value reaches.
+  Of two people who make one node at once, one owns it and verse refuses the other. Where
+  something does stand, verse admits the write on whatever else the writer holds there, or
+  refuses it and names the owner.</li>
+<li><strong>Taking a place</strong> (<code>verse perms &lt;path&gt;</code> where no record stands) needs <code>owner</code> there. Through
+  a <code>child-owner</code> line, that means nothing may stand at the node yet. Under <code>verse</code>, a place can
+  be taken only where something stands, and only by its owner. So nobody can reserve a name the
+  system has not used yet.</li>
+<li><strong>First come, first served.</strong> A <code>child-owner</code> line says who may create beneath a node. It does
+  not say which name each of them may create. Where <code>spaces</code> grants it to <code>user:*</code>, anybody may
+  take <code>spaces.sally</code>. The owner of <code>spaces</code> co-owns <code>spaces.sally</code> and can remove it. Nothing
+  maps a name to a principal (<code>b737wbpb</code>).</li>
+<li><strong>Not above somebody else's place.</strong> <code>owner</code> from a <code>child-owner</code> line does not apply at a
+  node that has another principal's record beneath it. The refusal names the place in the way.
+  Ownership by record is unchanged: the owner of <code>spaces</code> co-owns every space in it.</li>
+<li><strong>A task's id names one party's work.</strong> Verse refuses a spawn under an id that already
+  stands as somebody else's, a rule's spawn included.</li>
+<li><strong>Deleting</strong> a node forgets its record and every record beneath it.</li>
+</ul>
+<h2 id="what-is-checked-on-a-write">What is checked on a write<a class="headerlink" href="#what-is-checked-on-a-write" title="Permanent link">#</a></h2>
+<p>Every write verse makes for anybody goes through one view of the store, and that view acts as a
+principal. So verse checks compare-and-swap writes and its own projections too, and the code
+that makes the write does not need to know. A refusal is a 403 with the check's words, counted under <code>perms.refused</code>.</p>
+<ul>
+<li><strong>The node written is the whole address the request spells.</strong> The api's <code>sub</code> beneath an
+  address is part of the address where it spells names: <code>{at: team, sub: c.secret}</code> is a write
+  at <code>team.c.secret</code>.</li>
+<li><strong>Every node the value reaches is checked</strong>, wherever a record or a grant could change the
+  answer from the node above. <code>{c: {secret: x}}</code> written at <code>team</code> is also a write at <code>team.c</code>. A
+  <code>!delete</code> inside a value replaces its node whole, and so does a value that is not an object.
+  Either needs <code>owner</code> wherever something beneath could be somebody else's.</li>
+<li><strong>A writer may read what the write asks about.</strong> Verse refuses a <code>when:</code> precondition on a
+  node the writer may not read, as it would refuse a read of the node. Verse checks a
+  <a href="../../glossary/#pattern">pattern</a> field by field, so it never refuses a pattern for what the
+  pattern does not mention.</li>
+<li><strong>A removal is checked before it starts.</strong> Removing a rule, a level, a package, an iod or a
+  runner needs <code>owner</code> on it. Verse checks that before it stops or deletes anything. Replacing a
+  rule or a level is a write over what stands: the thing's record and grants stay. A co-owner who
+  edits a rule does not become its owner.</li>
+<li><strong>A charter file is applied as one step.</strong> A refusal anywhere puts back what stood, content
+  and record.</li>
+<li><strong>Two checks come before their write</strong>, because what follows cannot be undone. Verse checks an
+  answer before it delivers it to the work, and a control call before it relays it.</li>
+</ul>
+<h2 id="what-is-checked-on-a-read">What is checked on a read<a class="headerlink" href="#what-is-checked-on-a-read" title="Permanent link">#</a></h2>
+<ul>
+<li>Verse refuses a read of one thing the reader may not read, as it refuses a write.</li>
+<li>A listing, a replay, a watch and a snapshot <strong>leave out</strong> what may not be read. The same holds
+  inside a payload: a node under a record the reader may not read is left out of what holds it.
+  Verse counts what it leaves out under <code>perms.hidden</code>.</li>
+<li>Verse refuses a listing or a watch <em>at</em> an address the reader may not read into, as a whole.</li>
+<li><strong>A task is read as its record is.</strong> The task's prompt, its transcript, its result and the
+  answers waiting for its worker each need <code>read</code> on the task's record,
+  <code>verse.task.instance.&lt;id&gt;</code>. The routes, and the one read that is not checked, are in
+  <a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#reads-by-a-worker-and-by-a-tasks-routes">reads by a worker</a>, in the
+  repository.</li>
+<li><strong>There is one gap, one commit wide.</strong> The record follows the write it records. So the commit
+  that creates a node reaches a live watch before the record that would hide it.</li>
+<li><strong>A rule reads as its owner.</strong> Verse narrows three things to what the rule's owner may read:
+  the snapshot that a condition is asked of, the snapshot that a reference resolves against, and
+  the commit that wakes the rule. Verse refuses at install a rule that reads the records
+  themselves, unless the rule is the system's.</li>
+</ul>
+<h2 id="installed-things">Installed things<a class="headerlink" href="#installed-things" title="Permanent link">#</a></h2>
+<p>A rule, an iod, a resolver and a schedule act as <code>via:&lt;address&gt;</code>. That principal is the owner
+on the record <strong>at that address</strong>. Where the address has no record, it is nobody. It does not
+fall back to the owner above, because above is verse's own half, which is the system's.</p>
+<ul>
+<li><strong>An install leaves its installer's record, or verse refuses it</strong> with 409.</li>
+<li><strong>Whose a rule is, is said on its record and nowhere else.</strong> A rule's own data carries no
+  installer.</li>
+<li><strong>The deployment's charter</strong> is installed as the system, and fires as the system.</li>
+<li><strong>No rule but the system's writes under <code>verse</code>.</strong> Verse refuses a <code>patch</code> of a subject there,
+  or a <code>derive</code> into it, with 403. It refuses at install where the rule names the address, and at
+  the write. A rule may select a subject there and spawn about it.</li>
+<li><strong>A charter package takes the address it is installed at</strong> for its installer. An iod takes
+  the nodes its claims name in the same way.</li>
+</ul>
+<p>How each installed thing gets its record, and what the system makes under <code>verse</code>, is in
+<a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#installed-things-and-their-records">installed things and their records</a>,
+in the repository.</p>
+<h2 id="questions">Questions<a class="headerlink" href="#questions" title="Permanent link">#</a></h2>
+<p>A gate's <a href="../../glossary/#question">question</a> is an ask, at <code>verse.ask.&lt;id&gt;</code>, with the docket's
+record. Its <code>under</code> is what asked it. A person's ask has its asker's record instead, which
+<code>verse ask</code> writes with who reads it and who answers it (<a href="../../asking/">asking</a>).</p>
+<ul>
+<li><strong>Who may read it.</strong> A question about something is read by whoever may read that thing:
+  its <code>read</code> line is <code>audience:&lt;subject&gt;</code>. A question about nothing is read as the
+  <code>child-grants</code> on <code>verse.ask</code> say.</li>
+<li><strong>Who may answer.</strong> Whoever co-owns the question through <code>under</code>: the task's owner, or the
+  charter's owner. Also whoever the question's own <code>read-write</code> line names. Verse takes that
+  line from the first of these that applies:</li>
+<li>for a rule's gate, the gate's <code>answerers</code>;</li>
+<li>for a question a task raises, the <code>answerers</code> of the autonomy row that asked; else whom the
+     worker named when it asked; else whom the task acts for (<code>$principal</code>), where it acts for
+     somebody;</li>
+<li>for a question about something, <code>audience:&lt;subject&gt;</code>: whoever may write it;</li>
+<li>the <code>child-grants</code> on <code>verse.ask</code> (<code>read-write: [user:*, agent:*]</code>).</li>
+<li><strong>Nobody answers what they cannot read.</strong> A question naming answerers who may not read its
+  subject is refused when it is asked: the firing or the task that asked gets the refusal as its
+  error, and <code>verse ask</code> gets 403. A whole kind (<code>user:*</code>) passes only where the subject grants
+  <code>read</code> to that kind or to <code>*</code>. An answer from somebody who may no longer read the subject is
+  refused with 403.</li>
+</ul>
+<p>A runner's grant is on its task, and reaches no question.
+- <strong>Through a resolver</strong>, an answer is its party's: a resolver answering for a person or a place
+  that granted it <code>answer</code> answers as them, held to their line
+  (<a href="https://github.com/signadot/verse/blob/main/docs/reference/resolvers.md#whom-it-answers-for">Resolvers</a>). Nothing moves the line.
+- <strong>Asked again</strong> after it stood orphaned, a question keeps its id, and who may answer belongs
+  to the new asking. A question that was answered is not asked again: a gate that fires after
+  the answer asks a new question, under an id of its own.
+- <strong>Answerable once posed.</strong> Posing is two writes: the record, then the question. An answer that
+  arrives before both waits a moment, and then gets <code>503 … still being posed</code>.
+- <strong>By whoever made the request.</strong> A ballot is keyed by the principal the check admitted, and a
+  record names that principal. This holds for an answer, a <code>say</code>, a cancel, a change of autonomy,
+  and the <code>principal</code> a spawn is answerable to. <code>need</code> counts one ballot for each.
+- <strong>What a worker reports is not evidence of who answered.</strong> For a task on a remote runner, who
+  works the task is who claimed it. How verse reads what such a worker sends is in
+  <a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#a-relayed-tasks-frames">a relayed task's frames</a>, in the repository.</p>
+<h2 id="who-a-request-is-from">Who a request is from<a class="headerlink" href="#who-a-request-is-from" title="Permanent link">#</a></h2>
+<p>In short: a request is made as a <strong>principal</strong>, and verse decides which one from what the
+request carries.</p>
+<ul>
+<li>A name alone is taken as given, where the mode allows.</li>
+<li>A token from an identity provider the deployment names is verified. The principal is whoever
+  the token's account is bound to.</li>
+<li>An iod of the deployment presents its own token. When it acts for a person, it also names the
+  person's account, and verse finds the person through that account's binding.</li>
+<li>A runner presents its own token too, the one its registration names by its <code>subject</code>, and acts
+  as itself.</li>
+</ul>
+<p>Bindings are records at <code>verse.identity.&lt;provider&gt;.account.&lt;id&gt;</code>. Only the system writes them,
+from evidence it checked itself (<a href="#accounts-in-other-systems">accounts in other systems</a>).</p>
+<p>A request says who makes it in one of three ways.</p>
+<ul>
+<li><strong>A token.</strong> <code>Authorization: Bearer &lt;id_token&gt;</code> carries an OpenID Connect id_token from an
+  <strong>identity provider</strong> the deployment names (<code>auth.principal</code> in its
+  <a href="https://github.com/signadot/verse/blob/main/docs/reference/up.md#configuration">config</a>). Verse verifies it, and the request is made as the person it
+  proves.</li>
+<li><strong>A name.</strong> <code>Verse-Principal: &lt;principal&gt;</code> is taken as given. It is <code>user:</code>, <code>agent:</code> or
+  <code>runner:</code>.</li>
+<li><strong>An iod's token, and a person it relays.</strong> An iod of the deployment presents its own token
+  (<a href="#iods-at-the-door">iods at the door</a>). When it acts for a person, it also sends that person's
+  name and the account the person is: <code>Verse-For-Principal: &lt;provider&gt;:&lt;id&gt;</code>. Verse admits the
+  request as the person only through the account's binding, and only from an iod the deployment
+  trusts for that provider (<a href="#a-person-relayed-by-a-trusted-iod">a person relayed by a trusted iod</a>).</li>
+</ul>
+<p>A token is checked before the name is read:</p>
+<ol>
+<li>Its <code>iss</code> names one of the deployment's providers.</li>
+<li>Its signature verifies against the keys that provider publishes. Verse reads a provider's
+   discovery document the first time a token names it. It reads the keys again when it meets a
+   key id it has not seen.</li>
+<li>Its <code>aud</code> holds the provider's <code>clientId</code>, and it is in date (<code>exp</code>, <code>nbf</code>).</li>
+<li><strong>The principal is the binding, not the claim.</strong> The token's <code>sub</code> is an account, and the
+   <a href="#accounts-in-other-systems">binding</a> at <code>verse.identity.&lt;provider&gt;.account.&lt;sub&gt;</code> says which
+   principal that account is. So a person whose email changes at the provider keeps their
+   principal.</li>
+<li><strong>First sight.</strong> An account with no binding is bound to <code>user:&lt;email&gt;</code> when the token carries
+   an <code>email</code> with <code>email_verified: true</code> in one of the provider's <code>domains</code>. The email is
+   lower-cased. The binding's proof is <code>{method: oidc, iss, sub, iat, at}</code>, and its <code>claimant</code> is
+   the provider. Verse never stores the token.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>a request with</th>
+<th>is answered</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a token that passes</td>
+<td>as the principal its account is bound to</td>
+</tr>
+<tr>
+<td>a token that fails any check above</td>
+<td>401, saying which. It never falls back to the name beside it.</td>
+</tr>
+<tr>
+<td>a token, at a verse that names no provider or whose mode is <code>off</code></td>
+<td>401</td>
+</tr>
+<tr>
+<td>a token whose provider cannot be reached</td>
+<td>503. Requests with no token are still served.</td>
+</tr>
+<tr>
+<td>a token that passes, and a <code>Verse-Principal</code> naming somebody else</td>
+<td>403</td>
+</tr>
+<tr>
+<td>an iod's token</td>
+<td>as the iod, under every mode</td>
+</tr>
+<tr>
+<td>an iod's token, a person's name and their account, from an iod trusted for the account's provider</td>
+<td>as the person, through the binding (<a href="#a-person-relayed-by-a-trusted-iod">below</a>)</td>
+</tr>
+<tr>
+<td>an iod's token and a person's name, with no account or from an iod not trusted for it</td>
+<td>403</td>
+</tr>
+<tr>
+<td>a registered runner's token</td>
+<td>as the runner, under every mode (<a href="#runners-at-the-door">below</a>)</td>
+</tr>
+<tr>
+<td>a registered runner's token and a name that is not the runner's, with no task</td>
+<td>403</td>
+</tr>
+<tr>
+<td>a registered runner's token and a task it hosts (<code>Verse-Task</code>)</td>
+<td>as the task's owner, through the task's record (<a href="#a-task-carried-by-its-runner">below</a>)</td>
+</tr>
+<tr>
+<td>a registered runner's token and an account to relay (<code>Verse-For-Principal</code>)</td>
+<td>403: a runner relays a task, never an account, and the request is not carried out as the runner instead</td>
+</tr>
+<tr>
+<td>a <code>Verse-Task</code> beside any token but a runner's, or beside none</td>
+<td>403 or 401: only the runner hosting a task carries a request for it</td>
+</tr>
+<tr>
+<td>no token, under <code>off</code> or <code>optional</code></td>
+<td>as the <code>Verse-Principal</code> it names, or as nobody</td>
+</tr>
+<tr>
+<td>no token and a <code>runner:</code> name, under every mode</td>
+<td>401: the runner presents its token</td>
+</tr>
+<tr>
+<td>no token and a <code>user:</code> name, under <code>required</code></td>
+<td>401, saying to log in</td>
+</tr>
+<tr>
+<td>no token and an <code>agent:</code> name, under <code>required</code></td>
+<td>as that name</td>
+</tr>
+<tr>
+<td>no token and no name, under <code>required</code></td>
+<td>as nobody: it reads what <code>*</code> holds, and writes nothing</td>
+</tr>
+</tbody>
+</table>
+<p><code>auth.principal.mode</code> says how strictly the verse requires a token.</p>
+<table>
+<thead>
+<tr>
+<th>mode</th>
+<th>a person is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>off</code></td>
+<td>whoever the request says. No token is verified.</td>
+</tr>
+<tr>
+<td><code>optional</code></td>
+<td>whoever their token proves, or whoever the request says where it carries none</td>
+</tr>
+<tr>
+<td><code>required</code></td>
+<td>whoever their token proves, and nobody else</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Verse verifies people, iods and registered runners, not agents.</strong> The modes above verify
+people, <code>auth.iod</code> verifies the deployment's own iods, and a runner proves itself by the
+<code>subject</code> its registration names (<a href="#runners-at-the-door">runners at the door</a>). An <code>agent:</code>
+principal is taken as given, under every mode. An agent
+may read bindings, so <code>required</code> does not close the door to everybody who is not verified.</p>
+<p>An <a href="#accounts-in-other-systems"><code>asserted</code> binding</a> is not answered to an iod's lookup under
+<code>required</code>, until a verified caller proves the account again.</p>
+<p>Under <code>optional</code>, a <code>user:</code> that carries no token is also taken as given. A binding records
+which kind of caller proved it (<code>claimant</code>), so a reader can tell a verified name from an
+asserted one.</p>
+<p><code>GET /whoami</code> answers who the request is from and how verse knows: <code>{principal, by}</code>. <code>by</code> is
+the provider that verified the caller, or <code>asserted</code>. Where an iod relayed the caller, <code>via</code>
+names it. A request that names nobody is answered <code>{}</code>.</p>
+<h3 id="your-account">Your account<a class="headerlink" href="#your-account" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>command</th>
+<th>does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verse account</code></td>
+<td>lists the accounts in other systems that are bound to you</td>
+</tr>
+<tr>
+<td><code>verse account login [&lt;provider&gt;]</code></td>
+<td>logs in to an identity provider in the CLI's config, and keeps the tokens. The provider may be left off when the config names one.</td>
+</tr>
+<tr>
+<td><code>verse account -link &lt;provider&gt;</code></td>
+<td>binds an account in another system to who you are. At an identity provider, it logs in there and presents the token as evidence; the login in use does not change. At a provider whose accounts an iod proves (<code>slack</code>, <code>github</code>), it claims the account and prints the words to say from it; <code>-account &lt;login&gt;</code> names a GitHub login. For GitHub it then waits, asking <code>verify</code> until verse has read the words in a comment, and ends when the account is bound or the claim expires; a login already bound to you is said so, and not claimed.</td>
+</tr>
+<tr>
+<td><code>verse whoami</code></td>
+<td>prints who the verse takes you for, and how: <code>user:ana@example.com (google)</code>, or <code>(asserted)</code></td>
+</tr>
+<tr>
+<td><code>verse account logout [&lt;provider&gt;]</code></td>
+<td>drops the login toward this verse: every provider's, or the one named</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>How it logs in.</strong> Where the provider offers the device authorization grant (RFC 8628), the
+  CLI prints a URL and a code, and waits while you confirm the code in any browser. Otherwise it
+  prints the provider's login URL and listens on a loopback port for the browser to come back
+  (authorization code with PKCE). It asks for the scopes <code>openid</code> and <code>email</code>, and for
+  <code>offline_access</code> where the provider lists it.</li>
+<li><strong>What is kept.</strong> The id_token, when it expires, the refresh token if the provider gave one,
+  and the principal the verse answered. There is one entry for each verse address and provider.</li>
+<li><strong>What is sent.</strong> After a login, every request carries the id_token and no <code>Verse-Principal</code>.
+  The login comes before <code>user</code> in the config.</li>
+<li><strong>When the CLI acts as somebody else.</strong> With <code>-as</code>, or with <code>agent</code> in the config, the CLI
+  sends that name alone and no token. A token beside another name is refused.</li>
+<li><strong>Renewal.</strong> An id_token that has expired is renewed with the refresh token before the request
+  is sent. Where it cannot be renewed, the command fails and says to log in again. It is not
+  sent under the config's <code>user</code> instead. A provider that does not answer within 30 seconds
+  fails the command too.</li>
+<li><strong>A login the verse refuses is not kept.</strong> <code>verse account login</code> asks the verse who the token
+  proves before it reports success. That is also when a first sight is bound.</li>
+</ul>
+<h3 id="iods-at-the-door">Iods at the door<a class="headerlink" href="#iods-at-the-door" title="Permanent link">#</a></h3>
+<p>An iod is a program of the deployment's own. It proves which iod it is with the token its runtime
+gives it. <code>auth.iod</code> in the <a href="https://github.com/signadot/verse/blob/main/docs/reference/up.md#configuration">config</a> says what that token is:</p>
+<ul>
+<li><strong>On Kubernetes</strong>, the pod's projected service-account token, asked for with the audience
+  <code>verse</code>. Its issuer is the cluster's own. On EKS that is
+  <code>https://oidc.eks.&lt;region&gt;.amazonaws.com/id/&lt;id&gt;</code>, which is public. On minikube or kubeadm it
+  is the API server itself, behind the cluster's CA, which <code>auth.iod.ca</code> names. Verse verifies it
+  as it verifies a person's token, against the issuer's published keys, with <code>aud</code> checked
+  against <code>auth.iod.audience</code>.</li>
+<li><strong>With no cluster</strong>, a token in a file the deployment wrote. Verse reads the file at start and
+  keeps the token's hash.</li>
+</ul>
+<p>The config says which iod a token is: <code>auth.iod.accounts</code> maps a token's subject
+(<code>system:serviceaccount:&lt;namespace&gt;:&lt;name&gt;</code>) to the <code>agent:</code> the iod acts as and the name it is
+installed under. At every start, verse writes the accounts to <code>verse.identity.iod.account.&lt;sub&gt;</code>
+and a static token's hash to <code>verse.identity.iod.static.&lt;hash&gt;</code>, where anyone can read them. An
+iod is never bound at first sight. A verified iod is its principal under every mode, and <code>whoami</code>
+says <code>by: iod</code>.</p>
+<h3 id="runners-at-the-door">Runners at the door<a class="headerlink" href="#runners-at-the-door" title="Permanent link">#</a></h3>
+<p>A <a href="https://github.com/signadot/verse/blob/main/docs/reference/runners.md">runner</a> proves which runner it is the same way, with the workload token its
+runtime gives it, from the same issuer (<code>auth.iod.issuer</code>, audience <code>verse</code>). What differs is
+where verse is told which runner a token is: not in the config, but on the runner's
+registration, whose <code>subject</code> is the token's (<code>verse runner add -subject
+system:serviceaccount:&lt;namespace&gt;:&lt;name&gt;</code>). Whoever writes the registration vouches for the
+runner, once, and that is the whole decision. Who that may be is the record's to say: the seed
+holds <code>owner</code> beneath <code>verse.runners</code> out to everyone, the open verse's answer, and a deployment
+narrows it in the record, as a deployment's repopulate script does to <code>user:admin@verse</code> with everyone
+still reading. What a runner proved is recorded as verse, whoever asked.</p>
+<p>The door keeps one table for both: a workload token's subject is looked up among the iods first
+and the registrations second. A match is <code>runner:&lt;identity&gt;</code>, the identity on the registration,
+under every mode; <code>whoami</code> says <code>by: runner</code>. A runner's own requests are made as itself, so its
+token beside a name that is not its own is refused.</p>
+<p><a id="a-task-carried-by-its-runner"></a>
+<strong>A task's request is carried by its runner.</strong> A verb a task performs on verse is the task
+owner's act, and the runner hosting the task carries it: the runner's token, and <code>Verse-Task</code>
+naming the task. Verse admits it through the task's record, which verse wrote at the spawn. The
+record's <code>runnerName</code> is the runner's registration, its <code>runnerSubject</code> is the subject the runner
+proved, and the task has not ended. The request is then made as the record's owner: whoever ran
+the task, or the owner of the charter whose rule spawned it, or the person a rule's
+<code>as: subject</code> acts for. <code>whoami</code> says <code>by: runner</code> and <code>via: runner:&lt;identity&gt;</code>. A runner
+carries what the <a href="../../systems/verse/">verse system</a>'s tools do on verse, raising an ask
+(<code>POST /asks</code>, <code>verse-ask-create</code>), reading the owner's asks (<code>GET /asks</code>, <code>verse-ask-get</code> and <code>verse-ask-list</code>), reading,
+writing and removing the verse at an address (<code>GET /state</code>, <code>POST /entity</code>, <code>DELETE /entity</code>;
+<code>verse-data-get</code>, <code>-put</code>, <code>-rm</code>), reading the charters, checking an install, installing and
+removing them (<code>GET /charter</code>, <code>POST /charter/check</code>, <code>POST /charter</code>, <code>DELETE /charter</code>;
+<code>verse-charter-get</code>, <code>-check</code>, <code>-install</code>, <code>-remove</code>), and <code>whoami</code>; any other route named with
+a task is refused, since what follows a task's ask is held within the task only where the ask is
+raised, and what a task's charter spawns only where the charter is installed
+(<a href="../charter/">a charter a task installs</a>). A refusal at this door carries <code>WWW-Authenticate</code>, so a runner tells
+its own fault from a refusal of what it carried. The runner names
+nobody, and a <code>Verse-Principal</code> beside the task names that owner or is refused. A registration
+rewritten under the same name with another subject carries nothing of the tasks the old one
+hosted, and a task the system owns is carried for nobody. The local runner <code>verse up</code> starts is a
+registered runner, and carries its tasks' acts this way too.</p>
+<p><strong>A runner is never taken at its word.</strong> A request naming a <code>runner:</code> with no token that
+proves it is refused with <code>401</code>, whatever the mode, on the name alone and without reading the
+registrations: the runner presents its token, and a request made as it by hand cannot. Every
+registration names a <code>subject</code>, so every runner has a token to present. A verse's embedded
+runner is no registration, and never calls verse's door.</p>
+<p><strong>A static token proves a runner off Kubernetes.</strong> A bearer that is not a JWT, and is no iod's
+static token, is looked up by its hash among the registrations, whose <code>subject</code> names a static
+token as <code>sha256:&lt;hex&gt;</code> (<code>verse runner add -token-file</code>). A match is the runner, as a workload
+token's is. Verse holds only the hash, and each kind of proof finds only its own kind of
+registration.</p>
+<p><strong>A registrations read that did not happen refuses.</strong> Where they cannot be read, the door
+answers a runner's token <code>503</code>, rather than taking it as one nobody registered.</p>
+<p>The registration also holds the runner to its subject when verse asks it what it offers
+(<a href="https://github.com/signadot/verse/blob/main/docs/runners.md#who-the-runner-is">runners</a>): a runner that does not prove it is the one registered
+takes no spawn. And verse proves itself to the runner the other way round, with a token it signs
+as the issuer <code>auth.issuer</code> makes it, minted for that runner's subject alone, with <code>sub: verse</code>.
+The runner admits that subject alone, since the same issuer signs gate credentials too, for an
+audience a charter declares.</p>
+<h3 id="a-person-relayed-by-a-trusted-iod">A person relayed by a trusted iod<a class="headerlink" href="#a-person-relayed-by-a-trusted-iod" title="Permanent link">#</a></h3>
+<p>An iod that acts for a person does not act on its own authority. It relays a person the external
+system identified: the Slack member who typed an answer, or the GitHub login who commented.
+Verse admits such a request as the person when all of these hold, in order:</p>
+<ol>
+<li>The bearer verifies as an iod.</li>
+<li>That iod is in the provider's <code>iods</code> (<code>auth.principal.providers.&lt;provider&gt;.iods</code>): the deployment
+   said this iod's word counts for that provider's accounts, and for nobody else's.</li>
+<li>The request names the account, <code>Verse-For-Principal: &lt;provider&gt;:&lt;id&gt;</code>, beside the person's name in
+   <code>Verse-Principal</code>. The account is what the iod saw; the name is who it concluded.</li>
+<li>The account resolves to the presented person: through its
+   <a href="#accounts-in-other-systems">binding</a> at <code>verse.identity.&lt;provider&gt;.account.&lt;id&gt;</code>, or, on
+   first sight, where the provider has <code>domains</code> and the person's email is in one. A first sight
+   writes the binding with the provider as its <code>claimant</code>, the iod as <code>via</code>, and
+   <code>proof: {method: relay, iod, account, at}</code>. An account bound to somebody else is refused with
+   409.</li>
+<li>The act is one a trusted iod does for a person: a read, or answering a question, saying on it,
+   and steering a task or a flow. A provider's entry may say <code>acts: any</code>.</li>
+</ol>
+<p>The request then goes on as the person. The permission check, the write and the record are
+theirs, and a ballot records <code>authenticated: &lt;provider&gt;</code> and <code>via: &lt;the iod&gt;</code>. Each part of the
+trust is stated: verse checked that the iod is the iod, the external system checked the person,
+and the deployment said the iod counts for these accounts.</p>
+<p>It is not delegation between people. A person's token beside another person's name is still
+refused. An iod presenting an <code>agent:</code> or a <code>runner:</code> is refused. A provider with no <code>domains</code>
+admits a relayed person only through a binding that already stands. A stricter deployment wants
+that: a person logs in once, links their account, and only then answers from Slack.</p>
+<h2 id="accounts-in-other-systems">Accounts in other systems<a class="headerlink" href="#accounts-in-other-systems" title="Permanent link">#</a></h2>
+<p>An <strong>account binding</strong> says which account in another system is which principal. With it, an iod
+acts as the person who wrote something there, without keeping a table of its own.</p>
+<p>In short: a person binds their own accounts, one per system, and the system writes the record.</p>
+<ul>
+<li>For Slack and GitHub, the proof is a nonce. <code>verse account -link &lt;provider&gt;</code> gives it, and the
+  person says it from the account. For Slack, the iod that heard it reports it. For GitHub, the
+  CLI asks verse to find it in the comments the github iod reflects. Either way the binding is
+  made.</li>
+<li>For an identity provider, the proof is a verified token.</li>
+</ul>
+<p>A binding says how it was proved (<code>proof</code>) and how the person who proved it was authenticated
+(<code>claimant</code>), so a reader can tell a verified name from an asserted one. One account is one
+principal, and a person may hold many accounts.</p>
+<p>An account is keyed by its issuer and the issuer's own id for it, <code>(iss, sub)</code>, as OIDC keys one.
+Bindings are kept per <strong>provider</strong>: the name a deployment gives an issuer, or gives the iods it
+trusts where no issuer is involved. There are two providers of that second kind:</p>
+<ul>
+<li><code>github</code>: its <code>iss</code> is <code>https://github.com</code>, and its <code>sub</code> is the user's number. A login can be
+  renamed, so it is kept only as a hint, and a binding survives a rename.</li>
+<li><code>slack</code>: its accounts are the workspace's members, as the slack iod names them. One is bound
+  when the person says a nonce to the app (heard, below), or, where a domain admits it, when the
+  iod first <a href="#a-person-relayed-by-a-trusted-iod">relays the person</a>.</li>
+</ul>
+<p><strong>The person claims, and the system binds.</strong> Only <code>system:identity</code> writes a binding, from
+evidence verse read itself. A binding is not on the person's own records, because a person could
+rewrite what they own.</p>
+<table>
+<thead>
+<tr>
+<th>route</th>
+<th>as</th>
+<th>does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /accounts/&lt;provider&gt; {login}</code></td>
+<td>the person</td>
+<td>claims an account under a provider whose accounts an iod proves (<code>github</code> with the login; <code>slack</code> with nothing), and answers <code>{nonce, expires, say}</code>. The nonce stands for an hour.</td>
+</tr>
+<tr>
+<td><code>POST /accounts/github/verify {nonce}</code></td>
+<td>the person</td>
+<td>binds the GitHub account, once the account has said <code>/verse link &lt;nonce&gt;</code> in a comment a trusted iod reflects</td>
+</tr>
+<tr>
+<td><code>POST /accounts/&lt;provider&gt;/heard {nonce, account, login}</code></td>
+<td>a trusted iod, verified</td>
+<td>binds the claimed account from the iod's word that it said the nonce: the Slack iod hearing it from a member, the github iod reading it in a comment. Where the claim names a login, the <code>login</code> that said it must be that one.</td>
+</tr>
+<tr>
+<td><code>POST /accounts/&lt;provider&gt;/link {idToken}</code></td>
+<td>the person, verified</td>
+<td>binds the account that the id_token names, at an identity provider the verse names</td>
+</tr>
+<tr>
+<td><code>GET /accounts</code></td>
+<td>anyone</td>
+<td>the caller's bindings, under every provider</td>
+</tr>
+<tr>
+<td><code>GET /accounts/&lt;provider&gt;/who?sub=…</code> or <code>?login=…</code></td>
+<td>an iod</td>
+<td>the binding of that account: <code>{provider, principal, iss, sub, login, claimant, proof}</code></td>
+</tr>
+<tr>
+<td><code>DELETE /accounts/&lt;provider&gt;/{sub}</code></td>
+<td>the person</td>
+<td>revokes their own binding</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>The proof</strong> of a GitHub account is a comment that says <code>/verse link &lt;nonce&gt;</code> on a line of its
+  own. The claimed login must write it, on a repository that a trusted
+  <a href="https://github.com/signadot/verse/blob/main/docs/reference/iod.md#github">github iod</a> watches, and it must carry the author's number (<code>authorId</code>). Until
+  the iod has written that comment into the store, verify answers 404 and the claim still
+  stands. An expired claim answers 410, and is removed. Two routes read the same comment: the
+  github iod reports it itself (heard, next) when the comment replies to a question it is asking,
+  and the person asks for <code>verify</code> for a comment on any issue or pull request the iod watches.
+  <code>verse account -link github</code> asks for <code>verify</code> until the comment is read, so the person need not
+  find a question to reply to.</li>
+<li><strong>A nonce heard.</strong> The same words, said where a trusted iod hears them, bind the account that
+  said them. The iod itself reports it (<code>heard</code>). The Slack iod hears <code>/verse link &lt;nonce&gt;</code> in a
+  message from a member, and names <code>slack:&lt;their id&gt;</code>. The github iod reads it in a comment, and
+  names <code>github:&lt;the author's number&gt;</code>. The iod is verified by its own token and trusted for the
+  provider, as for the <a href="#a-person-relayed-by-a-trusted-iod">relay</a>. The binding's <code>claimant</code> is
+  whoever claimed, as they were authenticated then, and its proof is
+  <code>{method: heard, iod, account, at}</code>.</li>
+<li>A GitHub claim names a login. The nonce said by any other login binds nothing, and the claim
+    stands.</li>
+<li>A Slack claim names no account. The nonce binds whoever says it, because a person says it
+    from their own account, as they would use a credential.</li>
+<li>A nonce nobody claimed binds nobody.</li>
+<li><strong>Trusted iods.</strong> Verse reads a comment only under the root of an iod the deployment trusts,
+  and only an iod the deployment trusts relays a person. The deployment names a provider's iods
+  in its config, <code>auth.principal.providers.&lt;provider&gt;.iods</code>. At every start verse writes each list
+  to <code>verse.identity.&lt;provider&gt;.trust</code>, where anyone can read it. Nothing else writes it. Where no
+  iod is trusted for <code>github</code>, a claim and a verify are refused with 409.</li>
+<li><strong>One account is one principal.</strong> Proving an account that is bound to somebody else is refused
+  with 409, until they revoke it. Proving it again for the same principal answers 200. One
+  principal may hold many accounts.</li>
+<li><strong>Who reads what.</strong> A claim is read by its principal. A binding is read by its principal and by
+  <code>agent:*</code>, so an iod can look an author up. Anyone else asking <code>who</code> gets 404.</li>
+<li><strong>Where they stand.</strong> Claims are at <code>verse.identity.&lt;provider&gt;.claim.&lt;nonce&gt;</code>, and bindings are
+  at <code>verse.identity.&lt;provider&gt;.account.&lt;sub&gt;</code>. A <code>sub</code> is one segment of the address, whatever
+  characters its issuer put in it. A binding's <code>proof</code> is one of:</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>proof</th>
+<th>for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{method: comment, evidence: &lt;the comment's address&gt;, at}</code></td>
+<td>a comment</td>
+</tr>
+<tr>
+<td><code>{method: heard, iod, account, at}</code></td>
+<td>a nonce an iod heard</td>
+</tr>
+<tr>
+<td><code>{method: oidc, iss, sub, iat, at}</code></td>
+<td>a token</td>
+</tr>
+<tr>
+<td><code>{method: relay, iod, account, at}</code></td>
+<td>a relay</td>
+</tr>
+<tr>
+<td>- <strong>Linking a second provider.</strong> A caller that one provider has verified presents an id_token</td>
+<td></td>
+</tr>
+<tr>
+<td>from another provider as evidence, and verse binds that account to them. No nonce is needed,</td>
+<td></td>
+</tr>
+<tr>
+<td>because the token proves the account. The token must be the named provider's and must verify,</td>
+<td></td>
+</tr>
+<tr>
+<td>or the link is refused with 400. A caller who is only asserted is refused with 403: the binding</td>
+<td></td>
+</tr>
+<tr>
+<td>would let the account's token act as a name nobody proved. <code>verse account -link &lt;provider&gt;</code></td>
+<td></td>
+</tr>
+<tr>
+<td>does this from the CLI.</td>
+<td></td>
+</tr>
+<tr>
+<td>- <strong>The claimant.</strong> A binding also records how the caller who proved it was authenticated:</td>
+<td></td>
+</tr>
+<tr>
+<td><code>claimant</code> is the provider that verified them, or <code>asserted</code> for a caller who was whoever their</td>
+<td></td>
+</tr>
+<tr>
+<td>request said. A binding is only as good as the name it binds to, so it says which kind of name</td>
+<td></td>
+</tr>
+<tr>
+<td>that was. When a verified caller proves an <code>asserted</code> binding again, the binding takes that</td>
+<td></td>
+</tr>
+<tr>
+<td>provider as its claimant. Proving a binding again as an asserted caller changes nothing.</td>
+<td></td>
+</tr>
+<tr>
+<td>- <strong>Trust.</strong> The evidence for a GitHub account is as trustworthy as the iod that saw the comment,</td>
+<td></td>
+</tr>
+<tr>
+<td>and a relayed person is as trustworthy as the iod that relayed them. So the deployment says</td>
+<td></td>
+</tr>
+<tr>
+<td>which iods those are, and an iod proves which iod it is (<a href="#iods-at-the-door">iods at the door</a>).</td>
+<td></td>
+</tr>
+<tr>
+<td>An account at an identity provider is bound from a <a href="#who-a-request-is-from">verified token</a>:</td>
+<td></td>
+</tr>
+<tr>
+<td>the same binding, with a different proof.</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-each-act-writes">What each act writes<a class="headerlink" href="#what-each-act-writes" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>act</th>
+<th>writes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a raw put</td>
+<td>what it names, as the requester</td>
+</tr>
+<tr>
+<td>a spawn</td>
+<td>the task, as the requester. For a firing, the task is written <code>via:</code> the rule, which is the charter's owner.</td>
+</tr>
+<tr>
+<td>a worker's claim</td>
+<td><code>read-write</code> and <code>control</code> for the claimant on the task and the run</td>
+</tr>
+<tr>
+<td>posing and settling a question</td>
+<td>as <code>system:docket</code>, in the request's scope, whoever is working the task</td>
+</tr>
+<tr>
+<td>a grant to a resolver</td>
+<td>its <code>answer</code> line, at <code>verse.for.&lt;you&gt;</code> or at the place</td>
+</tr>
+<tr>
+<td>an install</td>
+<td>the thing, as its installer, with their record</td>
+</tr>
+<tr>
+<td>a suspension</td>
+<td>as the system, naming who holds it under <code>held</code></td>
+</tr>
+<tr>
+<td>verifying an account, or an iod reporting its nonce heard</td>
+<td>its binding, as <code>system:identity</code></td>
+</tr>
+<tr>
+<td>a first request with a provider's token</td>
+<td>the account's binding, as <code>system:identity</code></td>
+</tr>
+<tr>
+<td>a first request a trusted iod relays for a person</td>
+<td>the person's account binding, as <code>system:identity</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-root-and-the-config">The root, and the config<a class="headerlink" href="#the-root-and-the-config" title="Permanent link">#</a></h2>
+<p>The root's record stands at <code>verse.perms.root</code>. Its <code>child-grants</code> are the grants a node created
+with no record above it starts with: <code>{read: ["*"]}</code> unless the config says otherwise.</p>
+<p><code>verse</code> has the system's record, with no grants. That record keeps the root's grants out of
+verse's own half.</p>
+<p>Who owns the root, how the config sets it, and the rows verse writes at start (the seed) are in
+<a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#the-root-and-the-config">the root and the config</a>, in the repository.</p>
+<h2 id="verse-perms"><code>verse perms</code><a class="headerlink" href="#verse-perms" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>verse perms                      the records of every node you may read
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>verse perms --root               the root&#39;s record
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>verse perms &lt;path&gt;               that node&#39;s record, to anyone who may read the node
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>verse perms &lt;path&gt; -grant &#39;{read: [ana@example.com]}&#39; [-below]    add a line
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>verse perms &lt;path&gt; -revoke &#39;{read: [ana@example.com]}&#39;            take one back
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>verse perms &lt;path&gt; -grants &#39;[…]&#39;                                  replace the node&#39;s grants
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>verse perms &lt;path&gt; -child-grants &#39;{…}&#39;                            the grants what is created beneath starts with
+</code></pre></div>
+<p>Setting a record on a node that has none takes the place first
+(<a href="#creating-and-taking-a-place">above</a>). A node created without a record of its own keeps no
+copy of the <code>child-grants</code> it was created under: it is its owner's through the place. So
+closing the place closes what is already in it.</p>
+<p><code>verse status</code> counts these under <code>perms</code>, since the process started:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it counts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>refused</code></td>
+<td>refusals, by level</td>
+</tr>
+<tr>
+<td><code>unreadable</code></td>
+<td>checks that the mirror could not answer</td>
+</tr>
+<tr>
+<td><code>hidden</code></td>
+<td>what listings withheld</td>
+</tr>
+<tr>
+<td><code>unparsed</code></td>
+<td>grantee names on a record that the grammar does not read. Each admits nobody, and versed logs each once per record. On a verse whose records were all written under the grammar, <code>unparsed</code> is zero.</td>
+</tr>
+</tbody>
+</table>
+<p><a id="suspending"></a></p>
+<h2 id="suspending">Suspending<a class="headerlink" href="#suspending" title="Permanent link">#</a></h2>
+<p><code>verse flow suspend -charter … -subject …</code> is a control write (<a href="../../control/">control</a>). Verse
+checks who may make one twice.</p>
+<p><strong>When it is written</strong>, the writer must hold <code>control</code> over the charter it names, or at the
+subject it names. Either one is enough. The charter is a package's address, or a rule's own
+record. For a selector with <code>*</code> in it, verse checks the part before the first <code>*</code>. Verse refuses
+a suspension that names neither.</p>
+<p><strong>When it applies</strong>: every time work would go on, verse checks the scope's records at that
+moment. A suspension covers the work while its holder holds <code>control</code> over the work's charter or
+at its subject. So a wildcard does not reach further as new owners appear beneath it. A check
+that cannot be answered covers the work.</p>
+<p>A rule the system installed is covered only by a system holder. When a holder loses that
+authority, the suspension stops covering new work at once. What it already held stays held until
+somebody resumes it.</p>
+<p><a id="scopes"></a></p>
+<h2 id="scopes">Scopes<a class="headerlink" href="#scopes" title="Permanent link">#</a></h2>
+<p>Baseline's grants apply in a <a href="../../glossary/#scope">scope</a>. Verse reads a scope's records
+through the scope's own view of the store, which lies over baseline. So every grant in baseline
+stands in the scope, and a record that changes in baseline is seen in every open scope at once.</p>
+<p>A grant made in a scope is copy-on-write, like any write to the world. <code>verse perms -scope me</code>,
+and the record every creation in a scope leaves, land in the scope's layer. They apply to the
+scope's writes on top of baseline's, and baseline never sees them. Two scopes may hold different
+owners for one address. Dropping a scope drops its grants.</p>
+<p>A task or a gate cannot be acted on from a scope that did not create it
+(<a href="../scopes/#what-a-scope-owns">what a scope owns</a>). Grants layer and tasks do not because a grant
+has no live part. A task is a handle and a gate is an awaiter, and each runs in one engine. A
+grant is a record that a cache reads, and a cache layers as records do.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

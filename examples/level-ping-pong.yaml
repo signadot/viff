@@ -1,0 +1,112 @@
+# A two-level ping-pong: a cycle at each level, and the lower one re-igniting the upper
+# one every lap.
+#
+# It installs cleanly. Every level check passes — which is the point. Strata rule out the
+# write that would close a loop ACROSS levels; recursion inside a level is exactly what a
+# level ordering permits, and what the cycle throttle is for. See docs/strata.md.
+#
+#   test/level-ping-pong.sh          # brings up an isolated verse and watches it
+#
+# The shape:
+#
+#   gh.issue.1        triaged ⇄ labeled                    (label-fwd / label-back)
+#        │
+#        │ derive — the one write that crosses, and it can only climb
+#        ▼
+#   signadot.feature  drafted ⇄ reviewing                  (review-fwd / review-back)
+#        ▲
+#        └── start-review re-ignites the upper cycle on every lap of the lower one,
+#            because its `when` reads the issue reaching `labeled` — which happens
+#            once per lap. Reads may go anywhere; only WRITES are ordered.
+#
+# The throttle names both cycles, separately, one per subject. That is worth knowing
+# because it is not automatic: a chain is PER SUBJECT, and start-review is woken by a
+# change to the issue rather than to its own subject, so it begins a fresh chain instead
+# of extending the lower one. Ignite the upper cycle from the derive instead — drop
+# start-review's `when` — and the two chains link, share a root, and the deduplication
+# by chain root means only the lower cycle is ever reported at WARN.
+
+strata:
+- name: triage
+  level: 0
+  match: "gh"
+- name: sdlc
+  level: 10
+  match: "signadot"
+
+rules:
+
+# ── level 0: the issue bounces between two stages ────────────────────────────
+- name: label-fwd
+  stratum: triage
+  condition:
+    subject: { path: "gh.issue.*", value: { stage: triaged } }
+  action:
+    patch: { stage: labeled }
+
+- name: label-back
+  stratum: triage
+  condition:
+    subject: { path: "gh.issue.*", value: { stage: labeled } }
+  action:
+    patch: { stage: triaged }
+
+# ── the one write that crosses ───────────────────────────────────────────────
+# Fires every lap, and commits once. A derive's content is literal, so the second and
+# every later firing writes the same bytes to the same address — a no-op the store
+# ends. That inertness is what lets reads go anywhere.
+- name: raise-feature
+  stratum: triage
+  condition:
+    subject: { path: "gh.issue.*", value: { stage: labeled } }
+  action:
+    derive:
+    # `id: .[subject.name]` puts the feature at signadot.feature.1, the issue's own name under the
+    # feature place, so the rules above select it as `signadot.feature.*`. Without an id the
+    # engine addresses it by provenance — signadot.feature.raise-feature.gh.issue.1 — and a rule
+    # selecting it would have to say how deep that is.
+    - path: "signadot.feature"
+      id: .[subject.name]
+      value:
+        priority: urgent
+        # A derive may read its SUBJECT and nothing else. subject.ref is the whole address —
+        # "gh.issue.1", a kinded path — and subject.name (its last segment) and subject.value
+        # are its other parts. Safe here because nothing at a higher level can write the subject, so an upward
+        # read cannot change what this derive writes: same bytes, same address, a no-op the store
+        # ends by itself.
+        #
+        # subject.commit is the one part refused in a derive: it varies with WHEN the firing
+        # happened, so a read from above WOULD change it, and the loop that follows crosses a
+        # level.
+        #
+        # Under a key of your choosing, so a spawn at the level above reads it by that name
+        # (`task: "approve $[what]"`). The engine also records it at verse.meta.derivedFrom.
+        what: .[subject.ref]
+        stage: .[subject.value.stage]
+
+# ── the coupling: a lower lap re-ignites the upper cycle ─────────────────────
+# The subject is at level 10 (this rule's own), and the `on` reads level 0. A read
+# downward — or upward — is unrestricted; what the ordering constrains is where a
+# write may LAND.
+- name: start-review
+  stratum: sdlc
+  condition:
+    subject: { path: "signadot.feature.*", value: { priority: urgent } }
+    on:      { path: "gh.issue.*", value: { stage: labeled } }
+  action:
+    patch: { phase: drafted }
+
+# ── level 10: the derived feature bounces between two phases ─────────────────
+- name: review-fwd
+  stratum: sdlc
+  condition:
+    subject: { path: "signadot.feature.*", value: { phase: drafted } }
+  action:
+    patch: { phase: reviewing }
+
+- name: review-back
+  stratum: sdlc
+  condition:
+    subject: { path: "signadot.feature.*", value: { phase: reviewing } }
+  action:
+    patch: { phase: drafted }

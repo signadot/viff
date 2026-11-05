@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/glossary/">
+        <link rel="icon" href="../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+
+        <title>Glossary - Verse</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link href="../pygments.css" rel="stylesheet">
+        <link href="../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Glossary - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/glossary/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href=".."><img src="../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#glossary" class="nav-link">Glossary</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#the-store" class="nav-link">The store</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#rules" class="nav-link">Rules</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#gates-and-questions" class="nav-link">Gates and questions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#iods" class="nav-link">Iods</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#permissions" class="nav-link">Permissions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#steering" class="nav-link">Steering</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#terms-of-the-platform" class="nav-link">Terms of the platform</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#index" class="nav-link">Index</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="glossary">Glossary<a class="headerlink" href="#glossary" title="Permanent link">#</a></h1>
+<p>This page defines each term of verse once. The terms are grouped by subject, and an
+alphabetical index is at the end.</p>
+<p>Where one thing has several names, the entry lists the others under "Also written". Where one
+name means several things, each meaning has its own entry, with a qualifier in parentheses.</p>
+<h2 id="the-store">The store<a class="headerlink" href="#the-store" title="Permanent link">#</a></h2>
+<h3 id="store">store<a class="headerlink" href="#store" title="Permanent link">#</a></h3>
+<p>The store is the one tree in which a verse keeps its data. It is durable, and it can be
+watched. One store is shared by everyone in the verse, people and agents, and every commit to it
+names who made it.</p>
+<p>Also written: entity store, entity-verse, the verse.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/reference/store.md">The store</a>.</p>
+<h3 id="address">address<a class="headerlink" href="#address" title="Permanent link">#</a></h3>
+<p>An address names one position in the store. It is a list of segments, of any length, such as
+<code>demo.pr.1</code>.</p>
+<p>Also written: path, ref (in the Go source), <code>at</code> (the field and the flag), place (an address
+that somebody writes at, or owns).</p>
+<p>See <a href="../reference/entities/#addressing">Data</a>.</p>
+<h3 id="kinded-path">kinded path<a class="headerlink" href="#kinded-path" title="Permanent link">#</a></h3>
+<p>A kinded path is an address written as one string, with dots between the segments. Quotes
+keep a dot inside a segment: <code>demo.pr."a.b"</code> has three segments.</p>
+<p>Also written: kpath.</p>
+<p>See <a href="../reference/entities/#addressing">Data</a>.</p>
+<h3 id="step">step<a class="headerlink" href="#step" title="Permanent link">#</a></h3>
+<p>A step is one segment of an address, typed as one word on the command line:
+<code>verse data demo pr 1</code>.</p>
+<p>See <a href="../reference/entities/#addressing">Data</a>.</p>
+<h3 id="pattern">pattern<a class="headerlink" href="#pattern" title="Permanent link">#</a></h3>
+<p>A pattern is an address in which <code>*</code> stands for any one segment, such as <code>demo.pr.*</code>. It
+names every node that it reaches. A pattern may also hold a <a href="#descent">descent</a>, <code>..</code>.</p>
+<p>See <a href="../reference/entities/#addressing">Data</a>.</p>
+<h3 id="descent">descent<a class="headerlink" href="#descent" title="Permanent link">#</a></h3>
+<p>A descent is <code>..</code> in a pattern. It reaches every depth beneath where it stands, the node itself
+included: <code>verse data demo '..' stage</code> reads every <code>stage</code> beneath <code>demo</code>. Reads, watches and the
+subjects of rules take a descent. A write, a claim, a grant and a permissions record each name one
+place, and refuse it.</p>
+<p>See <a href="../reference/entities/#-every-depth-beneath">Data</a>.</p>
+<h3 id="node">node<a class="headerlink" href="#node" title="Permanent link">#</a></h3>
+<p>A node is what stands at an address: an object, an array, a scalar or a null.
+<code>demo.pr.1.stage</code> is a node inside the node <code>demo.pr.1</code>.</p>
+<p>See <a href="../reference/entities/#what-stands-at-a-path">Data</a>.</p>
+<h3 id="payload">payload<a class="headerlink" href="#payload" title="Permanent link">#</a></h3>
+<p>The payload of a node is the value that the node holds, such as <code>{stage: open}</code>. It may be
+any value.</p>
+<p>See <a href="../reference/entities/">Data</a>.</p>
+<h3 id="data">data<a class="headerlink" href="#data" title="Permanent link">#</a></h3>
+<p>Data is what verse knows about the world: a pull request, a CI run, a person, a running task.
+Each piece of data stands at an <a href="#address">address</a> and holds a <a href="#payload">payload</a>.
+<code>verse data demo pr 1</code> reads the data at <code>demo.pr.1</code>, and
+<code>verse data demo pr 1 -put '{stage: open}'</code> writes it. A rule reacts to a change in data
+whoever made it: a person, an iod, a rule or verse itself.</p>
+<p>See <a href="../reference/entities/">Data</a>.</p>
+<h3 id="entity">entity<a class="headerlink" href="#entity" title="Permanent link">#</a></h3>
+<p>An entity is the data at one address: the subject of a rule, a row of a listing, an event of a
+watch. "Entity" is the word of the code (<code>entity.Entity</code>). The docs say <a href="#data">data</a>.</p>
+<p>See <a href="../reference/entities/">Data</a>.</p>
+<h3 id="root-of-the-store">root (of the store)<a class="headerlink" href="#root-of-the-store" title="Permanent link">#</a></h3>
+<p>The root of the store is the node above every other node. Its address is empty. Its
+<a href="#record">record</a> says who may create a node at the top: <code>verse perms --root</code> shows it.</p>
+<p>In a page about permissions, "the root" has this meaning.</p>
+<p>See <a href="../perms/#the-top-of-the-tree">Permissions</a>.</p>
+<h3 id="verses-own-half">verse's own half<a class="headerlink" href="#verses-own-half" title="Permanent link">#</a></h3>
+<p>Verse's own half is the part of the store under the first segment <code>verse</code>, such as
+<code>verse.task.instance.review-1</code>. Verse keeps its own records there.</p>
+<p>See <a href="../perms/#verses-own-half">Permissions</a>.</p>
+<h3 id="commit">commit<a class="headerlink" href="#commit" title="Permanent link">#</a></h3>
+<p>A commit is one atomic change to the store. It names every address that it changed.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/change-events.md#one-commit-many-entities-the-entity-is-the-reactive-grain">Change events</a>.</p>
+<h3 id="revision">revision<a class="headerlink" href="#revision" title="Permanent link">#</a></h3>
+<p>A revision is the number of a commit. Revisions grow, and the numbers have gaps, so a reader
+uses one only as a cursor: <code>verse watch -since 42</code>.</p>
+<p>Also written: rev, cursor (of the store).</p>
+<p>See <a href="../reference/entities/#watching">Data</a>.</p>
+<h3 id="scope">scope<a class="headerlink" href="#scope" title="Permanent link">#</a></h3>
+<p>A scope is a named copy-on-write view of the store: <code>verse data -scope me demo x 1</code>. A write
+lands in the scope only. A read sees the scope on top of the rest of the store.</p>
+<p>See <a href="../reference/scopes/#scopes">Scopes</a>.</p>
+<h3 id="baseline">baseline<a class="headerlink" href="#baseline" title="Permanent link">#</a></h3>
+<p>Baseline is the store outside every scope. A command that names no scope acts on baseline.
+For the charter, see <a href="#baseline-charter">baseline charter</a>.</p>
+<p>See <a href="../reference/scopes/#scopes">Scopes</a>.</p>
+<h2 id="rules">Rules<a class="headerlink" href="#rules" title="Permanent link">#</a></h2>
+<h3 id="charter">charter<a class="headerlink" href="#charter" title="Permanent link">#</a></h3>
+<p>A charter is the <a href="#rule">rules</a> you install at one address, from one file: <code>verse charter -a
+-f charter.tony</code>. The file lists the rules under <code>rules:</code>. It may also hold <code>strata:</code> and
+<code>schedules:</code>. A package's file says where it goes with <code>at:</code>, and what it reads with <code>reads:</code>.</p>
+<p>See <a href="../reference/charter/">The charter</a>.</p>
+<h3 id="rule">rule<a class="headerlink" href="#rule" title="Permanent link">#</a></h3>
+<p>A rule is one entry of a charter: a name, a <a href="#condition">condition</a>, a list of
+<a href="#gate-of-a-rule">gates</a> and an <a href="#action">action</a>. When the condition holds and every gate
+passes, the action fires. An installed rule is data at <code>verse.trigger.rule.&lt;name&gt;</code>, or
+<code>verse.trigger.rule."&lt;address&gt;:&lt;name&gt;"</code> for a rule of a package.</p>
+<p>Also written: trigger (the Go type <code>trigger.Trigger</code>, and the output of an install).</p>
+<p>See <a href="../trigger-model/#the-rule">The charter reference</a>.</p>
+<h3 id="baseline-charter">baseline charter<a class="headerlink" href="#baseline-charter" title="Permanent link">#</a></h3>
+<p>The baseline charter is the charter installed at no address. Its rules may write anywhere.
+<code>verse flow -charter :review</code> names its rule <code>review</code>.</p>
+<p>See <a href="../control/#the-flags">Control</a>.</p>
+<h3 id="package">package<a class="headerlink" href="#package" title="Permanent link">#</a></h3>
+<p>A package is a charter installed at an address: <code>verse charter -a notes -f notes.tony</code>. It
+runs in an engine of its own, and its rules write only inside that address.</p>
+<p>See <a href="../reference/charter/#a-charter-can-be-installed-at-an-address">The charter</a>.</p>
+<h3 id="reads-declaration">reads declaration<a class="headerlink" href="#reads-declaration" title="Permanent link">#</a></h3>
+<p>The <code>reads:</code> line of a package names what its rules read outside its own address, such as
+<code>reads: [git]</code>. Verse refuses to install a rule that reads what the package does not declare.</p>
+<p>See <a href="../reference/charter/#a-charter-can-be-installed-at-an-address">The charter</a>.</p>
+<h3 id="outbox">outbox<a class="headerlink" href="#outbox" title="Permanent link">#</a></h3>
+<p>An outbox is a place inside a package where its rules ask an iod to act on the iod's system.
+The package declares it with <code>sends:</code>: <code>sends: [{from: out.slack, to: slack.acme.out}]</code>.
+The iod reads each input there, carries it out to the system, and writes its status beside it.</p>
+<p>See <a href="../reference/charter/#a-charter-can-be-installed-at-an-address">The charter</a>.</p>
+<h3 id="match">match<a class="headerlink" href="#match" title="Permanent link">#</a></h3>
+<p>A match selects nodes at one revision: <code>{path: "demo.pr.*", value: {stage: open}}</code>. The
+<code>path</code> is a <a href="#pattern">pattern</a>. The optional <code>value</code> is a <a href="#predicate">predicate</a>.</p>
+<p>See <a href="../reference/condition/#what-a-match-can-say">The condition of a rule</a>.</p>
+<h3 id="predicate">predicate<a class="headerlink" href="#predicate" title="Permanent link">#</a></h3>
+<p>A predicate is the <code>value</code> of a match: a test on the payload of a node. Over an object, the
+payload must hold each field that the predicate names, with that value.</p>
+<p>See <a href="../reference/condition/#what-a-match-can-say">The condition of a rule</a>.</p>
+<h3 id="operator">operator<a class="headerlink" href="#operator" title="Permanent link">#</a></h3>
+<p>An operator is a tag, written <code>!name</code>, that changes how verse reads a value in a predicate or
+a patch: <code>!glob "hotfix-*"</code>, <code>!delete</code>. Verse refuses a tag that it does not know.</p>
+<p>See <a href="../reference/condition/#what-a-match-can-say">The condition of a rule</a>.</p>
+<h3 id="condition">condition<a class="headerlink" href="#condition" title="Permanent link">#</a></h3>
+<p>The condition of a rule has three fields: <code>subject</code>, <code>on</code> and <code>when</code>. Some pages call the
+<code>when</code> alone "the condition".</p>
+<p>See <a href="../reference/condition/">The condition of a rule</a>.</p>
+<h3 id="subject">subject<a class="headerlink" href="#subject" title="Permanent link">#</a></h3>
+<p>The <code>subject</code> of a condition is the match that selects the data the rule acts on. It is
+required. The subject of a firing, a task or a question is the one address that it is about.</p>
+<p>See <a href="../reference/condition/#subject-what-the-firing-is-about-and-required">The condition of a rule</a>.</p>
+<h3 id="when">when<a class="headerlink" href="#when" title="Permanent link">#</a></h3>
+<p><code>when</code> is an optional match in a condition. The rule fires only if it holds at the commit. It
+may be about data that is not the subject.</p>
+<p>See <a href="../reference/condition/#on-and-when-the-cause-and-the-condition">The condition of a rule</a>.</p>
+<h3 id="on">on<a class="headerlink" href="#on" title="Permanent link">#</a></h3>
+<p><code>on</code> is an optional match in a condition. The rule fires at the commit where the <code>on</code> holds
+and did not hold at the commit before. That change is an edge.</p>
+<p>Also written: the cause.</p>
+<p>See <a href="../reference/condition/#on-and-when-the-cause-and-the-condition">The condition of a rule</a>.</p>
+<h3 id="level-rule">level rule<a class="headerlink" href="#level-rule" title="Permanent link">#</a></h3>
+<p>A level rule is a rule with no <code>on</code>. Verse considers it at every commit that touches what the
+rule reads.</p>
+<p>This "level" is the opposite of an edge. For the other meanings, see
+<a href="#level-of-a-stratum">level (of a stratum)</a> and
+<a href="#level-of-a-permission">level (of a permission)</a>.</p>
+<p>See <a href="../reference/condition/#on-and-when-the-cause-and-the-condition">The condition of a rule</a>.</p>
+<h3 id="firing">firing<a class="headerlink" href="#firing" title="Permanent link">#</a></h3>
+<p>A firing is one reaction of one rule at one commit, about one address. A subject that selects
+three addresses gives three firings.</p>
+<p>See <a href="../trigger-model/#the-rule">The charter reference</a>.</p>
+<h3 id="action">action<a class="headerlink" href="#action" title="Permanent link">#</a></h3>
+<p>The action of a rule is what the rule does when it fires. It is data: any of <code>patch</code>,
+<code>derive</code>, <code>spawn</code> and <code>seq</code>, with optional hooks. It acts on the subject.</p>
+<p>See <a href="../reference/action/#action-what-fires">The action of a rule</a>.</p>
+<h3 id="patch">patch<a class="headerlink" href="#patch" title="Permanent link">#</a></h3>
+<p><code>patch</code> changes the payload of the subject: <code>patch: {stage: reviewing}</code>. Verse merges it into
+the payload.</p>
+<p>See <a href="../reference/action/#action-what-fires">The action of a rule</a>.</p>
+<h3 id="derive">derive<a class="headerlink" href="#derive" title="Permanent link">#</a></h3>
+<p><code>derive</code> writes data that is not the subject. Only a rule in a <a href="#stratum">stratum</a> may
+derive, and only into a stratum of a higher level.</p>
+<p>See <a href="../strata/#derive-identity-not-state">Strata</a>.</p>
+<h3 id="spawn">spawn<a class="headerlink" href="#spawn" title="Permanent link">#</a></h3>
+<p><code>spawn</code> starts a <a href="#task">task</a>. Its fields say what the work is, who does it, what it works in
+and how each step is decided: <code>prompt</code> or <code>script</code>, <code>agent</code>, <code>environment</code>, <code>autonomy</code>, <code>answer</code>,
+<code>timeout</code> and <code>runner</code>. <code>verse task run -f &lt;file&gt;</code> and a row of an ask's <code>on</code>, <code>then: {spawn: …}</code>,
+take the same spawn.</p>
+<p>Also written: launch spec (the Go type <code>launch.Spec</code>).</p>
+<p>See <a href="../reference/action/#action-what-fires">The action of a rule</a>.</p>
+<h3 id="seq">seq<a class="headerlink" href="#seq" title="Permanent link">#</a></h3>
+<p><code>seq</code> is a list of actions that run in order. Each one starts when the one before it
+completes.</p>
+<p>See <a href="../reference/action/#seq-sequence-along-the-chain-parallel-across-triggers">The action of a rule</a>.</p>
+<h3 id="hook">hook<a class="headerlink" href="#hook" title="Permanent link">#</a></h3>
+<p>A hook is an action that fires when the task of a <code>spawn</code>, or a <code>seq</code>, ends, such as
+<code>onDone</code>. <code>onDenied</code> is a field of a gate: it fires when somebody answers no.</p>
+<p>See <a href="../reference/action/#completion-hooks-one-trigger-chaining-visible">The action of a rule</a>
+and <a href="../reference/gates/#ondenied-what-a-no-means">The gates of a rule</a>.</p>
+<h3 id="latch">latch<a class="headerlink" href="#latch" title="Permanent link">#</a></h3>
+<p>A latch is a write, by the action of a rule, that takes the subject out of what the rule
+selects. A rule that selects <code>{stage: open}</code> and patches <code>{stage: reviewing}</code> has one. Verse
+refuses a rule that spawns and has no latch.</p>
+<p>See <a href="../convergence/#what-ends-a-firing">Convergence</a>.</p>
+<h3 id="binding">binding<a class="headerlink" href="#binding" title="Permanent link">#</a></h3>
+<p>A binding is a name that an action's expressions read when the rule fires: <code>subject</code>, read as
+<code>.[subject.ref]</code> for the address of the subject, or <code>$[subject.ref]</code> inside text. An
+<a href="#account-binding">account binding</a> is another thing.</p>
+<p>See <a href="../reference/action/#bindings">The action of a rule</a>.</p>
+<h3 id="path-read">path read<a class="headerlink" href="#path-read" title="Permanent link">#</a></h3>
+<p>A path read is a reference, inside a rule, to a node that is not the subject. <code>!get-path</code>
+reads one node. <code>!list-paths</code> reads the nodes that a pattern reaches.</p>
+<p>See <a href="../strata/#path-reads-inside-a-derive">Strata</a>.</p>
+<h3 id="answer-contract">answer contract<a class="headerlink" href="#answer-contract" title="Permanent link">#</a></h3>
+<p>The answer contract of a task is a pattern that the final message of the task must match. A
+task that never matches it fails. It is <code>answer:</code> in a <code>spawn</code>, which is also what the file of
+<code>verse task run -f</code> holds.</p>
+<p>See <a href="../reference/tasks/#answer-what-finished-means">Tasks</a>.</p>
+<h3 id="chain-of-an-action">chain (of an action)<a class="headerlink" href="#chain-of-an-action" title="Permanent link">#</a></h3>
+<p>The chain of an action is its position inside its rule, written as a path, such as
+<code>review.onDone</code> or <code>review.seq[2]</code>. The id of a spawned task is built from it:
+<code>review.seq.2@demo.pr.1</code>, with the charter's address in front for a package.</p>
+<p>A chain of this kind is a string, such as the <code>chain</code> field of a task.</p>
+<p>See <a href="../reference/action/#chains-and-ids">The action of a rule</a>.</p>
+<h3 id="chain-of-firings">chain (of firings)<a class="headerlink" href="#chain-of-firings" title="Permanent link">#</a></h3>
+<p>A chain of firings is a sequence, about one subject, in which the write of each firing causes
+the next. The number of installed rules bounds its depth. A firing beyond the bound is a
+trip: verse delays it and logs the cycle.</p>
+<p>A chain of this kind has a depth.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/cycle-throttle.md#the-mechanism">The cycle throttle</a>.</p>
+<h3 id="stratum">stratum<a class="headerlink" href="#stratum" title="Permanent link">#</a></h3>
+<p>A stratum is a named part of the store that a charter declares, with a level:
+<code>{name: observe, level: 0, match: ["gh", "linear"]}</code>. The subject of a rule in a stratum lies
+inside the stratum.</p>
+<p>See <a href="../strata/">Strata</a>.</p>
+<h3 id="level-of-a-stratum">level (of a stratum)<a class="headerlink" href="#level-of-a-stratum" title="Permanent link">#</a></h3>
+<p>The level of a stratum is a number that orders the strata of one charter. A rule derives only
+into a stratum of a higher level than its own.</p>
+<p>See <a href="../strata/#two-rules-and-they-are-the-whole-thing">Strata</a>.</p>
+<h3 id="held-rule">held rule<a class="headerlink" href="#held-rule" title="Permanent link">#</a></h3>
+<p>A held rule is a rule that is installed but not armed: it names a stratum that is not
+installed, or it was restored with a spawn no runner offers yet. It fires on nothing until what
+it waits for arrives, and verse arms it then. <code>verse charter</code> prints it with <code>held: &lt;what it waits for&gt;</code>.</p>
+<p>A held rule is not under a <a href="#hold">hold</a>.</p>
+<p>See <a href="../strata/#installing-and-the-order-it-does-not-depend-on">Strata</a>.</p>
+<h3 id="trouble">trouble<a class="headerlink" href="#trouble" title="Permanent link">#</a></h3>
+<p><code>trouble</code> is what <code>verse charter</code> prints on a rule whose firings went wrong. Its kinds are
+<code>failed</code> and <code>unread</code>.</p>
+<p>See <a href="../trigger-model/#when-a-rule-does-nothing">The charter reference</a>.</p>
+<h3 id="schedule">schedule<a class="headerlink" href="#schedule" title="Permanent link">#</a></h3>
+<p>A schedule is a record, <code>verse.schedule.&lt;name&gt;</code>, that holds a period. Each time the period
+passes, verse writes a <a href="#tick">tick</a>.</p>
+<p>See <a href="../reference/schedules/">Schedules</a>.</p>
+<h3 id="tick">tick<a class="headerlink" href="#tick" title="Permanent link">#</a></h3>
+<p>A tick is the node that a schedule writes when it is due, at
+<code>verse.schedule.&lt;name&gt;.tick.&lt;due&gt;</code>. A rule takes the tick as its subject.</p>
+<p>See <a href="../reference/schedules/">Schedules</a>.</p>
+<h2 id="gates-and-questions">Gates and questions<a class="headerlink" href="#gates-and-questions" title="Permanent link">#</a></h2>
+<h3 id="gate-of-a-rule">gate (of a rule)<a class="headerlink" href="#gate-of-a-rule" title="Permanent link">#</a></h3>
+<p>A gate of a rule is a check that a firing passes before the action fires:
+<code>gates: [{name: approval, mode: ask}]</code>. Every gate of the rule must pass.</p>
+<p><code>verse question</code> prints the question of such a gate with <code>where: engine</code>.</p>
+<p>Also written: charter gate, trigger gate.</p>
+<p>See <a href="../reference/gates/#gates-whether-it-proceeds">The gates of a rule</a>.</p>
+<h3 id="gate-of-a-task">gate (of a task)<a class="headerlink" href="#gate-of-a-task" title="Permanent link">#</a></h3>
+<p>A gate of a task is a row of its <a href="#autonomy">autonomy</a> that asks:
+<code>{name: release, match: {system: git, verb: push, ref: refs/heads/main}, then: {ask: {answerers: [user:ana@example.com]}}}</code>.
+Its <code>match</code> names a <a href="#step-of-a-task">step</a> by its system and verb and narrows it by the
+step's fields; the row asks before the task takes such a step. A step its
+<a href="#environment">environment</a> does not give is refused before any row is read, and nobody is asked.</p>
+<p>The question of such a gate has the id <code>&lt;task id&gt;~d&lt;n&gt;</code>.</p>
+<p>See <a href="../reference/tasks/#a-rows-question">Tasks</a>.</p>
+<h3 id="gate-raised-by-a-worker">gate (raised by a worker)<a class="headerlink" href="#gate-raised-by-a-worker" title="Permanent link">#</a></h3>
+<p>A worker on a runner raises the gates of its task's autonomy itself. It reports a <code>pending</code>
+frame, and verse puts the question on the docket. A worker never answers its own gate.</p>
+<p>See <a href="../reference/tasks/#running-one">Tasks</a>.</p>
+<h3 id="mode">mode<a class="headerlink" href="#mode" title="Permanent link">#</a></h3>
+<p>A mode is one of two values on a gate of a rule. <code>auto</code> runs the action, and <code>ask</code> poses a
+question and waits for the answer.</p>
+<p>See <a href="../reference/gates/#gates-whether-it-proceeds">The gates of a rule</a>.</p>
+<h3 id="ask">ask<a class="headerlink" href="#ask" title="Permanent link">#</a></h3>
+<p>An ask is something asked of somebody, with a clock and with what follows the answer, in one
+record at <code>verse.ask.&lt;id&gt;</code>. A person raises one with <code>verse ask</code>. A rule's gate raises one when its
+mode is not <code>auto</code>, and a task raises one with its <code>question-ask</code> tool. Once it has settled it stands for its
+keep, a week unless said otherwise, and is then removed.</p>
+<p>See <a href="../asking/">Asking</a>.</p>
+<h3 id="question">question<a class="headerlink" href="#question" title="Permanent link">#</a></h3>
+<p>A question is an <a href="#ask">ask</a> as whom it asks sees it: one waiting on you. <code>verse question</code> lists
+them. The record is the ask's, at <code>verse.ask.&lt;id&gt;</code>.</p>
+<p><code>verse gate</code> is kept as an alias of <code>verse question</code>.</p>
+<p>See <a href="../reference/tasks/#the-question-record">Tasks</a>.</p>
+<h3 id="docket">docket<a class="headerlink" href="#docket" title="Permanent link">#</a></h3>
+<p>The docket is every pending ask you can read, whoever raised it and whoever it waits on.
+<code>verse question --all</code> prints it.</p>
+<p>See <a href="../tutorial/questions/#who-sees-it">Questions</a>.</p>
+<h3 id="option">option<a class="headerlink" href="#option" title="Permanent link">#</a></h3>
+<p>An option is one outcome that a question can settle on. A question has the options <code>proceed</code>
+and <code>deny</code>, unless its gate names others. The option it settles on is its <code>verdict</code>.</p>
+<p>See <a href="../tutorial/charters/#no-is-a-real-outcome">Charters</a>.</p>
+<h3 id="ballot">ballot<a class="headerlink" href="#ballot" title="Permanent link">#</a></h3>
+<p>A ballot is the choice of one answerer on one question. The question keeps each ballot under
+<code>ballots</code>, by the name of who cast it.</p>
+<p>See <a href="../tutorial/questions/#a-question-is-data">Questions</a>.</p>
+<h3 id="need">need<a class="headerlink" href="#need" title="Permanent link">#</a></h3>
+<p><code>need</code> is the number of ballots that an option takes to settle a question. On a gate,
+<code>need: 2</code> means that <code>proceed</code> takes two ballots. One <code>deny</code> still refuses.</p>
+<p>Also written: threshold.</p>
+<p>See <a href="../tutorial/charters/#no-is-a-real-outcome">Charters</a>.</p>
+<h3 id="answerers">answerers<a class="headerlink" href="#answerers" title="Permanent link">#</a></h3>
+<p><code>answerers</code> is the field of a gate that names who may answer its question, as a list of
+<a href="#grantee">grantees</a>. Each of them must be able to read what the question is about. Where it
+names nobody, whoever may write what the question is about answers it; for a question about
+nothing, any person or agent does. On a task's own gate, <code>$principal</code> names whom the task acts
+for. The <code>question-ask</code> tool asks that principal, unless the call names <code>answerers</code> of its own.
+The owner of what asked may always answer.</p>
+<p>See <a href="../reference/perms/#questions">Permissions reference</a>.</p>
+<h3 id="pose">pose<a class="headerlink" href="#pose" title="Permanent link">#</a></h3>
+<p><code>pose</code> is the field of a gate of a rule that holds the question in words, for a person to
+read.</p>
+<p>See <a href="../reference/gates/">Gates</a>.</p>
+<h3 id="reason">reason<a class="headerlink" href="#reason" title="Permanent link">#</a></h3>
+<p><code>reason</code> is the field of a question that says where the question comes from, such as
+<code>files.write path=docs/x.md</code> for a gate of a task.</p>
+<p>See <a href="../reference/tasks/#the-dial">Tasks</a>.</p>
+<h3 id="deadline-of-a-gate">deadline (of a gate)<a class="headerlink" href="#deadline-of-a-gate" title="Permanent link">#</a></h3>
+<p>The deadline of a gate says how long its question waits, and which option the question then
+settles on: <code>deadline: {within: "4h", default: deny}</code>.</p>
+<p>See <a href="../reference/gates/#a-deadline-settles">The gates of a rule</a>.</p>
+<h3 id="resolver">resolver<a class="headerlink" href="#resolver" title="Permanent link">#</a></h3>
+<p>A resolver is an installed service that answers asks for whoever grants it: a person, at
+<code>verse.for.&lt;person&gt;</code>, or a place, by its owner. Its <code>match</code> says which of their asks it watches.
+It stands at <code>verse.resolvers.&lt;name&gt;</code>.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md">Resolvers</a>.</p>
+<h3 id="answerer">answerer<a class="headerlink" href="#answerer" title="Permanent link">#</a></h3>
+<p>An answerer is whoever answers a question: a person it names, or a resolver answering for one of
+them, whose answer is then that person's.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md#answering">Resolvers</a>.</p>
+<h3 id="onward-ask">onward ask<a class="headerlink" href="#onward-ask" title="Permanent link">#</a></h3>
+<p>An onward ask is an ask a resolver raises inside an ask it serves, to consult somebody or to
+escalate. It fits inside the ask it serves, and what it comes to is carried back as the
+resolver's answer.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md#onward-asks">Resolvers</a>.</p>
+<h3 id="task">task<a class="headerlink" href="#task" title="Permanent link">#</a></h3>
+<p>A task is a unit of work that verse governs and that you can steer. An agent, a shell command,
+a worker or a person does the work. The id of a task names the work, and not one run.</p>
+<p>See <a href="../reference/tasks/">Tasks</a>.</p>
+<h3 id="run">run<a class="headerlink" href="#run" title="Permanent link">#</a></h3>
+<p>A run is one execution of a task. A rule that fires again about the same subject starts a new
+run under the same task id.</p>
+<p>See <a href="../reference/tasks/#one-id-many-runs">Tasks</a>.</p>
+<h3 id="occurrence">occurrence<a class="headerlink" href="#occurrence" title="Permanent link">#</a></h3>
+<p>The occurrence of a run is the revision that the run is about. For a run that a rule started,
+it is the commit that caused the firing.</p>
+<p>See <a href="../reference/tasks/#one-id-many-runs">Tasks</a>.</p>
+<h3 id="status-of-a-task">status (of a task)<a class="headerlink" href="#status-of-a-task" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>running</code></td>
+<td>the work is in progress</td>
+</tr>
+<tr>
+<td><code>paused</code></td>
+<td>a hold stopped the run at a boundary, until somebody resumes it</td>
+</tr>
+<tr>
+<td><code>done</code></td>
+<td>the task finished</td>
+</tr>
+<tr>
+<td><code>failed</code></td>
+<td>the task ran and did not succeed</td>
+</tr>
+<tr>
+<td><code>cancelled</code></td>
+<td>an operator stopped the task</td>
+</tr>
+<tr>
+<td><code>orphaned</code></td>
+<td>the process that ran the task ended, and the work did not complete</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/architecture.md#data-and-failure-model">architecture.md</a>, in the repository.</p>
+<h3 id="instance-record">instance record<a class="headerlink" href="#instance-record" title="Permanent link">#</a></h3>
+<p>The instance record of a task is the data at <code>verse.task.instance.&lt;id&gt;</code>. It holds the state of
+the latest run: the status, the last output, the result, the runner.</p>
+<p>See <a href="../reference/tasks/#the-mirror">Tasks</a>.</p>
+<h3 id="run-record">run record<a class="headerlink" href="#run-record" title="Permanent link">#</a></h3>
+<p>The run record of a run is the data at <code>verse.task.run.&lt;id&gt;@&lt;occurrence&gt;</code>. Verse writes it
+when the run starts and when the run ends.</p>
+<p>See <a href="../reference/tasks/#one-id-many-runs">Tasks</a>.</p>
+<h3 id="mirror-of-tasks">mirror (of tasks)<a class="headerlink" href="#mirror-of-tasks" title="Permanent link">#</a></h3>
+<p>The mirror is the part of verse that writes the state of each task into the store, as the
+instance record and the run records. It writes as <code>system:mirror</code>.</p>
+<p>In a page about tasks, "the mirror" has this meaning.</p>
+<p>See <a href="../reference/tasks/#the-mirror">Tasks</a>.</p>
+<h3 id="executor">executor<a class="headerlink" href="#executor" title="Permanent link">#</a></h3>
+<p>The executor of a task performs each action that the agent or script proposes, once the task's
+<a href="#environment">environment</a> gives it and its <a href="#autonomy">autonomy</a> lets it.
+A <a href="#worker">worker</a> on a runner is an executor too.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/external-tasks.md#a-task-is-a-contract-not-a-runtime">External tasks</a>.</p>
+<h3 id="tool">tool<a class="headerlink" href="#tool" title="Permanent link">#</a></h3>
+<p>A tool is a named action that a task may take: an agent's, such as <code>read_file</code> or <code>run_bash</code>,
+or one a script calls with <code>verse-call-tool</code>, such as <code>git-push</code> or <code>question-ask</code>. The runner
+offers those whose verb the task's <a href="#environment">environment</a> gives. The task's
+<a href="#autonomy">autonomy</a> decides each use of a tool that is a <a href="#step-of-a-task">step</a>.</p>
+<p>See <a href="../reference/action/#action-what-fires">The action of a rule</a>.</p>
+<h3 id="boundary">boundary<a class="headerlink" href="#boundary" title="Permanent link">#</a></h3>
+<p>A boundary is the point between two actions of a task. The task's autonomy decides there
+whether the next action is refused, asks or goes ahead, and a hold or a <code>say</code> lands there.</p>
+<p>See <a href="../control/#a-hold-on-a-run">Control</a>.</p>
+<p><a id="policy"></a></p>
+<h3 id="autonomy">autonomy<a class="headerlink" href="#autonomy" title="Permanent link">#</a></h3>
+<p>The autonomy of a task is an ordered list of rows over its steps. Each row names steps by
+system, verb and fields, each field a tony match pattern (a value, <code>null</code> for any, <code>!glob</code>,
+<code>!regexp</code>, <code>!or</code>), and says what happens to them: <code>deny</code>, <code>ask</code> or <code>allow</code>. The first row
+that matches a step decides it. The last row names no step and decides every step that no row
+above matched: it is the task's dial.</p>
+<p>A task with no autonomy asks on every step, so the last row is the one place a run is made
+unattended. The autonomy decides among what the task's <a href="#environment">environment</a> gives and
+never adds to it: a step outside the environment is refused before any row is read, and a row
+that can match nothing the environment gives is refused where it is written. Under a network of
+<code>allow</code>, each connection is decided too, and a row on the network allows or denies, never asks.
+The autonomy can be replaced while the task runs:
+<code>verse task autonomy &lt;id&gt; '[{match: {system: commands}, then: allow}, {then: ask}]'</code>. A row on
+<code>files</code> or <code>commands</code> is advisory: it decides the act as the agent names it, and a write through
+the shell is a command (<a href="../systems/inside/#a-row-on-files-or-commands-is-advisory">why</a>).</p>
+<p>Also written: the dial.</p>
+<p>See <a href="../reference/tasks/#the-autonomy">Tasks</a>.</p>
+<h3 id="environment">environment<a class="headerlink" href="#environment" title="Permanent link">#</a></h3>
+<p>The environment of a task is what it works in: the variables its shell is given (<code>vars</code>), and
+the <a href="#system">systems</a> it may use (<code>systems</code>), one block per system, each naming the verbs it gives
+and their shapes. It is the whole of what the task may do: a step no block gives is refused,
+and the task is offered no tool for a verb it does not give. A block that names no verb gives
+every verb of its system, the network apart, whose <code>mode</code> is its reach. It is fixed when the run
+starts, and it lies within the runner's <a href="#ceiling">ceilings</a>.</p>
+<p>See <a href="../reference/tasks/#the-doer">Tasks</a>.</p>
+<h3 id="system">system<a class="headerlink" href="#system" title="Permanent link">#</a></h3>
+<p>A system is something outside verse that verse reads or acts on: a repository (<code>git</code>), its
+issue tracker (<code>git-issue</code>), a forge (<code>github</code>), Linear (<code>linear-issue</code>), Slack (<code>slack</code>). An
+iod writes the system's state into the store, and carries a rule's writes back out to it. A
+task calls the system's verbs through a runner. Verse keeps one document per system at
+<code>verse.systems.&lt;name&gt;</code>, naming its verbs and their params.</p>
+<p>See <a href="../systems/">Systems</a>.</p>
+<h3 id="ceiling">ceiling<a class="headerlink" href="#ceiling" title="Permanent link">#</a></h3>
+<p>A ceiling is the limit a runner's operator sets on what any task may do with a system the
+runner holds for it. It is written as an environment is, blocks of the system's attributes and
+verbs, each attribute a tony match pattern, under <code>systems.&lt;name&gt;.ceiling</code> in the runner's configuration,
+and it lists what it allows: a system with no ceiling is closed, the network apart. The runner
+publishes it with its offers, beside what it <code>builds</code> of the system by its nature. A spawn's
+<a href="#environment">environment</a> lies within it: verse refuses to install one beyond it, and the
+runner holds it again at the launch and at each act.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#what-it-offers">the verse runner</a>.</p>
+<h3 id="step-of-a-task">step (of a task)<a class="headerlink" href="#step-of-a-task" title="Permanent link">#</a></h3>
+<p>A step of a task is what the task is about to do, as the spec names it: <code>git.push</code>,
+<code>github.create-pr</code>, <code>files.write</code>, <code>commands.run</code> or <code>agent.call-sub-agent</code>, with the fields of
+that step: the repository and ref of a push, the path of a write, the command of a run, the
+sub-agent called, and under a network of <code>allow</code> a connection, <code>network.tcp-client</code>. An autonomy
+row's <code>match</code> names a step and narrows it by its fields. A script's own run is no step; the calls it makes are.</p>
+<p>See <a href="../reference/tasks/#a-rows-question">Tasks</a>.</p>
+<h3 id="event-stream">event stream<a class="headerlink" href="#event-stream" title="Permanent link">#</a></h3>
+<p>The event stream of a task is the ordered list of the frames that the task emits. It keeps a
+bounded number of frames, and a reader resumes it from a cursor.</p>
+<p>Also written: read plane (of a task).</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/task-control.md#the-event-envelope-and-the-cursor">Task control</a>.</p>
+<h3 id="seam">seam<a class="headerlink" href="#seam" title="Permanent link">#</a></h3>
+<p>A seam is a place where what does the work can change and the commands stay the same. Where a
+task runs is a seam: in the verse process or on a runner, and every <code>verse task</code> command works
+on both.</p>
+<p>See <a href="../reference/tasks/#where-a-task-runs-is-a-seam">where a task runs is a seam</a>. How the
+seams are built is in <a href="https://github.com/signadot/verse/blob/main/docs/seams.md">Seams</a>, in the repository.</p>
+<h3 id="runner">runner<a class="headerlink" href="#runner" title="Permanent link">#</a></h3>
+<p>A runner is a place where verse runs a task. Verse connects to it.</p>
+<table>
+<thead>
+<tr>
+<th>Runner</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verse.runners.local</code></td>
+<td>the local runner: the <code>runnerd</code> <code>verse up</code> starts beside itself and registers, unless <code>localRunner: false</code></td>
+</tr>
+<tr>
+<td>an installed runner</td>
+<td>another host, at a URL. It stands at <code>verse.runners.&lt;name&gt;</code>, which keeps what the runner offers: the agents and scripts it runs, as the runner described itself when it was installed or last checked.</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/runners.md">Runners</a>.</p>
+<h3 id="worker">worker<a class="headerlink" href="#worker" title="Permanent link">#</a></h3>
+<p>A worker is the program on a <a href="#runner">runner</a> that does a task and reports it. In
+permissions, a worker acts as <code>runner:&lt;identity&gt;</code>, the identity on the runner's registration.</p>
+<p>Also written: executor, and claimant, of a task it works; the
+<a href="#claimant-of-a-binding">claimant of a binding</a> is another thing.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/task-control.md">Task control</a>.</p>
+<h3 id="claim-of-a-worker">claim (of a worker)<a class="headerlink" href="#claim-of-a-worker" title="Permanent link">#</a></h3>
+<p>A claim is how a worker becomes the one working a task: the runner known at the spawn, or the
+name a running status carries. Verse then grants that worker <code>read-write</code> and <code>control</code> on the
+task, and writes every report as it.</p>
+<p>A claim of this kind is about one task.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/runners.md">Runners</a>.</p>
+<h3 id="agent">agent<a class="headerlink" href="#agent" title="Permanent link">#</a></h3>
+<p>An agent is a registered program that works a prompt one turn at a time. <code>verse</code> is verse's
+own agent. A runner offers others by name, such as <code>claude</code> or <code>codex</code>, each with the settings it
+takes. A spawn names one, with its settings beside the name: <code>agent: {name: codex, model:
+gpt-5-codex}</code>. A prompt that names none is for verse's default agent, <code>verse</code> unless the config's
+<code>defaultAgent</code> says another, and verse routes it to a runner that offers it.</p>
+<p>See <a href="../reference/tasks/#the-doer">Tasks</a>.</p>
+<h3 id="doer">doer<a class="headerlink" href="#doer" title="Permanent link">#</a></h3>
+<p>A doer is what does the work of a task: the <a href="#agent">agent</a> a <code>prompt</code> is for, or a <code>script</code>,
+which is its own. The task's record says which agent ran and with what settings as its <code>agent</code>,
+or <code>script: true</code>.</p>
+<p>See <a href="../reference/tasks/#the-doer">Tasks</a>.</p>
+<h3 id="virtual-key">virtual key<a class="headerlink" href="#virtual-key" title="Permanent link">#</a></h3>
+<p>A virtual key is the model credential that a task runs under. A spawn names it by address, as
+<code>virtualKey: acme.keys.review</code>; verse reads the address as whoever named it, and the runner
+gets it as the annotation <code>verse.portkey/virtual-key</code>.</p>
+<p>See <a href="../reference/action/#action-what-fires">the spawn</a>.</p>
+<h2 id="iods">Iods<a class="headerlink" href="#iods" title="Permanent link">#</a></h2>
+<h3 id="iod">iod<a class="headerlink" href="#iod" title="Permanent link">#</a></h3>
+<p>An iod is a program that connects verse to one external system, such as a git repository, in
+both directions. It has two halves: a <a href="#source">source</a> writes what the system holds into the
+store, and a <a href="#sink">sink</a> carries what a rule writes back out to the system. An installed iod stands at
+<code>verse.iods.&lt;name&gt;</code>.</p>
+<p>Also written: connector, source (in the Go source, for the whole iod), registration.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/io.md">Iods</a>.</p>
+<h3 id="root-of-an-iod">root (of an iod)<a class="headerlink" href="#root-of-an-iod" title="Permanent link">#</a></h3>
+<p>The root of an iod is the first segment of every address that the iod writes, such as <code>git</code>.
+<code>verse iod add</code> takes it as <code>-root git</code>.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/reference/io.md">Iods (reference)</a>.</p>
+<h3 id="claim-of-an-iod">claim (of an iod)<a class="headerlink" href="#claim-of-an-iod" title="Permanent link">#</a></h3>
+<p>A claim of an iod is a pattern that names what only that iod may write:
+<code>owns: [{at: "git.verse"}]</code>. Verse refuses an iod whose claims overlap the claims of another.</p>
+<p>Also written: owns, ownership claim.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/reference/io.md#ownership">Iods (reference)</a>.</p>
+<h3 id="probe">probe<a class="headerlink" href="#probe" title="Permanent link">#</a></h3>
+<p>A probe is the question verse asks an iod or a runner when it is installed: what are you?
+<code>GET /io</code> asks an iod. The answer is one of <code>a source</code>, <code>not a source</code> and <code>unreachable</code>, and
+only <code>not a source</code> refuses the install. <code>verse iod add -no-probe</code> skips it, and <code>verse iod
+-probe</code> asks every iod again without recording the answer.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/reference/io.md#routes">Iods (reference)</a>.</p>
+<h3 id="source">source<a class="headerlink" href="#source" title="Permanent link">#</a></h3>
+<p>A source is the in half of an iod. Verse asks it what is true in the external system, and it
+answers with a <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#reflection">reflection</a>. It does not write to the store.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/io.md#the-seam-a-source-answers-verse-converges">Iods</a>.</p>
+<h3 id="reflect">reflect<a class="headerlink" href="#reflect" title="Permanent link">#</a></h3>
+<p>To reflect an external system is to keep its state in the store, as data. The source
+reads the system, and the <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#reflector">reflector</a> writes the store.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/io.md">Iods</a>.</p>
+<h3 id="hint">hint<a class="headerlink" href="#hint" title="Permanent link">#</a></h3>
+<p>A hint is a message from an iod to verse that says which addresses went stale. It writes
+nothing. Verse answers it by reflecting those addresses again.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/io.md#the-core-law-a-hint-is-a-hint-reconcile-is-the-truth">Iods</a>.</p>
+<h3 id="sink">sink<a class="headerlink" href="#sink" title="Permanent link">#</a></h3>
+<p>A sink is the out half of an iod. A rule, a task or a person writes an input, which is a node
+with a <code>to</code> field. The sink carries it out: it makes the external system match the input, and
+writes the result at <code>&lt;name&gt;~status</code>.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/reference/io.md#the-out-half">Iods (reference)</a>.</p>
+<h3 id="input">input<a class="headerlink" href="#input" title="Permanent link">#</a></h3>
+<p>An input is a request written for a <a href="#sink">sink</a>: a node with a <code>to</code> field, anywhere under the
+iod's out place or in an <a href="#outbox">outbox</a>, such as
+<code>verse data slack acme out hello -put '{to: "user:ana@acme.test", text: "…"}'</code>. Whoever writes
+it decides where it stands.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/reference/io.md#what-is-asked-and-what-became-of-it">Iods (reference)</a>.</p>
+<h3 id="status-of-an-input">status (of an input)<a class="headerlink" href="#status-of-an-input" title="Permanent link">#</a></h3>
+<p>The status of an input is the node the iod writes beside it, at <code>&lt;name&gt;~status</code>: what it did,
+and an <code>error</code> while a failure stands. Only the iod writes it. A status with <code>failed: permanent</code>
+is not offered again until the input changes.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/reference/io.md#what-is-asked-and-what-became-of-it">Iods (reference)</a>.</p>
+<h2 id="permissions">Permissions<a class="headerlink" href="#permissions" title="Permanent link">#</a></h2>
+<h3 id="principal">principal<a class="headerlink" href="#principal" title="Permanent link">#</a></h3>
+<p>A principal is who acts. It is a name with its kind in front, such as <code>user:ana@example.com</code>.
+Every write names one. A principal is the name that the request gives, or the person that the
+request's token proves where the verse names an identity provider.</p>
+<p>See <a href="../perms/#principals-and-grantees">Permissions</a>.</p>
+<h3 id="kinds-of-principal">kinds of principal<a class="headerlink" href="#kinds-of-principal" title="Permanent link">#</a></h3>
+<p>A principal is of one of six kinds: <code>user:</code>, <code>agent:</code>, <code>runner:</code>, <code>system:</code>, <code>via:</code> and
+<code>pair:</code>. A request presents the first three, and verse makes the other three. <code>pair:&lt;asker&gt;
+&lt;rule&gt;</code> is a rule's task acting for whoever owns its subject.</p>
+<p>See <a href="../reference/perms/#the-grammar">Permissions reference</a>.</p>
+<h3 id="local-user">local user<a class="headerlink" href="#local-user" title="Permanent link">#</a></h3>
+<p>The local user is the principal <code>user:&lt;login&gt;@localhost</code>. The CLI acts as the local user
+toward a verse on the same machine, when no user is configured.</p>
+<p>See <a href="../perms-guide/#before-the-first-step-who-you-are">Permissions, walked</a>.</p>
+<h3 id="identity-provider">identity provider<a class="headerlink" href="#identity-provider" title="Permanent link">#</a></h3>
+<p>An identity provider is a party that signs a statement of who a person is, and the verse
+accepts that statement. It is an OpenID Connect issuer that the deployment names under
+<code>auth.principal.providers</code>. <code>verse account login</code> logs in there, and the verse verifies the
+token. The deployment's own iods are verified
+the same way against their workload issuer (<code>auth.iod</code>), and so is a runner whose registration
+names its token's subject. Slack and GitHub are not identity providers here; their accounts are
+bound by a nonce.</p>
+<p>See <a href="../reference/perms/#who-a-request-is-from">Who a request is from</a>.</p>
+<h3 id="account-binding">account binding<a class="headerlink" href="#account-binding" title="Permanent link">#</a></h3>
+<p>An account binding is the record that an account in another system is a principal: a Slack
+member, a GitHub login, or an account at an identity provider. Only the system writes it, from
+evidence it checked, at <code>verse.identity.&lt;provider&gt;.account.&lt;id&gt;</code>. A person makes their own
+with <code>verse account -link &lt;provider&gt;</code>, by saying a nonce from the account or by logging in. An iod
+that acts for a person is admitted only through one. One account is one principal.</p>
+<p>See <a href="../reference/perms/#accounts-in-other-systems">Accounts in other systems</a>.</p>
+<h3 id="claimant-of-a-binding">claimant (of a binding)<a class="headerlink" href="#claimant-of-a-binding" title="Permanent link">#</a></h3>
+<p>The claimant of an account binding is how the person who proved it was authenticated: the
+identity provider that verified them, or <code>asserted</code> for a person who was whoever their request
+said. It is what lets a reader, and a verse that verifies people, tell the two kinds of binding
+apart.</p>
+<p>See <a href="../reference/perms/#accounts-in-other-systems">Accounts in other systems</a>.</p>
+<h3 id="first-sight">first sight<a class="headerlink" href="#first-sight" title="Permanent link">#</a></h3>
+<p>A first sight is a binding made the first time an account is seen, from a verified email in one
+of the provider's <code>domains</code>: by a token at the door, or by a trusted iod relaying the person. A
+provider with no <code>domains</code> admits bound accounts only.</p>
+<p>See <a href="../reference/perms/#who-a-request-is-from">Who a request is from</a>.</p>
+<h3 id="trusted-iod">trusted iod<a class="headerlink" href="#trusted-iod" title="Permanent link">#</a></h3>
+<p>A trusted iod is an iod that the deployment names under
+<code>auth.principal.providers.&lt;provider&gt;.iods</code>. Its word counts for that provider's accounts: it may
+relay a person it saw, such as the Slack member who typed an answer, and it may report a nonce it
+heard. It proves which iod it is with its own token.</p>
+<p>See <a href="../reference/perms/#a-person-relayed-by-a-trusted-iod">A person relayed by a trusted iod</a>.</p>
+<h3 id="grantee">grantee<a class="headerlink" href="#grantee" title="Permanent link">#</a></h3>
+<p>A grantee is who a grant is to: a principal, every principal of a kind (<code>user:*</code>), a
+<a href="#group">group</a>, the audience of an address (<code>audience:&lt;address&gt;</code>, whoever holds the same level
+there), the resolvers that answer for an address (<code>answering:&lt;address&gt;</code>), or everyone (<code>*</code>).</p>
+<p>See <a href="../reference/perms/#the-grammar">Permissions reference</a>.</p>
+<h3 id="group">group<a class="headerlink" href="#group" title="Permanent link">#</a></h3>
+<p>A group is a named set of grantees, with an owner: <code>verse group add payments ana@example.com</code>.
+It stands at <code>verse.principal.group.&lt;name&gt;</code>.</p>
+<p>See <a href="../perms/#grants">Permissions</a>.</p>
+<h3 id="owner">owner<a class="headerlink" href="#owner" title="Permanent link">#</a></h3>
+<p>The owner of a node may do anything to the node. The owner is fixed when the node is created:
+it is the creator, or the owner of the node above. The owners of the nodes above are
+co-owners.</p>
+<p>See <a href="../perms/#ownership">Permissions</a>.</p>
+<h3 id="record">record<a class="headerlink" href="#record" title="Permanent link">#</a></h3>
+<p>A record is what verse keeps about the permissions of one node. It holds the <code>owner</code> of the
+node, its <code>grants</code> and its <code>child-grants</code>, and on a question <code>under</code>, the address of what asked
+it. <code>verse perms &lt;path&gt;</code> shows it. A node with no
+record follows the nearest record above it.</p>
+<p>Also written: permissions record, perms record.</p>
+<p>See <a href="../reference/perms/#records">Permissions reference</a>.</p>
+<h3 id="seed">seed<a class="headerlink" href="#seed" title="Permanent link">#</a></h3>
+<p>The seed is the records that verse writes from the config at its first start: the root's record,
+the record on <code>verse</code>, and the <code>admin</code> group. Verse writes them only where they are absent, so an
+operator's later edit stands. <code>verse up -reseed-perms</code> writes them again over what stands.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/reference/up.md#configuration">Starting a verse</a>.</p>
+<h3 id="mirror-of-permissions">mirror (of permissions)<a class="headerlink" href="#mirror-of-permissions" title="Permanent link">#</a></h3>
+<p>In the Go source, the perms mirror is the set of all records, under <code>verse.perms</code>. The docs
+say "the records".</p>
+<p>See <a href="../reference/perms/#records">Permissions reference</a>.</p>
+<h3 id="grant-permission">grant (permission)<a class="headerlink" href="#grant-permission" title="Permanent link">#</a></h3>
+<p>A grant is one line of a record, such as <code>- read: [user:ana@example.com]</code>. It gives a level
+to grantees who are not the owner. It reaches down to the next record that names an owner.</p>
+<p>See <a href="../perms/#grants">Permissions</a>.</p>
+<h3 id="level-of-a-permission">level (of a permission)<a class="headerlink" href="#level-of-a-permission" title="Permanent link">#</a></h3>
+<p>A level is what a principal may do at a node: <code>read</code>, <code>read-write</code>, <code>owner</code>,
+<a href="#control-permission-level"><code>control</code></a> or <code>answer</code>. <code>answer</code> says which resolvers may answer
+for the party the node stands for.</p>
+<p>See <a href="../reference/perms/#levels">Permissions reference</a>.</p>
+<h3 id="control-permission-level">control (permission level)<a class="headerlink" href="#control-permission-level" title="Permanent link">#</a></h3>
+<p><code>control</code> is the level that admits steering work: run, cancel, pause, resume, <code>say</code>, a change
+of autonomy, and suspend. No other level includes it. The owner of a task holds it, and so does
+the worker that claimed the task.</p>
+<p>Written as code, <code>control</code> is this level.</p>
+<p>See <a href="../reference/perms/#levels">Permissions reference</a>.</p>
+<h3 id="child-owner">child-owner<a class="headerlink" href="#child-owner" title="Permanent link">#</a></h3>
+<p><code>child-owner</code> is the grant that lets its grantees create nodes beneath a node, and own what
+they create. It gives nothing over a node that stands already.</p>
+<p>See <a href="../perms/#grants">Permissions</a>.</p>
+<h3 id="child-grants">child-grants<a class="headerlink" href="#child-grants" title="Permanent link">#</a></h3>
+<p><code>child-grants</code> is the field of a record that says which grants a node created beneath it
+starts with. Verse copies it when the node is created, unless its creator gives the node grants
+of their own (<code>verse data … -put … -grants</code>).</p>
+<p>See <a href="../perms/#grants">Permissions</a>.</p>
+<h2 id="steering">Steering<a class="headerlink" href="#steering" title="Permanent link">#</a></h2>
+<h3 id="control-plane">control plane<a class="headerlink" href="#control-plane" title="Permanent link">#</a></h3>
+<p>The control plane is the part of verse that steers. Verse serves it before observation, and it
+never travels on the stream of changes.</p>
+<p>For the permission level, see <a href="#control-permission-level">control (permission level)</a>.</p>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/deployment-and-steering.md#two-planes">Deployment and steering</a>.</p>
+<h3 id="steering_1">steering<a class="headerlink" href="#steering_1" title="Permanent link">#</a></h3>
+<p>To steer is to act on work in progress: to answer a gate, to hold or resume, to <code>say</code>, to
+cancel, to change the autonomy.</p>
+<p>See <a href="../concepts/#what-verse-is-made-of">Basic concepts</a>.</p>
+<h3 id="flow">flow<a class="headerlink" href="#flow" title="Permanent link">#</a></h3>
+<p>A flow is the live tasks about one subject, or about the subjects that a pattern names. Verse
+keeps no record of it: <code>verse flow show demo.pr.1</code> builds it.</p>
+<p>See <a href="../control/">Control</a>.</p>
+<h3 id="hold">hold<a class="headerlink" href="#hold" title="Permanent link">#</a></h3>
+<p>A hold stops one run at its next boundary, until somebody resumes the run:
+<code>verse flow suspend -task &lt;id&gt;</code>. It does not last across a restart of verse.</p>
+<p>Also written: pause.</p>
+<p>See <a href="../control/#a-hold-on-a-run">Control</a>.</p>
+<h3 id="suspension">suspension<a class="headerlink" href="#suspension" title="Permanent link">#</a></h3>
+<p>A suspension is a record that names a charter, a rule and a subject. It stops all the work
+about them: firings, tasks and questions. It lasts across restarts, until somebody lifts it.</p>
+<p>See <a href="../control/#a-suspension">Control</a>.</p>
+<h2 id="terms-of-the-platform">Terms of the platform<a class="headerlink" href="#terms-of-the-platform" title="Permanent link">#</a></h2>
+<p>These terms belong to running, extending or changing verse. Each is defined in
+<a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md">the platform glossary</a>, in the repository.</p>
+<h3 id="converge">converge<a class="headerlink" href="#converge" title="Permanent link">#</a></h3>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#converge">converge</a>, in the repository.</p>
+<h3 id="cover-of-a-reflection">cover (of a reflection)<a class="headerlink" href="#cover-of-a-reflection" title="Permanent link">#</a></h3>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#cover-of-a-reflection">cover (of a reflection)</a>, in the repository.</p>
+<h3 id="frame-of-an-event-stream">frame (of an event stream)<a class="headerlink" href="#frame-of-an-event-stream" title="Permanent link">#</a></h3>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#frame-of-an-event-stream">frame (of an event stream)</a>, in the repository.</p>
+<h3 id="mirror-of-a-git-repository">mirror (of a git repository)<a class="headerlink" href="#mirror-of-a-git-repository" title="Permanent link">#</a></h3>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#mirror-of-a-git-repository">mirror (of a git repository)</a>, in the repository.</p>
+<h3 id="observation-plane">observation plane<a class="headerlink" href="#observation-plane" title="Permanent link">#</a></h3>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#observation-plane">observation plane</a>, in the repository.</p>
+<h3 id="reflection">reflection<a class="headerlink" href="#reflection" title="Permanent link">#</a></h3>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#reflection">reflection</a>, in the repository.</p>
+<h3 id="reflector">reflector<a class="headerlink" href="#reflector" title="Permanent link">#</a></h3>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#reflector">reflector</a>, in the repository.</p>
+<h3 id="root-of-verse-up">root (of verse up)<a class="headerlink" href="#root-of-verse-up" title="Permanent link">#</a></h3>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#root-of-verse-up">root (of verse up)</a>, in the repository.</p>
+<h3 id="tombstone">tombstone<a class="headerlink" href="#tombstone" title="Permanent link">#</a></h3>
+<p>See <a href="https://github.com/signadot/verse/blob/main/docs/platform/glossary.md#tombstone">tombstone</a>, in the repository.</p>
+<h2 id="index">Index<a class="headerlink" href="#index" title="Permanent link">#</a></h2>
+<ul>
+<li>
+<p><a href="#account-binding">account binding</a></p>
+</li>
+<li>
+<p><a href="#action">action</a></p>
+</li>
+<li>
+<p><a href="#address">address</a></p>
+</li>
+<li>
+<p><a href="#agent">agent</a></p>
+</li>
+<li>
+<p><a href="#answer-contract">answer contract</a></p>
+</li>
+<li>
+<p><a href="#answerer">answerer</a></p>
+</li>
+<li>
+<p><a href="#answerers">answerers</a></p>
+</li>
+<li>
+<p><a href="#ask">ask</a></p>
+</li>
+<li>
+<p><a href="#autonomy">autonomy</a></p>
+</li>
+<li>
+<p><a href="#ballot">ballot</a></p>
+</li>
+<li>
+<p><a href="#baseline">baseline</a></p>
+</li>
+<li>
+<p><a href="#baseline-charter">baseline charter</a></p>
+</li>
+<li>
+<p><a href="#binding">binding</a></p>
+</li>
+<li>
+<p><a href="#boundary">boundary</a></p>
+</li>
+<li>
+<p><a href="#ceiling">ceiling</a></p>
+</li>
+<li>
+<p><a href="#chain-of-an-action">chain (of an action)</a></p>
+</li>
+<li>
+<p><a href="#chain-of-firings">chain (of firings)</a></p>
+</li>
+<li>
+<p><a href="#charter">charter</a></p>
+</li>
+<li>
+<p><a href="#child-grants">child-grants</a></p>
+</li>
+<li>
+<p><a href="#child-owner">child-owner</a></p>
+</li>
+<li>
+<p><a href="#claim-of-a-worker">claim (of a worker)</a></p>
+</li>
+<li>
+<p><a href="#claim-of-an-iod">claim (of an iod)</a></p>
+</li>
+<li>
+<p><a href="#claimant-of-a-binding">claimant (of a binding)</a></p>
+</li>
+<li>
+<p><a href="#commit">commit</a></p>
+</li>
+<li>
+<p><a href="#condition">condition</a></p>
+</li>
+<li>
+<p><a href="#control-permission-level">control (permission level)</a></p>
+</li>
+<li>
+<p><a href="#control-plane">control plane</a></p>
+</li>
+<li>
+<p><a href="#converge">converge</a></p>
+</li>
+<li>
+<p><a href="#cover-of-a-reflection">cover (of a reflection)</a></p>
+</li>
+<li>
+<p><a href="#data">data</a></p>
+</li>
+<li>
+<p><a href="#deadline-of-a-gate">deadline (of a gate)</a></p>
+</li>
+<li>
+<p><a href="#derive">derive</a></p>
+</li>
+<li>
+<p><a href="#descent">descent</a></p>
+</li>
+<li>
+<p><a href="#docket">docket</a></p>
+</li>
+<li>
+<p><a href="#doer">doer</a></p>
+</li>
+<li>
+<p><a href="#entity">entity</a></p>
+</li>
+<li>
+<p><a href="#environment">environment</a></p>
+</li>
+<li>
+<p><a href="#event-stream">event stream</a></p>
+</li>
+<li>
+<p><a href="#executor">executor</a></p>
+</li>
+<li>
+<p><a href="#firing">firing</a></p>
+</li>
+<li>
+<p><a href="#first-sight">first sight</a></p>
+</li>
+<li>
+<p><a href="#flow">flow</a></p>
+</li>
+<li>
+<p><a href="#frame-of-an-event-stream">frame (of an event stream)</a></p>
+</li>
+<li>
+<p><a href="#gate-of-a-rule">gate (of a rule)</a></p>
+</li>
+<li>
+<p><a href="#gate-of-a-task">gate (of a task)</a></p>
+</li>
+<li>
+<p><a href="#gate-raised-by-a-worker">gate (raised by a worker)</a></p>
+</li>
+<li>
+<p><a href="#grant-permission">grant (permission)</a></p>
+</li>
+<li>
+<p><a href="#grantee">grantee</a></p>
+</li>
+<li>
+<p><a href="#group">group</a></p>
+</li>
+<li>
+<p><a href="#held-rule">held rule</a></p>
+</li>
+<li>
+<p><a href="#hint">hint</a></p>
+</li>
+<li>
+<p><a href="#hold">hold</a></p>
+</li>
+<li>
+<p><a href="#hook">hook</a></p>
+</li>
+<li>
+<p><a href="#identity-provider">identity provider</a></p>
+</li>
+<li>
+<p><a href="#input">input</a></p>
+</li>
+<li>
+<p><a href="#instance-record">instance record</a></p>
+</li>
+<li>
+<p><a href="#iod">iod</a></p>
+</li>
+<li>
+<p><a href="#kinded-path">kinded path</a></p>
+</li>
+<li>
+<p><a href="#kinds-of-principal">kinds of principal</a></p>
+</li>
+<li>
+<p><a href="#latch">latch</a></p>
+</li>
+<li>
+<p><a href="#level-of-a-permission">level (of a permission)</a></p>
+</li>
+<li>
+<p><a href="#level-of-a-stratum">level (of a stratum)</a></p>
+</li>
+<li>
+<p><a href="#level-rule">level rule</a></p>
+</li>
+<li>
+<p><a href="#local-user">local user</a></p>
+</li>
+<li>
+<p><a href="#match">match</a></p>
+</li>
+<li>
+<p><a href="#mirror-of-a-git-repository">mirror (of a git repository)</a></p>
+</li>
+<li>
+<p><a href="#mirror-of-permissions">mirror (of permissions)</a></p>
+</li>
+<li>
+<p><a href="#mirror-of-tasks">mirror (of tasks)</a></p>
+</li>
+<li>
+<p><a href="#mode">mode</a></p>
+</li>
+<li>
+<p><a href="#need">need</a></p>
+</li>
+<li>
+<p><a href="#node">node</a></p>
+</li>
+<li>
+<p><a href="#observation-plane">observation plane</a></p>
+</li>
+<li>
+<p><a href="#occurrence">occurrence</a></p>
+</li>
+<li>
+<p><a href="#on">on</a></p>
+</li>
+<li>
+<p><a href="#onward-ask">onward ask</a></p>
+</li>
+<li>
+<p><a href="#operator">operator</a></p>
+</li>
+<li>
+<p><a href="#option">option</a></p>
+</li>
+<li>
+<p><a href="#outbox">outbox</a></p>
+</li>
+<li>
+<p><a href="#owner">owner</a></p>
+</li>
+<li>
+<p><a href="#package">package</a></p>
+</li>
+<li>
+<p><a href="#patch">patch</a></p>
+</li>
+<li>
+<p><a href="#path-read">path read</a></p>
+</li>
+<li>
+<p><a href="#pattern">pattern</a></p>
+</li>
+<li>
+<p><a href="#payload">payload</a></p>
+</li>
+<li>
+<p><a href="#pose">pose</a></p>
+</li>
+<li>
+<p><a href="#predicate">predicate</a></p>
+</li>
+<li>
+<p><a href="#principal">principal</a></p>
+</li>
+<li>
+<p><a href="#probe">probe</a></p>
+</li>
+<li>
+<p><a href="#question">question</a></p>
+</li>
+<li>
+<p><a href="#reads-declaration">reads declaration</a></p>
+</li>
+<li>
+<p><a href="#reason">reason</a></p>
+</li>
+<li>
+<p><a href="#record">record</a></p>
+</li>
+<li>
+<p><a href="#reflect">reflect</a></p>
+</li>
+<li>
+<p><a href="#reflection">reflection</a></p>
+</li>
+<li>
+<p><a href="#reflector">reflector</a></p>
+</li>
+<li>
+<p><a href="#resolver">resolver</a></p>
+</li>
+<li>
+<p><a href="#revision">revision</a></p>
+</li>
+<li>
+<p><a href="#root-of-an-iod">root (of an iod)</a></p>
+</li>
+<li>
+<p><a href="#root-of-the-store">root (of the store)</a></p>
+</li>
+<li>
+<p><a href="#root-of-verse-up">root (of verse up)</a></p>
+</li>
+<li>
+<p><a href="#rule">rule</a></p>
+</li>
+<li>
+<p><a href="#run">run</a></p>
+</li>
+<li>
+<p><a href="#run-record">run record</a></p>
+</li>
+<li>
+<p><a href="#runner">runner</a></p>
+</li>
+<li>
+<p><a href="#schedule">schedule</a></p>
+</li>
+<li>
+<p><a href="#scope">scope</a></p>
+</li>
+<li>
+<p><a href="#seam">seam</a></p>
+</li>
+<li>
+<p><a href="#seed">seed</a></p>
+</li>
+<li>
+<p><a href="#seq">seq</a></p>
+</li>
+<li>
+<p><a href="#sink">sink</a></p>
+</li>
+<li>
+<p><a href="#source">source</a></p>
+</li>
+<li>
+<p><a href="#spawn">spawn</a></p>
+</li>
+<li>
+<p><a href="#status-of-an-input">status (of an input)</a></p>
+</li>
+<li>
+<p><a href="#status-of-a-task">status (of a task)</a></p>
+</li>
+<li>
+<p><a href="#steering">steering</a></p>
+</li>
+<li>
+<p><a href="#step">step</a></p>
+</li>
+<li>
+<p><a href="#step-of-a-task">step (of a task)</a></p>
+</li>
+<li>
+<p><a href="#store">store</a></p>
+</li>
+<li>
+<p><a href="#stratum">stratum</a></p>
+</li>
+<li>
+<p><a href="#subject">subject</a></p>
+</li>
+<li>
+<p><a href="#suspension">suspension</a></p>
+</li>
+<li>
+<p><a href="#system">system</a></p>
+</li>
+<li>
+<p><a href="#task">task</a></p>
+</li>
+<li>
+<p><a href="#tick">tick</a></p>
+</li>
+<li>
+<p><a href="#tombstone">tombstone</a></p>
+</li>
+<li>
+<p><a href="#tool">tool</a></p>
+</li>
+<li>
+<p><a href="#trouble">trouble</a></p>
+</li>
+<li>
+<p><a href="#trusted-iod">trusted iod</a></p>
+</li>
+<li>
+<p><a href="#verses-own-half">verse's own half</a></p>
+</li>
+<li>
+<p><a href="#virtual-key">virtual key</a></p>
+</li>
+<li>
+<p><a href="#when">when</a></p>
+</li>
+<li>
+<p><a href="#worker">worker</a></p>
+</li>
+</ul></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/tutorial/charters-2/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>Tutorial -- Charters, continued - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Tutorial -- Charters, continued - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/tutorial/charters-2/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../charters/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../../reference/tasks/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#tutorial----charters-continued" class="nav-link">Tutorial -- Charters, continued</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#the-backlog" class="nav-link">The backlog</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-latch" class="nav-link">The latch</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#steps-in-order" class="nav-link">Steps in order</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#a-cause-not-a-condition" class="nav-link">A cause, not a condition</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#reading-something-the-rule-is-not-about" class="nav-link">Reading something the rule is not about</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#a-charter-in-a-file" class="nav-link">A charter in a file</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#when-a-rule-does-nothing" class="nav-link">When a rule does nothing</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#stopping-a-rule" class="nav-link">Stopping a rule</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#reading-the-rules-back" class="nav-link">Reading the rules back</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#where-to-next" class="nav-link">Where to next</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="tutorial----charters-continued"><a href="../">Tutorial</a> -- Charters, continued<a class="headerlink" href="#tutorial----charters-continued" title="Permanent link">#</a></h1>
+<p><a href="../charters/">The charters page</a> has the four kinds of rule. This page has the rest of what a
+rule can say. It also keeps a charter in a file, and finds out why a rule did nothing. Each
+shape is installed and fired from the text shown, in the same charter at <code>verse-tutorial</code>. The
+page needs <a href="../#start">a verse running</a> and nothing else. You do not need the pages
+before it.</p>
+<p>The rules on this page carry one team's work on <code>acme/app</code> from a user's report to a deploy:</p>
+<table>
+<thead>
+<tr>
+<th>Address</th>
+<th>What is there</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verse-tutorial.report.*</code></td>
+<td>a bug report from a user</td>
+<td><code>triage-report</code></td>
+</tr>
+<tr>
+<td><code>verse-tutorial.fix.*</code></td>
+<td>a fix, which a script reviews</td>
+<td><code>review-fix</code></td>
+</tr>
+<tr>
+<td><code>verse-tutorial.build.*</code></td>
+<td>a build of a fix: lint, then test</td>
+<td><code>build</code></td>
+</tr>
+<tr>
+<td><code>verse-tutorial.deploy.*</code></td>
+<td>a deploy that waits for the release pipeline</td>
+<td><code>deploy</code></td>
+</tr>
+<tr>
+<td><code>verse-tutorial.incident.*</code></td>
+<td>an incident, routed to the team for its area</td>
+<td><code>route</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each stage has an address of its own, so each rule selects only its own data, and a write you
+make reaches the one rule it is for.</p>
+<h2 id="the-backlog">The backlog<a class="headerlink" href="#the-backlog" title="Permanent link">#</a></h2>
+<p>A rule is a statement about the world, so installing it acts on what already stands:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>report<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open, title: &quot;login fails after a password reset&quot;}&#39;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>report<span class="w"> </span><span class="m">1</span><span class="w">               </span><span class="c1"># stage: open — nothing is watching</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>verse<span class="w"> </span>charter<span class="w"> </span>-a<span class="w"> </span>verse-tutorial<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="s">rules:</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="s">- name: triage-report</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s">  condition:</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="s">    subject: {path: &quot;verse-tutorial.report.*&quot;, value: {stage: open}}</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="s">  action:</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="s">    patch: {stage: triaged}</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="s">EOF</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>report<span class="w"> </span><span class="m">1</span><span class="w">               </span><span class="c1"># stage: triaged — installing it acted</span>
+</code></pre></div>
+<p>Remove the rule, write another report, and nobody reacts. Install it again, and it acts on that
+one too. A rule is not a subscription to future changes.</p>
+<h2 id="the-latch">The latch<a class="headerlink" href="#the-latch" title="Permanent link">#</a></h2>
+<p>A rule that starts a task has to move its subject out of its own selection, or it would start the
+same task at every commit that touches the subject. The <strong><a href="../../glossary/#latch">latch</a></strong> is the
+patch that does it, and verse refuses at install a spawning rule that has none:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>verse<span class="w"> </span>charter<span class="w"> </span>-a<span class="w"> </span>verse-tutorial<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="s">rules:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="s">- name: review-fix</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="s">  condition:</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="s">    subject: {path: &quot;verse-tutorial.fix.*&quot;, value: {stage: open}}</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="s">  action:</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="s">    patch: {stage: reviewing}</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="s">    spawn:</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="s">      script: &#39;echo reviewing &quot;$SUBJECT&quot;; sleep 2&#39;</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="s">      environment: {vars: {SUBJECT: $[subject.ref]}, systems: {network: {mode: open}}}</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="s">    onDone:</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="s">      patch: {stage: reviewed}</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="s">EOF</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>fix<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>fix<span class="w"> </span><span class="m">1</span><span class="w">                  </span><span class="c1"># stage: reviewing, then reviewed</span>
+</code></pre></div>
+<p><code>stage: reviewing</code> is the latch: once the action has written it, the condition no longer selects
+the fix. <code>onDone</code> is a completion <a href="../../glossary/#hook">hook</a>: when that task reaches <code>done</code>,
+the engine fires it about the same subject
+(<a href="../../reference/action/#completion-hooks-one-trigger-chaining-visible">completion hooks</a>). A
+script reads the subject from its environment's vars, <code>environment: {vars: …}</code>, rather than from its text: data
+reaches a script as a variable, never spliced into a command.</p>
+<h2 id="steps-in-order">Steps in order<a class="headerlink" href="#steps-in-order" title="Permanent link">#</a></h2>
+<p><code>seq</code> runs its elements one after another, each when the previous one completes. The outer
+<code>onDone</code> runs after the whole sequence, and a hook on one element says what a failure there
+means:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>verse<span class="w"> </span>charter<span class="w"> </span>-a<span class="w"> </span>verse-tutorial<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="s">rules:</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="s">- name: build</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="s">  condition:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="s">    subject: {path: &quot;verse-tutorial.build.*&quot;, value: {stage: open}}</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="s">  action:</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="s">    patch: {stage: building}</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="s">    seq:</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="s">    - spawn:</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="s">        script: &#39;echo lint &quot;$SUBJECT&quot;&#39;</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="s">        environment: {vars: {SUBJECT: $[subject.ref]}, systems: {network: {mode: open}}}</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="s">    - spawn:</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="s">        script: &#39;echo test &quot;$SUBJECT&quot;&#39;</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="s">        environment: {vars: {SUBJECT: $[subject.ref]}, systems: {network: {mode: open}}}</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="s">      onFailed:</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="s">        patch: {stage: broken}</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="s">    onDone:</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="s">      patch: {stage: built}</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="s">EOF</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>build<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>verse<span class="w"> </span>flow<span class="w"> </span>show<span class="w"> </span>verse-tutorial.build.1
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">-</span> <span class="na">roots</span><span class="o">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  <span class="p">-</span> <span class="na">chain</span><span class="o">:</span> <span class="sx">build</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="na">children</span><span class="o">:</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="p">-</span> <span class="na">chain</span><span class="o">:</span> <span class="sx">build.seq[0]</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>      <span class="na">id</span><span class="o">:</span> <span class="sx">verse-tutorial:build.seq.0@verse-tutorial.build.1</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>      <span class="na">kind</span><span class="o">:</span> <span class="sx">seq</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>      <span class="na">lastAction</span><span class="o">:</span> <span class="sx">script</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>      <span class="na">status</span><span class="o">:</span> <span class="sx">done</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="p">-</span> <span class="na">chain</span><span class="o">:</span> <span class="sx">build.seq[1]</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>      <span class="na">children</span><span class="o">:</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>      <span class="p">-</span> <span class="na">chain</span><span class="o">:</span> <span class="sx">build.seq[1].onFailed</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>        <span class="na">kind</span><span class="o">:</span> <span class="sx">onFailed</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>        <span class="na">status</span><span class="o">:</span> <span class="sx">skipped</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>      <span class="na">id</span><span class="o">:</span> <span class="sx">verse-tutorial:build.seq.1@verse-tutorial.build.1</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>      <span class="na">kind</span><span class="o">:</span> <span class="sx">seq</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>      <span class="na">lastAction</span><span class="o">:</span> <span class="sx">script</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>      <span class="na">status</span><span class="o">:</span> <span class="sx">done</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>    <span class="p">-</span> <span class="na">chain</span><span class="o">:</span> <span class="sx">build.onDone</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>      <span class="na">kind</span><span class="o">:</span> <span class="sx">onDone</span>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>      <span class="na">status</span><span class="o">:</span> <span class="sx">applied</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>    <span class="na">kind</span><span class="o">:</span> <span class="sx">root</span>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="na">status</span><span class="o">:</span> <span class="sx">done</span>
+<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>  <span class="na">subject</span><span class="o">:</span> <span class="s1">&#39;verse-tutorial.build.&quot;1&quot;&#39;</span>
+</code></pre></div>
+<p>Each node is one action in the charter. Its <code>chain</code> is where that action sits in its rule,
+and a task's <code>id</code> is built from it. The tree is not a second model of the work: it is the
+charter and what has run, read together. Some statuses come from no task, and they are why the
+tree is useful: <code>applied</code> is an action that only set fields, <code>skipped</code> a branch its parent's
+outcome did not choose, and <code>pending</code> one that may still fire
+(<a href="../../reference/action/#seq-sequence-along-the-chain-parallel-across-triggers"><code>seq</code></a>).</p>
+<h2 id="a-cause-not-a-condition">A cause, not a condition<a class="headerlink" href="#a-cause-not-a-condition" title="Permanent link">#</a></h2>
+<p><a href="../charters/#2-a-rule-that-asks-first">The charters page</a> uses <code>when</code>: <em>while</em> CI is green,
+every ready release ships, and one that becomes ready later ships too. <code>on</code> says something
+different: fire <strong>at the moment</strong> the release pipeline goes green, over whatever is waiting then.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>verse<span class="w"> </span>charter<span class="w"> </span>-a<span class="w"> </span>verse-tutorial<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="s">rules:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="s">- name: deploy</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="s">  condition:</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="s">    subject: {path: &quot;verse-tutorial.deploy.*&quot;, value: {stage: waiting}}</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="s">    on:      {path: &quot;verse-tutorial.ci.release&quot;, value: {state: green}}</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="s">  action:</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="s">    patch: {stage: deployed}</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="s">EOF</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>deploy<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: waiting}&#39;</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>ci<span class="w"> </span>release<span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{state: green}&#39;</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>deploy<span class="w"> </span><span class="m">1</span><span class="w">               </span><span class="c1"># stage: deployed</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>deploy<span class="w"> </span><span class="m">2</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: waiting}&#39;</span><span class="w">   </span><span class="c1"># the pipeline is still green…</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>deploy<span class="w"> </span><span class="m">2</span><span class="w">               </span><span class="c1"># …and this one stays waiting</span>
+</code></pre></div>
+<p>The install prints a note about this rule: <code>on</code> covers only the pipeline's data, so a deploy
+that arrives later waits for the pipeline to fall and rise again. Here, that is the point. Verse
+asks <code>on</code> at the previous commit and at this one, and fires on the rising edge. So an edge does not fire
+again while it stays true. And an <code>on</code> rule does not act on the backlog: a predicate that
+already holds never rose. When you mean "whenever this holds", write <code>when</code>.</p>
+<h2 id="reading-something-the-rule-is-not-about">Reading something the rule is not about<a class="headerlink" href="#reading-something-the-rule-is-not-about" title="Permanent link">#</a></h2>
+<p>The expressions of an action read the data the firing is about. To copy from other data, name
+it. Say each repository the team keeps is at <code>verse-tutorial.repo.&lt;name&gt;</code>, with its default
+branch, and each fix names its repository in <code>repo</code>. This action, on a fix, copies the branch the
+fix goes to, and the default branch of every repository:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  <span class="na">patch</span><span class="o">:</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="na">base</span><span class="o">:</span>     <span class="k">!get-path</span> <span class="p">{</span><span class="na">at</span><span class="o">:</span> <span class="p">[</span><span class="sx">verse-tutorial</span><span class="p">,</span> <span class="sx">repo</span><span class="p">,</span> <span class="sx">.[subject.value.repo]</span><span class="p">],</span> <span class="na">path</span><span class="o">:</span> <span class="sx">branch</span><span class="p">}</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="na">branches</span><span class="o">:</span> <span class="k">!list-paths</span> <span class="p">{</span><span class="na">at</span><span class="o">:</span> <span class="s2">&quot;verse-tutorial.repo.*&quot;</span><span class="p">,</span> <span class="na">path</span><span class="o">:</span> <span class="sx">branch</span><span class="p">}</span>
+</code></pre></div>
+<p><code>!get-path</code> answers with one node and <code>!list-paths</code> with a list. Both copy, and neither tracks:
+a later change to the data read does not reach what was written
+(<a href="../../reference/action/#get-path-and-list-paths-reaching-other-data"><code>!get-path</code> and <code>!list-paths</code></a>).</p>
+<h2 id="a-charter-in-a-file">A charter in a file<a class="headerlink" href="#a-charter-in-a-file" title="Permanent link">#</a></h2>
+<p>The rules so far were typed into the shell. A charter you keep is a file. Save the triage rule
+as <code>triage.tony</code>, with one more field, which puts each report in the support queue:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">triage-report</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="na">subject</span><span class="o">:</span> <span class="p">{</span><span class="na">path</span><span class="o">:</span> <span class="s2">&quot;verse-tutorial.report.*&quot;</span><span class="p">,</span> <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">open</span><span class="p">}}</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="na">patch</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">triaged</span><span class="p">,</span> <span class="na">queue</span><span class="o">:</span> <span class="sx">support</span><span class="p">}</span>
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>verse<span class="w"> </span>charter<span class="w"> </span>-a<span class="w"> </span>verse-tutorial<span class="w"> </span>-f<span class="w"> </span>triage.tony
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>package verse-tutorial: installed 1 trigger(s)
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>`verse c` shows every charter and where each may write
+</code></pre></div>
+<p>A file installs as one step: if verse refuses one rule in it, it installs none of them. A rule
+whose name is already installed is replaced, and the other rules stay: <code>triage-report</code> is
+replaced, and <code>review-fix</code>, <code>build</code> and <code>deploy</code> are as they were.</p>
+<p>An install that succeeds may print more lines. Read them:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>  ttl: it is removed at 2026-11-01T09:00:00Z, as -r removes it; installing it again renews it.
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  held: rule triage-intake is waiting for stratum intake. It fires on nothing until then.
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  note: rule approve-deploy: gate &quot;approval&quot; blocks, and its refusal does not advance the subject past its own predicate (stage): …
+</code></pre></div>
+<p><code>ttl:</code> is a charter that stands for a while: a charter file with <code>at:</code> and <code>ttl: 72h</code> is removed
+72 hours after it is installed, as <code>verse charter -r</code> removes it
+(<a href="../../reference/charter/">the charter reference</a>). <code>held:</code> is a rule that names a stratum
+nobody installed: it is stored, and it fires on nothing until the stratum is there. <code>note:</code> is a
+rule that is legal and may not do what you meant; the
+note says why, and usually what to write instead.</p>
+<h2 id="when-a-rule-does-nothing">When a rule does nothing<a class="headerlink" href="#when-a-rule-does-nothing" title="Permanent link">#</a></h2>
+<p>A rule that does nothing may have selected nothing, found its condition false, been denied by
+a gate, or failed. Only the last one is a fault, and verse keeps it on the rule. This rule routes
+each incident to the team for its area, and spells <code>value</code> wrongly:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>verse<span class="w"> </span>charter<span class="w"> </span>-a<span class="w"> </span>verse-tutorial<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="s">rules:</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="s">- name: route</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="s">  condition:</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="s">    subject: {path: &quot;verse-tutorial.incident.*&quot;, value: {stage: open}}</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="s">  action:</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="s">    patch: {stage: routed, team: .[subject.valeu.area]}</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="s">EOF</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>incident<span class="w"> </span><span class="m">1</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open, area: billing}&#39;</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>incident<span class="w"> </span><span class="m">1</span><span class="w">             </span><span class="c1"># stage: open — the rule fired and failed</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>verse<span class="w"> </span>charter<span class="w"> </span>verse-tutorial<span class="w"> </span>rules<span class="w"> </span>route
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="sx">…</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="na">name</span><span class="o">:</span> <span class="sx">route</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="na">trouble</span><span class="o">:</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="p">-</span> <span class="na">at</span><span class="o">:</span> <span class="s2">&quot;…&quot;</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>  <span class="na">chain</span><span class="o">:</span> <span class="sx">route</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>  <span class="na">count</span><span class="o">:</span> <span class="mi">1</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>  <span class="na">kind</span><span class="o">:</span> <span class="sx">failed</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>  <span class="na">subject</span><span class="o">:</span> <span class="s1">&#39;verse-tutorial.incident.&quot;1&quot;&#39;</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>  <span class="na">why</span><span class="o">:</span> <span class="s1">&#39;error evaluating &quot;subject.valeu.area&quot;: no &quot;valeu&quot; in subject&#39;</span>
+</code></pre></div>
+<p><code>verse charter</code> prints a note for every rule in trouble, and <code>verse status</code> counts the failed
+firings. Some mistakes the install does not catch at all, such as a misspelled field inside
+<code>spawn:</code>; <a href="../../reference/charter/#what-an-install-does-not-check">what an install does not check</a>
+lists them, and <a href="../../trigger-model/#when-a-rule-does-nothing">when a rule does nothing</a> says how
+to clear trouble.</p>
+<h2 id="stopping-a-rule">Stopping a rule<a class="headerlink" href="#stopping-a-rule" title="Permanent link">#</a></h2>
+<p>A <a href="../../glossary/#suspension">suspension</a> stops the work about a charter and a subject without
+ending it: firings, tasks and questions. A rule is named with its charter's address:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>verse<span class="w"> </span>flow<span class="w"> </span><span class="nb">suspend</span><span class="w"> </span>-charter<span class="w"> </span>verse-tutorial:triage-report<span class="w"> </span>-why<span class="w"> </span><span class="s2">&quot;reading the triage rule&quot;</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>report<span class="w"> </span><span class="m">2</span><span class="w"> </span>-put<span class="w"> </span><span class="s1">&#39;{stage: open, title: &quot;export times out&quot;}&#39;</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>report<span class="w"> </span><span class="m">2</span><span class="w">               </span><span class="c1"># stage: open: nothing fired</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>verse<span class="w"> </span>flow<span class="w"> </span>-charter<span class="w"> </span>verse-tutorial:triage-report<span class="w"> </span><span class="c1"># held by you, why, since when</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>verse<span class="w"> </span>flow<span class="w"> </span>resume<span class="w"> </span>-charter<span class="w"> </span>verse-tutorial:triage-report
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>verse<span class="w"> </span>data<span class="w"> </span>verse-tutorial<span class="w"> </span>report<span class="w"> </span><span class="m">2</span><span class="w">               </span><span class="c1"># stage: triaged, as it stands now</span>
+</code></pre></div>
+<p>Verse does not replay what happened during the suspension. It acts on the world as it stands
+when the suspension is lifted. <a href="../../control/">Control</a> gives the flags.</p>
+<h2 id="reading-the-rules-back">Reading the rules back<a class="headerlink" href="#reading-the-rules-back" title="Permanent link">#</a></h2>
+<p>Rules install and read back in tony, so inspecting a rule is the same format as writing one:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>verse<span class="w"> </span>charter<span class="w"> </span>verse-tutorial<span class="w">                     </span><span class="c1"># the charter, as the file that installs it</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>verse<span class="w"> </span>charter<span class="w"> </span>verse-tutorial<span class="w"> </span>&gt;<span class="w"> </span>charter.tony<span class="w">      </span><span class="c1"># keep it, edit it, install it again</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>verse<span class="w"> </span>charter<span class="w"> </span>-a<span class="w"> </span>verse-tutorial<span class="w"> </span>-f<span class="w"> </span>charter.tony
+</code></pre></div>
+<p>A charter is durable: each rule and each stratum is data in the store, and a verse that restarts has
+them (<a href="../../reference/charter/#the-charter-is-durable">the charter is durable</a>).</p>
+<p>When you are done with the tutorial, take its charter away. What the charter wrote stays, and
+<code>verse data verse-tutorial -rm</code> takes that away too:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>verse<span class="w"> </span>charter<span class="w"> </span>-r<span class="w"> </span>verse-tutorial
+</code></pre></div>
+<h2 id="where-to-next">Where to next<a class="headerlink" href="#where-to-next" title="Permanent link">#</a></h2>
+<ul>
+<li><a href="../../trigger-model/">The charter reference</a> is the one sentence every rule follows, and
+  the page for each part of a rule.</li>
+</ul></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

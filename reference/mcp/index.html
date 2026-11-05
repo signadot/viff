@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/reference/mcp/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>MCP - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="MCP - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/reference/mcp/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../scopes/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../../groundskeeper/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#mcp" class="nav-link">MCP</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#adding-it-to-a-host" class="nav-link">Adding it to a host</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#who-it-acts-as" class="nav-link">Who it acts as</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#reading-only" class="nav-link">Reading only</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-tools" class="nav-link">The tools</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#prompts" class="nav-link">Prompts</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#waiting" class="nav-link">Waiting</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="mcp">MCP<a class="headerlink" href="#mcp" title="Permanent link">#</a></h1>
+<p><code>verse mcp</code> serves verse to an agent's host, such as Claude Code, over
+<a href="https://modelcontextprotocol.io">MCP</a>. The host starts it and talks to it on stdin and stdout.
+Each tool does what the <code>verse</code> command it is named after does, and answers what that command
+prints.</p>
+<h2 id="adding-it-to-a-host">Adding it to a host<a class="headerlink" href="#adding-it-to-a-host" title="Permanent link">#</a></h2>
+<p>The host runs <code>verse mcp</code> as a command. For Claude Code:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>claude<span class="w"> </span>mcp<span class="w"> </span>add<span class="w"> </span>verse<span class="w"> </span>--<span class="w"> </span>verse<span class="w"> </span>mcp
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>claude<span class="w"> </span>mcp<span class="w"> </span>add<span class="w"> </span>verse-local<span class="w"> </span>-e<span class="w"> </span><span class="nv">VERSE_CONFIG</span><span class="o">=</span><span class="nv">$HOME</span>/.config/verse-local.tony<span class="w"> </span>--<span class="w"> </span>verse<span class="w"> </span>mcp
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>claude<span class="w"> </span>mcp<span class="w"> </span>add<span class="w"> </span>verse-dev<span class="w"> </span>--<span class="w"> </span>verse<span class="w"> </span>--addr<span class="w"> </span>localhost:9797<span class="w"> </span>mcp
+</code></pre></div>
+<p>The server reaches whichever verse <code>verse</code> reaches with the same config and flags.</p>
+<h2 id="who-it-acts-as">Who it acts as<a class="headerlink" href="#who-it-acts-as" title="Permanent link">#</a></h2>
+<p>The server acts as whoever <code>verse</code> acts as where it was started: the config's <code>user:</code>, the
+login, or <code>VERSE_USER</code>. Who that is is fixed when it starts. The login itself is read from
+your tokens file at each request, so a login renewed or made again elsewhere is the one it
+sends, and its own renewals keep what else the file holds. No tool takes an identity, and
+there is no <code>--as</code>, so nothing an agent reads can make it act as somebody else. With nobody
+configured, a tool that writes, and <code>verse_wait</code>, is refused.</p>
+<h2 id="reading-only">Reading only<a class="headerlink" href="#reading-only" title="Permanent link">#</a></h2>
+<p><code>verse mcp -read-only</code> serves the tools that read and nothing else: <code>verse_data</code>,
+<code>verse_question</code>, <code>verse_ask_get</code>, <code>verse_ask_list</code>, <code>verse_wait</code>, <code>verse_task</code>, <code>verse_task_events</code>, <code>verse_flow</code>,
+<code>verse_flow_show</code>, <code>verse_charter</code>, <code>verse_charter_check</code>, <code>verse_status</code> and <code>verse_schema</code>, and
+the prompts. An agent that reads what other people wrote may meet instructions in it. A server
+that offers no write leaves it nothing to follow them with, whatever the host's own permissions
+allow.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>claude<span class="w"> </span>mcp<span class="w"> </span>add<span class="w"> </span>verse-read<span class="w"> </span>--<span class="w"> </span>verse<span class="w"> </span>mcp<span class="w"> </span>-read-only
+</code></pre></div>
+<h2 id="the-tools">The tools<a class="headerlink" href="#the-tools" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>The command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verse_data</code></td>
+<td><code>verse data</code></td>
+<td>reads the data at an address: <code>at</code>, <code>if</code>, <code>if_at</code>, <code>trim</code>, <code>paths</code>, <code>depth</code></td>
+</tr>
+<tr>
+<td><code>verse_data_put</code></td>
+<td><code>verse data &lt;address&gt; --put</code></td>
+<td>writes a value at an address, on <code>create</code>, <code>update</code> or <code>expect</code>, with <code>grants</code> for a node it creates</td>
+</tr>
+<tr>
+<td><code>verse_data_rm</code></td>
+<td><code>verse data &lt;address&gt; --rm</code></td>
+<td>removes the data at an address, or one field of it</td>
+</tr>
+<tr>
+<td><code>verse_question</code></td>
+<td><code>verse question</code></td>
+<td>lists the questions waiting on you, or shows one by <code>id</code></td>
+</tr>
+<tr>
+<td><code>verse_question_answer</code></td>
+<td><code>verse question &lt;id&gt; --answer</code></td>
+<td>answers a question with an <code>option</code></td>
+</tr>
+<tr>
+<td><code>verse_ask_get</code></td>
+<td><code>verse ask &lt;name\|id&gt;</code></td>
+<td>shows one of your asks, by name or id</td>
+</tr>
+<tr>
+<td><code>verse_ask_list</code></td>
+<td><code>verse ask</code></td>
+<td>lists your asks</td>
+</tr>
+<tr>
+<td><code>verse_ask_create</code></td>
+<td><code>verse ask [&lt;name&gt;] -q</code></td>
+<td>asks someone: <code>question</code>, <code>name</code>, <code>to</code>, <code>due</code>, <code>on</code>, …</td>
+</tr>
+<tr>
+<td><code>verse_ask_change</code></td>
+<td><code>verse ask &lt;name&gt; --due …</code></td>
+<td>moves or changes an ask</td>
+</tr>
+<tr>
+<td><code>verse_ask_withdraw</code></td>
+<td><code>verse ask &lt;name&gt; --withdraw</code></td>
+<td>withdraws an ask</td>
+</tr>
+<tr>
+<td><code>verse_wait</code></td>
+<td><code>verse ask --watch</code>, <code>verse question --watch</code></td>
+<td>waits for an ask of yours or a question for you to change</td>
+</tr>
+<tr>
+<td><code>verse_task</code></td>
+<td><code>verse task</code></td>
+<td>lists tasks, or shows one by <code>id</code></td>
+</tr>
+<tr>
+<td><code>verse_task_events</code></td>
+<td><code>verse task attach</code></td>
+<td>reads a task's transcript from a cursor</td>
+</tr>
+<tr>
+<td><code>verse_task_run</code></td>
+<td><code>verse task run -f</code></td>
+<td>runs a <code>spawn</code>: a prompt or a script, its environment and its autonomy</td>
+</tr>
+<tr>
+<td><code>verse_task_autonomy</code></td>
+<td><code>verse task autonomy</code></td>
+<td>replaces a running task's autonomy</td>
+</tr>
+<tr>
+<td><code>verse_flow_suspend</code></td>
+<td><code>verse flow suspend</code></td>
+<td>holds one task, or suspends a charter's work about a subject, with <code>why</code></td>
+</tr>
+<tr>
+<td><code>verse_flow_resume</code></td>
+<td><code>verse flow resume</code></td>
+<td>lets a held task go, or lifts the suspension the same selection made</td>
+</tr>
+<tr>
+<td><code>verse_flow_say</code></td>
+<td><code>verse flow say</code></td>
+<td>says something to every live task a selection names, at its next boundary</td>
+</tr>
+<tr>
+<td><code>verse_flow_cancel</code></td>
+<td><code>verse flow cancel --task</code></td>
+<td>cancels a task</td>
+</tr>
+<tr>
+<td><code>verse_flow</code></td>
+<td><code>verse flow</code></td>
+<td>lists the live tasks and suspensions a selection names</td>
+</tr>
+<tr>
+<td><code>verse_flow_show</code></td>
+<td><code>verse flow show</code></td>
+<td>draws a subject's work as a tree, and what suspends it</td>
+</tr>
+<tr>
+<td><code>verse_charter</code></td>
+<td><code>verse charter</code></td>
+<td>reads the charter at a path: the file, a rule or level of it, or its <code>paths</code></td>
+</tr>
+<tr>
+<td><code>verse_charter_check</code></td>
+<td><code>verse charter --check</code></td>
+<td>says whether charters would install at an address, and what would change</td>
+</tr>
+<tr>
+<td><code>verse_charter_install</code></td>
+<td><code>verse charter -a</code></td>
+<td>installs a charter, a rule or a list of them at an address, or several charters each at its own <code>at:</code>; with <code>prune</code>, what they leave out at and under the address goes; with <code>wait</code>, the answer is held that long for the rules to arm</td>
+</tr>
+<tr>
+<td><code>verse_charter_remove</code></td>
+<td><code>verse charter -r</code></td>
+<td>removes a package, or one rule, level or schedule of one</td>
+</tr>
+<tr>
+<td><code>verse_status</code></td>
+<td><code>verse status</code></td>
+<td>says what the verse is running, and what went wrong at its firings</td>
+</tr>
+<tr>
+<td><code>verse_schema</code></td>
+<td><code>verse schema</code></td>
+<td>prints the schema, or one definition of it</td>
+</tr>
+</tbody>
+</table>
+<p>Every tool's parameters are described in its schema, which the host shows the agent.</p>
+<p>A charter path is a kinded path, as a <code>paths</code> listing answers it: <code>verse-dev.drift.rules.watcher</code>.
+Where the address ends is the server's to work out. When it cannot, because a package's address
+ends in <code>rules</code>, <code>strata</code> or <code>schedules</code>, <code>at</code> says where, as <code>--</code> does on the command line.
+<code>verse_charter_check</code> and <code>verse_charter_install</code> take the charters as tony text, separated by
+<code>---</code> lines when there are several. Several charters each say their own <code>at:</code>, as files in a
+directory do. A place and everything under it is removed from the command line, with
+<code>verse charter -R</code>; no tool does it.</p>
+<p>The flow verbs take a selection as <code>verse flow</code>'s flags give it: <code>task</code>, or <code>charter</code>
+(<code>&lt;address&gt;[:&lt;rule&gt;]</code>, with <code>recursive</code> for the charters beneath it) and <code>subject</code>, the one left
+out being every one. <code>verse_flow_cancel</code> takes a task alone: a charter's or a subject's work is
+suspended, then its tasks cancelled one by one.</p>
+<p>An answer is at most 64 KiB. A read that would be longer is refused, never cut, with what to
+narrow: a deeper address, <code>if</code>, <code>trim</code>, or <code>paths</code>. The two tools that wait answer in parts
+instead, each going on from the cursor of the last.</p>
+<h2 id="prompts">Prompts<a class="headerlink" href="#prompts" title="Permanent link">#</a></h2>
+<p>Two prompts tell the agent which reads answer a question, and what to make of them. They read
+nothing themselves; the agent's calls do.</p>
+<table>
+<thead>
+<tr>
+<th>Prompt</th>
+<th>Arguments</th>
+<th>What it asks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>explain-charter</code></td>
+<td><code>address</code></td>
+<td>the charter's rules and levels, what each rule selects now, and what they have spawned</td>
+</tr>
+<tr>
+<td><code>why-not</code></td>
+<td><code>rule</code> (<code>&lt;address&gt;:&lt;rule&gt;</code>), <code>subject</code></td>
+<td>why the rule has not acted on the subject: its condition against the subject's record, and the questions, suspensions and trouble standing on it</td>
+</tr>
+</tbody>
+</table>
+<h2 id="waiting">Waiting<a class="headerlink" href="#waiting" title="Permanent link">#</a></h2>
+<p>Two tools wait, and answer a <strong>cursor</strong> to pass back as <code>since</code> on the next call. A call from a
+cursor answers everything after it, so nothing that happens between two calls is missed, and
+nothing is answered twice. Each answers as text and as structured content alike, the lines or
+frames with the cursor, since a host may show the agent only one of them.</p>
+<p><code>verse_wait</code> answers what <code>verse ask --watch</code> and <code>verse question --watch</code> print: an ask of
+yours asked, answered, asked again or gone, and a question starting to wait on you or settling.
+It answers at once when there is something after <code>since</code>, otherwise at the next thing, or with
+nothing at the <code>timeout</code> (300 seconds by default, at most 3600). The server opens one watch on
+the first call and keeps it until it ends, and remembers the last 1024 lines. A cursor older
+than that is refused, and so is one from an earlier server, after the host has started it
+again; call without <code>since</code>, and read <code>verse_question</code> and <code>verse_ask_list</code>, to catch up.</p>
+<p><code>verse_task_events</code> answers a task's transcript, frame by frame. It says when the task has
+ended, after which nothing follows. A stream that closes while the task still runs is said,
+and the next call from the cursor goes on.</p>
+<p>Only these two watch, and each is narrow: your own asks and questions, or one task. There is no
+tool that watches all tasks or the data, since a watch that wide costs the verse more than one
+agent's session is worth.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

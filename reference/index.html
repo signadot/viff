@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/reference/">
+        <link rel="icon" href="../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+
+        <title>Commands and the rest - Verse</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link href="../pygments.css" rel="stylesheet">
+        <link href="../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Commands and the rest - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/reference/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href=".."><img src="../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../trigger-model/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" class="nav-link disabled">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#commands-and-the-rest" class="nav-link">Commands and the rest</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#commands" class="nav-link">Commands</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#selecting-by-what-the-data-says" class="nav-link">Selecting by what the data says</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-scripts" class="nav-link">The scripts</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#use-verse" class="nav-link">Use verse</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#charters" class="nav-link">Charters</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#elsewhere" class="nav-link">Elsewhere</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="commands-and-the-rest">Commands and the rest<a class="headerlink" href="#commands-and-the-rest" title="Permanent link">#</a></h1>
+<p>This page has every command, how to select by what the data says, and the scripts that seed a
+verse. What a charter says is in <a href="../trigger-model/">the charter reference</a>, and the
+<a href="../tutorial/">tutorial</a> walks through all of it. Running a verse, runners, iods and
+resolvers are in <a href="https://github.com/signadot/verse/blob/main/docs/platform.md">the platform docs</a>, in the repository. For the map of all
+the docs, see <a href="../">the docs index</a>.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="tasks/">tasks.md</a></td>
+<td>the task surface: the work, the agent, the environment, the autonomy, attaching, the mirror, and steering</td>
+</tr>
+<tr>
+<td><a href="mcp/">mcp.md</a></td>
+<td><code>verse mcp</code>: verse to an agent's host, as you, the tools it serves and how they wait</td>
+</tr>
+<tr>
+<td><a href="scopes/">scopes.md</a></td>
+<td>scopes: a private copy of the store, what runs in it, and what it owns</td>
+</tr>
+<tr>
+<td><a href="entities/">entities.md</a></td>
+<td>addresses, payloads, merging writes, conditional writes, selection, and watching</td>
+</tr>
+<tr>
+<td><a href="perms/">perms.md</a></td>
+<td>permissions in detail: the grammar, the fields of a record, what verse checks on a write and a read, installed things, questions, the seed, and <code>verse perms</code>. The model itself is in <a href="../perms/">../perms.md</a>.</td>
+</tr>
+<tr>
+<td><a href="representation/">representation.md</a></td>
+<td>tony, JSON and YAML: what verse reads, what it writes, and why the two differ</td>
+</tr>
+</tbody>
+</table>
+<h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">#</a></h2>
+<p>Every command is <code>verse &lt;command&gt;</code>. Each collection is one command, named in the singular:
+bare, it lists; with a verb, it acts on one member. <code>verse question</code> lists the questions
+waiting on you, and <code>verse question approve &lt;id&gt;</code> answers one. The plural is an alias of the
+same command (<code>verse questions</code>, <code>verse tasks</code>). <code>verse question list</code> is an error: bare, it
+already lists.</p>
+<p>Flags may come before or after positionals: <code>question approve &lt;id&gt; -as you@example.com -say ok</code>
+works. A <code>&lt;who&gt;</code> is a <a href="../glossary/#principal">principal</a> in the
+<a href="../perms/#principals-and-grantees">grammar</a>: <code>user:&lt;email&gt;</code> or the bare email,
+<code>agent:&lt;name&gt;</code>, or <code>runner:&lt;identity&gt;</code>.</p>
+<p>The commands that start and stop a verse, and that install runners, iods and resolvers, are
+for somebody who runs verse. They are in <a href="https://github.com/signadot/verse/blob/main/docs/platform/commands.md">commands.md</a>, in the
+repository.</p>
+<h3 id="every-listing-filters">Every listing filters<a class="headerlink" href="#every-listing-filters" title="Permanent link">#</a></h3>
+<p>Every listing takes the same two flags. They combine, and an empty result is an answer, not an
+error (exit 0).</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-if &lt;match&gt;</code></td>
+<td>keeps the items that match</td>
+</tr>
+<tr>
+<td><code>-trim &lt;match&gt;</code></td>
+<td>writes only the parts the document names</td>
+</tr>
+</tbody>
+</table>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>verse<span class="w"> </span>ps<span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{status: running}&#39;</span><span class="w"> </span>-trim<span class="w"> </span><span class="s1">&#39;{id status}&#39;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-trim<span class="w"> </span><span class="s1">&#39;{stage}&#39;</span><span class="w">         </span><span class="c1"># per pr: the `*` makes each one an item</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>verse<span class="w"> </span>watch<span class="w"> </span>demo<span class="w"> </span>-trim<span class="w"> </span><span class="s1">&#39;{at to}&#39;</span>
+</code></pre></div>
+<p>Write a <code>-trim</code> document as a <strong>key set</strong>: in braces, a key with no <code>:</code> and no value is that
+key with a null. <code>{id status}</code> and <code>{id: null, status: null}</code> are the same document; type the
+first.</p>
+<p>In <code>-if</code>, the same spelling is a <strong>presence</strong> test, because a null matches any value.
+<code>-if '{status}'</code> keeps every item that has a <code>status</code>, whatever it says. It is not
+equality: <code>-if '{status open}'</code> tests for two keys, <code>status</code> and <code>open</code>. A key nothing has
+selects nothing, so that mistake gives an empty answer, not a wrong one.</p>
+<p>On <code>data</code> and <code>watch</code>, <code>-if</code> is the server's selector: it decides which addresses the read is
+about before any data crosses the wire. So those two take <code>-trim</code> alone
+(<a href="#selecting-by-what-the-data-says">selecting by what the data says</a>).</p>
+<p>Comments need no flag: verse reads and writes them everywhere.</p>
+<h3 id="status-schema">status, schema<a class="headerlink" href="#status-schema" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>status</code></td>
+<td>the engine and the store, now. <code>restoring:</code> names the parts of a start that are still waiting on the store; <code>arming:</code> under a charter names armed rules whose watch the store is still opening, with what it is doing for each — in line, opening it, opening it again after a drop, or refused and asking again — and <code>pending:</code> the rules held for something else — a stratum, a runner — with what each waits for. All are absent on a verse that is up.</td>
+</tr>
+<tr>
+<td><code>schema [&lt;name&gt;]</code></td>
+<td>the whole schema: the root, by top-level path, then every shape it names. A name prints that one definition.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="data-d">data (d)<a class="headerlink" href="#data-d" title="Permanent link">#</a></h3>
+<p><code>data</code> answers <strong>one document</strong> at a path, not a list, so it has no plural. What to do is a
+flag, so its positional is always a path. The path is given as <strong>steps</strong>, one place per word
+(<a href="entities/#addressing">addressing</a>):</p>
+<table>
+<thead>
+<tr>
+<th>Steps</th>
+<th>What they name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>demo pr 1</code> · <code>demo pr 1 labels urgent</code></td>
+<td>names</td>
+</tr>
+<tr>
+<td><code>demo pr 1 votes '[0]'</code></td>
+<td>an array index (also <code>{0}</code>)</td>
+</tr>
+<tr>
+<td><code>demo pr '*'</code></td>
+<td>any one segment</td>
+</tr>
+<tr>
+<td><code>demo pr 1 '"[0]"'</code></td>
+<td>the field named <code>[0]</code></td>
+</tr>
+<tr>
+<td><code>demo pr '"*"'</code></td>
+<td>the name that is <code>*</code></td>
+</tr>
+<tr>
+<td>(none)</td>
+<td>the whole verse</td>
+</tr>
+</tbody>
+</table>
+<p>A path nothing stands at is a non-zero exit. An empty <code>{}</code> with exit 0 means the path stands
+and <code>-if</code> kept none of it.</p>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>data &lt;step&gt;…</code></td>
+<td>the verse at that address</td>
+</tr>
+<tr>
+<td><code>data -at &lt;path&gt;</code></td>
+<td>the same, as one kinded path: <code>demo.pr.1</code>, <code>'demo.pr.*.stage'</code></td>
+</tr>
+<tr>
+<td><code>data … -if &lt;pat&gt; [-if-at &lt;path&gt;]</code></td>
+<td>only the data whose payload matches</td>
+</tr>
+<tr>
+<td><code>data … -paths [-depth &lt;n&gt;]</code></td>
+<td>every address under the one asked for, one per line, as steps. <code>-depth</code> walks at most <code>&lt;n&gt;</code> levels beneath the address: <code>0</code> is the address alone (default: no limit).</td>
+</tr>
+<tr>
+<td><code>data … -kpaths</code></td>
+<td>the same listing, one kinded path per line</td>
+</tr>
+<tr>
+<td><code>data … -put &lt;payload&gt;</code></td>
+<td>write it there. A put merges (<a href="entities/#writing">writing</a>).</td>
+</tr>
+<tr>
+<td><code>data … -put -create</code> · <code>-put -update</code></td>
+<td>only if nothing is there yet · only if something is</td>
+</tr>
+<tr>
+<td><code>data … -put -expect &lt;pattern&gt;</code></td>
+<td>only if what is there matches</td>
+</tr>
+<tr>
+<td><code>data … -put -grants &lt;list&gt;</code></td>
+<td>create it holding out this list (as <code>perms -grants</code> takes it; <code>[]</code> for nothing) in place of child-grants. Refused where something stands (<a href="entities/#creating-with-grants">creating with grants</a>).</td>
+</tr>
+<tr>
+<td><code>data … -rm</code> (<code>-r</code>)</td>
+<td>remove what stands there: the data at the address, or one field of it. <code>-put</code> has no short form, because <code>-p</code> next to <code>-paths</code> is a slip that writes.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="watch">watch<a class="headerlink" href="#watch" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watch [&lt;path&gt;]</code></td>
+<td>stream changes to the store, with a cursor. It names the same addresses as a read, and is refused the same way: a path nothing stands at is a non-zero exit, not a stream that never carries anything.</td>
+</tr>
+<tr>
+<td><code>-since &lt;rev&gt;</code></td>
+<td>start from a revision</td>
+</tr>
+<tr>
+<td><code>-wait-if-absent</code></td>
+<td>watch a path that holds nothing yet, and report when a value arrives. You ask for it, because a mistyped address held open looks exactly like a quiet verse.</td>
+</tr>
+<tr>
+<td><code>-init</code> · <code>-no-init</code></td>
+<td>open with what already stands at the path, then the changes (the default) · stream from now (<a href="entities/#watching">watching</a>)</td>
+</tr>
+<tr>
+<td><code>-ago &lt;n&gt;</code></td>
+<td>the last <code>&lt;n&gt;</code> commits the store keeps (<a href="entities/#watching">watching</a>)</td>
+</tr>
+<tr>
+<td><code>-if &lt;pat&gt; [-if-at &lt;field.path&gt;]</code></td>
+<td>only changes whose payload matches</td>
+</tr>
+<tr>
+<td><code>-until &lt;pat&gt;</code></td>
+<td>stop at the first frame matching <code>&lt;pat&gt;</code>, after printing it. The pattern is over the frame. Exit 0 whether or not it matched.</td>
+</tr>
+<tr>
+<td><code>-nowire</code></td>
+<td>print each frame as a block opened by <code>---</code>, not on one line. The default, one frame per line, is for <code>grep</code>; this is for a person reading. The output is a tony document stream either way.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="question-questions-qs-gate-gates">question (questions, qs, gate, gates)<a class="headerlink" href="#question-questions-qs-gate-gates" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>question</code></td>
+<td>the questions waiting on you: each ask whose <code>waitingOn</code> names you and that you did not raise, with its options and ballots. One a resolver serves for you is left out.</td>
+</tr>
+<tr>
+<td><code>question -served</code></td>
+<td>those too, each marked <code>servedBy</code></td>
+</tr>
+<tr>
+<td><code>question -all</code></td>
+<td>the docket: every pending ask you can read, whoever raised it and whoever it waits on</td>
+</tr>
+<tr>
+<td><code>question &lt;id&gt;</code></td>
+<td>that one record, as it stands: options, ballots, deadline, outcome</td>
+</tr>
+<tr>
+<td><code>question &lt;id&gt; -answer &lt;option&gt; -as &lt;who&gt; [-say &lt;text&gt;] [-force]</code></td>
+<td>answer by option. A yes-or-no question's options are <code>proceed</code> and <code>deny</code>; a selection's are its doers. A question that needs more than one voice records the ballot and says where the tally stands (<code>1 of 2 for proceed</code>). <code>-force</code> answers one a resolver serves for you.</td>
+</tr>
+<tr>
+<td><code>question approve &lt;id&gt; [-say &lt;text&gt;]</code> · <code>deny &lt;id&gt; [-say &lt;text&gt;]</code></td>
+<td>the two default options, as verbs. Also <code>y</code>, <code>yes</code> · <code>n</code>, <code>no</code>; <code>-s</code> for <code>-say</code>.</td>
+</tr>
+<tr>
+<td><code>question -watch [-since &lt;rev&gt;] [-notify]</code></td>
+<td>a line when a question starts waiting on you, and when it settles. Runs until stopped. <code>-since</code> replays from a revision, as far back as the store keeps its log. <code>-notify</code> also says it on the desktop (D-Bus on Linux and the BSDs, Notification Center on macOS): urgent when a question starts waiting, closed when it settles, one summary for what stood when the watch opened (<a href="../asking/">asking</a>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ask-asks">ask (asks)<a class="headerlink" href="#ask-asks" title="Permanent link">#</a></h3>
+<p>Your own questions to somebody, with a date (<a href="../asking/">asking</a>).</p>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ask</code></td>
+<td>your asks: each with its id, question, who is asked, its date, its <code>status</code>, and its answer, <code>pending</code> until it settles. One that settled with no answer (<code>orphaned</code>) says <code>why</code>.</td>
+</tr>
+<tr>
+<td><code>ask &lt;name\|id&gt;</code></td>
+<td>that one, and whom it waits on. A name used for two asks is refused with both ids. Whoever it asks answers with <code>question &lt;id&gt; -answer</code>.</td>
+</tr>
+<tr>
+<td><code>ask [&lt;name&gt;] -question (-q) &lt;text&gt; [-to &lt;who&gt;,…] [-due &lt;when&gt; [-on-silence proceed\|deny]] [-on &lt;rows&gt;] [-about &lt;path&gt;] [-label &lt;name&gt;=&lt;value&gt;,…] [-keep &lt;duration&gt;]</code></td>
+<td>ask it, under an id derived from the name, or <code>run-&lt;nonce&gt;</code> without one. <code>-to</code> uses the grammar of a grant. <code>-due</code> is RFC 3339 or a duration from now (<code>48h</code>). <code>-on-silence</code> is the option it settles on when nobody answers by then: <code>deny</code> (the default) or <code>proceed</code>. <code>-label</code> is what the ask says about itself for whoever watches asks (<code>team=payments,kind=deploy</code>). <code>-on</code> is what follows the answer: rows read in order, each <code>{match, then}</code>, the first whose match meets the answer running its <code>then</code>, which is one key, <code>{spawn: {...}}</code> (a spawn as a charter writes one), <code>{answer: {ask, choice}}</code> or <code>{ask: {...}}</code>, or <code>null</code> for nothing; <code>-</code> / <code>@&lt;file&gt;</code> reads it (<a href="../asking/#what-follows-the-answer">asking</a>). <code>-keep</code> is how long it stands once settled (default a week).</td>
+</tr>
+<tr>
+<td><code>ask &lt;name\|id&gt; -due &lt;when&gt;</code></td>
+<td>move its date while it waits; asks nothing again</td>
+</tr>
+<tr>
+<td><code>ask &lt;name\|id&gt; -on &lt;rows&gt;</code> · <code>-to &lt;who&gt;,…</code></td>
+<td>change what it asks while it waits. It is asked again, and answers to the earlier version do not count.</td>
+</tr>
+<tr>
+<td><code>ask &lt;name\|id&gt; -withdraw</code></td>
+<td>take it back: off the docket, and removed</td>
+</tr>
+<tr>
+<td><code>ask -watch [-since &lt;rev&gt;] [-notify]</code></td>
+<td>a line when an ask of yours is made, made again, settled or withdrawn. What waits on you is <code>question -watch</code>. <code>-notify</code> also says on the desktop when an ask of yours is answered (<a href="../asking/">asking</a>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="charter-charters-c">charter (charters, c)<a class="headerlink" href="#charter-charters-c" title="Permanent link">#</a></h3>
+<p>A charter file is one document. <code>at:</code> is where its rules write, <code>reads:</code> what they may read
+besides, <code>sends:</code> the outboxes an iod reads, <code>ttl:</code> how long it stands, and <code>strata:</code>,
+<code>schedules:</code> and <code>rules:</code> what it holds. A bare rule, or a list of
+them, installs at the path. A directory of charter files is several packages
+(<a href="charter/#a-charter-can-be-installed-at-an-address">the charter</a>).</p>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>charter [&lt;path&gt;]</code></td>
+<td>the charter at a path, printed as the file that installs it (<code>at:</code> and all). stderr names the charters under it, marks rules that are held, suspended, in trouble or installed by a task, and says when a ttl ends. Bare: baseline's.</td>
+</tr>
+<tr>
+<td><code>charter [&lt;path&gt;] -d &lt;dir&gt;</code></td>
+<td>every charter at or under the path, one file each: <code>&lt;dir&gt;/&lt;address as directories&gt;/charter.tony</code></td>
+</tr>
+<tr>
+<td><code>-depth &lt;n&gt;</code></td>
+<td>how far under it to go: <code>0</code> is that address alone, <code>-1</code> (the default) everything</td>
+</tr>
+<tr>
+<td><code>-scope &lt;name&gt;</code></td>
+<td>a scope's own charter instead</td>
+</tr>
+<tr>
+<td><code>-paths</code> · <code>-kpaths</code></td>
+<td>one line per rule and level, instead of the document. <code>-paths</code> answers in steps, so <code>c -paths \| xargs -L1 verse c</code> round-trips; <code>-kpaths</code> in one kinded path per line. A package that holds nothing yet prints itself.</td>
+</tr>
+<tr>
+<td><code>charter &lt;address&gt; rules\|strata\|schedules [&lt;name&gt;]</code></td>
+<td>into the node there: its rules, its levels, one by name, and on into that one (<code>c repos.verse.drift rules claim action</code>). <code>c rules claim</code> is baseline's. A name that is elsewhere is named in the refusal, with the path that reaches it.</td>
+</tr>
+<tr>
+<td><code>charter -a [&lt;address&gt;] -f &lt;file&gt;\|-</code></td>
+<td><strong>install</strong> one charter from one file, as one step. Applying an edited file again is how a charter changes.</td>
+</tr>
+<tr>
+<td><code>charter -a -d &lt;dir&gt;</code></td>
+<td>every charter file under the directory, each at its own <code>at:</code>, all or none</td>
+</tr>
+<tr>
+<td><code>charter -a &lt;address&gt; -d &lt;dir&gt; -prune</code></td>
+<td>the same, and <strong>remove</strong> what the directory leaves out at and under the address: <code>-R</code> then <code>-a -d</code>, as one step</td>
+</tr>
+<tr>
+<td><code>charter -check &lt;address&gt; -d &lt;dir&gt;</code> · <code>-check &lt;address&gt; -f &lt;file&gt;</code></td>
+<td>whether the charters would install as <code>-a &lt;address&gt; -d &lt;dir&gt; -prune</code> installs them, and what would change, installing nothing. <code>-f</code> is a directory holding that one file. A refusal is the answer, so the command succeeds either way (<a href="charter/">the charter</a>).</td>
+</tr>
+<tr>
+<td><code>charter -a -scope &lt;name&gt;</code></td>
+<td>into a scope's own charter</td>
+</tr>
+<tr>
+<td><code>charter -r &lt;path&gt;</code></td>
+<td><strong>remove</strong> what the path names: a package, or one rule or level in it (<code>c -r repos.verse.drift rules claim</code>)</td>
+</tr>
+<tr>
+<td><code>charter -R &lt;address&gt;</code></td>
+<td>the charter there and every charter under it. (<code>-R</code> is not <code>rm -r</code>: <code>-r</code> is the removal.)</td>
+</tr>
+<tr>
+<td><code>charter &lt;address&gt; -- rules\|strata\|schedules</code></td>
+<td>where the address ends, for a package whose own address ends in <code>rules</code> or <code>strata</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="task-tasks-ps">task (tasks, ps)<a class="headerlink" href="#task-tasks-ps" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>task [-runner &lt;ref&gt;]</code></td>
+<td>every task, whatever runs it</td>
+</tr>
+<tr>
+<td><code>task run -f &lt;spawn&gt; [-name &lt;label&gt;] [-wait]</code></td>
+<td>run one: a spawn as a charter writes one, from a file or <code>-</code> for stdin. Verse routes it to a runner that offers its doer, and it is mirrored.</td>
+</tr>
+<tr>
+<td><code>task run … -attach [-no-converse]</code></td>
+<td>a conversation: the turn is yours whenever the model goes quiet. Ctrl-D ends it.</td>
+</tr>
+<tr>
+<td><code>task run … -name &lt;label&gt; -as &lt;who&gt;</code></td>
+<td>what the run is called, and who it is. What it is about, what it may reach and do, its answer and its credential are keys of the spawn (<code>subject</code>, <code>environment</code>, <code>autonomy</code>, <code>answer</code>, <code>virtualKey</code>); where it runs is verse's to say</td>
+</tr>
+<tr>
+<td><code>task get &lt;id&gt;</code> · <code>task attach &lt;id&gt;</code></td>
+<td>the operator's view, for any backend. <code>attach</code> prompts for each gate, and for a question asked in words, with an identity.</td>
+</tr>
+<tr>
+<td><code>task cancel &lt;id&gt;</code> · <code>task say &lt;id&gt; &lt;text…&gt;</code></td>
+<td>end it · tell it something</td>
+</tr>
+<tr>
+<td><code>task autonomy &lt;id&gt; &lt;rows&gt; [-as &lt;who&gt;]</code> · <code>task autonomy &lt;id&gt; -file &lt;f&gt;</code></td>
+<td>replace its autonomy with a whole one, each row reaching what its environment gives</td>
+</tr>
+<tr>
+<td><code>task approve\|deny &lt;id&gt; &lt;decision&gt; [-say &lt;text&gt;]</code></td>
+<td>answer its gate (also <code>y</code>, <code>yes</code>, <code>n</code>, <code>no</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><a href="tasks/">Tasks</a> has the whole task surface.</p>
+<h3 id="group-groups">group (groups)<a class="headerlink" href="#group-groups" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>group add &lt;name&gt; &lt;member&gt;…</code> · <code>show &lt;name&gt;</code> · <code>remove &lt;name&gt;</code></td>
+<td>named sets of grantees, granted as <code>group:&lt;name&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="perms">perms<a class="headerlink" href="#perms" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>perms [-if &lt;pattern&gt;] [-trim &lt;match&gt;]</code></td>
+<td>the records of every node you may read: who owns what you can see, and what it holds out</td>
+</tr>
+<tr>
+<td><code>perms &lt;step&gt;… [-child-grants '{…}'] [-grants '[…]'] [-grant '{…}' [-below]] [-revoke '{…}']</code></td>
+<td>one node's record. With no flags, read it. As its owner, take the place and set what it, and what is created under it, holds out.</td>
+</tr>
+<tr>
+<td><code>perms -root [the same flags]</code></td>
+<td>the root's record, whose address is the empty path</td>
+</tr>
+</tbody>
+</table>
+<h3 id="flow-flows">flow (flows)<a class="headerlink" href="#flow-flows" title="Permanent link">#</a></h3>
+<p>Live tasks and suspensions, narrowed by flags (<a href="../control/">control</a>). Of <code>-charter</code> and
+<code>-subject</code>, the one left out is <code>'*'</code>. A verb that names nothing prints its usage and does
+nothing.</p>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>flow -task &lt;id&gt;</code></td>
+<td>that run only; combines with neither of the others</td>
+</tr>
+<tr>
+<td><code>flow -charter &lt;address&gt;[:&lt;rule&gt;]</code></td>
+<td>a charter, and one rule of it: <code>repos.verse.drift:claim</code>, <code>:review</code> (baseline's), <code>'*'</code> (every charter)</td>
+</tr>
+<tr>
+<td><code>flow … -r</code> (<code>-recursive</code>)</td>
+<td>and every charter installed beneath the address</td>
+</tr>
+<tr>
+<td><code>flow -subject &lt;address&gt;</code></td>
+<td>a selector, <code>*</code> open in any segment: <code>demo.pr.*</code>, <code>demo.*.1</code>, <code>'*'</code>. Quote it.</td>
+</tr>
+<tr>
+<td><code>flow … -args</code></td>
+<td>each row as the flags that name it, for <code>xargs -L1</code></td>
+</tr>
+<tr>
+<td><code>flow suspend -task &lt;id&gt; \| [-charter …] [-subject …] -why &lt;text&gt; [-as &lt;who&gt;]</code></td>
+<td>hold that run at its next boundary, or suspend the work about a charter and a subject until resumed</td>
+</tr>
+<tr>
+<td><code>flow resume -task &lt;id&gt; \| [-charter …] [-subject …] [-as &lt;who&gt;]</code></td>
+<td>lift the hold or the suspension. <code>-task</code> is refused while a suspension holds the run.</td>
+</tr>
+<tr>
+<td><code>flow say -task \| -charter \| -subject &lt;text…&gt;</code></td>
+<td>an instruction to what they name</td>
+</tr>
+<tr>
+<td><code>flow cancel -task &lt;id&gt;</code></td>
+<td>end that run (destructive)</td>
+</tr>
+<tr>
+<td><code>flow show &lt;addr&gt; [-active \| -no-active]</code></td>
+<td>a subject's flow as a tree, and what suspends it, a held subject with no work included. <code>-active</code> only those with a live task, <code>-no-active</code> only the rest.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="schedule-schedules">schedule (schedules)<a class="headerlink" href="#schedule-schedules" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schedule</code></td>
+<td>the schedules the verse ticks on: period, next, the tick standing. <code>minutely</code>, <code>hourly</code>, <code>daily</code> and <code>weekly</code> come with it.</td>
+</tr>
+<tr>
+<td><code>schedule tick &lt;name&gt; -due &lt;instant&gt; [-at &lt;address&gt;]</code></td>
+<td>write the tick for a past instant, as the schedule would have. A rule about it fires as it would have.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="global-flags">Global flags<a class="headerlink" href="#global-flags" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-addr &lt;host:port&gt;</code></td>
+<td>the verse to talk to</td>
+</tr>
+<tr>
+<td><code>-scope &lt;name&gt;</code></td>
+<td>work in a copy-on-write scope</td>
+</tr>
+<tr>
+<td><code>-ofmt</code>, <code>-o &lt;tony\|yaml&gt;</code></td>
+<td>output format (default tony; verse renders no JSON)</td>
+</tr>
+<tr>
+<td><code>-ifmt</code>, <code>-i &lt;tony\|json\|yaml&gt;</code></td>
+<td>input format for stdin and files with no extension</td>
+</tr>
+<tr>
+<td><code>-color auto\|always\|never</code></td>
+<td>color (auto: only on a terminal)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="selecting-by-what-the-data-says">Selecting by what the data says<a class="headerlink" href="#selecting-by-what-the-data-says" title="Permanent link">#</a></h2>
+<p>The <a href="../glossary/#address">address</a> narrows by where the data lives. <code>-if</code> narrows by what
+the data says. <code>-if</code> is a tony match against the <a href="../glossary/#payload">payload</a>. It is the
+same <a href="../glossary/#predicate">predicate</a> that a charter carries in <code>value</code>, in its <code>subject</code>,
+its <code>on</code> or its <code>when</code>. So <code>verse data demo pr '*' -if X</code> names exactly what a rule with the
+subject <code>{path: "demo.pr.*", value: X}</code> would select.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{stage: !or [open, merged]}&#39;</span><span class="w">   </span><span class="c1"># an operator, not just equality</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>verse<span class="w"> </span>data<span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{urgent: true}&#39;</span><span class="w"> </span>-if-at<span class="w"> </span>labels<span class="w">  </span><span class="c1"># rooted inside the payload</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>verse<span class="w"> </span>watch<span class="w"> </span>-if<span class="w"> </span><span class="s1">&#39;{stage: open}&#39;</span><span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">     </span><span class="c1"># the same selector, as it happens</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>verse<span class="w"> </span>watch<span class="w"> </span>-until<span class="w"> </span><span class="s1">&#39;{to: {stage: merged}}&#39;</span><span class="w"> </span>demo<span class="w"> </span>pr<span class="w"> </span><span class="s1">&#39;*&#39;</span><span class="w">  </span><span class="c1"># …until one of them merges, then stop</span>
+</code></pre></div>
+<p><code>-until</code> is the exception, and the shape of its pattern shows it.</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Where it is answered</th>
+<th>How its pattern is written</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-if</code></td>
+<td>at the <strong>server</strong>, over the data, before there is a frame</td>
+<td>the payload pattern, bare</td>
+</tr>
+<tr>
+<td><code>-until</code></td>
+<td>at the client, over the frames that arrive</td>
+<td>in the fields of the frame, with the payload under <code>to</code></td>
+</tr>
+</tbody>
+</table>
+<p>Only the client knows when it has seen enough, so the client answers <code>-until</code>. A pattern
+written the other way round, such as <code>-until '{stage: merged}'</code>, matches nothing. A watch
+that matches nothing looks exactly like a watch that waits. So verse refuses that pattern
+where you type it.</p>
+<p><code>-if-at</code> takes a field path separated by dots, and roots <code>-if</code> there. So a predicate about a
+subtree need not repeat the shape above it. <code>-if-at labels -if '{urgent: true}'</code> is
+<code>-if '{labels: {urgent: true}}'</code>. <code>-if-at</code> also reaches a subtree that is not an object. There
+the predicate is a bare scalar match.</p>
+<p>These do not match:</p>
+<ul>
+<li>a path that leads nowhere, such as an absent field, or a scalar in the way;</li>
+<li>a delete on <code>watch</code>, which has no payload left to test.</li>
+</ul>
+<p>Verse reads the pattern in <code>-ifmt</code> and sends it as tony, so operators and tags are kept.</p>
+<p>A precondition on a write is a different flag: <code>-create</code>, <code>-update</code> or <code>-expect</code> on
+<code>verse data -put</code>. See <a href="entities/#conditional-writes">entities.md</a>.</p>
+<h2 id="the-scripts">The scripts<a class="headerlink" href="#the-scripts" title="Permanent link">#</a></h2>
+<p>Four scripts write into a verse that you already run. Each one prints what to type next. They
+are for reading as much as for running: each is a worked example of the surface it seeds.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>./scripts/seed-demo.sh</code></td>
+<td>the whole demo at once: a charter, the data it reacts to, one reaction that has already happened, and one gate waiting for you</td>
+</tr>
+<tr>
+<td><code>./scripts/seed-entities.sh</code></td>
+<td>a dozen records under <code>verse-tutorial</code>, and nothing that reacts to them (<a href="../tutorial/data/">the data page of the tutorial</a>)</td>
+</tr>
+<tr>
+<td><code>./scripts/charter-shapes.sh</code></td>
+<td>the coarse shapes that a rule comes in, one command each. It also runs <code>suspend</code>/<code>resume</code> on one rule, so you can watch the rule hold and then act on the world as it stands (<a href="../tutorial/charters-2/#stopping-a-rule">charters, continued</a>)</td>
+</tr>
+<tr>
+<td><code>./scripts/lineage.sh</code></td>
+<td>a commit becomes a PR, and the PR becomes a release. It shows how ids from three systems correlate without a fourth id, and the two limits of that design.</td>
+</tr>
+</tbody>
+</table>
+<p>All four take <code>--scope &lt;name&gt;</code>, and each one removes what it wrote (<code>--clean</code>, or <code>clean</code>).</p>
+<h2 id="use-verse">Use verse<a class="headerlink" href="#use-verse" title="Permanent link">#</a></h2>
+<ul>
+<li><a href="#commands">Commands</a>: every command, and a file per topic.</li>
+<li><a href="tasks/">Tasks</a>: running a task by hand, and answering its gates.</li>
+<li><a href="../asking/">Asking</a>: <code>verse ask</code>: a question to somebody, with a date, and what follows a
+  yes run on your authority.</li>
+<li><a href="../perms-guide/">Permissions, walked</a>: your own data, a task and its gates, a charter
+  and what it owns, a gate with nobody behind it, a gate with a resolver.</li>
+<li><a href="scopes/">Scopes</a>: a private copy of the store for your own work and flows.</li>
+</ul>
+<h2 id="charters">Charters<a class="headerlink" href="#charters" title="Permanent link">#</a></h2>
+<p><a href="../trigger-model/">The charter reference</a> is the model of a rule and the page for each of
+its parts.</p>
+<h2 id="elsewhere">Elsewhere<a class="headerlink" href="#elsewhere" title="Permanent link">#</a></h2>
+<ul>
+<li><a href="https://signadot.github.io/tony-format/">tony</a>: the document language a charter is
+  written in, and <a href="https://signadot.github.io/tony-format/docd/">docd</a>, the store behind a
+  durable verse.</li>
+<li><a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony">go-tony</a> on pkg.go.dev —
+  including <a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath"><code>ir/kpath</code></a>
+  (the addressing a task chain uses),
+  <a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony/mergeop"><code>mergeop</code></a> (the patch
+  and match operators), and
+  <a href="https://pkg.go.dev/github.com/signadot/tony-format/go-tony/system/libctl"><code>system/libctl</code></a>
+  (the controller <code>Handler</code>).</li>
+</ul></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

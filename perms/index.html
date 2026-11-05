@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/perms/">
+        <link rel="icon" href="../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+
+        <title>Permissions - Verse</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link href="../pygments.css" rel="stylesheet">
+        <link href="../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Permissions - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/perms/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href=".."><img src="../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#permissions" class="nav-link">Permissions</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#the-words" class="nav-link">The words</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#principals-and-grantees" class="nav-link">Principals and grantees</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#ownership" class="nav-link">Ownership</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#grants" class="nav-link">Grants</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-acts-on-its-own" class="nav-link">What acts on its own</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-top-of-the-tree" class="nav-link">The top of the tree</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#verses-own-half" class="nav-link">Verse's own half</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#tasks-and-gates" class="nav-link">Tasks and gates</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-you-see" class="nav-link">What you see</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#suspending" class="nav-link">Suspending</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#scopes" class="nav-link">Scopes</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#where-the-rest-is" class="nav-link">Where the rest is</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="permissions">Permissions<a class="headerlink" href="#permissions" title="Permanent link">#</a></h1>
+<p>This page is the model of permissions. It defines the words and states the rules. Two other
+pages go with it:</p>
+<ul>
+<li><a href="../perms-guide/">Permissions, walked</a> shows the model by example, from data of your own
+  to a gate that a resolver answers.</li>
+<li><a href="../reference/perms/">The permissions reference</a> has every field, rule and table.</li>
+</ul>
+<p>The model has three rules:</p>
+<ul>
+<li>Every <a href="../glossary/#node">node</a> in the store has one <strong>owner</strong>.</li>
+<li>The owner, and the owners of the nodes above it, may do anything to the node.</li>
+<li>Everybody else may do what a <strong>grant</strong> lets them do.</li>
+</ul>
+<p>The rest of this page says what those words mean, in the order you need them.</p>
+<h2 id="the-words">The words<a class="headerlink" href="#the-words" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Word</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>node</strong></td>
+<td>anything with an <a href="../glossary/#address">address</a>: <code>demo.pr.1</code>, a field of it (<code>demo.pr.1.stage</code>), or a rule (<code>verse.trigger.rule.review</code>). An address has steps, so every node has nodes above it, up to the root.</td>
+</tr>
+<tr>
+<td><strong>principal</strong></td>
+<td>who is acting: a person, an agent, a runner, or verse itself</td>
+</tr>
+<tr>
+<td><strong>record</strong></td>
+<td>what verse keeps about a node: its owner, the grants on it, and the grants that a node created beneath it starts with. Only verse writes records. You read and set your own records with <code>verse perms</code>.</td>
+</tr>
+<tr>
+<td><strong>permission level</strong></td>
+<td>what somebody may do at a node: <code>read</code>, <code>read-write</code> or <code>owner</code>. Each of the three includes the one before it. <code>control</code> is a fourth level beside them. It lets somebody steer work: run, cancel, pause, resume, say, change an autonomy, and suspend.</td>
+</tr>
+<tr>
+<td><strong>grant</strong></td>
+<td>a line on a node's record. It gives a permission level to somebody who is not the node's owner.</td>
+</tr>
+</tbody>
+</table>
+<p>On this page, "level" means a permission level. It does not mean the level of a
+<a href="../glossary/#level-of-a-stratum">stratum</a>.</p>
+<p>A refusal may say that somebody <em>holds</em> <code>read</code> at a node. This means that <code>read</code> is the most
+the records give them at that node, as owner or by grant. The word <em>holds</em> means nothing more.</p>
+<h2 id="principals-and-grantees">Principals and grantees<a class="headerlink" href="#principals-and-grantees" title="Permanent link">#</a></h2>
+<p>A <a href="../glossary/#principal">principal</a> is a name with its kind in front, such as
+<code>user:ana@example.com</code>. A person is <code>user:</code>, an agent is <code>agent:</code>, and a runner is <code>runner:</code>.
+Verse itself is <code>system:</code>. Something installed that acts, such as a rule, is <code>via:&lt;address&gt;</code>
+(<a href="#what-acts-on-its-own">what acts on its own</a>).</p>
+<p>A <a href="../glossary/#grantee">grantee</a> is who a grant is to. A grantee is a principal, or a set of
+principals: <code>*</code> for everyone, <code>&lt;kind&gt;:*</code> for every principal of a kind, <code>group:&lt;name&gt;</code> for a
+group's members, <code>audience:&lt;address&gt;</code> for whoever holds the same level at that address, or
+<code>answering:&lt;address&gt;</code> for the resolvers answering for it.
+<a href="../reference/perms/#the-grammar">The grammar</a> is in the reference.</p>
+<p>Every request names who makes it. The CLI sends the <code>user:</code> or <code>agent:</code> in its config. On the
+commands that take it, the flag <code>-as</code> names somebody else. Verse refuses a request that writes
+and names nobody.</p>
+<p><strong>A principal is what the request says, unless the verse verifies it.</strong> By default, verse
+trusts a name as much as it trusts <code>-as</code>, and no more. A deployment can name the identity
+providers its people sign in with. A request that carries a token from one of them is then made
+as the person the token proves. Verse refuses a token that proves nobody. The rest of the model
+is the same either way: every act names a party, and verse checks the act against what that
+party may do.
+<a href="../reference/perms/#who-a-request-is-from">Who a request is from</a> is in the reference.</p>
+<h2 id="ownership">Ownership<a class="headerlink" href="#ownership" title="Permanent link">#</a></h2>
+<p><strong>The owner of a node is the nearest record at or above it that names one.</strong> Most nodes have no
+record of their own. For example, <code>demo.pr.1.stage</code> is owned by whoever owns <code>demo.pr.1</code>, or
+<code>demo.pr</code>, or <code>demo</code>.</p>
+<p><strong>You own what you create.</strong> A write that brings nodes into being leaves one record. The record
+names the writer, and it stands at the topmost node that the write made. Write <code>demo.pr.1</code> into
+an empty store, and <code>demo</code> is yours, with everything beneath it. You may create where you own
+the node above. You may also create where a grant says you may (<code>child-owner</code>, below).</p>
+<p><strong>A node's first grants are <code>child-grants</code>, or its creator's.</strong> A node you create starts with
+the grants that the nearest <code>child-grants</code> above it names. You can also give it grants of your
+own as you create it. <code>verse data notes ana todo -put '{…}' -grants '[]'</code> makes a note that
+nobody else reads, from its first commit. The node and its record land together, so the node is
+never readable more widely than you said
+(<a href="../reference/entities/#creating-with-grants">creating with grants</a>).</p>
+<p><strong>Owners above co-own.</strong> Whoever owns <code>demo</code> may do anything to <code>demo.pr.1</code>, whoever made it.</p>
+<p><strong>Ownership moves only by creating and deleting.</strong> Verse has no transfer. To give something to
+somebody, they make it. Deleting a node forgets its record and every record beneath it.
+Whoever creates there next starts with no record.</p>
+<p><strong>A place can be taken before anything goes in it.</strong> Run
+<code>verse perms spaces you -grants '[]'</code> where nothing stands yet, and the place is yours. Without
+<code>-grants</code>, the command only reads the record. A node that already stands belongs to its owner,
+and the command does not take it from them. A place goes to whoever takes it first
+(<a href="../reference/perms/#creating-and-taking-a-place">creating and taking a place</a>).</p>
+<h2 id="grants">Grants<a class="headerlink" href="#grants" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># the record of spaces.you, as `verse perms spaces you` shows it</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="na">owner</span><span class="o">:</span> <span class="sx">user:you@example.com</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="na">grants</span><span class="o">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">-</span> <span class="na">read</span><span class="o">:</span> <span class="p">[</span><span class="sx">user:ana@example.com</span><span class="p">]</span>        <span class="c1"># this node and everything beneath it</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">-</span> <span class="na">below</span><span class="o">:</span> <span class="l">true</span>                         <span class="c1"># beneath it only, not the node itself</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>  <span class="na">read-write</span><span class="o">:</span> <span class="p">[</span><span class="sx">group:payments</span><span class="p">]</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">-</span> <span class="na">child-owner</span><span class="o">:</span> <span class="p">[</span><span class="sx">user:*</span><span class="p">]</span>               <span class="c1"># may create beneath it, and own what they create</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="na">child-grants</span><span class="o">:</span> <span class="p">{</span><span class="na">read</span><span class="o">:</span> <span class="p">[</span><span class="s2">&quot;*&quot;</span><span class="p">]}</span>           <span class="c1"># the grants a node created beneath starts with</span>
+</code></pre></div>
+<p>Know three things about grants before the rest:</p>
+<ul>
+<li><strong>A grant stops at the next owner's record.</strong> A grant on <code>spaces</code> reaches everything beneath
+  <code>spaces</code> that the owner of <code>spaces</code> still owns. It does not reach into <code>spaces.you</code> once you
+  own it. You decide what is granted there.</li>
+<li><strong><code>child-owner</code> is the right to create, and nothing else.</strong> It lets somebody make new nodes
+  beneath a node and own them. It gives them nothing over what already stands there. It never
+  lets anybody take the node above a place that somebody else has made.</li>
+<li><strong><code>child-grants</code> is copied when a node is created.</strong> The new node's record starts with it,
+  unless the creator gives grants of their own. A later change to <code>child-grants</code> changes what is
+  created later. It changes nothing that exists.</li>
+</ul>
+<p>A <strong><a href="../glossary/#group">group</a></strong> is a named set of grantees with an owner
+(<code>verse group add payments ana@…</code>). Verse reads the members of a group when it checks a grant.
+So membership changes without a change to the grants that name the group.</p>
+<h2 id="what-acts-on-its-own">What acts on its own<a class="headerlink" href="#what-acts-on-its-own" title="Permanent link">#</a></h2>
+<p>Four things act when nobody typed anything:</p>
+<ul>
+<li>a <a href="../glossary/#rule">rule</a> fires;</li>
+<li>an <a href="../glossary/#iod">iod</a> writes what a system holds, or carries a rule's write back out to it;</li>
+<li>a <a href="../glossary/#resolver">resolver</a> answers a gate;</li>
+<li>a <a href="../glossary/#schedule">schedule</a> ticks.</li>
+</ul>
+<p>One rule covers all four: <strong>an installed thing acts as whoever installed it.</strong> Its writes
+appear as <code>via:&lt;its address&gt;</code>. The check treats that principal as the owner of the installed
+thing's record.</p>
+<p>A rule can do exactly what its installer can do, and it sees exactly what its installer can
+see. An iod writes into the store as its installer, into places its installer owns.</p>
+<p>Verse refuses an install over somebody else's place. Verse also refuses an install that would
+leave no owner on record. A thing with no owner acts as nobody, so it would stand there and do
+nothing.</p>
+<p>The charter a deployment ships is installed as the system, and acts as the system
+(<a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#installed-things-and-their-records">installed things and their records</a>, in
+the repository).</p>
+<p><strong>A spawn with <code>as: subject</code></strong> acts for the owner of the record that fired it. Its task acts as
+<code>pair:&lt;owner&gt; via:&lt;the rule's address&gt;</code>, and may do what the owner may. The pair names the
+rule so that the record says what the task acted through. It adds no authority and takes none
+away. A rule may say <code>as: subject</code> only over a place its installer owns. So a rule cannot act as somebody
+whose records it only selects
+(<a href="../reference/action/#as-subject--a-task-for-whoever-wrote-the-record"><code>as: subject</code></a>). A pair
+is a principal and never a grantee: nothing is granted to one.</p>
+<h2 id="the-top-of-the-tree">The top of the tree<a class="headerlink" href="#the-top-of-the-tree" title="Permanent link">#</a></h2>
+<p>The root is a node with a record, like any other node. <code>verse perms --root</code> shows it. In an
+open verse, anybody may make a top-level place, and owns what they make. Everyone may read it. A
+deployment may allow only admins to make a top-level place. Then everybody else works in places
+that an admin opens to them
+(<a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md#the-root-and-the-config">the root and the config</a>, in the repository).</p>
+<h2 id="verses-own-half">Verse's own half<a class="headerlink" href="#verses-own-half" title="Permanent link">#</a></h2>
+<p>Everything under <code>verse</code> belongs to the system: rules, tasks, runners, iods, resolvers,
+schedules, open questions, and the records themselves. You do not write there directly. You
+make things with the verbs that own them (<code>charter -a</code>, <code>task run</code>, <code>iod add</code>,
+<code>question approve</code>). What a verb makes for you is yours.</p>
+<p>In an open verse, anybody may use those verbs. Anybody may read what stands under <code>verse</code>,
+except the records, which you read with <code>verse perms</code>. A rule may watch verse's own half and
+react to it. A rule may not write into it.</p>
+<h2 id="tasks-and-gates">Tasks and gates<a class="headerlink" href="#tasks-and-gates" title="Permanent link">#</a></h2>
+<p>A <a href="../glossary/#task">task</a> belongs to its spawner. The runner that works the task is granted
+<code>read-write</code> and <code>control</code> on that task and nothing else.</p>
+<p>A task may act on verse itself, as its owner would, through the
+<a href="../systems/verse/">verse system</a>. The runner carries each such request with its own token, and
+names the task. Verse admits it as the task's owner, and only while the task runs
+(<a href="../reference/perms/#a-task-carried-by-its-runner">a task carried by its runner</a>). The runner
+gains nothing by it: the request may do what the owner may, and no more.</p>
+<p>These principals may answer a gate's <a href="../glossary/#question">question</a>:</p>
+<ul>
+<li>whoever owns what asked it: the task's owner, or the charter's owner;</li>
+<li>whoever the gate names as <code>answerers</code>, each of whom must be able to read what the question is
+  about;</li>
+<li>where the gate names nobody, whoever may write what the question is about, or any person or
+  agent where it is about nothing.</li>
+</ul>
+<p>Nobody answers a question about something they cannot read. A question about something is read
+by whoever may read that thing.</p>
+<p>A resolver answers a question only when the question is held out to that resolver. The runner
+that works a task cannot answer that task's questions. The runner's grant is on the task, and a
+question is not part of the task.</p>
+<p>Verse records an answer, a <code>say</code>, a cancel or a change of autonomy as made <em>by</em> whoever made the
+request. A remote worker reports on its own task: its status, its output, the decisions it saw.
+That report never decides who answered a question or what they chose.</p>
+<h2 id="what-you-see">What you see<a class="headerlink" href="#what-you-see" title="Permanent link">#</a></h2>
+<p>A refused write or read is a 403. The refusal says three things:</p>
+<ul>
+<li>what the requester holds;</li>
+<li>what the act needed;</li>
+<li>which record decided.</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>refused: user:bob@example.com holds read at demo.pr.1 and writing it needs read-write;
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>the nearest owner on record is user:alice@example.com at demo
+</code></pre></div>
+<p>Verse refuses a read of one thing you may not read. A listing, a watch or a replay leaves it
+out. So you see the same set whichever way you ask.</p>
+<p>You read and set records with <a href="../reference/perms/#verse-perms"><code>verse perms</code></a>.</p>
+<p><a id="suspending"></a></p>
+<h2 id="suspending">Suspending<a class="headerlink" href="#suspending" title="Permanent link">#</a></h2>
+<p>Suspending work (<code>verse flow suspend</code>) needs <code>control</code> over the charter it names, or at the
+subject it names. A suspension covers only the work that its holder has <code>control</code> over when the
+work would run. So a wide selector does not reach into places that somebody else comes to own.
+<a href="../control/">Control</a> has the commands, and <a href="../reference/perms/#suspending">the reference</a> has
+the rule in full.</p>
+<p><a id="scopes"></a></p>
+<h2 id="scopes">Scopes<a class="headerlink" href="#scopes" title="Permanent link">#</a></h2>
+<p>Baseline's records also apply in a <a href="../glossary/#scope">scope</a>. Opening a scope is not a way
+around a grant. A grant made <em>in</em> a scope is copy-on-write, like anything else written there. It
+applies in that scope, baseline never sees it, and it goes when the scope goes.
+<a href="../reference/perms/#scopes">The reference</a> says why grants layer this way and tasks do not.</p>
+<h2 id="where-the-rest-is">Where the rest is<a class="headerlink" href="#where-the-rest-is" title="Permanent link">#</a></h2>
+<p><a href="https://github.com/signadot/verse/blob/main/docs/platform/perms.md">platform/perms.md</a>, in the repository, has the <code>system:</code> parts, the root
+and the config, the seed, and how installed things get their records.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/systems/inside/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>files, commands and agent - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="files, commands and agent - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/systems/inside/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../verse/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../../trigger-model/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#files-commands-and-agent" class="nav-link">files, commands and agent</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-charter-sees" class="nav-link">What a charter sees</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-charter-writes" class="nav-link">What a charter writes</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-network" class="nav-link">The network</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#a-row-on-files-or-commands-is-advisory" class="nav-link">A row on files or commands is advisory</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-task-can-do" class="nav-link">What a task can do</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#where-the-credential-lives" class="nav-link">Where the credential lives</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="files-commands-and-agent">files, commands and agent<a class="headerlink" href="#files-commands-and-agent" title="Permanent link">#</a></h1>
+<p>Three systems are not outside verse. They are what an agent does inside its run: it writes files,
+runs commands and calls sub-agents. A spawn gives them in its environment as it gives <code>git</code>, the
+runner intercepts each act for the task's autonomy to decide, and a runner offers them as it
+offers <code>git</code>.</p>
+<table>
+<thead>
+<tr>
+<th>System</th>
+<th>Verb</th>
+<th>Params</th>
+<th>What the runner does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>files</code></td>
+<td><code>write</code></td>
+<td><code>path</code></td>
+<td>stops a write the agent asks for before it happens (<a href="#a-row-on-files-or-commands-is-advisory">advisory</a>)</td>
+</tr>
+<tr>
+<td><code>commands</code></td>
+<td><code>run</code></td>
+<td><code>command</code></td>
+<td>stops a command before it runs, and matches the command as one string (<a href="#a-row-on-files-or-commands-is-advisory">advisory</a>)</td>
+</tr>
+<tr>
+<td><code>agent</code></td>
+<td><code>call-sub-agent</code></td>
+<td><code>agent</code></td>
+<td>stops a call to a sub-agent, a child run inside the runner</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-a-charter-sees">What a charter sees<a class="headerlink" href="#what-a-charter-sees" title="Permanent link">#</a></h2>
+<p>Nothing. No iod reads a task's workspace or its shell. What a task did is on its own record:
+each step is an event that names the verb and its params (<a href="../../reference/tasks/">tasks</a>).</p>
+<h2 id="what-a-charter-writes">What a charter writes<a class="headerlink" href="#what-a-charter-writes" title="Permanent link">#</a></h2>
+<p>An environment and rows. The environment gives the systems, the autonomy says what happens to
+each act within them:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="na">files</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="na">commands</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">files</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">write</span><span class="p">,</span> <span class="na">path</span><span class="o">:</span> <span class="k">!regexp</span> <span class="s2">&quot;^db/&quot;</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">commands</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">run</span><span class="p">,</span> <span class="na">command</span><span class="o">:</span> <span class="k">!regexp</span> <span class="s2">&quot;^make ship&quot;</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<p>A block that names no verb, <code>files: {}</code>, gives every verb of its system. "No shell" is leaving
+<code>commands</code> out of the environment: the tool is then not offered at all, rather than refused at
+each call. Here <code>agent</code> is left out, so the task calls no sub-agent.</p>
+<h2 id="the-network">The network<a class="headerlink" href="#the-network" title="Permanent link">#</a></h2>
+<p>What a run may reach is the <code>network</code> system, given in the environment as any system is. Its
+<code>mode</code> is fixed when the run starts, and under <code>allow</code> its <code>tcp-client</code> shapes name what it may
+connect to:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="na">network</span><span class="o">:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>      <span class="na">mode</span><span class="o">:</span> <span class="sx">allow</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>      <span class="na">tcp-client</span><span class="o">:</span> <span class="p">[{</span><span class="na">host</span><span class="o">:</span> <span class="sx">api.github.com</span><span class="p">},</span> <span class="p">{</span><span class="na">host</span><span class="o">:</span> <span class="sx">pypi.org</span><span class="p">,</span> <span class="na">port</span><span class="o">:</span> <span class="mi">443</span><span class="p">}]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th><code>mode</code></th>
+<th>What the run reaches</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>none</code></td>
+<td>nothing. This is the network when <code>network</code> is left out.</td>
+</tr>
+<tr>
+<td><code>open</code></td>
+<td>the host's network, which the runner does not see into</td>
+</tr>
+<tr>
+<td><code>allow</code></td>
+<td>only what a <code>tcp-client</code> shape matches, through a proxy the runner serves the task: <code>host</code>, with <code>port</code> or without it (then any port); <code>*.example.com</code> is every host under <code>example.com</code>, and an address is written in its short form (<code>2001:db8::1</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Under <code>allow</code>, each connection is the step <code>network.tcp-client</code>, with <code>host</code> (lower case, no
+trailing dot) and <code>port</code>, decided as a step is: outside the shapes it is refused, saying what
+they are; within them a row on the network allows or denies it. A connection can't wait for an
+answer, so a row on the network never asks, and the default row doesn't decide a connection: the
+shapes are what the task reaches, and a host they give is reached unless a row on the network
+denies it (<code>{match: {system: network, host: api.github.com}, then: deny}</code>), whatever the default
+row says. The runner's network ceiling holds after the rows. A replaced autonomy decides the
+next connection. What the proxy refused is on the task's record, under <code>refused</code>, by destination
+and how often.</p>
+<p>An agent always reaches its model: under <code>none</code> or <code>allow</code> the runner's proxy lets the model's
+host through, outside any step.</p>
+<p>A runner says which modes its sandbox builds, under the network's <code>builds</code>. One that runs its
+tasks unconfined, such as <code>verse up</code>'s or one on macOS, builds only <code>open</code>, so a spawn there says
+<code>network: {mode: open}</code> and is refused without it (<a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#what-it-offers">what it offers</a>).</p>
+<h2 id="a-row-on-files-or-commands-is-advisory">A row on files or commands is advisory<a class="headerlink" href="#a-row-on-files-or-commands-is-advisory" title="Permanent link">#</a></h2>
+<p>A row on <code>files</code> or <code>commands</code> decides the act as the agent names it. It does not decide every
+way to the same result:</p>
+<ul>
+<li>A write through the shell, such as <code>echo x &gt; db/x.sql</code>, is a <code>commands.run</code> step. It is not a
+  <code>files.write</code> step, so a row on <code>files</code> with <code>path: !regexp "^db/"</code> does not see it.</li>
+<li>A <code>command</code> pattern matches the whole command string. <code>!regexp "^git push"</code> matches
+  <code>git push origin x</code>, but not <code>cd x &amp;&amp; git push</code>; <code>!regexp "git push"</code> matches both.</li>
+</ul>
+<p>So treat these rows as advice the runner checks, not as a wall. What must hold, write where the
+runner does it: a push is the runner's own act (<code>git.push</code>), and the network is built into the
+run. Enforcing <code>files</code> and <code>commands</code> in the kernel is planned in issue bst6zbs0.</p>
+<h2 id="what-a-task-can-do">What a task can do<a class="headerlink" href="#what-a-task-can-do" title="Permanent link">#</a></h2>
+<p>What the one doing the work does:</p>
+<ul>
+<li>The verse agent writes files, runs commands and calls sub-agents with its own tools, and
+  reaches the network from its shell.</li>
+<li>Codex does the same through its own sandbox, and Claude Code through its permission prompts.
+  The runner stops each at the same places.</li>
+<li>A script is one action, not a series of steps, so nothing inside it is stopped. Only its
+  network is confined.</li>
+</ul>
+<p>Verse refuses to install a spawn whose environment gives a system the runner's offer does not
+hold, or one beyond the offer's ceiling. Codex and Claude can't run without <code>commands.run</code> and
+<code>files.write</code>, which their offers say (<code>requires</code>), so a Codex or Claude spawn whose environment
+leaves them out is refused, naming <code>commands: {}</code> or <code>commands: {run: {}}</code> to add.</p>
+<h2 id="where-the-credential-lives">Where the credential lives<a class="headerlink" href="#where-the-credential-lives" title="Permanent link">#</a></h2>
+<p>Nowhere: none of these uses a credential. The runner stops each call for the autonomy to decide,
+on the systems its offer holds for the agent.
+<a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#what-it-offers">What it offers</a> has the details.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

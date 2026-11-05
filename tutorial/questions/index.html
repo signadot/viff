@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/tutorial/questions/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>Tutorial -- Questions - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="Tutorial -- Questions - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/tutorial/questions/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../data/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../tasks/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#tutorial----questions" class="nav-link">Tutorial -- Questions</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#ask" class="nav-link">Ask</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#who-sees-it" class="nav-link">Who sees it</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#answer" class="nav-link">Answer</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#silence-and-changing-your-mind" class="nav-link">Silence, and changing your mind</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#a-question-is-data" class="nav-link">A question is data</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="tutorial----questions"><a href="../">Tutorial</a> -- Questions<a class="headerlink" href="#tutorial----questions" title="Permanent link">#</a></h1>
+<p>A question in verse is an <a href="../../glossary/#ask">ask</a>. It is put to the people who may answer it.
+It can have a date, and it can say what a yes runs.</p>
+<p>There are four ways to ask:</p>
+<table>
+<thead>
+<tr>
+<th>Who asks</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>you</td>
+<td><code>verse ask</code>, on this page</td>
+</tr>
+<tr>
+<td>a task, for itself</td>
+<td>when it reaches something it may not do alone, and it waits for the answer (<a href="../tasks/">tasks</a>)</td>
+</tr>
+<tr>
+<td>a task, for you</td>
+<td>with its <code>verse-ask-create</code> tool, when its environment gives it the <a href="../../systems/verse/"><code>verse</code> system</a>. The ask is yours, and the task does not wait for it</td>
+</tr>
+<tr>
+<td>a rule</td>
+<td>at its gate (<a href="../charters/">charters</a>)</td>
+</tr>
+</tbody>
+</table>
+<p>All four make the same record, and every pending ask is on one list, the
+<a href="../../glossary/#docket">docket</a>.</p>
+<p>This page needs <a href="../#start">a verse running</a>, and nothing else.</p>
+<h2 id="ask">Ask<a class="headerlink" href="#ask" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>verse<span class="w"> </span>ask<span class="w"> </span>deploy<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;Deploy the release to staging?&quot;</span><span class="w"> </span>--to<span class="w"> </span>ana@example.com<span class="w"> </span>--due<span class="w"> </span>1h<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>--on<span class="w"> </span><span class="s1">&#39;[{match: {verdict: proceed}, then: {spawn: {script: &quot;echo deploying&quot;, environment: {systems: {network: {mode: open}}}}}}]&#39;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># raised question deploy-b8a7d6bea9e3: Deploy the release to staging?</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>What it says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-q</code></td>
+<td>the question</td>
+</tr>
+<tr>
+<td><code>--to</code></td>
+<td>who may answer. Without it, anyone may.</td>
+</tr>
+<tr>
+<td><code>--due</code></td>
+<td>when it settles if nobody answers, as a date or a duration from now. Without it, it waits until somebody answers.</td>
+</tr>
+<tr>
+<td><code>--on</code></td>
+<td>what runs after the answer, on your authority: rows, each a <code>match</code> on the answer and a <code>then</code>. This one row meets a yes (<code>{verdict: proceed}</code>), and its <code>then</code> is a spawn, written as a charter's is. Here it is a script, run as written, with the host's network; a <code>prompt</code> gives the job to an agent instead, and <code>autonomy</code> says what it may do unasked. Without <code>--on</code>, the ask only records the answer.</td>
+</tr>
+</tbody>
+</table>
+<p>The name, <code>deploy</code>, is yours. The id adds a suffix, and commands take either one.</p>
+<h2 id="who-sees-it">Who sees it<a class="headerlink" href="#who-sees-it" title="Permanent link">#</a></h2>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>verse<span class="w"> </span>ask<span class="w">                 </span><span class="c1"># your asks: the question, who is asked, the date, the answer or pending</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>verse<span class="w"> </span>question<span class="w">            </span><span class="c1"># the asks waiting on you: none, because you asked Ana</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>verse<span class="w"> </span>question<span class="w"> </span>--all<span class="w">      </span><span class="c1"># the docket: every pending ask you can read</span>
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">-</span> <span class="na">deadline</span><span class="o">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="na">at</span><span class="o">:</span> <span class="s2">&quot;2026-10-18T01:08:12Z&quot;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="na">default</span><span class="o">:</span> <span class="sx">deny</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  <span class="na">from</span><span class="o">:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="na">principal</span><span class="o">:</span> <span class="sx">user:you@example.com</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  <span class="na">id</span><span class="o">:</span> <span class="sx">deploy-b8a7d6bea9e3</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  <span class="na">options</span><span class="o">:</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  <span class="p">-</span> <span class="na">id</span><span class="o">:</span> <span class="sx">proceed</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="na">need</span><span class="o">:</span> <span class="mi">1</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>  <span class="p">-</span> <span class="na">id</span><span class="o">:</span> <span class="sx">deny</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="na">need</span><span class="o">:</span> <span class="mi">1</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>  <span class="na">question</span><span class="o">:</span> <span class="s2">&quot;Deploy the release to staging?&quot;</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>  <span class="na">to</span><span class="o">:</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="na">grantees</span><span class="o">:</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="p">-</span> <span class="sx">user:ana@example.com</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>  <span class="na">waitingOn</span><span class="o">:</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>  <span class="p">-</span> <span class="sx">user:ana@example.com</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>  <span class="sx">…</span>
+</code></pre></div>
+<p>The options are the two answers, <code>proceed</code> and <code>deny</code>, and each needs one vote. The deadline is
+what <code>--due</code> asked for. If nobody answers by then, the answer is no.</p>
+<h2 id="answer">Answer<a class="headerlink" href="#answer" title="Permanent link">#</a></h2>
+<p>Only somebody the ask is put to may answer. In a shared verse, Ana answers from her own CLI, or
+from Slack, where a charter has the Slack iod carry the question to her and her reply back. On a
+verse on your own machine, <code>--as</code> says who is answering, and verse takes the name as given; a
+deployment authenticates you instead.
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>verse<span class="w"> </span>question<span class="w"> </span>deploy-b8a7d6bea9e3<span class="w"> </span>--answer<span class="w"> </span>proceed<span class="w"> </span>--as<span class="w"> </span>bob@example.com
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># answer proceed: 403 Forbidden: refused: user:bob@example.com holds nothing at verse.ask.deploy-b8a7d6bea9e3 …</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>verse<span class="w"> </span>question<span class="w"> </span>deploy-b8a7d6bea9e3<span class="w"> </span>--answer<span class="w"> </span>proceed<span class="w"> </span>--as<span class="w"> </span>ana@example.com
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># answered deploy-b8a7d6bea9e3</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>verse<span class="w"> </span>ask<span class="w"> </span>deploy<span class="w">          </span><span class="c1"># answer: yes</span>
+</code></pre></div></p>
+<p>Bob is not asked, so he may not answer. He may not even read the ask. Ana's yes met the row,
+which ran its spawn as a task that acts for you:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>verse<span class="w"> </span>task
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">-</span> <span class="na">script</span><span class="o">:</span> <span class="l">true</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  <span class="na">id</span><span class="o">:</span> <span class="sx">deploy-b8a7d6bea9e3-74645a658d25</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  <span class="na">result</span><span class="o">:</span> <span class="sx">deploying</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  <span class="na">status</span><span class="o">:</span> <span class="sx">done</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  <span class="sx">…</span>
+</code></pre></div>
+<p>A task is the next page. Here it is enough that a yes can start one.</p>
+<h2 id="silence-and-changing-your-mind">Silence, and changing your mind<a class="headerlink" href="#silence-and-changing-your-mind" title="Permanent link">#</a></h2>
+<p>If nobody answers by the date, the ask settles on <code>deny</code>, unless you say otherwise. An ask for
+objections says otherwise:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>verse<span class="w"> </span>ask<span class="w"> </span>hotfix<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;Any objection to the hotfix?&quot;</span><span class="w"> </span>--to<span class="w"> </span>dee@example.com<span class="w"> </span>--due<span class="w"> </span>10s<span class="w"> </span>--on-silence<span class="w"> </span>proceed
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>verse<span class="w"> </span>ask<span class="w"> </span>hotfix<span class="w">          </span><span class="c1"># ten seconds later: answer: yes</span>
+</code></pre></div>
+<p>While an ask waits, you can change it or take it back. Ask about the production deploy, give it
+more time, and then withdraw it:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>verse<span class="w"> </span>ask<span class="w"> </span>deploy-prod<span class="w"> </span>-q<span class="w"> </span><span class="s2">&quot;Deploy the release to production?&quot;</span><span class="w"> </span>--to<span class="w"> </span>ana@example.com<span class="w"> </span>--due<span class="w"> </span>1h
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>verse<span class="w"> </span>ask<span class="w"> </span>deploy-prod<span class="w"> </span>--due<span class="w"> </span>4h<span class="w">         </span><span class="c1"># moved deploy-prod-… to the date four hours from now</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>verse<span class="w"> </span>ask<span class="w"> </span>deploy-prod<span class="w"> </span>--withdraw
+</code></pre></div>
+<p>A new date moves the clock and keeps the answers given. A new <code>--on</code> or a new <code>--to</code> changes
+what was asked. So the ask is asked again, and the earlier answers do not count.</p>
+<h2 id="a-question-is-data">A question is data<a class="headerlink" href="#a-question-is-data" title="Permanent link">#</a></h2>
+<p>An ask is data at <code>verse.ask.&lt;id&gt;</code>, so the verbs of <a href="../data/">data</a> read it:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>verse<span class="w"> </span>data<span class="w"> </span>verse<span class="w"> </span>ask<span class="w"> </span>deploy-b8a7d6bea9e3<span class="w"> </span>-trim<span class="w"> </span><span class="s1">&#39;{answer, by, verdict, ballots}&#39;</span>
+</code></pre></div>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="na">answer</span><span class="o">:</span> <span class="sx">yes</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="na">ballots</span><span class="o">:</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>  <span class="na">user:ana@example.com</span><span class="o">:</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="na">at</span><span class="o">:</span> <span class="s2">&quot;2026-10-18T00:08:18Z&quot;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="na">authenticated</span><span class="o">:</span> <span class="sx">asserted</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="na">choice</span><span class="o">:</span> <span class="sx">proceed</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    <span class="na">edit</span><span class="o">:</span> <span class="mi">1</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="na">by</span><span class="o">:</span> <span class="sx">user:ana@example.com</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="na">verdict</span><span class="o">:</span> <span class="sx">proceed</span>
+</code></pre></div>
+<p>Each answer is a ballot. It says who chose what, and whether verse authenticated them or took
+their word. <code>verse watch verse ask '*'</code> follows every ask you can read, and a rule can select an
+ask as it selects any other data.</p>
+<p><a href="../../asking/">Asking</a> has the rest: asks that answer other asks, a row for a no or for silence, how long an
+ask stands, and who may read it. Next, <a href="../tasks/">tasks</a>.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

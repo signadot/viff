@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/reference/gates/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>The gates of a rule - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="The gates of a rule - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/reference/gates/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../systems/" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#the-gates-of-a-rule" class="nav-link">The gates of a rule</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#gates-whether-it-proceeds" class="nav-link">gates: whether it proceeds</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#why-it-is-this-way" class="nav-link">Why it is this way</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="the-gates-of-a-rule">The gates of a rule<a class="headerlink" href="#the-gates-of-a-rule" title="Permanent link">#</a></h1>
+<p>This page describes the <code>gates</code> field of a <a href="../../glossary/#rule">rule</a>: what a gate asks, who
+answers it, and what a refusal, a deadline and a restart do to the question.
+<a href="../../trigger-model/">The charter reference</a> has the model that gates belong to.</p>
+<p>The examples on this page are a team's releases of <code>acme/app</code>. Each release is a record at
+<code>release.&lt;n&gt;</code>, with a <code>title</code>, a <code>stage</code> and the number of <code>changes</code> it carries. Rules deploy a
+release when people say yes.</p>
+<h2 id="gates-whether-it-proceeds"><code>gates</code>: whether it proceeds<a class="headerlink" href="#gates-whether-it-proceeds" title="Permanent link">#</a></h2>
+<p><code>gates</code> is a list of <a href="../../glossary/#gate-of-a-rule">gates</a>. Every gate must pass before the
+action fires. A rule with no gates fires without asking anybody. Each gate is
+<code>{name: …, mode: auto|ask}</code>: <code>auto</code> passes at once, and <code>ask</code> waits for an answer.</p>
+<p>Gates are per <em>firing</em>. A <a href="../../glossary/#firing">firing</a> is about one address, so a rule that
+selects twelve releases asks twelve <a href="../../glossary/#question">questions</a>.</p>
+<p>The id of a question is made from the rule, the gate and the subject. So a rule that is
+evaluated again still asks once. A firing that finds its question already standing joins it,
+and does not post a copy. One answer releases every firing that waits on it. So a rule that
+waits on a person does not fill the <a href="../../glossary/#docket">docket</a>.</p>
+<p>Several gates are several approvals. A deploy that needs a sign-off from security and from a
+release manager is two <code>ask</code> gates. One gate that needs more than one person says so on the
+question it poses. A gate with more to say than yes or no names its own options:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>  <span class="na">gates</span><span class="o">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">approvals</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="na">pose</span><span class="o">:</span> <span class="s2">&quot;Deploy *$[subject.value.title]* ($[subject.value.changes] changes) to staging?&quot;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="na">need</span><span class="o">:</span> <span class="mi">2</span>                                    <span class="c1"># proceed takes two ballots; one deny refuses</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="na">deadline</span><span class="o">:</span> <span class="p">{</span><span class="na">within</span><span class="o">:</span> <span class="s2">&quot;24h&quot;</span><span class="p">,</span> <span class="na">default</span><span class="o">:</span> <span class="sx">deny</span><span class="p">}</span>   <span class="c1"># and the clock decides silence</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="na">answerers</span><span class="o">:</span> <span class="p">[</span><span class="sx">dana@example.com</span><span class="p">,</span> <span class="sx">group:payments</span><span class="p">]</span>   <span class="c1"># and whose ballots</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">timing</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="na">pose</span><span class="o">:</span> <span class="s2">&quot;Deploy *$[subject.value.title]* now?&quot;</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="na">options</span><span class="o">:</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="p">-</span> <span class="na">id</span><span class="o">:</span> <span class="sx">proceed</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>      <span class="na">need</span><span class="o">:</span> <span class="mi">1</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>      <span class="na">says</span><span class="o">:</span> <span class="s2">&quot;deploy it now&quot;</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="p">-</span> <span class="na">id</span><span class="o">:</span> <span class="sx">hold</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>      <span class="na">need</span><span class="o">:</span> <span class="mi">2</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>      <span class="na">says</span><span class="o">:</span> <span class="s2">&quot;wait for the release call&quot;</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="p">-</span> <span class="na">id</span><span class="o">:</span> <span class="sx">deny</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>      <span class="na">need</span><span class="o">:</span> <span class="mi">1</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>      <span class="na">says</span><span class="o">:</span> <span class="s2">&quot;drop this release&quot;</span>
+</code></pre></div>
+<h3 id="what-a-question-says">What a question says<a class="headerlink" href="#what-a-question-says" title="Permanent link">#</a></h3>
+<p>A question says two things in words, for a person:</p>
+<ul>
+<li><code>pose</code> is the question, written on the gate.</li>
+<li><code>about</code> is the one line the subject says about itself. A subject whose data carries a <code>says</code>
+  field has one, and verse copies it onto the question when it poses it
+  (<a href="../tasks/#the-question-record">the question record</a>).</li>
+</ul>
+<p>A reader needs no grant on the subject to read either. The other fields of a gate are for the
+engine: they say who asked and how the question settles.</p>
+<p>Verse expands <code>pose</code> at the firing, against the firing's subject, as it expands
+<a href="../action/#expressions">the strings of a spawn</a> in the same firing: the subject's
+fields by name, and <code>subject</code> as <code>ref</code>, <code>name</code> and <code>value</code>. A pose and a prompt that say
+<code>$[subject.value.title]</code> say the same words. The question carries the result as words. If the
+expression does not expand, the question is still asked: verse drops the words, and a reader
+reads <code>reason</code> instead.</p>
+<h3 id="options-and-their-thresholds">Options and their thresholds<a class="headerlink" href="#options-and-their-thresholds" title="Permanent link">#</a></h3>
+<p>Every gate poses the same record:</p>
+<ul>
+<li>the options it can settle on;</li>
+<li>for each option, the number of ballots that settles it;</li>
+<li>a deadline, with the option that the question falls to.</li>
+</ul>
+<p>A gate that says none of these poses <code>proceed</code> and <code>deny</code>, at one ballot each.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>says</code> of an option</td>
+<td>what choosing the option <em>means</em>, for whoever is asked. The <code>id</code> is how an answer names the option, and the name the rule reads.</td>
+</tr>
+<tr>
+<td><code>need</code></td>
+<td>the short spelling of <code>options: [{id: proceed, need: N}, {id: deny, need: 1}]</code>. Do not write <code>need</code> and <code>options</code> together.</td>
+</tr>
+<tr>
+<td><code>options</code></td>
+<td>an ordered list. The first option to reach its threshold settles the question.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Only <code>proceed</code> lets the firing go on.</strong> Any other option is a no: the action does not run, and
+the gate's <a href="#ondenied-what-a-no-means"><code>onDenied</code></a> runs instead. In the example above, <code>hold</code> and <code>deny</code>
+both stop the deploy. A gate whose options leave out <code>proceed</code> can never let its action run.</p>
+<p>A gate that carries any of these, or a <code>pose</code>, and no <code>mode</code> has the mode <code>ask</code>. Verse refuses
+such a gate with <code>mode: auto</code>, because <code>auto</code> asks nobody.</p>
+<h3 id="who-may-answer">Who may answer<a class="headerlink" href="#who-may-answer" title="Permanent link">#</a></h3>
+<p><code>answerers</code> names who is asked. It holds grantees, in the
+<a href="../../perms/#principals-and-grantees">grammar</a> that a grant uses:</p>
+<table>
+<thead>
+<tr>
+<th>Grantee</th>
+<th>Who</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>user:&lt;email&gt;</code>, or the bare email</td>
+<td>a person</td>
+</tr>
+<tr>
+<td><code>user:*</code></td>
+<td>a whole kind</td>
+</tr>
+<tr>
+<td><code>*</code></td>
+<td>everyone</td>
+</tr>
+<tr>
+<td><code>group:&lt;name&gt;</code></td>
+<td>a group</td>
+</tr>
+<tr>
+<td><code>via:verse.resolvers.&lt;name&gt;</code></td>
+<td>a resolver</td>
+</tr>
+<tr>
+<td><code>$principal</code></td>
+<td>whom a task acts for: in an <code>ask</code> row of a task's autonomy only (below)</td>
+</tr>
+</tbody>
+</table>
+<p>A gate that names nobody asks the docket.</p>
+<p><strong><code>$principal</code></strong> is whom a task acts for: whoever ran it as themselves, the asker of an ask whose
+<code>then</code> it runs, or the subject's owner for a spawn <code>as: subject</code>. It goes in an <code>ask</code> row of
+the task's <a href="../tasks/#the-autonomy">autonomy</a>:
+<code>{match: {system: git, verb: push}, then: {ask: {answerers: [$principal]}}}</code>. Verse puts that
+person in its place when it poses the question, so the record names them. It is one answerer
+with one ballot: <code>answerers: [$principal, group:payments], need: 2</code> takes the person and one
+ballot from payments.</p>
+<p>A rule's own gate is asked by the rule, and a rule acts for nobody. So verse refuses
+<code>$principal</code> on a rule's gate at install. It also refuses it in a spawn's autonomy unless the spawn
+says <code>as: subject</code>. And it refuses the spawn when the subject's owner is the system.</p>
+<p>When verse poses the question, it writes <code>answerers</code> as the question's <code>read-write</code> grant, in
+place of the docket's default. Each answerer has one ballot. <code>need</code> says how many must answer:</p>
+<ul>
+<li><code>need: 1</code> is a race;</li>
+<li><code>need</code> equal to the number of answerers is all of them.</li>
+</ul>
+<p>The owner of the charter co-owns what its rule asked, so the owner may answer without being
+named.</p>
+<p>Verse refuses at install a gate that nobody could settle:</p>
+<ul>
+<li>a threshold above the number of answerers named;</li>
+<li>an answerer that the grammar does not read;</li>
+<li>a group or a resolver that does not stand.</li>
+</ul>
+<p><a href="../../perms/#tasks-and-gates">Tasks and gates</a> says who may answer, and
+<a href="../perms/#questions">questions</a> has the record that <code>answerers</code> becomes.</p>
+<h3 id="answerersfrom-whom-the-record-names"><code>answerersFrom</code>: whom the record names<a class="headerlink" href="#answerersfrom-whom-the-record-names" title="Permanent link">#</a></h3>
+<p><code>answerersFrom: answerers</code> reads the answerers from a field of the subject at the firing, not
+from the rule. So one rule can ask, for each record, whoever that record names.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>  <span class="na">gates</span><span class="o">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">approval</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="na">pose</span><span class="o">:</span> <span class="s2">&quot;Deploy *$[subject.value.title]*?&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="na">answerersFrom</span><span class="o">:</span> <span class="sx">approvers</span>      <span class="c1"># {title: …, approvers: dana@example.com}</span>
+</code></pre></div>
+<p>So each release names who approves it. The field holds one name or a list, in the same grammar
+as <code>answerers</code>. For a field deeper in the record, write it dotted (<code>review.by</code>).</p>
+<p>A record without the field changes nothing: the gate's own <code>answerers</code> apply, or the docket's
+default where the gate names none.</p>
+<p>What a record names is checked as <code>answerers</code> is checked at install. An empty list, a name the
+grammar does not read, or fewer people than <code>need</code> makes a question nobody could settle. Verse
+asks nobody in that case.</p>
+<h3 id="labels-what-the-ask-says-about-itself"><code>labels</code>: what the ask says about itself<a class="headerlink" href="#labels-what-the-ask-says-about-itself" title="Permanent link">#</a></h3>
+<p><code>labels: {team: payments, kind: deploy}</code> goes onto the gate's question. Whoever watches
+questions can match on them: a resolver, or a charter that posts each question carrying a
+<code>slack: &lt;channel&gt;</code> label to that Slack channel. A label is a name and a value that the charter's author and the reader
+agree on. Verse itself reads nothing into a label and routes nothing by one. A name holding a
+space is refused at install. An <code>ask</code> row of a task's autonomy takes the same field.</p>
+<h3 id="the-tally">The tally<a class="headerlink" href="#the-tally" title="Permanent link">#</a></h3>
+<p>The question's record keeps the tally. The engine does not count.</p>
+<ul>
+<li>An answer is a ballot on the record.</li>
+<li>The question settles in the same write as the ballot that reaches a threshold.</li>
+<li>An answerer who casts twice replaces their own ballot. The ballot does not count twice.</li>
+<li>A ballot says how its caster was authenticated: <code>authenticated</code> is the identity provider that
+  verified them, or <code>asserted</code> for one who was whoever their request said
+  (<a href="../perms/#who-a-request-is-from">who a request is from</a>). A ballot that a resolver cast for
+  somebody names the resolver in <code>via</code>, and has no <code>authenticated</code>. A ballot a trusted iod relayed
+  for a person names the iod in <code>via</code> and the iod's provider in <code>authenticated</code>
+  (<a href="../perms/#a-person-relayed-by-a-trusted-iod">a person relayed by a trusted iod</a>).</li>
+</ul>
+<p>The engine asks exactly what was written, and acts on the one answer that comes back.</p>
+<h3 id="the-answer-is-written-first">The answer is written first<a class="headerlink" href="#the-answer-is-written-first" title="Permanent link">#</a></h3>
+<p>The answer that settles a question is written on its record as <code>followed</code> before anything else
+happens: before an ask runs the row of its <code>on</code> that the answer meets, and before the firing or
+the task hears it. It holds the answer as the answered record spells it (<code>verdict</code>, <code>by</code>, <code>at</code>, and <code>via</code>,
+<code>why</code>, <code>say</code>, <code>edit</code> and <code>authenticated</code> where the answer has them). The first one
+written settles the question, so two answers landing together cannot disagree. The second is
+refused with 409, and the refusal names whose answer stands. The same answer, by the same
+answerer, again is a retry of the first.</p>
+<p>A delivery that fails leaves the question pending and says why on the answer, as
+<code>undelivered</code>. The next answer delivers it. So does posing the question again. An answer that
+nothing is left to hear, the awaiter or the task's decision having gone, is answered 202 with
+<code>the answer stands</code>. It is delivered when the question is next asked.</p>
+<p>Waiting for a fact is not a gate. A rule that acts once CI is green says so in <code>when:</code>
+(<a href="../condition/">the condition</a>).</p>
+<h3 id="ondenied-what-a-no-means"><code>onDenied</code>: what a no means<a class="headerlink" href="#ondenied-what-a-no-means" title="Permanent link">#</a></h3>
+<p>A denied firing writes nothing. So the subject stays in the exact state that asked the
+question. The next commit that touches the subject selects it again, and the rule fires again.
+The gate asks again: a new question, with an id of its own, to somebody who already answered.</p>
+<p>The <a href="../../glossary/#latch">latch</a> of a well-formed rule cannot help. The latch is in the action,
+and on a deny the action never runs. So the gate says what its own refusal means:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>  <span class="na">gates</span><span class="o">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">approval</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="na">mode</span><span class="o">:</span> <span class="sx">ask</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="na">onDenied</span><span class="o">:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>      <span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">rejected</span> <span class="p">}</span>
+</code></pre></div>
+<p><code>onDenied</code> is an ordinary action: <code>patch</code>, <code>derive</code>, <code>spawn</code>, and their completion hooks. Verse
+applies it to the same subject the firing was about. It is a field of the <em>gate</em>, not of the
+action. It is not a completion hook, and it needs no spawn of its own.</p>
+<p>Only a refusal that settled the question runs <code>onDenied</code>. The no may come from one person, from
+a threshold of people, or from the clock's default. <code>onDenied</code> does not run when:</p>
+<ul>
+<li>an answerer could not be reached;</li>
+<li>a question was withdrawn because its subject left the selection.</li>
+</ul>
+<p>In those cases nobody said anything. A rejection written for them would put a decision in the
+store that nobody made.</p>
+<p>A gate may leave out <code>onDenied</code>: "ask again the next time somebody touches it" is a real
+policy. So a gate without <code>onDenied</code> gets a note at install, not a refusal. The install prints
+it under the line that says what was installed, as <code>note: rule &lt;name&gt;: …</code>.</p>
+<p>To make a no final without changing the state of the subject itself, use a marker:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>  <span class="na">condition</span><span class="o">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="na">subject</span><span class="o">:</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>      <span class="na">path</span><span class="o">:</span> <span class="s2">&quot;release.*&quot;</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>      <span class="na">value</span><span class="o">:</span> <span class="k">!and</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>      <span class="p">-</span> <span class="p">{</span> <span class="na">stage</span><span class="o">:</span> <span class="sx">ready</span> <span class="p">}</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>      <span class="p">-</span> <span class="k">!not</span> <span class="p">{</span> <span class="na">blocked</span><span class="o">:</span> <span class="l">true</span> <span class="p">}</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  <span class="na">gates</span><span class="o">:</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">approval</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="na">mode</span><span class="o">:</span> <span class="sx">ask</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="na">onDenied</span><span class="o">:</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>      <span class="na">patch</span><span class="o">:</span> <span class="p">{</span> <span class="na">blocked</span><span class="o">:</span> <span class="l">true</span> <span class="p">}</span>
+</code></pre></div>
+<p>Removing the marker then opens the question again.</p>
+<p>A gate starts nothing of its own. What a rule does about a yes is its action, and what a no
+means for the subject is <code>onDenied</code>. The <code>on</code> of an <a href="../../asking/">ask</a> is a person's
+alone.</p>
+<h3 id="a-deadline-settles">A deadline settles<a class="headerlink" href="#a-deadline-settles" title="Permanent link">#</a></h3>
+<p><code>deadline: {within: "24h", default: deny}</code> settles the question on <code>deny</code> when the time passes
+and no option is at its threshold. The question records <code>by: deadline</code>, and the firing sees a
+refusal.</p>
+<p>Verse writes the instant on the record once, when it first poses the question. Every later
+posing uses that instant. A restart sets the clock to the written instant, not to a new
+duration. So a deadline that passed while verse was down fires as verse starts again.</p>
+<p>The default is an ordinary option. A ballot for it counts toward its own threshold, like any
+other ballot. So a <code>deny</code> that needs one ballot settles on one deny, before the clock.</p>
+<p>A default left empty settles on nothing (<code>verdict: none</code>). The firing reads that as a refusal
+nobody made.</p>
+<p><code>deadline: {atFrom: by, default: proceed}</code> takes the instant from a field of the subject
+instead. The field holds an RFC 3339 date. That is how a record says "by Friday", rather than a
+duration from whenever verse posed the question. Verse reads it at the firing, and again when
+it posts the question.</p>
+<ul>
+<li>A record without the field has no deadline.</li>
+<li>A record whose date does not parse is a question that nobody is asked.</li>
+<li>While the question stands, editing the date moves its deadline. Verse does not ask the question
+  again.</li>
+<li>A settled question keeps the instant it settled under.</li>
+</ul>
+<p>Whoever may write the record may move the date.</p>
+<p>Do not write <code>within</code> and <code>atFrom</code> together. <code>at</code> is the instant the engine worked out and
+wrote; a rule never writes it. An <code>ask</code> row of a task's autonomy has <code>within</code> only, because there
+is no record for it to read a date from.</p>
+<h3 id="a-question-outlives-the-verse-that-asked-it">A question outlives the verse that asked it<a class="headerlink" href="#a-question-outlives-the-verse-that-asked-it" title="Permanent link">#</a></h3>
+<p>The question's record, its options and every ballot are data in the store. So a restart finds
+the question exactly where it stood.</p>
+<p>The <em>awaiter</em> does not survive a restart. The awaiter is the part of the firing that waits for
+the answer. A question with no awaiter would be the worst entry on the docket: somebody answers
+it, and nothing moves.</p>
+<p>So at startup verse <em>evaluates each rule again</em>. The action never ran, so a rule that still
+selects the subject poses the same question again. It joins the record that stands, with its
+options and every ballot already cast. A rule that no longer selects the subject poses nothing.
+While verse runs, a question whose subject leaves what its rule reads is withdrawn, and an
+answer to it decides nothing.</p>
+<p>Posing again cannot make a second question, so it is safe beside a rule that also fires
+again:</p>
+<ul>
+<li>the question id is derived from the rule, the gate and the subject, and a firing joins the
+  question that stands open under it;</li>
+<li>a question settles once, and a firing after an answer asks a new question under
+  <code>&lt;id&gt;-2</code>, <code>&lt;id&gt;-3</code>, and so on;</li>
+<li>the spawn id is deterministic per (chain, subject).</li>
+</ul>
+<p>One question, and one task, however many paths reach it. A question posed again while an answer
+stands on it delivers that answer (<a href="#the-answer-is-written-first">the answer is written first</a>),
+and the firing hears it.</p>
+<p><strong>A scope is not covered.</strong> Its questions are in the scope's own store, and nothing lists them
+at startup. Charters and claims in a scope have the same gap.</p>
+<p><strong>If verse stops between settling a question and starting the work, the spawn is lost.</strong> The
+record is answered, so nothing poses it again. The same gap exists between <code>patch</code> and <code>spawn</code>
+inside one action. An action is not atomic: a crash in the middle leaves the half that landed.</p>
+<h3 id="a-gates-answer-applies-to-the-world-it-was-asked-in">A gate's answer applies to the world it was asked in<a class="headerlink" href="#a-gates-answer-applies-to-the-world-it-was-asked-in" title="Permanent link">#</a></h3>
+<p>While a question stands, the firing watches the subject and what is beneath it. At every change
+it asks whether the rule would still select the subject. When the rule would not, the question
+no longer matters, and verse <strong>withdraws</strong> it:</p>
+<ul>
+<li>the record says <code>status: orphaned</code>, with a <code>why</code>;</li>
+<li>there is no verdict and no action;</li>
+<li><code>onDenied</code> does not run, because a withdrawn question is not a refusal.</li>
+</ul>
+<p>An answer that arrives after the subject left the selection is the same case. The firing
+withdraws, and does not act.</p>
+<p><strong>The withdrawal happens at once</strong>, at the change that made the question not matter. Nobody has
+to answer, and nothing has to restart.</p>
+<p>The check has two limits.</p>
+<ul>
+<li>It asks only about the <em>subject</em>, not the cause. A rule fired by an <code>on</code> edge may still select
+  its subject and never see that edge again. So a question that stands does not mean the rule
+  will fire again.</li>
+<li>When it cannot tell, it lets the question stand. It cannot tell when the store is unreadable,
+  or when a read of the predicate fails.</li>
+</ul>
+<h3 id="a-credential-for-what-a-gate-let-through">A credential for what a gate let through<a class="headerlink" href="#a-credential-for-what-a-gate-let-through" title="Permanent link">#</a></h3>
+<p>A gate stops verse's own work. Work that reaches a system verse does not own, such as a cloud
+account or a cluster, is stopped only if that system refuses what no gate approved. A
+<strong>credential</strong> makes that possible. It is a short-lived token that verse signs for the task of a
+rule whose gate passed. You set up the outside system to accept such a token and nothing else.</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">deploy</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="na">condition</span><span class="o">:</span> <span class="p">{</span><span class="na">subject</span><span class="o">:</span> <span class="p">{</span><span class="na">path</span><span class="o">:</span> <span class="s2">&quot;release.*&quot;</span><span class="p">,</span> <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">ready</span><span class="p">}}}</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  <span class="na">gates</span><span class="o">:</span> <span class="p">[{</span><span class="na">name</span><span class="o">:</span> <span class="sx">go</span><span class="p">,</span> <span class="na">mode</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}]</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="na">patch</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">deploying</span><span class="p">}</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>      <span class="na">script</span><span class="o">:</span> <span class="p">|</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="sh">        set -e</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="sh">        cd app &amp;&amp; make build</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="sh">        AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://releases</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>      <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>        <span class="na">vars</span><span class="o">:</span> <span class="p">{</span><span class="na">AWS_ROLE_ARN</span><span class="o">:</span> <span class="s2">&quot;arn:aws:iam::123456789012:role/releases&quot;</span><span class="p">}</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>        <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>          <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>          <span class="na">git</span><span class="o">:</span> <span class="p">{</span><span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span><span class="p">,</span> <span class="na">fetch</span><span class="o">:</span> <span class="p">{}}</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>      <span class="na">credential</span><span class="o">:</span> <span class="p">{</span><span class="na">audience</span><span class="o">:</span> <span class="sx">sts.amazonaws.com</span><span class="p">}</span>
+</code></pre></div>
+<p>The runner checks out <code>acme/app</code>, and the script builds it and syncs the build to S3. AWS takes
+the token from the file and the role from <code>AWS_ROLE_ARN</code>.</p>
+<p><strong>The verse is an issuer.</strong> Its config names the address and the signing key
+(<a href="https://github.com/signadot/verse/blob/main/docs/reference/up.md#configuration"><code>auth.issuer</code></a>). The outside system reads the verse's public keys from
+that address, and checks each token's signature for itself.</p>
+<p><strong>The audience is a system outside verse.</strong> A credential whose audience is a registered runner's
+subject is refused at the spawn. A runner admits only the token verse signs as itself, <code>sub:
+verse</code>, so a credential would not open its door.</p>
+<p><strong><code>sub</code> is what the outside system matches on.</strong> It is the rule's address, then how the gate was
+passed:</p>
+<table>
+<thead>
+<tr>
+<th><code>sub</code></th>
+<th>the gate was passed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verse.trigger.rule.deploy:ballots</code></td>
+<td>on the ballots that people cast</td>
+</tr>
+<tr>
+<td><code>verse.trigger.rule.deploy:deadline</code></td>
+<td>on its deadline's default, with nobody's answer deciding it</td>
+</tr>
+<tr>
+<td><code>verse.trigger.rule.deploy:auto</code></td>
+<td>as a gate written <code>mode: auto</code>, which asks nobody</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>sub</code> names no task and no subject. So you grant access once for a rule, and it holds for every
+  firing of it.</li>
+<li>A system that requires a person's answer grants only the <code>:ballots</code> form. If the rule's gate
+  is later changed to <code>auto</code>, its tokens say <code>:auto</code> and that system refuses them.</li>
+<li>A rule with several gates says what its questions came to. It is <code>:deadline</code> if any gate that
+  asked was settled by its deadline, and <code>:ballots</code> if every gate that asked was answered. It is
+  <code>:auto</code> only where no gate asked.</li>
+<li>A rule in a package has the package in its address:
+  <code>verse.trigger.rule."&lt;package&gt;:&lt;name&gt;":ballots</code>.</li>
+</ul>
+<p><strong>Work nobody approves says so.</strong> A rule whose work should reach the outside system without
+asking anybody writes a gate that says that:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">deploy-staging</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  <span class="na">condition</span><span class="o">:</span> <span class="p">{</span><span class="na">subject</span><span class="o">:</span> <span class="p">{</span><span class="na">path</span><span class="o">:</span> <span class="s2">&quot;release.*&quot;</span><span class="p">,</span> <span class="na">value</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">built</span><span class="p">}}}</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  <span class="na">gates</span><span class="o">:</span> <span class="p">[{</span><span class="na">name</span><span class="o">:</span> <span class="sx">unattended</span><span class="p">,</span> <span class="na">mode</span><span class="o">:</span> <span class="sx">auto</span><span class="p">}]</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  <span class="na">action</span><span class="o">:</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="na">patch</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">staging</span><span class="p">}</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>      <span class="na">script</span><span class="o">:</span> <span class="p">|</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="sh">        set -e</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="sh">        cd app &amp;&amp; make build</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="sh">        AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE aws s3 sync build s3://staging</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>      <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>        <span class="na">vars</span><span class="o">:</span> <span class="p">{</span><span class="na">AWS_ROLE_ARN</span><span class="o">:</span> <span class="s2">&quot;arn:aws:iam::123456789012:role/staging&quot;</span><span class="p">}</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>        <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>          <span class="na">network</span><span class="o">:</span> <span class="p">{</span><span class="na">mode</span><span class="o">:</span> <span class="sx">open</span><span class="p">}</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>          <span class="na">git</span><span class="o">:</span> <span class="p">{</span><span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span><span class="p">,</span> <span class="na">fetch</span><span class="o">:</span> <span class="p">{}}</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>      <span class="na">credential</span><span class="o">:</span> <span class="p">{</span><span class="na">audience</span><span class="o">:</span> <span class="sx">sts.amazonaws.com</span><span class="p">}</span>
+</code></pre></div>
+<p>Its token says <code>:auto</code>. It promises only that this rule fired and verse started this task.
+Nobody approved it. So whoever may write the subject can cause it. Grant <code>:auto</code> in the outside
+system only what that is safe for.</p>
+<p><strong>The other claims are for the outside system's audit log.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>iss</code></td>
+<td>the verse's address as an issuer</td>
+</tr>
+<tr>
+<td><code>aud</code></td>
+<td>the <code>audience</code> that the spawn declared</td>
+</tr>
+<tr>
+<td><code>iat</code>, <code>nbf</code>, <code>exp</code></td>
+<td>when it was signed, and when it stops being good: ten minutes later</td>
+</tr>
+<tr>
+<td><code>jti</code></td>
+<td>an id of this token alone</td>
+</tr>
+<tr>
+<td><code>task</code></td>
+<td>the task's id</td>
+</tr>
+<tr>
+<td><code>rule</code>, <code>charter</code></td>
+<td>the rule's address, and its package's where it is in one</td>
+</tr>
+<tr>
+<td><code>subject</code></td>
+<td>the address the firing was about</td>
+</tr>
+<tr>
+<td><code>principal</code></td>
+<td>who the task acts as</td>
+</tr>
+<tr>
+<td><code>gates</code></td>
+<td>for each gate of the rule: <code>gate</code> (its name) and <code>passed</code> (<code>ballots</code>, <code>deadline</code> or <code>auto</code>). A gate that asked also has <code>question</code> (the question's address) and <code>answerers</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Each of <code>answerers</code> is <code>{principal, authenticated}</code>: who cast a ballot for the option the gate
+settled on, and how they were authenticated. An answer that a resolver gave for somebody has
+<code>via</code> and no <code>authenticated</code>; one a trusted iod relayed for a person has both. A gate settled by
+its deadline may have none.</p>
+<p><strong>The task's record says a credential was minted.</strong> It has
+<code>credential: {audience, sub, jti, expires}</code>, and never the token. <code>jti</code> is the token's own id,
+which the outside system's log has too.</p>
+<p><strong>The task gets the token as a file.</strong> The runner writes it outside the task's workspace, for
+the task's user alone, and sets <code>VERSE_CREDENTIAL_FILE</code> in the task's shell to the file's path.
+The token is never a value in the environment. AWS's and GCP's tools take such a token from a
+file. The file is removed when the task ends.</p>
+<p><strong>Who gets no credential.</strong> Verse refuses the charter at install where it can tell, and fails the
+spawn where it cannot. Either way it says why.</p>
+<ul>
+<li>A spawn that declares none gets none.</li>
+<li>A rule that writes no gate. A credential says which gate let the work through, so there has
+  to be one, and <code>mode: auto</code> is one.</li>
+<li>A completion hook's spawn, or a step of a <code>seq</code>. They start after the answer was given. Make
+  that step a rule of its own, with its own gate.</li>
+<li>A verse with no <code>auth.issuer</code>.</li>
+<li>An <code>audience</code> with an expression in it. The audience is declared in the charter, and the
+  subject's text cannot choose it.</li>
+</ul>
+<p><strong>A token is minted once, when the task is spawned.</strong> Verse cannot take a token back, so a
+cancelled task could still act for up to ten minutes. After that, the outside system refuses the
+token. So keep the gated work short, and gate it as its own rule.</p>
+<h3 id="gating"><code>gating</code><a class="headerlink" href="#gating" title="Permanent link">#</a></h3>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="na">gating</span><span class="o">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="na">gates</span><span class="o">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  <span class="p">-</span> <span class="na">name</span><span class="o">:</span> <span class="sx">ship</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="na">mode</span><span class="o">:</span> <span class="sx">ask</span>
+</code></pre></div>
+<p><code>gating</code> holds the gates of a rule. <code>gates:</code> at the top level means <code>gating: {gates: …}</code>. Verse
+refuses a rule that writes both; it does not merge them. Verse refuses a <code>resolver:</code> under
+<code>gating</code> or on a spawn. A gate names its <code>answerers</code>, and whoever is asked grants the
+<a href="https://github.com/signadot/verse/blob/main/docs/attached-resolvers.md">resolver</a> that answers for them.</p>
+<h2 id="why-it-is-this-way">Why it is this way<a class="headerlink" href="#why-it-is-this-way" title="Permanent link">#</a></h2>
+<p>The reasons for this design are in <a href="https://github.com/signadot/verse/blob/main/docs/design/reference-gates.md">reference-gates.md</a>, in the repository.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>
