@@ -113,7 +113,7 @@ type Ask struct {
 	// runner never reads it.
 	Default string `tony:"field=default,omitzero"`
 	// Labels are what the question says about itself for whoever watches asks: `team:
-	// payments`, `slack: C0C3KHG9B0W`. Verse's: the runner never reads them.
+	// payments`, `slack: C0EXAMPLE000`. Verse's: the runner never reads them.
 	Labels map[string]string `tony:"field=labels,omitzero"`
 }
 

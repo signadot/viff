@@ -268,7 +268,7 @@ autonomy:
       answerers: [group:release]
       within: 4h
       default: deny
-      labels: {slack: C0C3KHG9B0W}
+      labels: {slack: C0EXAMPLE000}
 - {match: {system: git, verb: push}, then: allow}
 - {then: ask}
 ```

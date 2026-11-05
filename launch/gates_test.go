@@ -20,7 +20,7 @@ func TestASpawnCarriesItsAutonomy(t *testing.T) {
 		agent: {name: verse}, prompt: "review $[subject.ref]",
 		autonomy: [
 		  {name: release, match: {system: git, verb: push, ref: refs/heads/main}, then: {ask: {need: 2, answerers: ["user:*"],
-		   within: "4h", default: deny, labels: {slack: C0C3KHG9B0W}}}},
+		   within: "4h", default: deny, labels: {slack: C0EXAMPLE000}}}},
 		  {name: shell, match: {system: commands, verb: run}, then: ask},
 		  {match: {system: git, verb: push, ref: !glob "refs/heads/verse/*"}, then: deny},
 		  {then: allow},
@@ -31,7 +31,7 @@ func TestASpawnCarriesItsAutonomy(t *testing.T) {
 	}
 	p := spec.Autonomy
 	if len(p) != 4 || p[0].Then.Ask == nil || p[0].Then.Ask.Need != 2 || p[0].Then.Ask.Default != "deny" ||
-		p[0].Then.Ask.Labels["slack"] != "C0C3KHG9B0W" || p[0].Then.Ask.Within != "4h" || p[0].Then.Ask.Answerers[0] != "user:*" {
+		p[0].Then.Ask.Labels["slack"] != "C0EXAMPLE000" || p[0].Then.Ask.Within != "4h" || p[0].Then.Ask.Answerers[0] != "user:*" {
 		t.Fatalf("policy = %+v", p)
 	}
 	if p[0].Match.System != "git" || p[0].Match.Verb != "push" || systems.Words(p[0].Match.Params["ref"]) != "refs/heads/main" {
@@ -47,7 +47,7 @@ func TestASpawnCarriesItsAutonomy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	for _, want := range []string{"need: 2", "within: 4h", "slack: C0C3KHG9B0W", "system: git", "verb: push", "then: deny", "then: allow"} {
+	for _, want := range []string{"need: 2", "within: 4h", "slack: C0EXAMPLE000", "system: git", "verb: push", "then: deny", "then: allow"} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("written back without %q:\n%s", want, out)
 		}
@@ -56,7 +56,7 @@ func TestASpawnCarriesItsAutonomy(t *testing.T) {
 	bound.Autonomy[0].Then.Ask.Need = 9
 	bound.Autonomy[0].Then.Ask.Labels["slack"] = "changed"
 	bound.Autonomy[0].Match.Params["ref"] = ir.FromString("changed")
-	if p[0].Then.Ask.Need != 2 || p[0].Then.Ask.Labels["slack"] != "C0C3KHG9B0W" || systems.Words(p[0].Match.Params["ref"]) != "refs/heads/main" {
+	if p[0].Then.Ask.Need != 2 || p[0].Then.Ask.Labels["slack"] != "C0EXAMPLE000" || systems.Words(p[0].Match.Params["ref"]) != "refs/heads/main" {
 		t.Fatal("a bound spec aliases the charter's autonomy")
 	}
 }
