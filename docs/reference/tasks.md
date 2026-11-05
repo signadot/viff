@@ -135,7 +135,7 @@ block gives is refused before any row is read ([systems](../systems/README.md#a-
 | `git` | a repository checked out in the task's workspace: `repo` (`owner/name`, or `host/owner/name`), `from` (the branch the checkout starts on; absent is the default branch), and the verbs it gives with their shapes, `fetch: {}` and the `push` shapes ([git](../systems/git.md)). |
 | `git-issue` | a repository's own tracker, of a repository `git` checks out. `{repo: acme/app}` gives every one of its verbs ([git-issue](../systems/git-issue.md)). |
 | `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, tcp-client: [{host: …, port: …}]}`. Absent is `none`. It is built once, when the run starts, and the runner refuses a mode its sandbox cannot build ([the network](../systems/inside.md#the-network)). |
-| `github` | a GitHub repository's pull requests, of a repository `git` checks out: `create-pr`, `update-pr`, `list-prs` and `read-pr`, where the runner's forge is GitHub ([github](../systems/github.md)). |
+| `github` | a GitHub repository's pull requests, of a repository `git` checks out: `create-pr`, `update-pr`, `list-prs`, `read-pr`, `comment-pr` and `reply-comment`, where the runner's forge is GitHub ([github](../systems/github.md)). |
 | `github-issue` | a GitHub repository's issues, of a repository `git` checks out: `create`, `comment` and `close` ([github-issue](../systems/github-issue.md)). |
 | `linear-issue` | Linear's issues: `create` in a `team`, `comment` and `close` on an `issue` ([linear-issue](../systems/linear-issue.md)). |
 | `slack` | Slack's channels: `post`, `reply`, `read` and `react`, each in a `channel` ([slack](../systems/slack.md)). |
@@ -303,6 +303,8 @@ params are the verb's:
 | `github.update-pr` | `repo`, `head`, `base`; `own`, filled by the runner |
 | `github.list-prs` | `repo` |
 | `github.read-pr` | `repo`, `pr` |
+| `github.comment-pr` | `repo`, `pr` |
+| `github.reply-comment` | `repo`, `pr`, `comment` |
 | `files.write` | `path` |
 | `commands.run` | `command` |
 | `agent.call-sub-agent` | `agent` |

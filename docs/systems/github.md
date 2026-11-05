@@ -84,6 +84,8 @@ branch this run did not push whatever the rows say.
 | `github-update-pr` | changes the open pull request from a branch the task pushed: its title, body or base. What it does not name stays as it is. | `github.update-pr`, with `repo`, `head`, and `base` when it moves the base |
 | `github-list-prs` | reads the open pull requests, most recently changed first: each one's number, title, author, branches, last change, and whom a review is requested from. It stops at 500 and says so. | `github.list-prs`, with `repo` |
 | `github-read-pr` | reads one pull request by its number: its fields, whom a review is requested from, the reviews given so far, what CI says of its head (check runs and commit statuses: failing and unfinished by name and link, passing and skipped counted), and its description | `github.read-pr`, with `repo`, `pr` |
+| `github-comment-pr` | comments on a pull request's conversation, by its number, open, closed or merged. A number that is an issue is refused, naming `github-issue-comment`, and one that is nothing is refused as no pull request. | `github.comment-pr`, with `repo`, `pr` |
+| `github-reply-comment` | replies in the thread of an inline review comment, by the pull request's number and the comment's id. A reply to a reply goes into its thread, and the answer names both: `replied in the thread of comment 900 (902 is a reply in it)`. A conversation comment has no thread and is refused, naming `github-comment-pr`; so is a comment whose thread is on another pull request than `pr`, and an id that is no comment. | `github.reply-comment`, with `repo`, `pr`, `comment` |
 
 A pull request must come from a branch this run pushed. A pull request from any other branch
 is refused. Its commits carry the task's trailers, so the iod's copy of the pull request can be
@@ -97,13 +99,43 @@ and the task re-plans on it.
 A block that names no verbs gives every verb, the reads and the writes alike. A task that only
 reads names them: `github: [{repo: acme/app, read-pr: {}}]`.
 
+A comment carries its pull request in its step, and a reply its comment's id as the task gave
+it, so a row or a shape can hold a task to one pull request. A task woken by a review comment
+on pull request 71 can answer there and nowhere else:
+
+```tony
+github:
+- repo: acme/app
+  read-pr: {pr: 71}
+  comment-pr: {pr: 71}
+  reply-comment: {pr: 71}
+```
+
+or, with a block that gives more, by its rows:
+
+```tony
+autonomy:
+- {match: {system: github, verb: comment-pr, pr: 71}, then: allow}
+- {match: {system: github, verb: reply-comment, pr: 71}, then: allow}
+- {match: {system: github}, then: ask}
+- {then: allow}
+```
+
+The row decides on the `pr` the task named, before the runner reads anything at the forge. The
+runner then checks that the comment's thread is on that pull request, and refuses a reply whose
+thread is on another, so a task held to 71 cannot reply on 72 by naming 72's comment.
+
+A pull request's conversation is an issue's at GitHub, but a comment on it is this system's
+verb: `github-issue-comment` refuses a pull request's number, naming `github-comment-pr`
+([github-issue](github-issue.md)).
+
 ## Where the credential lives
 
 **The iod** needs a fine-grained token or a GitHub App for the repositories it reads. For its
 out half, it needs write access on pull requests and issues.
 
-**The task** holds no credential. The runner opens, updates and reads pull requests with its token for
-the forge, `GITHUB_TOKEN`. For a GitHub Enterprise Server, set `repos.api: https://<host>/api/v3`
+**The task** holds no credential. The runner opens, updates, reads and comments on pull requests
+with its token for the forge, `GITHUB_TOKEN`. For a GitHub Enterprise Server, set `repos.api: https://<host>/api/v3`
 in the runner's configuration, and `repos.host` to the host.
 
 **The operator** sets a limit on what any task may propose, in the runner's configuration, under each doer whose tasks may use it:
@@ -119,3 +151,9 @@ agents:
 Verse refuses to install a spawn whose environment gives proposals beyond the ceiling, saying
 what the ceiling gives; the runner holds each proposal at the act to the environment, the row,
 and then the ceiling.
+
+`comment-pr` and `reply-comment` write at the forge, and a ceiling gives them as it gives any
+verb. A ceiling that lists its verbs, as the one above, lacks them until the operator adds them
+(`comment-pr: {}, reply-comment: {}`). A ceiling block that names no verb
+(`github: {ceiling: {}}`) allows every verb of the system, so an operator who wrote one gives
+tasks these two writes as well, with no change to the configuration.

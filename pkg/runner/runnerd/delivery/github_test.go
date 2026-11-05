@@ -324,3 +324,145 @@ func TestReadGitHubPRSaysItsHeadsChecks(t *testing.T) {
 		}
 	}
 }
+
+// A TASK COMMENTS ON A PULL REQUEST through the runner, on its conversation and in an inline
+// comment's thread, with the runner's token. The forge is a test server answering as GitHub
+// does: pull request 71 with review comments 900 (a thread's first) and 902 (a reply in it), a
+// review comment 950 on pull request 72, issue 5, and conversation comment 800. Each refusal
+// names what the number or the id is, and where it names a verb, which.
+func TestATaskCommentsOnAPullRequestThroughTheRunner(t *testing.T) {
+	type posted struct{ path, body string }
+	var posts []posted
+	forge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer the-runners-own" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		notFound := func() {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message": "Not Found"}`))
+		}
+		review := func(id, inReplyTo int64, pr int) {
+			c := map[string]any{"id": id, "pull_request_url": fmt.Sprintf("https://api.github.com/repos/acme/app/pulls/%d", pr),
+				"html_url": fmt.Sprintf("https://github.com/acme/app/pull/%d#discussion_r%d", pr, id)}
+			if inReplyTo != 0 {
+				c["in_reply_to_id"] = inReplyTo
+			}
+			_ = json.NewEncoder(w).Encode(c)
+		}
+		if r.Method == http.MethodPost {
+			var in map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			posts = append(posts, posted{r.URL.Path, in["body"]})
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"html_url": "https://github.com/acme/app/posted"})
+			return
+		}
+		switch r.URL.Path {
+		case "/repos/acme/app/pulls/71":
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": 71, "state": "closed", "merged": true})
+		case "/repos/acme/app/issues/5":
+			_ = json.NewEncoder(w).Encode(map[string]any{"number": 5})
+		case "/repos/acme/app/pulls/comments/900":
+			review(900, 0, 71)
+		case "/repos/acme/app/pulls/comments/902":
+			review(902, 900, 71)
+		case "/repos/acme/app/pulls/comments/950":
+			review(950, 0, 72)
+		case "/repos/acme/app/issues/comments/800":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": 800})
+		default:
+			notFound()
+		}
+	}))
+	defer forge.Close()
+
+	ws := githubTree("acme/app", "https://github.com/acme/app.git")
+	s := &Server{Log: io.Discard, Services: Services{GitHubAPI: forge.URL}, Ceilings: performs("github")}
+	tk := Task{ID: "c1", Workspace: ws, Launch: within([]string{"acme/app"}, "github"), Credential: func(workspace.Repo) (string, error) { return "the-runners-own", nil }}
+	ask := func(req Request) Reply { return s.answer(tk, frame(t, req)) }
+
+	t.Run("a comment on a pull request's conversation, merged or not", func(t *testing.T) {
+		posts = nil
+		rep := ask(Request{Op: OpGitHubCommentPR, Repo: "app", PR: "71", Body: "fixed in abc123"})
+		if !rep.OK || rep.Out != "commented on pull request #71 at acme/app: https://github.com/acme/app/posted" {
+			t.Fatalf("reply: %+v", rep)
+		}
+		if len(posts) != 1 || posts[0] != (posted{"/repos/acme/app/issues/71/comments", "fixed in abc123"}) {
+			t.Errorf("posted %v", posts)
+		}
+	})
+	t.Run("a reply in a thread", func(t *testing.T) {
+		posts = nil
+		rep := ask(Request{Op: OpGitHubReplyComment, Repo: "app", PR: "71", Comment: "900", Body: "renamed"})
+		if !rep.OK || rep.Out != "replied in the thread of comment 900 on pull request #71 at acme/app: https://github.com/acme/app/posted" {
+			t.Fatalf("reply: %+v", rep)
+		}
+		if len(posts) != 1 || posts[0] != (posted{"/repos/acme/app/pulls/71/comments/900/replies", "renamed"}) {
+			t.Errorf("posted %v", posts)
+		}
+	})
+	t.Run("a reply to a reply lands on the thread's first comment", func(t *testing.T) {
+		posts = nil
+		rep := ask(Request{Op: OpGitHubReplyComment, Repo: "app", PR: "71", Comment: "902", Body: "done"})
+		if !rep.OK || rep.Out != "replied in the thread of comment 900 (902 is a reply in it) on pull request #71 at acme/app: https://github.com/acme/app/posted" {
+			t.Fatalf("reply: %+v", rep)
+		}
+		if len(posts) != 1 || posts[0].path != "/repos/acme/app/pulls/71/comments/900/replies" {
+			t.Errorf("posted %v", posts)
+		}
+	})
+	for _, tc := range []struct {
+		name    string
+		req     Request
+		refused string
+	}{
+		{"an issue's number to comment-pr", Request{Op: OpGitHubCommentPR, PR: "5", Body: "x"}, "#5 is an issue: comment on it with github-issue-comment"},
+		{"a number that is nothing", Request{Op: OpGitHubCommentPR, PR: "6", Body: "x"}, "there is no pull request #6 at acme/app"},
+		{"a pr that is not a number", Request{Op: OpGitHubCommentPR, PR: "seven", Body: "x"}, `"seven" is not a pull request number`},
+		{"a conversation comment to reply-comment", Request{Op: OpGitHubReplyComment, PR: "71", Comment: "800", Body: "x"},
+			"comment 800 is on a conversation, not in a review thread, and has no thread to reply in: comment on the pull request with github-comment-pr"},
+		{"an id that is no comment", Request{Op: OpGitHubReplyComment, PR: "71", Comment: "801", Body: "x"}, "no comment 801 at acme/app"},
+		{"a comment on another pull request", Request{Op: OpGitHubReplyComment, PR: "71", Comment: "950", Body: "x"}, "comment 950 is on pull request #72, not #71"},
+		{"a comment id that is not a number", Request{Op: OpGitHubReplyComment, PR: "71", Comment: "abc", Body: "x"}, `"abc" is not a comment id`},
+		{"an empty body", Request{Op: OpGitHubCommentPR, PR: "71", Body: " "}, "a comment needs a body"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			posts = nil
+			tc.req.Repo = "app"
+			if rep := ask(tc.req); rep.Refused != tc.refused {
+				t.Errorf("reply: %+v, want refused %q", rep, tc.refused)
+			}
+			if len(posts) != 0 {
+				t.Errorf("a refusal posted %v", posts)
+			}
+		})
+	}
+	t.Run("a row pinning the task to one pull request", func(t *testing.T) {
+		l := within([]string{"acme/app"}, "github")
+		var only71 task.Row
+		if err := only71.FromTony([]byte(`{match: {system: github, verb: reply-comment, pr: 71}, then: allow}`)); err != nil {
+			t.Fatal(err)
+		}
+		l.Autonomy = task.Autonomy{only71, {Name: "nothing-else", Then: task.Then{Mode: task.ThenDeny}}}
+		pin := Task{ID: "c2", Workspace: ws, Launch: l, Credential: tk.Credential}
+		if rep := s.answer(pin, frame(t, Request{Op: OpGitHubReplyComment, Repo: "app", PR: "71", Comment: "900", Body: "ok"})); !rep.OK {
+			t.Errorf("a reply on 71: %+v", rep)
+		}
+		if rep := s.answer(pin, frame(t, Request{Op: OpGitHubReplyComment, Repo: "app", PR: "72", Comment: "950", Body: "ok"})); !strings.Contains(rep.Refused, "nothing-else") {
+			t.Errorf("a reply on 72: %+v, want the deny row named", rep)
+		}
+	})
+	t.Run("a ceiling that lists verbs without them", func(t *testing.T) {
+		reads := &Server{Log: io.Discard, Services: s.Services, Ceilings: map[string]systems.Ceiling{"github": {{Verbs: map[string][]systems.Shape{"read-pr": {{}}}}}}}
+		if rep := reads.answer(tk, frame(t, Request{Op: OpGitHubCommentPR, Repo: "app", PR: "71", Body: "x"})); !strings.Contains(rep.Refused, "ceiling") {
+			t.Errorf("reply: %+v, want the ceiling's refusal", rep)
+		}
+	})
+	t.Run("a runner with no github system", func(t *testing.T) {
+		none := &Server{Log: io.Discard, Services: s.Services, Ceilings: performs("github-issue")}
+		if rep := none.answer(tk, frame(t, Request{Op: OpGitHubCommentPR, Repo: "app", PR: "71", Body: "x"})); !strings.Contains(rep.Refused, "it has no `github` system") {
+			t.Errorf("reply: %+v", rep)
+		}
+	})
+}
