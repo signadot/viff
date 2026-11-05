@@ -1077,6 +1077,85 @@ func TestCommentsAreReflectedAndWindowed(t *testing.T) {
 	}
 }
 
+// A REVIEW COMMENT SAYS WHERE IT IS AND WHAT IT ANSWERS: its file, its lines and side, the commit
+// it was written against, the thread's first comment when it is a reply, and the hunk it was on,
+// cut from the front to the lines that end at it. An outdated comment's null line is absent, and
+// its hunk stays. A conversation comment gains none of them. The full pass and the targeted one
+// agree on each, since both read the comment through one payload.
+func TestAReviewCommentCarriesItsLocation(t *testing.T) {
+	var long []string
+	for i := 1; i <= 40; i++ {
+		long = append(long, fmt.Sprintf("+line %d", i))
+	}
+	hunk := "@@ -1,0 +1,40 @@\n" + strings.Join(long, "\n")
+	f := newFake()
+	r := f.repo("acme/app")
+	r.pr(7, "a change", "open", "2026-01-01T00:00:00Z", "cafe1234")
+	r.comment(900, 7, "rename this", true, "2026-01-02T00:00:00Z").at = &fakeAt{
+		path: "pkg/a.go", side: "RIGHT", commit: "cafe1234", hunk: hunk, line: 40}
+	r.comment(901, 7, "done", true, "2026-01-03T00:00:00Z").at = &fakeAt{
+		path: "pkg/a.go", side: "RIGHT", commit: "cafe1234", hunk: "@@ -1 +1 @@\n+x", line: 1, inReplyTo: 900}
+	r.comment(902, 7, "these lines", true, "2026-01-04T00:00:00Z").at = &fakeAt{
+		path: "pkg/a.go", side: "RIGHT", commit: "cafe1234", hunk: hunk, line: 40, startLine: 11}
+	r.comment(903, 7, "outdated", true, "2026-01-05T00:00:00Z").at = &fakeAt{
+		path: "pkg/b.go", side: "LEFT", commit: "beef5678", hunk: "@@ -3 +3 @@\n-old"}
+	r.comment(904, 7, "a conversation comment", false, "2026-01-06T00:00:00Z")
+	store := entitytest.Store(t)
+	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
+	if err := verseio.NewReflector(src, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
+		t.Fatal(err)
+	}
+	get := func(id int64) map[string]any {
+		return entity.ToObj(mustGet(t, store, src.CommentRef("acme/app", 7, id)))
+	}
+	lines := func(v any) []string { s, _ := v.(string); return strings.Split(s, "\n") }
+
+	root := get(900)
+	if root["path"] != "pkg/a.go" || fmt.Sprint(root["line"]) != "40" || root["side"] != "RIGHT" || root["commitId"] != "cafe1234" {
+		t.Errorf("the comment's location: %v", root)
+	}
+	if _, ok := root["inReplyTo"]; ok {
+		t.Errorf("a thread's first comment answers %v", root["inReplyTo"])
+	}
+	if _, ok := root["startLine"]; ok {
+		t.Errorf("a one-line comment starts at %v", root["startLine"])
+	}
+	if h := lines(root["diffHunk"]); len(h) != 21 || h[0] != "@@ -1,0 +1,40 @@" || h[1] != "+line 21" || h[20] != "+line 40" || root["diffHunkTruncated"] != true {
+		t.Errorf("the hunk, cut to the header and 20 lines ending at the comment: %q (truncated %v)", h, root["diffHunkTruncated"])
+	}
+	if reply := get(901); fmt.Sprint(reply["inReplyTo"]) != "900" || reply["diffHunk"] != "@@ -1 +1 @@\n+x" {
+		t.Errorf("a reply: %v", reply)
+	} else if _, ok := reply["diffHunkTruncated"]; ok {
+		t.Error("a hunk that was not cut says it was")
+	}
+	// A multi-line comment keeps its lines and three before them: 30 + 3.
+	if span := get(902); fmt.Sprint(span["startLine"]) != "11" || len(lines(span["diffHunk"])) != 34 || lines(span["diffHunk"])[1] != "+line 8" {
+		t.Errorf("a multi-line comment: startLine %v, hunk %q", span["startLine"], lines(span["diffHunk"]))
+	}
+	outdated := get(903)
+	if _, ok := outdated["line"]; ok {
+		t.Errorf("an outdated comment's null line was written as %v", outdated["line"])
+	}
+	if outdated["diffHunk"] != "@@ -3 +3 @@\n-old" || outdated["path"] != "pkg/b.go" || outdated["side"] != "LEFT" {
+		t.Errorf("an outdated comment: %v", outdated)
+	}
+	conv := get(904)
+	for _, k := range []string{"path", "line", "startLine", "side", "commitId", "inReplyTo", "diffHunk", "diffHunkTruncated"} {
+		if _, ok := conv[k]; ok {
+			t.Errorf("a conversation comment carries %s: %v", k, conv[k])
+		}
+	}
+	// The targeted pass a delivery asks for writes the same payload.
+	ref := src.CommentRef("acme/app", 7, 902)
+	one, err := src.Reflect(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := payloads(one)[ref.String()]; got == nil || !entity.Equal(got.Payload(), mustGet(t, store, ref)) {
+		t.Errorf("the targeted pass differs: %v", got)
+	}
+}
+
 // A comment joins to the thing it is on by REF rather than by a field saying which kind it was:
 // `github.<org>.<name>.issue.<n>` and `github.<org>.<name>.pr.<n>` are two addresses and exactly
 // one exists.

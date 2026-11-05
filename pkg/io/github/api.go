@@ -982,6 +982,24 @@ type comment struct {
 	// listings carry no number of their own.
 	IssueURL       string `json:"issue_url"`
 	PullRequestURL string `json:"pull_request_url"`
+	// Where a review comment is, and what it answers: the file, the line it ends on (null on an
+	// outdated comment, whose line is no longer in the diff) and the one a multi-line comment
+	// starts on, the diff's side, the commit it was written against, the thread's first comment
+	// when it is a reply, and the hunk it was written on, ending at its line. A conversation
+	// comment has none of them. The hunk is the one the comment was written on, so the lines it
+	// was written on (original_line, original_start_line) are what measure it, and they stay set
+	// when an outdated comment's line goes null. A multi-line comment may start on the other side
+	// from the one it ends on (start_side); GitHub sends no original of it.
+	Path              string `json:"path"`
+	Line              *int   `json:"line"`
+	StartLine         *int   `json:"start_line"`
+	OriginalLine      *int   `json:"original_line"`
+	OriginalStartLine *int   `json:"original_start_line"`
+	Side              string `json:"side"`
+	StartSide         string `json:"start_side"`
+	CommitID          string `json:"commit_id"`
+	InReplyToID       int64  `json:"in_reply_to_id"`
+	DiffHunk          string `json:"diff_hunk"`
 }
 
 // number reads the item this comment is on out of whichever url the listing carried.

@@ -13,11 +13,17 @@ discussions, workflow runs and comments.
 |---|---|
 | `github.<org>.<name>.pr.<n>` | a pull request: its state, base, head and sha, its checks, labels and assignees, and whom a review is waiting on (`requestedReviewers`, `requestedTeams`) |
 | `github.<org>.<name>.run.<id>` | a workflow run: its status, conclusion, branch and sha |
-| `github.<org>.<name>.comment.<n>.<id>` | a comment, on the pull request or issue that `on` names |
+| `github.<org>.<name>.comment.<n>.<id>` | a comment, on the pull request or issue that `on` names. `kind` is `conversation` or `review`, one on a line of the diff, which also says where it is and what it answers: `path`, `line`, `startLine`, `startSide`, `side`, `commitId`, `inReplyTo` (its thread's first comment, on a reply), and `diffHunk`, capped and then marked `diffHunkTruncated: true` |
 
 `requestedReviewers` holds a person until they submit a review, and again when one is requested
 of them anew, so a login in it means the pull request is waiting on that person. Their reviews
 are not reflected: a task reads them with `github-read-pr`.
+
+A review comment's `diffHunk` ends at the line it is on, so a task asked to address "rename
+this" reads what "this" is. The iod keeps the hunk's last 20 lines, or a multi-line comment's
+lines and 3 before them ([what github reflects](../reference/iod.md#what-github-reflects)). An
+outdated comment has no `line`, and its hunk is the code it was on. A reply's `inReplyTo` is the
+thread's first comment, which `github-reply-comment` answers in.
 
 A rule reacts to a pull request as it reacts to any data. Its `checks` is what CI last said
 about its head: the newest run's conclusion (`success`, `failure`) or what it is still doing

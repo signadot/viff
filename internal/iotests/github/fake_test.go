@@ -105,6 +105,17 @@ type fakeComment struct {
 	// comments are fakeSelf's.
 	login  string
 	userID int64
+	// at is where a review comment is, as GitHub's review comment says it; nil renders none of
+	// it, and a conversation comment never has it.
+	at *fakeAt
+}
+
+// fakeAt is a review comment's location and what it answers. A zero line renders as null, as
+// GitHub renders an outdated comment's.
+type fakeAt struct {
+	path, side, commit, hunk string
+	line, startLine          int
+	inReplyTo                int64
 }
 
 // by makes the comment somebody's.
@@ -540,10 +551,25 @@ func (f *fakeGitHub) renderComment(c *fakeComment) map[string]any {
 	// reads it out of one rather than expecting a field.
 	if c.review {
 		m["pull_request_url"] = "https://api.github.com/repos/x/y/pulls/" + strconv.Itoa(c.on)
+		if a := c.at; a != nil {
+			m["path"], m["side"], m["commit_id"], m["diff_hunk"] = a.path, a.side, a.commit, a.hunk
+			m["line"], m["start_line"] = nullable(a.line), nullable(a.startLine)
+			if a.inReplyTo != 0 {
+				m["in_reply_to_id"] = a.inReplyTo
+			}
+		}
 	} else {
 		m["issue_url"] = "https://api.github.com/repos/x/y/issues/" + strconv.Itoa(c.on)
 	}
 	return m
+}
+
+// nullable is a line as GitHub writes one: null where there is none.
+func nullable(n int) any {
+	if n == 0 {
+		return nil
+	}
+	return n
 }
 
 // renderRun is shared by the listing and the single-run read, so the two cannot disagree about

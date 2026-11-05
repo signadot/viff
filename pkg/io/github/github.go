@@ -20,9 +20,11 @@
 package github
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -803,6 +805,12 @@ func discussionPayload(repo string, d discussion) entity.Obj {
 // `kind` is the comment's own nature: a conversation comment — which is what an issue has and
 // what a pull request's discussion is, since a PR's conversation IS an issue's — or a review
 // comment, which hangs off a line of a diff.
+//
+// A review comment says where it is and what it answers, each where GitHub gives it: `path`,
+// `line`, `startLine`, `startSide`, `side`, `commitId`, `inReplyTo` (the thread's first
+// comment), and `diffHunk`, capped (reviewHunk). An outdated comment's line is null at GitHub and
+// absent here, and its hunk is then the only record of the code it was on. A conversation
+// comment gains none of them.
 func commentPayload(repo string, c comment, kind string) entity.Obj {
 	p := entity.Obj{"repo": repo, "on": c.number(), "id": c.ID, "kind": kind}
 	if c.User != nil {
@@ -821,7 +829,147 @@ func commentPayload(repo string, c comment, kind string) entity.Obj {
 			p[k] = v
 		}
 	}
+	if kind != "review" {
+		return p
+	}
+	hunk, cut := reviewHunk(text(c.DiffHunk), c.hunkAt())
+	for k, v := range map[string]string{
+		"path": c.Path, "side": c.Side, "commitId": c.CommitID, "diffHunk": hunk,
+	} {
+		if v != "" {
+			p[k] = v
+		}
+	}
+	if cut {
+		p["diffHunkTruncated"] = true
+	}
+	if c.Line != nil {
+		p["line"] = *c.Line
+	}
+	// A multi-line comment's first line, with its side: one may start on LEFT and end on RIGHT,
+	// and an old file's line number beside `side: RIGHT` would read as a new file's.
+	if c.StartLine != nil {
+		p["startLine"] = *c.StartLine
+		p["startSide"] = cmp.Or(c.StartSide, c.Side, "RIGHT")
+	}
+	if c.InReplyToID != 0 {
+		p["inReplyTo"] = c.InReplyToID
+	}
 	return p
+}
+
+// How much of a review comment's hunk the payload keeps: the last hunkLines lines, or for a
+// multi-line comment its lines and hunkContext before them if that is more. GitHub's hunk runs
+// from the hunk's header to the commented line, which can be hundreds of lines into a large
+// hunk, and a comment window holds 200 comments.
+const (
+	hunkLines   = 20
+	hunkContext = 3
+)
+
+// hunkAt is where in its hunk a review comment stands: the side it ends on, and for a
+// multi-line comment the side and line it starts on and how many lines of its side it spans.
+type hunkAt struct {
+	side, startSide string
+	start, span     int  // 0 on a single-line comment
+	original        bool // start is an original line, which is what the hunk's header numbers
+}
+
+// hunkAt reads a comment's place in its hunk from the lines it was written on, which its hunk is,
+// and which GitHub keeps on an outdated comment whose line has gone null; the current ones stand
+// in where those are absent, and are not the header's numbers.
+func (c comment) hunkAt() hunkAt {
+	at := hunkAt{side: cmp.Or(c.Side, "RIGHT"), original: true}
+	at.startSide = cmp.Or(c.StartSide, at.side)
+	start, line := c.OriginalStartLine, c.OriginalLine
+	if start == nil || line == nil {
+		start, line, at.original = c.StartLine, c.Line, false
+	}
+	if start == nil || *start <= 0 {
+		return at
+	}
+	at.start = *start
+	if line != nil && at.startSide == at.side && *line >= *start {
+		at.span = *line - *start + 1
+	}
+	return at
+}
+
+// hunkHeader reads the first old and new line numbers off a hunk's `@@ -a,b +c,d @@` header.
+var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
+
+// reviewHunk is a review comment's diff_hunk cut from the front: its `@@` header kept, then the
+// last lines, which end at the commented line. It says whether it cut anything.
+//
+// A multi-line comment keeps the line it starts on and hunkContext before it. With a header,
+// which is how GitHub sends a hunk, that line is found by walking the hunk forward, numbering old
+// lines (context and `-`) from the header's -a and new ones (context and `+`) from its +c; a
+// `\ No newline` marker is neither. That finds the start whatever stands between it and the end,
+// and on whichever side it is, so a comment starting on LEFT and ending on RIGHT keeps its `-`
+// lines too. A start the hunk does not hold keeps the last hunkLines lines, as a single line does.
+//
+// Without a header, or with only the current lines, which are not the header's numbers, the span
+// is counted back from the end in lines of the comment's side — context and `+` for RIGHT,
+// context and `-` for LEFT — which is exact for a comment on one side.
+func reviewHunk(hunk string, at hunkAt) (string, bool) {
+	if hunk == "" {
+		return "", false
+	}
+	lines := strings.Split(hunk, "\n")
+	var header []string
+	if strings.HasPrefix(lines[0], "@@") {
+		header, lines = lines[:1], lines[1:]
+	}
+	from := len(lines) - hunkLines
+	if m := hunkHeader.FindStringSubmatch(strings.Join(header, "")); m != nil && at.start > 0 && at.original {
+		if i := startIndex(lines, m, at); i >= 0 {
+			from = min(from, i-hunkContext)
+		}
+	} else if at.span > 0 {
+		other := byte('-')
+		if at.side == "LEFT" {
+			other = '+'
+		}
+		i, n := len(lines), 0
+		for n < at.span && i > 0 {
+			i--
+			if l := lines[i]; l == "" || (l[0] != other && l[0] != '\\') {
+				n++
+			}
+		}
+		from = min(from, i-hunkContext)
+	}
+	if from <= 0 {
+		return hunk, false
+	}
+	return strings.Join(append(header, lines[from:]...), "\n"), true
+}
+
+// startIndex is the index in lines, the hunk below its header m, of the line a comment starts on,
+// or -1 when the hunk does not hold it.
+func startIndex(lines, m []string, at hunkAt) int {
+	old, _ := strconv.Atoi(m[1])
+	cur, _ := strconv.Atoi(m[2])
+	for i, l := range lines {
+		kind := byte(' ')
+		if l != "" {
+			kind = l[0]
+		}
+		switch {
+		case kind == '\\':
+			continue
+		case at.startSide == "LEFT" && kind != '+' && old == at.start,
+			at.startSide != "LEFT" && kind != '-' && cur == at.start:
+			return i
+		}
+		if kind != '+' {
+			old++
+		}
+		if kind != '-' {
+			cur++
+		}
+	}
+	return -1
 }
 
 func labelNames(ls []label) []string {

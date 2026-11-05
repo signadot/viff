@@ -3,10 +3,12 @@
 Real webhook payloads, replayed through the handler by `TestCapturedDeliveries`. One file is
 worth more than a page of reasoning about field paths.
 
-One synthetic delivery is checked in, and it is synthetic on purpose: it exercises the harness
-so this is not scaffolding that first runs the day somebody drops a real payload beside it. It
-is not evidence about GitHub's JSON — that is what the captured ones are for, and the first real
-one should replace nothing but the doubt.
+Two synthetic deliveries are checked in, and they are synthetic on purpose: they exercise the
+harness so this is not scaffolding that first runs the day somebody drops a real payload beside
+it. One is a conversation comment on a pull request (`issue_comment`), the other a reply in an
+inline comment's thread (`pull_request_review_comment`), carrying the location fields the iod
+reflects on a review comment. They are not evidence about GitHub's JSON — that is what the
+captured ones are for, and the first real one should replace nothing but the doubt.
 
 **Why this exists.** The half of a webhook that can be wrong here is whether the handler reads a
 real payload correctly: `issue.pull_request`, `workflow_run.id`, `repository.full_name` are
