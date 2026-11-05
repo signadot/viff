@@ -2,7 +2,7 @@
 
 # verse-dev drive: an agent's branch is a PROPOSAL, and somebody decides it.
 #
-# A fixing task pushes its own branch, `verse/auto/<task>` (runner/runnerd/workspace: that prefix is
+# A fixing task pushes its own branch, `verse/auto/<task>` (pkg/runner/runnerd/workspace: that prefix is
 # chosen so a developer who pulls and finds a commit nobody wrote can tell which system made it
 # from the first two segments). This half is what consumes them: the branch becomes a fact, the
 # fact carries a gate, and a yes merges it.
@@ -58,7 +58,7 @@ rules:
   condition:
     subject:
       # THIS repository's, because the git source mirrors more than one and each mirror's refs
-      # stand under its own place: signadot/signadot's deliveries are named the same way and
+      # stand under its own place: another repository's deliveries are named the same way and
       # belong to the charter for that repository, which reaches them through an environment this
       # file's cannot.
       path: "git.verse.ref.*"

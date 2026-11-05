@@ -111,7 +111,7 @@ rules:
 # `sha: !not .[tip]` is condread.go's own example inverted — fire while the cursor is not
 # standing on the tip — and the read joins this trigger's reads, so main moving is what wakes it.
 # No `on:` clause: an `on` is a formula over the whole verse, and "a git head exists" rises once
-# and then stands, which is a level rather than an edge and never fires again (trigger/edge.go).
+# and then stands, which is a level rather than an edge and never fires again (internal/trigger/edge.go).
 - name: claim
   stratum: cursor
   condition:
