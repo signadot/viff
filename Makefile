@@ -293,12 +293,12 @@ check-docs: ## fail if the docs do not build (skips if mkdocs is absent)
 # pkg/ is what a program outside the verse imports; internal/ is versed's own. The compiler does
 # not stop one from importing the other inside the module, so this does: the dependency closure
 # of pkg/ must hold nothing from internal/. Anchored on the module path, because stdlib and
-# third-party packages have internal/ directories of their own. It reads what an importer
-# compiles, not the tests: tests under pkg/ do stand up a versed through internal/versed's test
-# helpers, and nothing outside the module ever builds those.
+# third-party packages have internal/ directories of their own. -test holds the tests to it as
+# well: a test of a package under pkg/ that needs a running versed lives under internal/iotests,
+# beside what it needs, rather than importing internal/ from pkg/.
 .PHONY: check-layers
-check-layers: ## fail if a package under pkg/ depends on one under internal/
-	@bad="$$($(GO) list -deps ./pkg/... | grep 'github.com/signadot/verse/internal/' || true)"; \
+check-layers: ## fail if a package under pkg/, or one of its tests, depends on one under internal/
+	@bad="$$($(GO) list -deps -test ./pkg/... | grep 'github.com/signadot/verse/internal/' || true)"; \
 	  [ -z "$$bad" ] || { echo "pkg/ imports internal/:"; echo "$$bad" | sed 's/^/  /'; exit 1; }
 	@echo "pkg/ imports nothing from internal/"
 

@@ -28,7 +28,7 @@ No public address needed: GitHub keeps recent deliveries per hook and will hand 
 gh api /repos/{org}/{repo}/hooks                       # find the hook id
 gh api /repos/{org}/{repo}/hooks/{hook_id}/deliveries  # find a delivery id
 gh api /repos/{org}/{repo}/hooks/{hook_id}/deliveries/{delivery_id} \
-  > pkg/io/github/testdata/deliveries/issues-opened.json
+  > internal/iotests/github/testdata/deliveries/issues-opened.json
 ```
 
 Save the response **verbatim** — the test reads GitHub's own delivery envelope (`event` and
