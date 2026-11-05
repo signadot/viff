@@ -2,6 +2,8 @@ package delivery
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -99,7 +101,9 @@ func (s *Server) gitIssuePush(ctx context.Context, tk Task, req Request) Reply {
 }
 
 // githubIssue answers a `github-issue.create`, `.comment` or `.close` at the forge with the
-// runner's token for the repository.
+// runner's token for the repository. A comment or a close reads the number first: one that is a
+// pull request is refused, the comment naming github-comment-pr, and one that is nothing is
+// refused as no issue.
 func (s *Server) githubIssue(ctx context.Context, tk Task, req Request) Reply {
 	t := tk.Workspace.Tree(req.Repo)
 	if t == nil {
@@ -141,6 +145,24 @@ func (s *Server) githubIssue(ctx context.Context, tk Task, req Request) Reply {
 			return Reply{Refused: fmt.Sprintf("%q is not an issue number", req.Issue)}
 		}
 		one := fmt.Sprintf("%s/%d", issues, n)
+		// GitHub keeps a pull request's conversation as an issue's, so the issue routes take a pull
+		// request's number too; asking first is what keeps an issue verb off a pull request.
+		var is struct {
+			PullRequest json.RawMessage `json:"pull_request"`
+		}
+		err = githubCall(ctx, s.http(), tok, http.MethodGet, one, nil, &is, readLimit)
+		var st *githubStatus
+		switch {
+		case errors.As(err, &st) && st.Code == http.StatusNotFound:
+			return Reply{Refused: fmt.Sprintf("there is no issue #%d at %s/%s", n, owner, name)}
+		case err != nil:
+			return Reply{Error: fmt.Sprintf("reading issue #%d of %s/%s: %v", n, owner, name, err)}
+		case len(is.PullRequest) > 0 && string(is.PullRequest) != "null":
+			if req.Op == OpGitHubIssueComment {
+				return Reply{Refused: fmt.Sprintf("#%d is a pull request: comment on it with github-comment-pr", n)}
+			}
+			return Reply{Refused: fmt.Sprintf("#%d is a pull request, and github-issue does not close one", n)}
+		}
 		if req.Op == OpGitHubIssueComment {
 			var c struct {
 				HTMLURL string `json:"html_url"`

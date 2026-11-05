@@ -300,12 +300,14 @@ func githubIssueCreate(cl *delivery.Client, ws *workspace.Workspace, names []str
 // githubIssueVerb is a comment on or a close of an issue at the forge, by number, performed by
 // the runner with its token.
 func githubIssueVerb(cl *delivery.Client, ws *workspace.Workspace, names []string, name, op, step string) verse.Tool {
-	what := "Close an issue at the GitHub repository, by its number. The runner closes it with its own token."
+	what := "Close an issue at the GitHub repository, by its number. The runner closes it with its own token. " +
+		"A pull request's number is refused: github-issue does not close a pull request."
 	params := map[string]any{"issue": map[string]any{"type": "integer"}}
 	required := []string{"issue"}
 	if op == delivery.OpGitHubIssueComment {
 		what = "Comment on an issue at the GitHub repository, by its number, with the body given. The runner " +
-			"comments with its own token; what you read back is the comment's url."
+			"comments with its own token; what you read back is the comment's url. A pull request's number is " +
+			"refused: comment on a pull request with github-comment-pr."
 		params["body"] = map[string]any{"type": "string"}
 		required = append(required, "body")
 	}

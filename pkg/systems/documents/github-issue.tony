@@ -6,10 +6,10 @@ verbs:
 - name: create
   description: "Open an issue at the repository, with a title and body."
 - name: comment
-  description: "Comment on an issue at the repository, by its number."
+  description: "Comment on an issue at the repository, by its number. A pull request's number is refused: github's comment-pr comments on a pull request."
   fields:
   - {name: issue, form: text, description: "the issue's number"}
 - name: close
-  description: "Close an issue at the repository, by its number."
+  description: "Close an issue at the repository, by its number. A pull request's number is refused: this system closes no pull request."
   fields:
   - {name: issue, form: text, description: "the issue's number"}
