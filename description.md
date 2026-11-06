@@ -1,8 +1,9 @@
 # runner: a secret store, one file per name, beside the credentials in the environment
 
-**Status:** steps 1 to 3 are written, in the worktree `.worktrees/secret-store` (branch
-`verse/secret-store`, from main at 55ba496d). Not committed. Steps 4 to 8 are not begun. It
-blocks 1f5art3x, and the `mcp` system waits on it.
+**Status:** steps 1 to 6 are written, and the runner's part of step 8, in the worktree
+`.worktrees/secret-store` (branch `verse/secret-store`, on 81250f61, the commit of 1k5art3x).
+Not committed. Step 7 and the deployment's part of step 8 are not begun. It blocks 1f5art3x,
+and the `mcp` system waits on it.
 
 ## Built so far
 
@@ -24,16 +25,43 @@ blocks 1f5art3x, and the `mcp` system waits on it.
   `credentials_test.go` pass as they were.
   - **Left as it was:** `Runner.Build` (`stock/runner.go`) still names `linear-issue` and
     `slack` where it builds their tools.
+- **Step 4, read at the act.** `delivery.Credential` is a function, and `delivery.Holds` is one
+  that is a value read at the start. `Services.LinearAuth` and `Services.SlackToken` are
+  credentials. `slack.go` and `issues.go` read one as the op reads its request, and the act is
+  performed with what was read. One that does not read fails the act with the store's own
+  word.
+- **Step 5, a system names its secret.** `secrets.systems` (`SecretStore.Systems`).
+  `Config.Check` refuses a system the table does not have, one that acts with the forge's
+  token, one with no credential of its own, and a name that is no name. An entry of the table
+  says whether its credential is its own (`performed.own`), which is both "may name a secret"
+  and "closed where it has none". `Config.credential` is what the runner acts with, and only
+  `Standalone` calls it.
+- **Step 6, closed where absent.** `Config.Held` reads the store for a system that names a
+  secret: absent or empty closes it for every doer and says which secret and where; there,
+  with its variable set too, says the variable is not read. `TokensFromEnv` does not read the
+  variable of a system that names a secret.
+- **Step 8, the runner's part.** `docs/reference/runnerd.md`: the keys `secrets.dir` and
+  `secrets.systems`, a section "The secret store", a row in "What keeps the secrets from the
+  task", and a word on the two variables. The comment on `runnerd.Config`.
 - **Tests.** `secretstore/store_test.go`; `TestAReadOnlyPathMayNotReachTheSecretStore` and
   `TestTheSecretStoreIsWhereNoSandboxBindsIt` (`runnerd/readonly_test.go`);
-  `stock/secretstore_test.go`. The runner and `cmd` suites pass, and `make check-json
-  check-layers`.
+  `TestACredentialIsReadAtTheAct` (`delivery/slack_test.go`); `stock/secretstore_test.go`,
+  which has the configuration, the start, the table, the closed cases, and a script that posts
+  to Slack with the store's token. The runner and `cmd` suites pass, and `make check`.
   - **Not run:** `TestATaskCannotReadTheSecretStore` needs bwrap, and was written on a machine
     without it. It builds for Linux.
+  - **Rule 5 has no test of its own.** The script's post is made by a task's process that was
+    sent a configuration naming a secret, and it built its tools. That runner is not confined,
+    so the test does not show the process could not have read the store. That the process does
+    not is by where `Config.credential` is called.
+  - **One failure not accounted for.** `cmd/verse` failed once in a run of every package at
+    once, and passed the five runs after, alone and with the others. Which test it was is not
+    known: the output was cut.
 
-**Why it stops at step 3.** Step 4 changes `delivery/slack.go` and `delivery/issues.go`, which
-the worktree of 1k5art3x rewrites and has not committed. Steps 4 to 6 go on top of that work
-once it is committed. Steps 7 and 8 follow them.
+**What is left.** Step 7, the deployment: the projected volume in the three runner manifests,
+`verse-runner-secrets` in `deploy/secrets/` and its knob in `deploy/build.tony`. And the
+credentials table in `deploy/README.md`. Nothing here applies a manifest, so that step wants a
+cluster to try it on.
 
 ## What it is
 
