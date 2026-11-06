@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -328,6 +329,14 @@ func AuthorFor(principal, driver string) Author {
 		Name:  addr + " (verse " + driver + ")",
 		Email: user + "+verse-" + driver + "-runner@" + host,
 	}
+}
+
+// IdentityFor is the identity a launch's work carries: what its checkout is given to commit as,
+// and what a delivery of that work is held to (AuthoredWork). One derivation for both, so the
+// two cannot disagree; the check reads it from the launch, never back from the checkout's
+// config, which the task can rewrite.
+func IdentityFor(l *runner.Launch) Author {
+	return AuthorFor(l.Provenance.Principal, cmp.Or(l.Who(), "agent"))
 }
 
 // Open builds the workspace for one task: every repository named, checked out under one root.
