@@ -1,8 +1,8 @@
 # delivery: a table of ops, a request that is its step, and a deadline per op
 
-**Status:** written and reviewed twice, in the worktree `.worktrees/delivery-channel` (branch
-`verse/delivery-channel`). Not committed. The delivery package passes under the race detector,
-and the runner and `cmd` suites pass.
+**Status:** written and reviewed three times, in the worktree `.worktrees/delivery-channel`
+(branch `verse/delivery-channel`). Not committed. The delivery package passes under the race
+detector, and the runner and `cmd` suites pass.
 
 This is the groundwork that 1f5art3x asks for first: items 1, 2 and 5 of its section "Performed
 systems: what to shore up first". It adds no system and no act. It changes how the runner's side
@@ -34,10 +34,12 @@ of the delivery channel (`pkg/runner/runnerd/delivery`) is put together, so that
    that names another, or carries a body to an op that reads none, is refused, and nothing is
    read of it. A flag that is neither `true` nor `false` is refused too, and a number that is
    not one (`misread`). An op that reads a name another way than its entry says, a flag as
-   text, is answered as a bug (`misreading`): what was checked is then not what was read. A
-   name beside `fields`, at the top of the request, is refused as one within it is: the request
-   is decoded strictly, and the refusal is sent under the request's id. A new system adds ops
-   to the table and nothing to the protocol.
+   text, is answered as a bug (`misreading`): what was checked is then not what was read. Read
+   so before its steps, the answer says nothing was performed. Read so in its act, the answer
+   says whether it was performed is not known, since the act may have posted or pushed first.
+   A name beside `fields`, at the top of the request, is refused as one within it is: the
+   request is decoded strictly, and the refusal is sent under the request's id. A new system
+   adds ops to the table and nothing to the protocol.
 3. **A step carries only fields its document describes.** `perform` refuses one that does not,
    as a bug. So the runner's step is held to the document that the task's side is held to
    (`systems.Check`).
@@ -47,12 +49,14 @@ of the delivery channel (`pkg/runner/runnerd/delivery`) is put together, so that
    carries the same. The client (`client.go`) matches answers by id, so several may ask at once.
    Requests are performed in the order the task asked, as before. Their answers may arrive in
    another order: a turn passes once its request is performed, before its answer is sent (see
-   6). An op the table marks `apart` waits for none of them and holds none. It is handed the
+   7). An op the table marks `apart` waits for none of them and holds none. It is handed the
    task without its checkout and without the branches it made and pushed (`Task.apart`), so it
    cannot read what the ops in turn write. No op of today is apart.
 6. **The runner holds at most 32 of a task's requests at once, and refuses the next.** The one
    refused hears that nothing was done and to ask again. The runner does not leave it unread:
-   a loop that waited for room would not see the task's end go.
+   a loop that waited for room would not see the task's end go. A request's place is given back
+   as its answer is about to be written, holding the write, so a task that asks again on
+   hearing an answer finds room. One more than 32 may so be writing its answer.
 7. **When the task's end goes, what was begun in turn is finished, and nothing else is.** The
    request being performed is finished, as `Settle` needs. A request with none ahead of it is
    begun as it is read, so a task that asks for a push and exits has its push. That holds for a
@@ -75,10 +79,11 @@ of the delivery channel (`pkg/runner/runnerd/delivery`) is put together, so that
 
 Each tool now sends what its op reads (`pkg/runner/runnerd/stock`). And a tool given something
 it does not take refuses the call, rather than drop it and go on (`untaken`): a close given a
-body, a reaction or a read given text, a post given a thread, an update given `draft: true`.
+body, a reaction or a read given text, a post given a thread, an update given `draft: true`, a
+comment on a pull request given a review comment's id (it was meant as a reply in the thread).
 Such a call derives no fields, so no row is asked about it. What is given as nothing (empty,
-false, zero) is let by. This is in the Slack tools, the GitHub and Linear issue verbs and the
-pull request tools. The other tools are as they were.
+false, zero) is let by. This is in the Slack tools, the GitHub and Linear issue verbs, the pull
+request tools and `github-comment-pr`. The other tools are as they were.
 
 ## Tests
 
@@ -94,11 +99,15 @@ pull request tools. The other tools are as they were.
   field.
 - `TestANameBesideFieldsIsRefused`: a request written the old way, refused under its id.
 - `TestAnOpReadsANameAsItsEntrySays`: an op that reads text as a flag, or a flag or a number as
-  text, before its steps or in its act, answered as a bug.
+  text, before its steps or in its act, answered as a bug, and what each answer says about
+  whether anything was performed.
 - `TestAnOpApartDoesNotWaitForThoseInTurn`: the order in turn, and an op apart answered
   meanwhile. `TestAnOpApartIsHandedNoCheckout`: what an op apart is handed.
 - `TestARequestPastWhatTheRunnerHoldsIsRefused`: the thirty-third is refused under its id, the
   thirty-two are answered, and the next is then taken.
+- `TestARequestAskedOnHearingAnAnswerFindsRoom`: 32 askers, each asking again on hearing its
+  answer, in turn and apart, and none refused for want of room. Before the place was given
+  back ahead of the write, about 3 in 64,000 were.
 - `TestWhenTheTasksEndGoesOnlyWhatWasBegunIsFinished`,
   `TestARequestWithNoneAheadIsFinishedThoughTheEndGoes` and
   `TestARequestAskedOnHearingAnAnswerIsFinishedThoughTheEndGoes`: item 7. The last one guards
@@ -138,8 +147,15 @@ which most tests call, is a test's helper now: `Serve` is the one way in.
 - **An answer that names no request is dropped by the client.** The runner gives one for a
   frame too large, where it read no id. The client refuses such a request before it sends it,
   so only another client meets this.
-- **A tool's refusal of what it does not take is per tool.** Four kinds of tool call `untaken`.
-  The place that calls every tool does not.
+- **A tool's refusal of what it does not take is per tool.** The tools named above call
+  `untaken`. The place that calls every tool does not, so the rest still drop what they are
+  given and do not take. Two more of the kind are known and left: `slack-read` given a `limit`
+  that is no number reads the default, and `create-pr` given a `draft` that is neither true
+  nor false opens it ready. One check against a tool's `Params`, where every tool is called,
+  would cover all of them, and touches every tool of the system.
+- **The refusal past 32 is an error to the tool.** `relay` gives the task's loop an error for
+  it, and the verse executor and a script fail the task on a tool's error. A script asks one
+  at a time, so it does not reach 32. The verse executor was not traced.
 
 ## Not in this issue
 
