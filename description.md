@@ -100,6 +100,73 @@ path to the task.
 - **The pod.** It runs as uid 65532 with no capabilities, so the store is single-user, with no
   root daemon.
 
+## Open: what a task sees of the nix store
+
+**A nix package cannot be moved.** Every file names its dependencies by their absolute path in
+the store, `/nix/store/<hash>-<name>`: the loader, the library paths, the first line of a
+script. So whatever a task is given has to stand at `/nix/store`, under the same names. A tree
+of `bin` and `lib` somewhere else does not run. A store under another name changes every hash,
+and the public binary cache then serves nothing.
+
+There are three ways to give a task its packages. The first is tentatively preferred. Which one
+to build is open.
+
+### 1. A view of hard links, per task. Tentatively preferred
+
+- The runner keeps one central store. Each task has a directory of its own, bound read-only at
+  `/nix`.
+- The runner fills that view with hard links: every store path in the closure of what the task
+  was given. That is the flake at the start, and each `install` after it.
+- It needs no mount and no privilege. So it works while the sandbox runs, and it uses no disk
+  beyond the links.
+- The task sees what it was given and that closure, and nothing else of the store.
+
+What it costs:
+
+- **One volume.** A hard link does not cross filesystems. The views live on the store's volume,
+  and not under `TMPDIR`, where a task's directory is today.
+- **One link per file.** A toolchain's closure is tens of thousands of files. The start, each
+  `install` and the removal each pay for them. A store's trees are read-only, which is the
+  removal problem of 54f9wqb3.
+- **A root per live task,** so that the central store's garbage collection keeps its paths.
+
+Not tested, under bwrap in the runner's pod: how long the links take for a real closure; that a
+task cannot link out of the view into its workspace; that a single-user store lets the runner
+make the links.
+
+### 2. A profile per task, over the whole store. Simpler
+
+- The central store is bound read-only into every task, whole. Each task has a profile of its
+  own, and its `PATH` names it.
+- **A profile is not a store.** It is a tree of `bin`, `lib` and `share` that holds symbolic
+  links into the store, and no package. It is itself one path in the store.
+- **Profiles compose.** A profile takes another profile as one of its parts. So a task's profile
+  can be the runner's base, then the spawn's flake, then what the task installed.
+- **What it bounds:** what is realised, and what is on the task's `PATH`. It does not bound what
+  runs. A task can list the store, and run anything in it by its path.
+- It costs the bind and the profile, and nothing else.
+
+### 3. Several stores in one runner
+
+- nix keeps a store under another directory (`--store <dir>`), and that store still stands at
+  `/nix/store` for what is in it. So the public cache still serves it. The runner keeps one
+  store per environment (per doer, per ceiling, or by name), and binds one of them, whole, into
+  each task.
+- A task sees its environment's store, not its own. An `install` is seen by every task of that
+  environment. A common dependency is kept once per environment.
+- nix also has an experimental store that layers over a read-only lower store
+  (`local-overlay`). It needs an overlay mount. It is not examined here.
+
+### Why it is open
+
+The first is preferred because it is the only one where a task sees what its own environment
+gave it. But what the task sees is a closure. A package the ceiling allows brings its
+dependencies, and the task can run each of them by its path. So the ceiling bounds what a task
+asks for, and not what is there. That is worth less than a ceiling that bounds exactly.
+
+If that is not worth one link per file and a volume shared with the store, the second is the
+simpler one. It says plainly what it bounds: what is realised and what is on the `PATH`.
+
 ## `secret-exec`
 
 - **Why it exists.** A command that needs no secret is `commands.run`, or a script. This tool is
@@ -149,6 +216,7 @@ environment:
 
 - **The task chooses the argv.** A generic exec cannot keep a secret from the task that calls it.
 - **A block's attributes are scalars.**
+- **A nix package cannot be moved.** What a task is given stands at `/nix/store`.
 - **A description is public.** `GET /describe` answers anyone, so the names of secrets are
   public. A name must not be a secret.
 - **Verse and its runners upgrade together.** The systems' documents are compiled into both.
@@ -158,15 +226,10 @@ environment:
 
 ## Open questions
 
-1. **Shared nix installs. Open.** One store, bound read-only into every task, lets every task
-   list and run whatever any task realised. The ceiling and the gate on `install` then bound
-   what is realised, and not what is run. Two directions:
-   - **Several nix installs in one runner.** A task is bound to one of them: per doer, per
-     ceiling, or per named environment.
-   - **One shared store, adapted to each task's filesystem.** A task sees only what its ceiling
-     allows. A sandbox's mounts are fixed when it starts, so an `install` during the run needs a
-     way to add paths. A directory of the task's own, bound at `/nix/store` and filled by the
-     runner (a link farm, an overlay), is one candidate. It is not tested.
+1. **What a task sees of the nix store.** The section above: a view of hard links per task
+   (tentatively preferred), a profile per task over the whole store, or several stores. The
+   view's ceiling takes in dependencies, so it is worth less than an exact one, and that may
+   point to the simpler profile.
 2. **Names.** `pkg-nix` or `nix-pkg`: the existing systems put the provider first
    (`linear-issue`, `github-issue`). And `secret-exec`, or another name for the same tool.
 3. **What an approver sees of an MCP call.** A question shows the step's fields (q3k89kva). The
