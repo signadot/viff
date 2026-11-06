@@ -210,6 +210,7 @@ func rootCmd() *cli.Command {
 			groupCmd(),
 			ioCmd(),
 			statusCmd(),
+			tuiCmd(),
 			accountCmd(),
 			whoamiCmd(),
 			schemaCmd(),

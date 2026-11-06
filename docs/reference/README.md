@@ -125,6 +125,7 @@ and `-if` kept none of it.
 | `question <id> -answer <option> -as <who> [-say <text>] [-force]` | answer by option. A yes-or-no question's options are `proceed` and `deny`; a selection's are its doers. A question that needs more than one voice records the ballot and says where the tally stands (`1 of 2 for proceed`). `-force` answers one a resolver serves for you. |
 | `question approve <id> [-say <text>]` · `deny <id> [-say <text>]` | the two default options, as verbs. Also `y`, `yes` · `n`, `no`; `-s` for `-say`. |
 | `question -watch [-since <rev>] [-notify]` | a line when a question starts waiting on you, and when it settles. Runs until stopped. `-since` replays from a revision, as far back as the store keeps its log. `-notify` also says it on the desktop (D-Bus on Linux and the BSDs, Notification Center on macOS): urgent when a question starts waiting, closed when it settles, one summary for what stood when the watch opened ([asking](../asking.md)). |
+| `tui [--at <address>] [--every 2s] [--all]` | a terminal screen of the questions waiting on you, the tasks, the data an address at a time, the charters installed and the runners, answered and cancelled in place: the explorer on the left, a section's table or one row on the right, `:` for a command by name, `?` for every key ([asking](../asking.md)). |
 
 ### ask (asks)
 

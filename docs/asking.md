@@ -303,6 +303,27 @@ desktop that refuses or falls behind is said once, on a line; the lines are the 
 verse question --watch --notify
 ```
 
+`verse tui` shows the same questions in a terminal screen, beside the tasks, the data, the
+charters installed and the runners. `a` proceeds, `d` denies and asks why, `7`-`9` choose a
+question's other options and `:answer <option>` any of them. A question shows who asks, a
+task's step and its fields, who may answer and when it settles, and its subject as it stands,
+so a merge gate shows the step it would merge.
+
+![verse tui: a rule's gate waiting on you, with its options](images/tui/question.png)
+
+The screen is two panes under a command line. On the left, the explorer lists each section
+with its rows under it. On the right, the content shows a section as a table, or the row the
+cursor is on. `:` takes a command by name (`:tasks`, `:data repos.verse`, `:view timeline`),
+and tab completes it. `?` lists every command and key. A pane that holds more than it shows
+says where it is (`1-40 of 97`), and `J`/`K` scroll it.
+
+The Data section browses the verse an address at a time, and knows no charter. It lists what
+is under an address (the root, or `--at <address>`); `⏎` opens a place into what is under it,
+and `u` goes back up. The place under the cursor shows its record, the rule and subject it was
+derived from where a rule derived it, and the questions and tasks about it. `tab` shows those
+tasks on a timeline. The Charters section lists each address a charter is installed at, with
+its rules, schedules and sends.
+
 ## Changing your mind
 
 While an ask waits, you can change it, or take it back:
