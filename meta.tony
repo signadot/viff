@@ -4,6 +4,7 @@ blocks:
 - 1f5art3xh12ksxdcxnn0
 - 1v5art3xh12ksddyxnn0
 branches: []
+closed_by: 81250f61c71b2a40788009fd33a34ef125ee4e89
 commits: []
 created: "2026-11-06T12:42:48.294478+01:00"
 duplicates: []
@@ -11,5 +12,5 @@ id: 1k5art3xh12kre5xxnn0
 labels:
 - runners
 related_issues: []
-status: open
-updated: "2026-11-06T16:35:55.635751+01:00"
+status: closed
+updated: "2026-11-06T16:35:56.176019+01:00"
