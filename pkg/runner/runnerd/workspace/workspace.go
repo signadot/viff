@@ -1057,14 +1057,16 @@ func (t *Tree) AuthoredWork(l *runner.Launch) (ok bool, refusal string, head plu
 				"of its message:\n  %s\n", strings.Join(RequiredTrailers(l), "\n  "))
 		}
 		if misidentified {
-			fmt.Fprintf(&b, "every commit delivered must be authored and committed as %s <%s>, the "+
-				"identity this checkout was given; do not override it with GIT_AUTHOR_*/GIT_COMMITTER_*, "+
-				"`git -c user.*` or `git config user.*`.\n", want.Name, want.Email)
+			fmt.Fprintf(&b, "every commit delivered must carry, as its author and its committer, the "+
+				"name and email this checkout was given:\n  %s <%s>\nDo not override them with "+
+				"GIT_AUTHOR_*/GIT_COMMITTER_*, `git -c user.*` or `git config user.*`.\n", want.Name, want.Email)
 		}
 		fmt.Fprintf(&b, "These commits do not: %s. ", strings.Join(bad, "; "))
 		if authorOnly {
-			b.WriteString("For another's patch, re-commit with `git commit --amend --reset-author` and " +
-				"credit them with a `Co-Authored-By: Name <email>` trailer. ")
+			fmt.Fprintf(&b, "For another's patch, re-commit each such commit with --reset-author and "+
+				"credit its author with a `Co-Authored-By: Name <email>` trailer: `git commit --amend "+
+				"--reset-author` when it is the tip, or `git rebase -x 'git commit --amend --no-edit "+
+				"--reset-author' %s` for every commit since the base. ", ShortSha(t.Head))
 		}
 		b.WriteString("Amend or re-commit with them, then push again.")
 		return true, b.String(), head, nil

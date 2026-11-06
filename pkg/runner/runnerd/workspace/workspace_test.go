@@ -1006,7 +1006,7 @@ func TestADeliveryIsHeldToTheCheckoutsIdentity(t *testing.T) {
 			})
 			t.Run("another author", func(t *testing.T) {
 				sha, ok, why := deliver(t, other, self, signed)
-				for _, s := range []string{sha, "author test <test@example.com>", lc.want, "--reset-author", "Co-Authored-By", "Amend or re-commit with them, then push again."} {
+				for _, s := range []string{sha, "author test <test@example.com>", lc.want, "--reset-author", "git rebase -x 'git commit --amend --no-edit --reset-author' ", "Co-Authored-By", "Amend or re-commit with them, then push again."} {
 					if !ok || !strings.Contains(why, s) {
 						t.Errorf("ok=%v, refusal %q lacks %q", ok, why, s)
 					}
