@@ -964,7 +964,8 @@ func SafeSeg(s string) string {
 // commitWork writes when the runner makes the commit. They are the only externally checkable
 // link from a commit on the forge back into the verse, so a delivery without them is refused
 // rather than quietly repaired — repairing would rewrite the agent's commits, and the agent
-// would no longer know the SHAs it delivered.
+// would no longer know the SHAs it delivered. The commit's identity (IdentityFor) is held the
+// same way, for the same reason.
 func RequiredTrailers(l *runner.Launch) []string {
 	lines := []string{"Verse-Task: " + l.ID}
 	if p := l.Provenance.Principal; p != "" {
@@ -978,9 +979,14 @@ func RequiredTrailers(l *runner.Launch) []string {
 const authoredWorkMax = 200
 
 // authoredWork is the delivery an AGENT decides: the commits it made on this branch beyond the
-// base, each carrying the required trailers. ok reports whether there is anything to deliver at
-// all; refusal is why the push must not go, in words the agent can act on, or "" when it may.
-// Uncommitted changes are not looked at: what is not committed is not delivered.
+// base, each carrying the required trailers and authored and committed as the launch's identity
+// (IdentityFor). ok reports whether there is anything to deliver at all; refusal is why the push
+// must not go, in words the agent can act on, or "" when it may. Uncommitted changes are not
+// looked at: what is not committed is not delivered.
+//
+// The identity is the launch's, not the checkout's config: GIT_AUTHOR_*/GIT_COMMITTER_*, `git -c
+// user.*` and `git config user.*` all override the config, and a commit is what it says, so the
+// identity on a delivered commit is evidence of who made it only if it is held here.
 func (t *Tree) AuthoredWork(l *runner.Launch) (ok bool, refusal string, head plumbing.Hash, err error) {
 	// Opened afresh: the task's own git may have fetched objects into packs this side's open
 	// repository has never listed (go-git reads the list once).
@@ -1003,8 +1009,9 @@ func (t *Tree) AuthoredWork(l *runner.Launch) (ok bool, refusal string, head plu
 	// Every commit reachable from the head and not beyond a boundary — the base, or a commit
 	// already upstream (one a rebase or a merge of mirror/* put beneath the task's work) — is the
 	// task's. Each path stops at its own boundary, so a merge's other side is read too.
+	want := IdentityFor(l)
 	var bad []string
-	n, offBase := 0, false
+	n, offBase, unsigned, misidentified, authorOnly := 0, false, false, false, false
 	err = walk(repo, head, func(h plumbing.Hash) bool {
 		return h.String() == t.Head || upstream[h]
 	}, func(c *object.Commit) bool {
@@ -1013,8 +1020,22 @@ func (t *Tree) AuthoredWork(l *runner.Launch) (ok bool, refusal string, head plu
 			offBase = true // a history that doesn't come back to the base, or too far to read
 			return false
 		}
+		var whys []string
 		if why := MissingTrailers(c.Message, l); why != "" {
-			bad = append(bad, ShortSha(c.Hash.String())+" ("+why+")")
+			whys, unsigned = append(whys, why), true
+		}
+		author := c.Author.Name != want.Name || c.Author.Email != want.Email
+		committer := c.Committer.Name != want.Name || c.Committer.Email != want.Email
+		if author {
+			whys = append(whys, "author "+c.Author.Name+" <"+c.Author.Email+">")
+		}
+		if committer {
+			whys = append(whys, "committer "+c.Committer.Name+" <"+c.Committer.Email+">")
+		}
+		misidentified = misidentified || author || committer
+		authorOnly = authorOnly || author && !committer
+		if len(whys) > 0 {
+			bad = append(bad, ShortSha(c.Hash.String())+" ("+strings.Join(whys, "; ")+")")
 		}
 		return true
 	})
@@ -1029,9 +1050,24 @@ func (t *Tree) AuthoredWork(l *runner.Launch) (ok bool, refusal string, head plu
 			"started at (%s); deliver work on top of it", ShortSha(t.Head)), head, nil
 	}
 	if len(bad) > 0 {
-		return true, fmt.Sprintf("not pushed: every commit delivered must end with these trailers, as "+
-			"the last paragraph of its message:\n  %s\nThese commits do not: %s. Amend or re-commit "+
-			"with them, then push again.", strings.Join(RequiredTrailers(l), "\n  "), strings.Join(bad, "; ")), head, nil
+		var b strings.Builder
+		b.WriteString("not pushed: ")
+		if unsigned {
+			fmt.Fprintf(&b, "every commit delivered must end with these trailers, as the last paragraph "+
+				"of its message:\n  %s\n", strings.Join(RequiredTrailers(l), "\n  "))
+		}
+		if misidentified {
+			fmt.Fprintf(&b, "every commit delivered must be authored and committed as %s <%s>, the "+
+				"identity this checkout was given; do not override it with GIT_AUTHOR_*/GIT_COMMITTER_*, "+
+				"`git -c user.*` or `git config user.*`.\n", want.Name, want.Email)
+		}
+		fmt.Fprintf(&b, "These commits do not: %s. ", strings.Join(bad, "; "))
+		if authorOnly {
+			b.WriteString("For another's patch, re-commit with `git commit --amend --reset-author` and " +
+				"credit them with a `Co-Authored-By: Name <email>` trailer. ")
+		}
+		b.WriteString("Amend or re-commit with them, then push again.")
+		return true, b.String(), head, nil
 	}
 	return true, "", head, nil
 }

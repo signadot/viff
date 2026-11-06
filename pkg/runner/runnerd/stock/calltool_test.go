@@ -61,7 +61,7 @@ func (e *buildError) Error() string {
 // commitScript commits work on the task's checkout of svc, as a script's own git does, ending the
 // message with the trailers the runner gave it.
 const commitScript = "cd svc\necho work > f\ngit add f\n" +
-	"git -c user.name=a -c user.email=a@x commit -qm work -m \"$VERSE_TRAILERS\"\n"
+	"git commit -qm work -m \"$VERSE_TRAILERS\"\n"
 
 // launchScript launches a script on acme/svc, allowed to create the task's own branches, under
 // the rows given and `allow` for the rest, in an environment giving the repository, its tracker,
@@ -421,7 +421,7 @@ func TestAPushWithinOnlyThroughOwnPassesBothChecks(t *testing.T) {
 		"fetch": {{}},
 		"push":  {{"ref": systems.Regexp("^refs/heads/"), "exists": ir.FromBool(false)}, {"ref": systems.Regexp("^refs/heads/"), "own": ir.FromBool(true)}},
 	}}}
-	again := "cd svc\necho more > f\ngit -c user.name=a -c user.email=a@x commit -qam more -m 'Verse-Task: t1'\ncd ..\n"
+	again := "cd svc\necho more > f\ngit commit -qam more -m 'Verse-Task: t1'\ncd ..\n"
 	script := "#!/bin/sh\n" + commitScript + "cd ..\n" +
 		"verse-call-tool git-push\necho \"first=$?\"\n" + again +
 		"verse-call-tool git-push\necho \"second=$?\"\n" +

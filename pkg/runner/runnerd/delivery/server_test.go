@@ -154,8 +154,15 @@ func advance(t *testing.T, origin string) {
 	}
 }
 
-// commit writes a file in a checkout and commits everything with msg.
+// commit writes a file in a checkout and commits everything with msg, as the identity of the
+// launches here (gitLaunch's, which has no principal: the runner's).
 func commit(t *testing.T, dir, msg string) {
+	t.Helper()
+	commitAs(t, dir, msg, workspace.RunnerAuthor)
+}
+
+// commitAs is commit as another identity, author and committer both.
+func commitAs(t *testing.T, dir, msg string, who workspace.Author) plumbing.Hash {
 	t.Helper()
 	r, err := git.PlainOpen(dir)
 	if err != nil {
@@ -172,10 +179,12 @@ func commit(t *testing.T, dir, msg string) {
 	if err := wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
 		t.Fatal(err)
 	}
-	sig := &object.Signature{Name: "t", Email: "t@invalid", When: time.Now()}
-	if _, err := wt.Commit(msg, &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
+	sig := &object.Signature{Name: who.Name, Email: who.Email, When: time.Now()}
+	h, err := wt.Commit(msg, &git.CommitOptions{Author: sig, Committer: sig})
+	if err != nil {
 		t.Fatal(err)
 	}
+	return h
 }
 
 // message is the message of the commit a ref points at in a repository.

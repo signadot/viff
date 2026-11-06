@@ -169,7 +169,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 		case 0:
 			brief = r.Prompt()
 			return modeltest.Use("run_bash", map[string]any{"command": "cd svc && echo work > f && git add f && " +
-				"git -c user.name=a -c user.email=a@x commit -qm 'work' -m 'Verse-Task: t1'"})
+				"git commit -qm 'work' -m 'Verse-Task: t1'"})
 		case 1:
 			return modeltest.Use("git-push", map[string]any{})
 		default:
