@@ -1,7 +1,6 @@
 package runnerd
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -70,7 +69,7 @@ func (rs *Repos) prepare(ctx context.Context, l *runner.Launch, dir string, log 
 		return nil, err
 	}
 	ws, err := rs.Mirrors.Open(ctx, l.ID, repos, dir,
-		workspace.AuthorFor(l.Provenance.Principal, cmp.Or(l.Who(), "agent")))
+		workspace.IdentityFor(l))
 	// The mirrors were just fetched, so this is the cheapest place to retry: in the background,
 	// because a backlog against a remote that is down must not hold up this task.
 	go func() {
