@@ -234,7 +234,7 @@ func TestATasksQuestionShowsItsStep(t *testing.T) {
 		"reason":    ir.FromString("github.merge repo=signadot/verse number=12"),
 		"gate":      ir.FromString("autonomy[0]"),
 	})
-	text := questionText(questionOf("run~d1", rec))
+	text := questionText(questionOf("run~d1", rec), defaultKeymap())
 	for _, want := range []string{"FROM", "task repos.verse.merge:train@x.pr.12", "STEP", "github.merge", "merge_pr",
 		"signadot/verse", "WAITS ON", "user:ana@example.com", "DUE", "then deny"} {
 		if !strings.Contains(text, want) {

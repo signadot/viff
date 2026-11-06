@@ -324,6 +324,17 @@ derived from where a rule derived it, and the questions and tasks about it. `tab
 tasks on a timeline. The Charters section lists each address a charter is installed at, with
 its rules, schedules and sends.
 
+The screen reads the `tui:` section of verse's config (`~/.config/verse.tony`). There you can
+set how often it reads, where it opens, which sections it shows and in what order, names for
+places in the data (`:go <name>`), and which keys do what.
+[The example](reference/examples/tui/verse.tony) sets each of them. A key is bound to an
+action by name, such as `answer.proceed: [y]`, and `[]` leaves an action unbound. A key bound
+to two actions, an unknown section or a bookmark that is not an address stops the screen from
+starting and says what is wrong. `verse tui --config` prints the section as in force, with
+every key, ready to paste; `verse tui --commands` lists every command and action.
+
+![verse tui with the example's sections, bookmarks and keys: y proceeds, n denies](images/tui/config-keys.png)
+
 ## Changing your mind
 
 While an ask waits, you can change it, or take it back:

@@ -23,9 +23,11 @@ type fakeTUISource struct {
 	paths    []string // every address the Data section can list
 	records  map[string]*ir.Node
 	fail     map[tuiTab]string // the sections whose reads fail, and how
+	reads    []tuiReads        // what each round asked for
 }
 
 func (f *fakeTUISource) snapshot(at string, reads tuiReads) tuiSnapshot {
+	f.reads = append(f.reads, reads)
 	s := f.snap
 	s.reads = reads
 	s.errs = map[tuiTab]string{}
@@ -212,7 +214,7 @@ func TestTheTUIListings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := taskRows(tasks, false)
+	rows := taskRows(tasks, false, 0)
 	if len(rows) != 3 || rows[0].name != "p:steward@x.project.sso" || rows[1].name != "p:work@x.step.new" {
 		t.Fatalf("task rows %+v", rows)
 	}

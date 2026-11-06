@@ -84,6 +84,7 @@ type tuiItem struct {
 type httpSource struct {
 	c        *client.Client
 	allTasks bool
+	recent   int // how many finished tasks the listing keeps; 0 is taskRecent
 	// subjects is what each waiting question is about, as last read and when: read again only
 	// once it is subjectFresh old, not on every poll.
 	mu       sync.Mutex
@@ -121,7 +122,7 @@ func (h *httpSource) snapshot(dataAt string, reads tuiReads) tuiSnapshot {
 		if n, err := h.read("/tasks", nil); err != nil {
 			s.errs[tabTasks] = err.Error()
 		} else {
-			s.tasks, s.everyTask = taskRows(n, h.allTasks), taskRows(n, true)
+			s.tasks, s.everyTask = taskRows(n, h.allTasks, h.recent), taskRows(n, true, 0)
 		}
 	}
 	if reads.has(tabRunners) {
@@ -333,12 +334,13 @@ func questionOf(id string, p *ir.Node) tuiQuestion {
 	return q
 }
 
-// taskRecent is how many finished tasks the listing keeps beside the running ones.
+// taskRecent is how many finished tasks the listing keeps beside the running ones, where the
+// config (tui.tasks.recent) says nothing.
 const taskRecent = 15
 
 // taskRows is the task listing: what is running first, then the most recently started, each
 // named by its id and stated by its status, its runner and when it started.
-func taskRows(n *ir.Node, all bool) []tuiItem {
+func taskRows(n *ir.Node, all bool, recent int) []tuiItem {
 	var live, rest []tuiItem
 	for _, t := range listOf(n) {
 		status := entity.Str(t, "status")
@@ -356,8 +358,11 @@ func taskRows(n *ir.Node, all bool) []tuiItem {
 	}
 	newest(live)
 	newest(rest)
-	if !all && len(rest) > taskRecent {
-		rest = rest[:taskRecent]
+	if recent <= 0 {
+		recent = taskRecent
+	}
+	if !all && len(rest) > recent {
+		rest = rest[:recent]
 	}
 	return append(live, rest...)
 }

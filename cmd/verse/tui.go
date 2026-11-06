@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -37,12 +36,18 @@ import (
 // the one under the cursor as it stands — its record, what it was derived from (the engine's
 // verse.meta.derivedFrom), the questions and tasks about it. Nothing in it knows any charter:
 // what a charter keeps is data like any other, read where it stands.
+//
+// THE CONFIG'S `tui:` SECTION says how often it reads, where it opens, which sections it shows
+// and in what order, names for places in the data, and which keys do what (tuiconfig.go,
+// tuikeys.go); --config prints it as in force, --commands every command and key.
 
 type tuiConfig struct {
 	*cli.Command
-	At    string `cli:"name=at desc='the address the Data section opens at (the root when left off); VERSE_TUI_AT when left off'"`
-	Every string `cli:"name=every desc='how often to read the verse again, as a duration' default=2s"`
-	All   bool   `cli:"name=all desc='list every task the runtime holds, not only those running and the most recent'"`
+	At       string `cli:"name=at desc='the address the Data section opens at (tui.at in the config; the root when neither says); VERSE_TUI_AT when left off'"`
+	Every    string `cli:"name=every desc='how often to read the verse again, as a duration (tui.every in the config; 2s when neither says)'"`
+	All      bool   `cli:"name=all desc='list every task the runtime holds, not only those running and the most recent'"`
+	Config   bool   `cli:"name=config desc='print the tui section of the config as in force, every key included, ready to paste into ~/.config/verse.tony'"`
+	Commands bool   `cli:"name=commands desc='print every command and every key, and what each does'"`
 }
 
 func tuiCmd() *cli.Command {
@@ -52,7 +57,7 @@ func tuiCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "tui").
-		WithSynopsis("tui — the verse at a glance: questions waiting on you, tasks, the data, charters and runners, answered and cancelled in place [--at <address>] [--every 2s]").
+		WithSynopsis("tui — the verse at a glance: questions waiting on you, tasks, the data, charters and runners, answered and cancelled in place [--at <address>] [--every 2s] [--config] [--commands]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }
@@ -65,11 +70,21 @@ func (cfg *tuiConfig) run(cc *cli.Context, args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("%w: tui takes no positional, and %q is one", cli.ErrUsage, args[0])
 	}
-	every := 2 * time.Second
-	if cfg.Every != "" {
-		if every, err = time.ParseDuration(cfg.Every); err != nil || every < 200*time.Millisecond {
-			return fmt.Errorf("%w: --every is a duration of at least 200ms, not %q", cli.ErrUsage, cfg.Every)
-		}
+	at := cfg.At
+	if at == "" {
+		at = os.Getenv("VERSE_TUI_AT")
+	}
+	set, err := resolveTUI(appCfg.TUI, cfg.Every, at)
+	if err != nil {
+		return fmt.Errorf("%w: %v", cli.ErrUsage, err)
+	}
+	if cfg.Config {
+		_, err := fmt.Fprint(cc.Out, set.configText())
+		return err
+	}
+	if cfg.Commands {
+		_, err := fmt.Fprint(cc.Out, commandsText(set.keys))
+		return err
 	}
 	// Colour as every command decides it (--color, NO_COLOR, a terminal), for both palettes the
 	// screen draws with: lipgloss's, and fatih/color's, which the records' YAML is coloured by.
@@ -86,18 +101,14 @@ func (cfg *tuiConfig) run(cc *cli.Context, args []string) error {
 	if tuiColor {
 		lipgloss.SetHasDarkBackground(lipgloss.HasDarkBackground())
 	}
-	at := cfg.At
-	if at == "" {
-		at = os.Getenv("VERSE_TUI_AT")
-	}
 	me, err := principal("")
 	if err != nil {
 		return err
 	}
-	src := &httpSource{c: apiClient(), allTasks: cfg.All}
-	m := newTUI(src, me, every)
+	src := &httpSource{c: apiClient(), allTasks: cfg.All, recent: set.recent}
+	m := newTUI(src, me, set.every)
+	set.apply(&m)
 	m.watch = startTUIWatch(cc.Go, src.c)
-	m.dataAt = strings.Trim(at, ".")
 	_, err = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithContext(cc.Go)).Run()
 	return err
 }

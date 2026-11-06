@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -474,7 +475,7 @@ func (m tuiModel) contentText(w int) (string, bool) {
 		if !ok {
 			return tuiFaint.Render("When a rule's gate or an ask waits on you, it is here, with what it is about."), true
 		}
-		return questionText(q), true
+		return questionText(q, m.keys), true
 	case tabTasks:
 		if it, ok := m.item(); ok {
 			return tuiTitle.Render(it.name) + "\n\n" + taskText(it.record), true
@@ -617,7 +618,7 @@ func ruleDoes(a *ir.Node) string {
 }
 
 // questionText is a question, what answers it, and what it is about as it stands.
-func questionText(q tuiQuestion) string {
+func questionText(q tuiQuestion, km keymap) string {
 	var b strings.Builder
 	b.WriteString(tuiTitle.Render(q.pose) + "\n\n")
 	if q.about != "" && q.about != q.pose {
@@ -678,7 +679,7 @@ func questionText(q tuiQuestion) string {
 		field("BALLOTS", strings.Join(votes, ", "))
 	}
 	var opts []string
-	for _, o := range answerKeys(q) {
+	for _, o := range answerKeys(q, km) {
 		label := o.option
 		switch o.option {
 		case "proceed":
@@ -692,7 +693,7 @@ func questionText(q tuiQuestion) string {
 		opts = append(opts, tuiKey.Render(o.key)+" "+label)
 	}
 	field("ANSWER", strings.Join(opts, "  "))
-	if len(q.options) > len(answerKeys(q)) {
+	if len(q.options) > len(answerKeys(q, km)) {
 		b.WriteString(tuiFaint.Render("          every option: :answer <option>") + "\n")
 	}
 	if q.subjectRecord != nil {
@@ -702,29 +703,31 @@ func questionText(q tuiQuestion) string {
 	return b.String()
 }
 
-// answerKey is an option and the key that chooses it.
-type answerKey struct{ key, option, says string }
+// answerKey is an option, the action that chooses it and that action's key.
+type answerKey struct{ key, action, option, says string }
 
-// answerKeys is a question's options as keys: a for proceed and d for deny where it offers
-// them, and 7, 8, 9 for the first three others (1-6 are the sections). The rest are answered by
-// name, with :answer.
-func answerKeys(q tuiQuestion) []answerKey {
+// answerKeys is a question's options as keys: answer.proceed and answer.deny where it offers
+// them, and answer.option1-3 for the first three others (7, 8, 9 by default; 1-5 are the
+// sections). The rest, and any whose action is unbound, are answered by name with :answer.
+func answerKeys(q tuiQuestion, km keymap) []answerKey {
 	var out []answerKey
-	next := '7'
+	n := 0
 	for _, o := range q.options {
-		k := ""
-		switch {
-		case o == "proceed":
-			k = "a"
-		case o == "deny":
-			k = "d"
-		case next <= '9':
-			k = string(next)
-			next++
+		act := ""
+		switch o {
+		case "proceed":
+			act = "answer.proceed"
+		case "deny":
+			act = "answer.deny"
 		default:
-			continue
+			if n++; n > 3 {
+				continue
+			}
+			act = fmt.Sprintf("answer.option%d", n)
 		}
-		out = append(out, answerKey{key: k, option: o, says: q.says[o]})
+		if k := km.first(act); k != "" {
+			out = append(out, answerKey{key: k, action: act, option: o, says: q.says[o]})
+		}
 	}
 	return out
 }
@@ -791,7 +794,18 @@ func (m tuiModel) table(w int) string {
 			}
 			b.WriteString(fmt.Sprintf("%s %-*s %s\n", mark, nameW, short(it.name, nameW), waiting))
 		}
-		b.WriteString("\n" + tuiFaint.Render("⏎ opens a place · u goes up · :data <address> goes anywhere"))
+		if len(m.bookmarks) > 0 {
+			b.WriteString("\n" + sectionRule("BOOKMARKS  (:go <name>)", w) + "\n")
+			var names []string
+			for n := range m.bookmarks {
+				names = append(names, n)
+			}
+			sort.Strings(names)
+			for _, n := range names {
+				b.WriteString(fmt.Sprintf("%s %-*s %s\n", tuiKey.Render("★"), nameW, short(n, nameW), tuiFaint.Render(m.bookmarks[n])))
+			}
+		}
+		b.WriteString("\n" + tuiFaint.Render(m.keys.first("open")+" opens a place · "+m.keys.first("data.up")+" goes up · :data <address> goes anywhere"))
 	case tabCharters:
 		cs := m.items()
 		if len(cs) == 0 {
@@ -823,16 +837,19 @@ func (m tuiModel) helpText() string {
 	for _, c := range tuiCommands {
 		b.WriteString(fmt.Sprintf("%s %s\n", tuiKey.Render(fmt.Sprintf("%-38s", c[0])), tuiFaint.Render(c[1])))
 	}
-	b.WriteString("\n" + sectionRule("KEYS", 80) + "\n")
-	for _, k := range [][2]string{
-		{"↑↓ j k", "move in the pane in focus"}, {"←→ h l", "the other pane; ← on a row goes to its section"},
-		{"⏎", "open (a section's line folds it; a place opens into what is under it)"}, {"u ⌫", "the data one level up"},
-		{"1-5", "a section"}, {"tab v / V", "a place's record or its timeline"},
-		{"J K pgup pgdn", "scroll the content"}, {"g G", "top, bottom"}, {"/", "filter the explorer"},
-		{"a d 7-9", "answer a question (:answer for any option)"}, {"x", "cancel a task"},
-		{"r", "read again"}, {"q", "quit"},
-	} {
-		b.WriteString(fmt.Sprintf("%s %s\n", tuiKey.Render(fmt.Sprintf("%-38s", k[0])), tuiFaint.Render(k[1])))
+	b.WriteString("\n" + sectionRule("KEYS  (tui.keys in the config moves them)", 80) + "\n")
+	// The keys' column is as wide as its longest, so the actions line up whatever is bound.
+	keyW := 9
+	for _, a := range tuiActions {
+		keyW = max(keyW, min(lipgloss.Width(m.keys.all(a.name)), 28))
+	}
+	for _, a := range tuiActions {
+		keys := m.keys.all(a.name)
+		if keys == "" {
+			keys = "(unbound)"
+		}
+		b.WriteString(fmt.Sprintf("%s %s %s\n", tuiKey.Render(pad(cut(keys, keyW), keyW)),
+			tuiColHead.Render(fmt.Sprintf("%-16s", a.name)), tuiFaint.Render(a.does)))
 	}
 	return b.String()
 }
@@ -860,26 +877,29 @@ func (m tuiModel) footer() string {
 	case modeFilter:
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(m.finput.View()) + "\n" + tuiFaint.Render("enter keeps the filter · esc clears it")
 	}
-	keys := [][2]string{{"↑↓", "move"}, {"←→", "pane"}, {"⏎", "open"}, {":", "command"}, {"/", "filter"}, {"?", "help"}, {"q", "quit"}}
+	km := m.keys
+	keys := [][2]string{{km.first("move.up") + km.first("move.down"), "move"}, {km.first("back") + km.first("pane.next"), "pane"},
+		{km.first("open"), "open"}, {km.first("command"), "command"}, {km.first("filter"), "filter"}, {km.first("help"), "help"},
+		{km.first("quit"), "quit"}}
 	switch {
 	case m.tab == tabQuestions && !m.onHeader:
 		if q, ok := m.question(); ok {
 			var ks [][2]string
-			for _, o := range answerKeys(q) {
+			for _, o := range answerKeys(q, m.keys) {
 				ks = append(ks, [2]string{o.key, o.option})
 			}
 			keys = append(ks, keys...)
 		}
 	case m.tab == tabTasks && !m.onHeader:
-		keys = append([][2]string{{"x", "cancel"}}, keys...)
+		keys = append([][2]string{{km.first("task.cancel"), "cancel"}}, keys...)
 	case m.tab == tabData && m.focus == paneList && !m.onHeader:
-		keys = append([][2]string{{"⏎", "in"}, {"u", "up"}, {"tab", "view"}}, keys...)
+		keys = append([][2]string{{km.first("open"), "in"}, {km.first("data.up"), "up"}, {km.first("view.next"), "view"}}, keys...)
 	}
 	var parts []string
 	seen := map[string]bool{}
 	for _, k := range keys {
 		// A key named twice says the first, the one this row gives it.
-		if seen[k[0]] {
+		if k[0] == "" || seen[k[0]] {
 			continue
 		}
 		seen[k[0]] = true

@@ -106,6 +106,13 @@ type tuiModel struct {
 	finput textinput.Model
 	cmd    textinput.Model
 	read   time.Time
+	// What the config says (tuiconfig.go): the keys, the sections shown and in what order, the
+	// one to open on (start, when hasStart), and the names kept for places in the data.
+	keys      keymap
+	order     []tuiTab
+	start     tuiTab
+	hasStart  bool
+	bookmarks map[string]string
 }
 
 // snapMsg is a round of reads, when it was asked (askSeq), and the watches' counts of changes
@@ -144,7 +151,8 @@ func newTUI(src tuiSource, me string, every time.Duration) tuiModel {
 		t.Cursor.SetMode(cursor.CursorStatic)
 	}
 	return tuiModel{src: src, me: me, every: every, input: in, finput: f, cmd: c,
-		width: 100, height: 30, dview: viewRecord, polls: new(atomic.Int32)}
+		width: 100, height: 30, dview: viewRecord, polls: new(atomic.Int32),
+		keys: defaultKeymap(), order: []tuiTab{tabQuestions, tabTasks, tabData, tabCharters, tabRunners}}
 }
 
 // Init is the first round, and the tick, which runs from here on whatever round is drawn first.
@@ -184,6 +192,13 @@ func (m tuiModel) watched() map[tuiTab]*watchState {
 }
 
 func (m tuiModel) loadOf(reads tuiReads) tea.Cmd {
+	// The charters and the runners are read only where they are shown: no other section draws
+	// them. The questions, the tasks and the data are, since a place's content shows its own.
+	for _, t := range []tuiTab{tabCharters, tabRunners} {
+		if !slicesContains(m.order, t) {
+			reads &^= readsOf(t)
+		}
+	}
 	src, at, polls, seq := m.src, m.dataAt, m.polls, askSeq.Add(1)
 	// The counts before the reads: a change while they are on their way is read next round.
 	var gens [tabCount]int64
@@ -276,17 +291,23 @@ func (m tuiModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.loadRecord()
 		}
 		if first {
-			// Open on what waits on you, else on the first section with anything in it.
+			// Open on the section the config names, else on what waits on you, else on the
+			// first section shown with anything in it.
 			m.onHeader = true
-			for t := tuiTab(0); t < tabCount; t++ {
-				m.tab = t
-				if m.rows() > 0 {
-					m.onHeader = false
-					break
+			if m.hasStart {
+				m.tab = m.start
+				m.onHeader = m.rows() == 0
+			} else {
+				for _, t := range m.order {
+					m.tab = t
+					if m.rows() > 0 {
+						m.onHeader = false
+						break
+					}
 				}
-			}
-			if m.onHeader {
-				m.tab = tabQuestions
+				if m.onHeader {
+					m.tab = m.order[0]
+				}
 			}
 			m.clamp()
 			return m, m.loadRecord() // the tick runs from Init
@@ -355,7 +376,7 @@ type exRow struct {
 // unless it is folded.
 func (m tuiModel) explorer() []exRow {
 	var out []exRow
-	for t := tuiTab(0); t < tabCount; t++ {
+	for _, t := range m.order {
 		out = append(out, exRow{tab: t, item: -1})
 		if m.folded[t] {
 			continue
@@ -484,68 +505,64 @@ func (m tuiModel) mouse(e tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 func (m tuiModel) browseKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	h := m.contentRows()
-	switch k.String() {
-	case "q", "ctrl+c":
+	act := m.keys.action(k.String())
+	switch act {
+	case "quit":
 		return m, tea.Quit
-	case "1", "2", "3", "4", "5":
-		return m.section(tuiTab(k.String()[0] - '1'))
-	case "backspace", "u":
+	case "section.1", "section.2", "section.3", "section.4", "section.5":
+		if n := int(act[len(act)-1] - '1'); n < len(m.order) {
+			return m.section(m.order[n])
+		}
+	case "data.up":
 		if m.tab == tabData && m.focus == paneList {
 			return m.dataGo(parentOf(m.dataAt), m.dataAt)
 		}
-	case ":":
+	case "command":
 		m.mode = modeCommand
 		m.cmd.SetValue("")
 		return m, m.cmd.Focus()
-	case "?":
+	case "help":
 		m.mode = modeHelp
 		return m, nil
-	case "left", "h":
+	case "back":
 		if m.focus == paneList && !m.onHeader {
 			// Back up to the section's own line, as a tree does.
 			m.onHeader, m.scroll = true, 0
 			return m, nil
 		}
 		m.focus = paneList
-	case "enter", " ":
-		if m.focus == paneList && m.onHeader && k.String() == "enter" {
+	case "open":
+		if m.focus == paneList && m.onHeader {
 			// A section's line folds its rows, or opens them.
 			m.folded[m.tab] = !m.folded[m.tab]
 			return m, nil
 		}
-		if k.String() == "enter" && m.tab == tabData && m.focus == paneList {
+		if m.tab == tabData && m.focus == paneList {
 			// A place opens into what is under it.
 			if it, ok := m.item(); ok {
 				return m.dataGo(it.note, "")
 			}
 		}
-		if k.String() == "enter" && m.rows() > 0 {
+		if m.rows() > 0 {
 			m.focus = paneDetail
 		}
-		if k.String() == " " {
-			m.scroll += max(h-2, 1)
-		}
-	case "right", "l":
+	case "pane.next":
 		if m.focus == paneList && m.onHeader && m.rows() > 0 && m.folded[m.tab] {
 			m.folded[m.tab] = false
 			return m, nil
 		}
 		m.focus = paneDetail
-	case "tab", "v":
+	case "view.next", "view.prev":
 		if vs := m.views(); len(vs) > 1 {
-			m.setView(vs[(slices.Index(vs, m.shownView())+1)%len(vs)])
-			return m, m.loadRecord()
-		}
-		if k.String() == "tab" {
-			m.focus = 1 - m.focus
-		}
-	case "shift+tab", "V":
-		if vs := m.views(); len(vs) > 1 {
-			m.setView(vs[(slices.Index(vs, m.shownView())+len(vs)-1)%len(vs)])
+			d := 1
+			if act == "view.prev" {
+				d = len(vs) - 1
+			}
+			m.setView(vs[(slices.Index(vs, m.shownView())+d)%len(vs)])
 			return m, m.loadRecord()
 		}
 		m.focus = 1 - m.focus
-	case "esc":
+	case "clear":
 		if m.filter != "" {
 			m.filter = ""
 			m.finput.SetValue("")
@@ -553,51 +570,47 @@ func (m tuiModel) browseKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.loadRecord()
 		}
 		m.focus = paneList
-	case "down", "j":
+	case "move.down":
 		return m.step(1)
-	case "up", "k":
+	case "move.up":
 		return m.step(-1)
-	case "g", "home":
+	case "top":
 		if m.focus == paneDetail {
 			m.scroll = 0
 			return m, nil
 		}
 		return m.step(-1 << 20)
-	case "G", "end":
+	case "bottom":
 		if m.focus == paneDetail {
 			m.scroll = 1 << 20
 			return m, nil
 		}
 		return m.step(1 << 20)
-	case "pgdown", "ctrl+d", "J":
+	case "scroll.down":
 		m.scroll += max(h-2, 1)
-	case "pgup", "ctrl+u", "K":
+	case "scroll.up":
 		m.scroll = max(m.scroll-max(h-2, 1), 0)
-	case "/":
+	case "filter":
 		m.mode = modeFilter
 		m.finput.SetValue(m.filter)
 		return m, m.finput.Focus()
-	case "r":
+	case "refresh":
 		m.status = "reading…"
 		return m, m.load()
-	case "a", "y", "d", "n", "7", "8", "9":
-		// An answer, by the key its option is shown with: a question that does not offer
+	case "answer.proceed", "answer.deny", "answer.option1", "answer.option2", "answer.option3":
+		// An answer, by the action its option is shown with: a question that does not offer
 		// proceed is not sent one.
 		q, ok := m.question()
 		if !ok {
 			return m, nil
 		}
-		want := map[string]string{"y": "a", "n": "d"}[k.String()]
-		if want == "" {
-			want = k.String()
-		}
-		for _, o := range answerKeys(q) {
-			if o.key == want {
+		for _, o := range answerKeys(q, m.keys) {
+			if o.action == act {
 				return m.startAnswer(q, o.option)
 			}
 		}
 		m.status = "✗ this question's options are " + strings.Join(q.options, ", ")
-	case "x":
+	case "task.cancel":
 		if m.tab == tabTasks {
 			if t, ok := m.item(); ok && !isTerminalStatus(firstWord(t.state)) {
 				m.mode, m.pending.id = modeConfirm, t.name
@@ -612,7 +625,8 @@ var tuiCommands = [][2]string{
 	{"questions", "what waits on you, as a table"},
 	{"tasks", "the tasks running and just run, as a table"},
 	{"data [address]", "the data at an address (the root alone), what is under it"},
-	{"up", "the data one level up (u, backspace)"},
+	{"up", "the data one level up"},
+	{"go <bookmark>", "the place in the data a bookmark names (tui.bookmarks)"},
 	{"charters", "the charters installed, and their rules"},
 	{"runners", "where work runs"},
 	{"view <record|timeline>", "what the pane shows of a place in the data"},
@@ -620,9 +634,9 @@ var tuiCommands = [][2]string{
 	{"find <text>", "keep the explorer's rows that hold text (/ does the same)"},
 	{"top", "the content pane's first line"},
 	{"bottom", "the content pane's last line"},
-	{"refresh", "read the verse again (r)"},
-	{"help", "this list (?)"},
-	{"quit", "leave (q)"},
+	{"refresh", "read the verse again"},
+	{"help", "this list"},
+	{"quit", "leave"},
 }
 
 // commandKey reads the command line: enter runs it, tab completes it, esc leaves it.
@@ -663,6 +677,10 @@ func (m tuiModel) complete(line string) string {
 			return c
 		}
 		return ""
+	case verb == "go":
+		for name := range m.bookmarks {
+			names = append(names, name)
+		}
 	case verb == "data":
 		// Within the place listed: its children's addresses.
 		for _, d := range m.itemsOf(tabData) {
@@ -717,11 +735,17 @@ func (m tuiModel) run(line string) (tea.Model, tea.Cmd) {
 	case "":
 		return m, nil
 	case "questions", "tasks", "charters", "runners":
-		for t := tuiTab(0); t < tabCount; t++ {
+		for _, t := range m.order {
 			if strings.EqualFold(t.String(), verb) {
 				return m.header(t)
 			}
 		}
+		m.status = "✗ " + verb + " is not shown (tui.sections in the config)"
+	case "go":
+		if at, ok := m.bookmarks[arg]; ok {
+			return m.dataGo(at, "")
+		}
+		m.status = "✗ no bookmark " + arg + " (tui.bookmarks in the config)"
 	case "data":
 		return m.dataGo(strings.Trim(arg, "."), "")
 	case "up":
