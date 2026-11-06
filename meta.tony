@@ -6,7 +6,10 @@ commits: []
 created: "2026-11-06T11:33:25.386331+01:00"
 duplicates: []
 id: 1f5art3xh12ksxdcxnn0
-labels: []
+labels:
+- design
+- mcp
+- runners
 related_issues: []
 status: open
-updated: "2026-11-06T11:33:25.386331+01:00"
+updated: "2026-11-06T11:33:25.472597+01:00"
