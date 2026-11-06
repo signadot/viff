@@ -1,7 +1,8 @@
 # delivery: a table of ops, a request that is its step, and a deadline per op
 
-**Status:** written and reviewed three times, in the worktree `.worktrees/delivery-channel`
-(branch `verse/delivery-channel`). Not committed. The delivery package passes under the race
+**Status:** written, reviewed three times, and committed as 81250f61 on the branch
+`verse/delivery-channel` (worktree `.worktrees/delivery-channel`), one commit over main at
+55ba496d. Not merged to main and not pushed. The delivery package passes under the race
 detector, and the runner and `cmd` suites pass.
 
 This is the groundwork that 1f5art3x asks for first: items 1, 2 and 5 of its section "Performed
