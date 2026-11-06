@@ -21,15 +21,22 @@ bounds it, and the `autonomy` decides each step.
 
 ## The shape
 
-| System | Fixed at start, not on the dial | Verbs, each a step | Who performs it | Its credential |
+| System | Kind | Fixed at start, not on the dial | Verbs, each a step | Its credential |
 |---|---|---|---|---|
-| `mcp` | which servers | `call` | the runner, as the MCP client | held by the runner, bound by the operator |
-| `pkg-nix` | the flake the task starts with | `install`, `upgrade`, `list` | the runner | held by the runner, bound by the operator |
-| `secret` | which secrets | `exec` | the runner, in a second sandbox | given to one command, and readable by the task |
+| `mcp` | performed | which servers | `call` | held by the runner, bound by the operator |
+| `pkg-nix` | provided at the start | the flake the task starts with | none at first; `install` later | held by the runner, bound by the operator |
+| `secret` | a release | which secrets | `exec` | given to one command, and readable by the task |
 
-All three are performed systems, as `git` and `slack` are. The runner acts outside the task's
-sandbox, and checks each act again against the environment, the autonomy and the ceiling
-(`pkg/runner/runnerd/delivery/server.go`, `refused`).
+The three are not the same kind of thing:
+
+- **Performed.** The runner acts in the world with a credential the task never holds, and
+  decides each act again from what it knows itself (`pkg/runner/runnerd/delivery/server.go`,
+  `refused`). `mcp` is this, as `git` and `slack` are.
+- **Provided at the start.** The runner prepares the task's sandbox before the task's process
+  starts, as it checks out a repository. The environment and the ceiling bound it. No row decides
+  it. `pkg-nix` is this at first.
+- **A release.** The runner gives a credential to a command the task chose, under a gate. The
+  task can read it. `secret.exec` is this.
 
 ## Secrets: one store, bound in two ways
 
@@ -72,26 +79,30 @@ path to the task.
   tool's name does not split that way. It has to filter by the tool's step.
 - **Claude's and Codex's own MCP stay shut.** Claude runs with `--strict-mcp-config`, and the
   runner refuses a tool it has no step for.
-- **The channel has to become general.** The task's channel to the runner is a flat struct with
-  an op switch (`pkg/runner/runnerd/delivery/protocol.go`). It carries one request at a time,
-  and a frame is at most 1 MiB.
+- **The channel has to become general.** See "Performed systems: what to shore up first".
 
 ## `pkg-nix`
 
+At first it is provided at the start, and has no verbs.
+
 - **A base, per doer.** The operator names one profile for each doer, beside its ceiling. Every
   task of that doer starts with it. It takes the place of the toolchain the image carries today.
-- **What a spawn adds at the start is one attribute.** `flake` names a flake output or a
-  profile. The runner realises it before the task's process starts, as it checks out a
-  repository. It is fixed for the run, it is bounded by a pattern in the ceiling, and no row
-  decides it.
+- **What a spawn adds is one attribute.** `flake` names a flake output or a profile. The runner
+  realises it before the task's process starts. It is fixed for the run, it is bounded by a
+  pattern in the ceiling, and no row decides it.
 - **Why one attribute, and not a list of packages.** A block's attributes are scalars. An array
   under a block's key is read as a verb's shapes (`pkg/systems/environment.go`, `readBlock`).
   The list of packages lives in the flake.
-- **The verbs are steps.** `install` and `upgrade` carry the field `package`; `list` carries
-  none. The runner performs each: it realises into its store and moves a profile of the task's
-  own. The task's `PATH` names that profile.
-- **A reference is remote.** The ceiling's patterns on `flake` and `package` admit no local
-  path. Given one, the runner would copy a task's files into a store that other tasks draw on.
+- **What the task sees.** The closure of the base and the closure of the flake are lists of
+  store paths. The runner binds each of them from its store into the sandbox, read-only, at the
+  launch. The store itself is the runner's alone, and is never bound whole. The task's `PATH`
+  names the flake, then the base. Nothing changes during the run.
+- **So what a task has is scoped to the task.** It sees its own closures and no other task's.
+  It costs one mount for each store path: hundreds for a toolchain, a few thousand for a large
+  one. It needs no links, and the task's directory need not be on the store's volume.
+- **A task that needs more is spawned again,** with another flake.
+- **A reference is remote.** The ceiling's pattern on `flake` admits no local path. Given one,
+  the runner would copy a task's files into a store that other tasks draw on.
 - **The sandbox changes.** bwrap binds a fixed list of system directories
   (`pkg/runner/runnerd/sandbox.go`, `systemDirs`), and `/nix` is not one. `PATH` is the runner's
   own value today, passed through per doer (`shellEnv`).
@@ -103,8 +114,23 @@ path to the task.
   `emptyDir` today, and only docd has PVC knobs in `deploy/build.tony`.
 - **The pod.** It runs as uid 65532 with no capabilities, so the store is single-user, with no
   root daemon.
+- **A root per live task, and per base,** so that the store's garbage collection keeps their
+  paths.
 
-## Open: what a task sees of the nix store
+Not tested, under bwrap in the runner's pod: how long a few thousand mounts take at a launch,
+and that bwrap takes that many.
+
+Later, one verb: `install`, with the field `package`. Not `upgrade` and not `list`:
+
+- **`upgrade`.** A task lives for minutes or hours. It has little to upgrade.
+- **`list`.** It needs no credential. The task reads its own profile.
+- **A caution for when `install` arrives.** A block that names no verb gives every verb of its
+  system (`pkg/systems/environment.go`, the empty block). A block written as `{flake: …}` then
+  gives `install` too.
+
+## Open: how a task installs during a run
+
+This is open only for `install`. At the start, the binds above settle it.
 
 **A nix package cannot be moved.** Every file names its dependencies by their absolute path in
 the store, `/nix/store/<hash>-<name>`: the loader, the library paths, the first line of a
@@ -120,37 +146,24 @@ list of that.
 **Profiles compose.** A profile takes another profile as one of its parts. So a task's profile
 is the base, then the spawn's flake, then what the task installed.
 
-There are three ways to give a task its packages. The first is tentatively preferred. Which one
-to build is open.
+There are four ways. The first is tentatively preferred. Which one to build is open.
 
-### 1. A base, and the task's own installs. Tentatively preferred
+### 1. The runner installs, and links into the task's own directory. Tentatively preferred
 
-**The central store is the runner's alone.** It is never bound whole into a task. The runner
-realises into it, and it is a cache.
-
-A task's `/nix/store` is put together from two parts:
-
-- **The base, bound at the launch.** The closure of the doer's base is a list of store paths.
-  The runner binds each of them from the central store into the sandbox, read-only, when the
-  task starts. The closure of the spawn's `flake` is bound the same way. Nothing is linked. The
-  cost is one mount for each store path: hundreds for a toolchain, a few thousand for a large
-  one.
-- **The task's own installs, linked during the run.** The task has a directory of its own,
-  bound read-only under those mounts. An `install` makes hard links in it, for the paths of the
-  package's closure that the base and the flake do not already give. They appear in the running
-  sandbox.
-
-**So an install is scoped to its task.** It changes one task's directory. No other task sees
-it, and the central store keeps the bytes once.
+- The base and the flake are bound at the launch, as above.
+- The task also has a directory of its own, bound read-only under those mounts. An `install`
+  is a performed step. The runner realises the package into its store, and makes hard links in
+  the task's directory, for the paths of the package's closure that the base and the flake do
+  not already give. They appear in the running sandbox.
+- **So an install is scoped to its task.** No other task sees it, and the runner's store keeps
+  the bytes once.
 
 What it costs:
 
 - **One volume.** A hard link does not cross filesystems. A task's directory of links lives on
   the store's volume, and not under `TMPDIR`, where a task's directory is today.
-- **One link per file of what a task adds.** The base costs no links. The removal pays for the
-  links again, and a store's trees are read-only, which is the removal problem of 54f9wqb3.
-- **A root per live task, and per base,** so that the central store's garbage collection keeps
-  their paths. A task that started before a base changed keeps the paths it was bound.
+- **One link per file of what a task adds.** The removal pays for the links again, and a
+  store's trees are read-only, which is the removal problem of 54f9wqb3.
 
 What it does not bound: a task sees closures. A package the ceiling allows brings its
 dependencies, and the task can run each of them by its path. So the ceiling bounds what a task
@@ -160,13 +173,12 @@ Not tested, under bwrap in the runner's pod:
 
 - binding single store paths on top of a directory that is itself a bind, and then read-only;
 - hard links made in that directory appearing in a running sandbox;
-- how long a few thousand mounts take at a launch;
 - that a task cannot link out of its store into its workspace;
 - that a single-user store lets the runner make the links.
 
 ### 2. A profile per task, over the whole store. Simpler, and installs leak
 
-- The central store is bound read-only into every task, whole. Each task has a profile of its
+- The runner's store is bound read-only into every task, whole. Each task has a profile of its
   own, and its `PATH` names it.
 - It costs the bind and the profile, and nothing else.
 - **What it bounds:** what is realised, and what is on the task's `PATH`. It does not bound what
@@ -191,26 +203,41 @@ and a reference is remote.
   each task.
 - An install is scoped to an environment, and not to a task. Every task of that environment
   sees it. A common dependency is kept once per environment.
-- nix also has an experimental store that layers over a read-only lower store
-  (`local-overlay`). It needs an overlay mount. It is not examined here.
+
+### 4. The task runs nix itself, over the base
+
+- The task's `/nix` is an overlay: the doer's base store below, read-only, and a directory of
+  the task's own above. The task runs nix as a command, and writes only its own layer.
+- **An install is scoped to its task,** with no links, no mount per path, and no shared volume.
+- **The gate is weaker.** An install is a command (`commands.run`), and that gate is advice.
+  What bounds it is the task's network: which caches it reaches.
+- **The operator's secret does not reach it.** A private cache's token would have to be the
+  task's.
+- **A build is the task's own,** inside its sandbox.
+- Not tested, and from memory: that bwrap makes an overlay without privilege in the runner's
+  pod. nix also has an experimental store for this (`local-overlay`). It is not examined here.
 
 ### Why it is open
 
-The main question is whether an install can be scoped to a task. The first way says yes, and
-it rests on mechanics that are not tested.
+The main question is whether an install can be scoped to a task.
 
-- **If they hold,** the base is easy to keep: the operator names one profile for each doer, and
-  a task pays only for what it adds.
-- **If they do not,** the choice is between the second way, which leaks tools across tasks, and
-  the third, which scopes an install to an environment.
+- **The first way** says yes, and the runner enforces the ceiling on packages. It rests on
+  mechanics that are not tested.
+- **The fourth way** says yes with simpler mechanics. It gives up the performed step and the
+  operator's secret.
+- **If neither holds,** the choice is between the second way, which leaks tools across tasks,
+  and the third, which scopes an install to an environment.
 
 One limit stays in the first way: its ceiling takes in dependencies. It is worth less than a
-ceiling that bounds exactly what is there.
+ceiling that bounds exactly what is there. That weighs toward the fourth way, where the network
+is the bound.
 
 ## `secret-exec`
 
 - **Why it exists.** A command that needs no secret is `commands.run`, or a script. This tool is
   only for a command that needs one.
+- **What kind it is.** A release, under a gate. The environment and the ceiling say which
+  secrets, and the autonomy decides each use. It does not keep the secret from the task.
 - **The shape.** The verb `exec` of the `secret` system, so the tool is `secret-exec` and the
   step is `secret.exec`. The call names an `argv` (a list, never a shell string), plain `env`,
   and each secret with where it goes: a variable's name, or a file.
@@ -221,13 +248,61 @@ ceiling that bounds exactly what is there.
 - **Where it runs.** The runner starts the command in a second sandbox, over the task's
   workspace and under the task's network. The secret is in that process alone. The task's other
   processes are in another pid namespace and cannot read it.
-- **What it promises.** The task chooses the argv, and `sh -c 'echo $S'` prints the secret. So a
-  secret given to a command is readable by the task, unless the shapes hold the argv to commands
-  that do not reveal it. The shapes on `argv`, in the environment and the ceiling, are the wall.
+- **What it promises.** The task chooses the argv, and `sh -c 'echo $S'` prints the secret. A
+  narrow shape on `argv` does not close this: `npm publish` runs scripts from the workspace,
+  and the task wrote them. So a secret given to a command is readable by the task.
 - **Redaction is a second line.** The runner knows the values and can remove them from the
-  output, which goes onto the task's record. An encoding defeats it.
-- **What it needs.** The channel has to carry long output, streamed or cut. The runner's check
-  decides one step of an act today, and has to decide each.
+  output. An encoding defeats it.
+- **The output goes to a file.** The runner writes the command's output into the task's
+  workspace, and answers with the exit status and the end of the output. So the channel carries
+  no stream.
+- **What it needs.** The runner's check decides one step of an act today, and has to decide
+  each.
+
+Two other forms, set aside:
+
+- **A proxy that adds the credential.** The egress proxy would add a credential for a host the
+  operator binds, and the task would never hold it. It is not general. It works per protocol
+  and per service, and only where somebody has written it. A secret in a command's environment
+  works with whatever can use one: a signature, an ssh key, a database's password. And the task
+  could still do anything at that host.
+- **A secret placed in the sandbox at the start.** Only the ceiling would bound it. A step is
+  what gives the autonomy a use to decide.
+
+## Performed systems: what to shore up first
+
+Three new systems lean on the runner's side of the channel (`pkg/runner/runnerd/delivery`). It
+holds by convention today.
+
+1. **The check is each handler's to remember.** Each handler builds its step and calls `refused`
+   itself, in 12 places. A new handler that forgets is not gated. Make it a table: an op gives
+   its steps and its act, and `answer` checks every step before any act. Several steps to one
+   act (`secret.exec`) then need nothing more.
+2. **The request is a struct with a field for each system** (`Channel`, `Emoji`, `Team`), and
+   each handler puts the step's fields together by hand. Make the request an op, fields and a
+   body, and read the fields by the system's document. Both sides then decide the same step. An
+   MCP call's arguments and an argv need this anyway.
+3. **An answer is not bound to what is performed.** The runner matches an answer by the
+   decision's id and the step's fields. A Slack post's text is not a field, and an MCP call's
+   arguments would not be. So a task can be approved for one body and send another. Put a
+   digest of the body in the step. This fits q3k89kva.
+4. **What a runner performs is three lists in the code** (`performs`, `held`, `credentials` in
+   `pkg/runner/runnerd/stock/config.go`). Register a performed system as one value. With the
+   store, a system whose secret is absent is closed, for every system.
+5. **One deadline, one act at a time.** Every op runs under `workspace.ForgeTimeout`, in turn.
+   An MCP call, an install and a command do not fit that.
+6. **A system's document does not say its kind.** Say it there, and publish it in the
+   description: performed, inner, provided at the start, or a release. A charter's author then
+   knows whether a row is a wall or advice.
+7. **One conformance test,** once the dispatch is a table: no op acts under an empty
+   environment.
+
+## The order to build in
+
+1. The channel: items 1, 2 and 5 above.
+2. The secret store, and `mcp`.
+3. `pkg-nix`, at the start only.
+4. `install` and `secret-exec`, once what each promises is settled.
 
 ## A sketch
 
@@ -244,13 +319,13 @@ agents:
       secret:  {ceiling: [{name: npm-publish}]}     # linear-mcp is not here: no command gets it
       pkg-nix:
         base: "github:acme/tools#base"              # what every claude task starts with
-        ceiling: {flake: !regexp "^github:acme/", install: {package: !glob "nixpkgs#*"}}
+        ceiling: {flake: !regexp "^github:acme/"}   # later: install: {package: !glob "nixpkgs#*"}
 
 # a spawn's environment
 environment:
   systems:
     mcp:     [{server: linear, call: {tool: !or [get_issue, list_issues]}}]
-    pkg-nix: {flake: "github:acme/tools#ci", install: {package: "nixpkgs#jq"}}
+    pkg-nix: {flake: "github:acme/tools#ci"}
     secret:  [{name: npm-publish, exec: {argv: !regexp "^npm publish"}}]
 ```
 
@@ -268,18 +343,18 @@ environment:
 
 ## Open questions
 
-1. **What a task sees of the nix store.** The section above. A base bound at the launch, with
-   the task's own installs linked beside it, is tentatively preferred, and scopes an install to
-   its task. It rests on mechanics that are not tested. The other ways are a profile per task
-   over the whole store, which leaks installs across tasks, and several stores, which scope an
-   install to an environment.
+1. **How a task installs during a run.** The section above. It does not hold up the first
+   version, which provides packages at the start only.
 2. **Names.** `pkg-nix` or `nix-pkg`: the existing systems put the provider first
    (`linear-issue`, `github-issue`). And `secret-exec`, or another name for the same tool.
 3. **What an approver sees of an MCP call.** A question shows the step's fields (q3k89kva). The
-   call's arguments are fields only if the document says so, in the form `doc`.
+   call's arguments are fields only if the document says so, in the form `doc`. Item 3 of the
+   shoring list binds the answer to them either way.
 4. **Which names an offer publishes.** Every secret the runner holds, or only those some ceiling
    gives.
 5. **A task's own identity at an MCP server.** A runner's secret is one identity for every
    spawner. A server that trusts verse's issuer could take the credential a gate mints
    (`credential: {audience: …}`, hfh7km3t) instead. Later.
 6. **stdio MCP servers.** How the runner confines one.
+7. **The empty block, when `install` arrives.** Whether a `pkg-nix` block that names no verb
+   should give it.
