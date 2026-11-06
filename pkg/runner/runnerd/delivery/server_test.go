@@ -187,6 +187,104 @@ func commitAs(t *testing.T, dir, msg string, who workspace.Author) plumbing.Hash
 	return h
 }
 
+// A PUSH AS ANOTHER IDENTITY IS REFUSED AND NOTHING LEAVES: a task's commit authored as someone
+// other than its checkout's identity, as signadot/verse#1's three `test <test@example.com>`
+// commits were, is refused at the push with the identity it must carry, and neither the forge nor
+// the mirror's pending refs get it. Re-committed as the checkout's identity, it goes as before.
+// For a person's launch and for a charter's.
+func TestAPushAsAnotherIdentityIsRefusedAndNothingLeaves(t *testing.T) {
+	for _, principal := range []string{"user:ana@example.com", "agent:comment-drift"} {
+		t.Run(principal, func(t *testing.T) {
+			forge := t.TempDir()
+			origin := initRepo(t, forge, "acme/svc")
+			l := gitLaunch("t1", runner.Repo{Repo: "acme/svc"}, task.Autonomy{
+				{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAllow}},
+				{Then: task.Then{Mode: task.ThenAllow}},
+			})
+			l.Provenance.Principal = principal
+			id := workspace.IdentityFor(l)
+			repos, err := workspace.FromLaunch(l.Repos(), forge)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mirrors := workspace.NewMirrors(t.TempDir(), workspace.TokenAuth(""))
+			ws, err := mirrors.Open(context.Background(), l.ID, repos, t.TempDir(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ch, err := Open(l.ID, ws, mirrors, func(workspace.Repo) (string, error) { return "", nil }, Services{}, systemstest.Open(l.Environment), l, io.Discard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			go ch.Serve()
+			conn, err := net.FileConn(ch.Child())
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = ch.Child().Close()
+			cl := NewClient(conn)
+			defer cl.Close()
+			dir := filepath.Join(ws.Root, "svc")
+			msg := "work\n\n" + strings.Join(workspace.RequiredTrailers(l), "\n") + "\n"
+
+			commitAs(t, dir, msg, workspace.Author{Name: "test", Email: "test@example.com"})
+			rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range []string{"author test <test@example.com>", id.Name + " <" + id.Email + ">", "Amend or re-commit"} {
+				if rep.OK || !strings.Contains(rep.Refused, s) {
+					t.Errorf("a push as another identity: %+v, want it refused naming %q", rep, s)
+				}
+			}
+			forgeRepo, err := git.PlainOpen(origin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := forgeRepo.Reference(plumbing.ReferenceName("refs/heads/"+ws.Branch), true); err == nil {
+				t.Errorf("the forge has %s after a refused push", ws.Branch)
+			}
+			staged, err := mirrors.Staged(origin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, s := range staged {
+				if s.Task == l.ID {
+					t.Errorf("a refused push was staged: %+v", s)
+				}
+			}
+
+			// Back to the base and committed again as the checkout's identity: delivered.
+			r, err := git.PlainOpen(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wt, err := r.Worktree()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := wt.Reset(&git.ResetOptions{Commit: plumbing.NewHash(ws.Trees[0].Head), Mode: git.HardReset}); err != nil {
+				t.Fatal(err)
+			}
+			commitAs(t, dir, msg, id)
+			if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK {
+				t.Fatalf("a push as the checkout's identity: %+v %v", rep, err)
+			}
+			tip, err := forgeRepo.Reference(plumbing.ReferenceName("refs/heads/"+ws.Branch), true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c, err := forgeRepo.CommitObject(tip.Hash())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.Author.Name != id.Name || c.Author.Email != id.Email || c.Committer.Name != id.Name || c.Committer.Email != id.Email {
+				t.Errorf("the forge's tip is authored %s <%s>, committed %s <%s>; want %v", c.Author.Name, c.Author.Email, c.Committer.Name, c.Committer.Email, id)
+			}
+		})
+	}
+}
+
 // message is the message of the commit a ref points at in a repository.
 func message(t *testing.T, repo, ref string) string {
 	t.Helper()
