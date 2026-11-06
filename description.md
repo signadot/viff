@@ -78,8 +78,8 @@ Each step builds and passes on its own.
 2. **A tool is filtered by its step.** `offered`, `given` and `toolsBrief` read the tool's
    `Step` where it has one, and its name as today where it has none. Nothing changes for the
    tools there are. A test gives a tool whose name does not split, and sees it dropped.
-3. **The servers in the configuration.** `mcp: {servers: …}` in `stock.Config`: a url, the
-   `auth` of 1q5art3x, and a deadline. `Config.Check` takes an `https` url (a loopback `http`
+3. **The servers in the configuration.** `mcp: {servers: …}` in `stock.Config`: a url, an
+   `auth` that names a secret of the store (1q5art3x), and a deadline. `Config.Check` takes an `https` url (a loopback `http`
    one for a test), a server's name in the form `lower`, and a ceiling block that names a
    server there is. `performs` gains `mcp` where there are servers and a ceiling names it, as
    `linear-issue` is. `Config.Held` drops a ceiling's block whose server's secret is absent, and
