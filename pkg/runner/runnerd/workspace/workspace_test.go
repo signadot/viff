@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -891,7 +892,8 @@ func TestAnAgentsDeliveryIsItsCommitsWithTrailers(t *testing.T) {
 		if err := wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
 			t.Fatal(err)
 		}
-		sig := &object.Signature{Name: "agent", Email: "agent@example.com", When: time.Now()}
+		id := IdentityFor(l)
+		sig := &object.Signature{Name: id.Name, Email: id.Email, When: time.Now()}
 		if _, err := wt.Commit(msg, &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
 			t.Fatal(err)
 		}
@@ -924,6 +926,168 @@ func TestAnAgentsDeliveryIsItsCommitsWithTrailers(t *testing.T) {
 	}
 	if got := MissingTrailers("Verse-Task: p1\n\nwords after the trailers\n", l); got == "" {
 		t.Error("trailers that are not the last paragraph were accepted")
+	}
+}
+
+// The identity a checkout is given is derived from the launch in one place, which both the
+// checkout's config and the delivery check read.
+func TestIdentityForIsWhatTheCheckoutIsGiven(t *testing.T) {
+	person := &runner.Launch{ID: "p1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: "user:ana@example.com"}}
+	if got, want := IdentityFor(person), AuthorFor("user:ana@example.com", "codex"); got != want {
+		t.Errorf("a person's launch: %v, want %v", got, want)
+	}
+	noAgent := &runner.Launch{ID: "p1", Provenance: runner.Provenance{Principal: "user:ana@example.com"}}
+	if got := IdentityFor(noAgent); got.Email != "ana+verse-agent-runner@example.com" {
+		t.Errorf("a person's launch with no agent named: %v, want the driver \"agent\"", got)
+	}
+	for _, p := range []string{"agent:x", ""} {
+		l := &runner.Launch{ID: "c1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: p}}
+		if got := IdentityFor(l); got != RunnerAuthor {
+			t.Errorf("principal %q: %v, want the runner's", p, got)
+		}
+	}
+}
+
+// A DELIVERY IS HELD TO THE CHECKOUT'S IDENTITY, as it is to the trailers: a commit the task made
+// authored or committed as anyone else is refused, not rewritten, naming the commit once with
+// everything wrong with it and the identity it must carry. For a person's launch and a charter's.
+func TestADeliveryIsHeldToTheCheckoutsIdentity(t *testing.T) {
+	launches := []struct {
+		name, want string
+		l          *runner.Launch
+	}{
+		{"person", "ana@example.com (verse codex) <ana+verse-codex-runner@example.com>", &runner.Launch{
+			ID: "p1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: "user:ana@example.com"}}},
+		{"charter", "verse runner <runner@invalid>", &runner.Launch{
+			ID: "c1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: "agent:comment-drift", Chain: "comment-drift"}}},
+	}
+	other := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+	for _, lc := range launches {
+		l := lc.l
+		id := IdentityFor(l)
+		self := &object.Signature{Name: id.Name, Email: id.Email, When: time.Now()}
+		signed := "work\n\n" + strings.Join(RequiredTrailers(l), "\n") + "\n"
+		// deliver opens a fresh checkout, commits once as author and committer, and reads the delivery.
+		deliver := func(t *testing.T, author, committer *object.Signature, msg string) (string, bool, string) {
+			t.Helper()
+			origin := initRepo(t)
+			m := NewMirrors(t.TempDir(), TokenAuth(""))
+			repos := []Repo{{Repo: runner.Repo{Repo: "acme/svc", From: "main"}, Remote: origin}}
+			ws, err := m.Open(context.Background(), l.ID, repos, t.TempDir(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tree := ws.Trees[0]
+			wt, err := tree.repo.Worktree()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(tree.Dir, "work.txt"), []byte("work\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
+				t.Fatal(err)
+			}
+			h, err := wt.Commit(msg, &git.CommitOptions{Author: author, Committer: committer})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ok, why, _, err := tree.AuthoredWork(l)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return ShortSha(h.String()), ok, why
+		}
+		t.Run(lc.name, func(t *testing.T) {
+			t.Run("its own identity", func(t *testing.T) {
+				if _, ok, why := deliver(t, self, self, signed); !ok || why != "" {
+					t.Errorf("ok=%v why=%q, want it deliverable", ok, why)
+				}
+			})
+			t.Run("another author", func(t *testing.T) {
+				sha, ok, why := deliver(t, other, self, signed)
+				for _, s := range []string{sha, "author test <test@example.com>", lc.want, "--reset-author", "Co-Authored-By", "Amend or re-commit with them, then push again."} {
+					if !ok || !strings.Contains(why, s) {
+						t.Errorf("ok=%v, refusal %q lacks %q", ok, why, s)
+					}
+				}
+			})
+			t.Run("another committer", func(t *testing.T) {
+				sha, ok, why := deliver(t, self, other, signed)
+				if !ok || !strings.Contains(why, sha) || !strings.Contains(why, "committer test <test@example.com>") || strings.Contains(why, "author test") {
+					t.Errorf("ok=%v why=%q, want the committer named and not the author", ok, why)
+				}
+				if strings.Contains(why, "--reset-author") {
+					t.Errorf("the --reset-author hint is for an author alone: %q", why)
+				}
+			})
+			t.Run("another author and no trailers", func(t *testing.T) {
+				sha, ok, why := deliver(t, other, self, "work\n")
+				if !ok || strings.Count(why, sha) != 1 {
+					t.Fatalf("ok=%v why=%q, want %s named once", ok, why, sha)
+				}
+				for _, s := range []string{"missing or wrong: Verse-Task", "author test <test@example.com>", RequiredTrailers(l)[0], lc.want} {
+					if !strings.Contains(why, s) {
+						t.Errorf("refusal %q lacks %q", why, s)
+					}
+				}
+			})
+		})
+	}
+}
+
+// THE IDENTITY HELD IS THE LAUNCH'S, NOT THE CHECKOUT CONFIG'S. Committing with the git binary as
+// an agent does: left alone, the checkout's config is the identity held; GIT_AUTHOR_* in the
+// command (how a test command's identity reached signadot/verse#1) and an agent's own `git config
+// user.*` are both refused.
+func TestTheIdentityHeldIsTheLaunchsNotTheCheckoutConfig(t *testing.T) {
+	l := &runner.Launch{ID: "p1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: "user:ana@example.com"}}
+	msg := []string{"-m", "work", "-m", strings.Join(RequiredTrailers(l), "\n")}
+	open := func(t *testing.T) *Tree {
+		t.Helper()
+		origin := initRepo(t)
+		m := NewMirrors(t.TempDir(), TokenAuth(""))
+		repos := []Repo{{Repo: runner.Repo{Repo: "acme/svc", From: "main"}, Remote: origin}}
+		ws, err := m.Open(context.Background(), l.ID, repos, t.TempDir(), IdentityFor(l))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ws.Trees[0]
+	}
+	gitIn := func(t *testing.T, tree *Tree, env []string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = tree.Dir
+		cmd.Env = append([]string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "GIT_CONFIG_GLOBAL=/dev/null"}, env...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	commit := func(t *testing.T, tree *Tree, env ...string) (bool, string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(tree.Dir, "work.txt"), []byte("work\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, tree, nil, "add", "-A")
+		gitIn(t, tree, env, append([]string{"commit", "-q"}, msg...)...)
+		ok, why, _, err := tree.AuthoredWork(l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok, why
+	}
+
+	if ok, why := commit(t, open(t)); !ok || why != "" {
+		t.Errorf("committed as the checkout is configured: ok=%v why=%q, want it deliverable", ok, why)
+	}
+	if ok, why := commit(t, open(t), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.com"); !ok || !strings.Contains(why, "author test <test@example.com>") {
+		t.Errorf("committed with GIT_AUTHOR_*: ok=%v why=%q, want it refused naming the author", ok, why)
+	}
+	tree := open(t)
+	gitIn(t, tree, nil, "config", "user.name", "x")
+	gitIn(t, tree, nil, "config", "user.email", "x@y")
+	if ok, why := commit(t, tree); !ok || !strings.Contains(why, "author x <x@y>") || !strings.Contains(why, "committer x <x@y>") {
+		t.Errorf("committed after its own git config user.*: ok=%v why=%q, want author and committer refused", ok, why)
 	}
 }
 
@@ -1083,7 +1247,8 @@ func TestADeliveryAfterARebaseIsTheTasksCommitsAlone(t *testing.T) {
 	if err := wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
 		t.Fatal(err)
 	}
-	sig := &object.Signature{Name: "a", Email: "a@invalid", When: time.Now()}
+	id := IdentityFor(l)
+	sig := &object.Signature{Name: id.Name, Email: id.Email, When: time.Now()}
 	if _, err := wt.Commit("work\n\nVerse-Task: p1\n", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
 		t.Fatal(err)
 	}
@@ -1109,7 +1274,8 @@ func TestADeliveryAfterAMergeOfUpstreamReadsTheTasksSide(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sig := &object.Signature{Name: "a", Email: "a@invalid", When: time.Now()}
+		id := IdentityFor(l)
+		sig := &object.Signature{Name: id.Name, Email: id.Email, When: time.Now()}
 		commit := func(file, msg string, parents ...plumbing.Hash) plumbing.Hash {
 			t.Helper()
 			if err := os.WriteFile(filepath.Join(tree.Dir, file), []byte(file+"\n"), 0o644); err != nil {
@@ -1189,7 +1355,9 @@ func TestARefTheTaskWritesDoesntMakeItsCommitUpstream(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sig := &object.Signature{Name: "a", Email: "a@invalid", When: time.Now()}
+		l := &runner.Launch{ID: "p1"}
+		id := IdentityFor(l)
+		sig := &object.Signature{Name: id.Name, Email: id.Email, When: time.Now()}
 		commit := func(file, msg string) plumbing.Hash {
 			if err := os.WriteFile(filepath.Join(tree.Dir, file), []byte(file+"\n"), 0o644); err != nil {
 				t.Fatal(err)
@@ -1210,7 +1378,7 @@ func TestARefTheTaskWritesDoesntMakeItsCommitUpstream(t *testing.T) {
 			}
 		}
 		commit("d.txt", "signed\n\nVerse-Task: p1\n")
-		ok, why, _, err := tree.AuthoredWork(&runner.Launch{ID: "p1"})
+		ok, why, _, err := tree.AuthoredWork(l)
 		if err != nil || !ok || !strings.Contains(why, ShortSha(c.String())) {
 			t.Fatalf("cheat=%v: ok=%v why=%q err=%v, want the unsigned commit refused by name", cheat, ok, why, err)
 		}

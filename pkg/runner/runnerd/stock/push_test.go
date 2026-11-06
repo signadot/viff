@@ -30,7 +30,7 @@ import (
 // commitWork is the command that commits a change in svc with the task's trailer.
 func commitWork(id string) map[string]any {
 	return map[string]any{"command": "cd svc && echo work > f && git add f && " +
-		"git -c user.name=a -c user.email=a@x commit -qm work -m 'Verse-Task: " + id + "'"}
+		"git commit -qm work -m 'Verse-Task: " + id + "'"}
 }
 
 // launchPusher launches an agent on acme/svc, allowed to push its own branches, under rows and
@@ -297,7 +297,7 @@ func TestAPushAfterARebaseOntoUpstreamLands(t *testing.T) {
 			advance(t, filepath.Join(forge, "acme/svc"))
 			return modeltest.Use("git-fetch", map[string]any{})
 		case 2:
-			return modeltest.Use("run_bash", map[string]any{"command": "cd svc && git -c user.name=a -c user.email=a@x rebase -q mirror/main && git log --format=%s -3"})
+			return modeltest.Use("run_bash", map[string]any{"command": "cd svc && git rebase -q mirror/main && git log --format=%s -3"})
 		case 3:
 			return modeltest.Use("git-push", map[string]any{})
 		default:
@@ -367,7 +367,7 @@ func TestADenyRowHoldsAndARunsOwnBranchIsPushedAgain(t *testing.T) {
 		modeltest.Use("git-push", map[string]any{"branch": "main"}),
 		modeltest.Use("git-push", map[string]any{}),
 		modeltest.Use("run_bash", map[string]any{"command": "cd svc && echo more >> f && git add f && " +
-			"git -c user.name=a -c user.email=a@x commit -qm more -m 'Verse-Task: t1'"}),
+			"git commit -qm more -m 'Verse-Task: t1'"}),
 		modeltest.Use("git-push", map[string]any{}),
 	)
 	rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})

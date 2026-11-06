@@ -301,7 +301,8 @@ func TestWhatIsStagedIsTheCommitThatWasChecked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sig := &object.Signature{Name: "a", Email: "a@invalid", When: time.Now()}
+	id := IdentityFor(l)
+	sig := &object.Signature{Name: id.Name, Email: id.Email, When: time.Now()}
 	commit := func(file, msg string) {
 		t.Helper()
 		if err := os.WriteFile(filepath.Join(tree.Dir, file), []byte(file+"\n"), 0o644); err != nil {
