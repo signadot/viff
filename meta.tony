@@ -6,7 +6,9 @@ commits: []
 created: "2026-11-06T13:53:11.658016+01:00"
 duplicates: []
 id: 1z5art3xh12ksdydxnn0
-labels: []
+labels:
+- bug
+- runners
 related_issues: []
 status: open
-updated: "2026-11-06T13:53:11.658016+01:00"
+updated: "2026-11-06T13:53:11.744362+01:00"
