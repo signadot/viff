@@ -1,7 +1,39 @@
 # runner: a secret store, one file per name, beside the credentials in the environment
 
-**Status:** a plan, reviewed once. Nothing is built. It blocks 1f5art3x, and the `mcp` system
-waits on it.
+**Status:** steps 1 to 3 are written, in the worktree `.worktrees/secret-store` (branch
+`verse/secret-store`, from main at 55ba496d). Not committed. Steps 4 to 8 are not begun. It
+blocks 1f5art3x, and the `mcp` system waits on it.
+
+## Built so far
+
+- **Step 1, the store.** `pkg/runner/runnerd/secretstore`: `Open`, `Get`, `Has`, `CheckName`.
+  One thing more than the plan said: a file over 64 KiB is refused as no secret's value.
+- **Step 2, its place.** `secrets: {dir: …}` in `stock.Config` (`SecretStore`). `Config.Check`
+  takes an absolute path under no system directory. `runnerd.CheckSecretStore` holds it apart
+  from the work, mirrors and control directories, as the filesystem resolves them, and
+  `Standalone` calls it. `runnerd.KeptDirs` takes the store as a fourth directory, and the
+  handler holds it (`SubprocessConfig.Secrets`), so the check at each launch has it.
+  `runnerd.UnderSystem` is the sandbox's own test, exported.
+  - **The warnings are `Standalone`'s, not `CheckStart`'s.** A directory that is not there, and
+    a runner with no sandbox, are said on the runner's log at its start, beside what it says of
+    a `readOnly` path. `Standalone` has the sandbox and the directories; `CheckStart` has
+    neither.
+- **Step 3, the table.** `performedSystems` in `stock/config.go`. `performs`, `Held`,
+  `TokensFromEnv`, `needsFor` and `checkSystems` read it, and so does `credentials`, which the
+  plan did not name. The lists `held` and the one in `performs` are gone. The tests of
+  `credentials_test.go` pass as they were.
+  - **Left as it was:** `Runner.Build` (`stock/runner.go`) still names `linear-issue` and
+    `slack` where it builds their tools.
+- **Tests.** `secretstore/store_test.go`; `TestAReadOnlyPathMayNotReachTheSecretStore` and
+  `TestTheSecretStoreIsWhereNoSandboxBindsIt` (`runnerd/readonly_test.go`);
+  `stock/secretstore_test.go`. The runner and `cmd` suites pass, and `make check-json
+  check-layers`.
+  - **Not run:** `TestATaskCannotReadTheSecretStore` needs bwrap, and was written on a machine
+    without it. It builds for Linux.
+
+**Why it stops at step 3.** Step 4 changes `delivery/slack.go` and `delivery/issues.go`, which
+the worktree of 1k5art3x rewrites and has not committed. Steps 4 to 6 go on top of that work
+once it is committed. Steps 7 and 8 follow them.
 
 ## What it is
 
