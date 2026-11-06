@@ -46,7 +46,7 @@ func TestAGitIssueIsFiledHereAndPushedThere(t *testing.T) {
 	}
 	s := &Server{Mirrors: m, Log: io.Discard, Ceilings: performs("git-issue")}
 	tk := Task{ID: "i1", Workspace: ws, Launch: within([]string{"acme/svc"}, "git-issue"), Credential: func(workspace.Repo) (string, error) { return "", nil }}
-	rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePush, Repo: "svc"}))
+	rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePush, Fields: map[string]string{"repo": "svc"}}))
 	if !rep.OK || !strings.Contains(rep.Out, "pushed the issues of svc (1 ref(s))") {
 		t.Fatalf("push: %+v", rep)
 	}
@@ -54,13 +54,13 @@ func TestAGitIssueIsFiledHereAndPushedThere(t *testing.T) {
 	if err != nil || len(remote) != 1 || remote[0].Title != "the roof leaks" {
 		t.Fatalf("the remote's tracker lists %+v, %v", remote, err)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePull, Repo: "svc"})); !rep.OK || !strings.Contains(rep.Out, "1 open:\n  "+remote[0].ID+"  the roof leaks") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePull, Fields: map[string]string{"repo": "svc"}})); !rep.OK || !strings.Contains(rep.Out, "1 open:\n  "+remote[0].ID+"  the roof leaks") {
 		t.Errorf("pull: %+v", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePush, Repo: "svc"})); !rep.OK || !strings.Contains(rep.Out, "nothing to push") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePush, Fields: map[string]string{"repo": "svc"}})); !rep.OK || !strings.Contains(rep.Out, "nothing to push") {
 		t.Errorf("a second push: %+v", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePush, Repo: "nope"})); rep.Error == "" {
+	if rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePush, Fields: map[string]string{"repo": "nope"}})); rep.Error == "" {
 		t.Errorf("an unknown repository: %+v", rep)
 	}
 }
@@ -75,7 +75,7 @@ func TestATrackerIsPulledIntoTheCheckout(t *testing.T) {
 	}
 	s := &Server{Mirrors: m, Log: io.Discard, Ceilings: performs("git-issue")}
 	tk := Task{ID: "f2", Workspace: ws, Launch: within([]string{"acme/svc"}, "git-issue"), Credential: func(workspace.Repo) (string, error) { return "", nil }}
-	rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePull, Repo: "svc"}))
+	rep := s.answer(tk, frame(t, Request{Op: OpGitIssuePull, Fields: map[string]string{"repo": "svc"}}))
 	if !rep.OK || !strings.Contains(rep.Out, "1 open:") || !strings.Contains(rep.Out, filed.ID+"  the roof leaks") || len(rep.Updated) != 1 {
 		t.Fatalf("reply: %+v", rep)
 	}
@@ -107,7 +107,7 @@ func TestAGitHubIssueIsOpenedWithTheRunnersToken(t *testing.T) {
 	ws := githubTree("acme/app", "https://github.com/acme/app.git")
 	s := &Server{Log: io.Discard, Services: Services{GitHubAPI: forge.URL}, Ceilings: performs("github-issue")}
 	tk := Task{ID: "i2", Workspace: ws, Launch: within([]string{"acme/app"}, "github-issue"), Credential: func(workspace.Repo) (string, error) { return "the-runners-own", nil }}
-	rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueCreate, Repo: "app", Title: "the roof leaks", Body: "when it rains"}))
+	rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueCreate, Body: "when it rains", Fields: map[string]string{"repo": "app", "title": "the roof leaks"}}))
 	if !rep.OK || rep.Out != "opened issue #7 at acme/app: https://github.com/acme/app/issues/7" {
 		t.Fatalf("reply: %+v", rep)
 	}
@@ -115,7 +115,7 @@ func TestAGitHubIssueIsOpenedWithTheRunnersToken(t *testing.T) {
 		t.Errorf("the forge saw %+v", got)
 	}
 	local := githubTree("x/l", "/tmp/x.git")
-	if rep := s.answer(Task{ID: "i3", Workspace: local, Launch: tk.Launch, Credential: tk.Credential}, frame(t, Request{Op: OpGitHubIssueCreate, Repo: "l", Title: "x"})); rep.Refused == "" {
+	if rep := s.answer(Task{ID: "i3", Workspace: local, Launch: tk.Launch, Credential: tk.Credential}, frame(t, Request{Op: OpGitHubIssueCreate, Fields: map[string]string{"repo": "l", "title": "x"}})); rep.Refused == "" {
 		t.Errorf("a local repository: %+v, want a refusal", rep)
 	}
 }
@@ -151,18 +151,18 @@ func TestALinearIssueIsCreatedWithTheRunnersCredential(t *testing.T) {
 	defer api.Close()
 	s := &Server{Log: io.Discard, Services: Services{LinearAuth: "lin_api_x", LinearAPI: api.URL}, Ceilings: performs("linear-issue")}
 	tk := Task{ID: "i4", Workspace: &workspace.Workspace{}, Launch: within(nil, "linear-issue")}
-	rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Team: "ENG", Title: "the roof leaks", Body: "when it rains"}))
+	rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Body: "when it rains", Fields: map[string]string{"team": "ENG", "title": "the roof leaks"}}))
 	if !rep.OK || rep.Out != "created ENG-42: https://linear.app/acme/issue/ENG-42" {
 		t.Fatalf("reply: %+v", rep)
 	}
 	if len(auths) != 2 || auths[0] != "lin_api_x" || auths[1] != "lin_api_x" {
 		t.Errorf("Linear saw %v, want the runner's credential on both calls", auths)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Team: "NOPE", Title: "x"})); rep.Error == "" || !strings.Contains(rep.Error, "no team NOPE") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Fields: map[string]string{"team": "NOPE", "title": "x"}})); rep.Error == "" || !strings.Contains(rep.Error, "no team NOPE") {
 		t.Errorf("an unknown team: %+v", rep)
 	}
 	none := &Server{Log: io.Discard, Ceilings: performs("linear-issue")}
-	if rep := none.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Team: "ENG", Title: "x"})); !strings.Contains(rep.Error, "LINEAR_API_KEY") {
+	if rep := none.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Fields: map[string]string{"team": "ENG", "title": "x"}})); !strings.Contains(rep.Error, "LINEAR_API_KEY") {
 		t.Errorf("a runner without a credential: %+v, want it to say where one is configured", rep)
 	}
 }
@@ -210,22 +210,22 @@ func TestCommentAndCloseAtTheRemoteTrackers(t *testing.T) {
 	s := &Server{Log: io.Discard, Services: Services{GitHubAPI: forge.URL, LinearAuth: "k", LinearAPI: api.URL}, Ceilings: performs("github-issue", "linear-issue")}
 	tk := Task{ID: "v1", Workspace: ws, Launch: within([]string{"acme/app"}, "github-issue", "linear-issue"), Credential: func(workspace.Repo) (string, error) { return "tok", nil }}
 
-	if rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueComment, Repo: "app", Issue: "7", Body: "on it"})); !rep.OK || !strings.Contains(rep.Out, "commented on issue #7 at acme/app") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueComment, Body: "on it", Fields: map[string]string{"repo": "app", "issue": "7"}})); !rep.OK || !strings.Contains(rep.Out, "commented on issue #7 at acme/app") {
 		t.Errorf("github comment: %+v", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueClose, Repo: "app", Issue: "7"})); !rep.OK || !strings.Contains(rep.Out, "closed issue #7 at acme/app") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueClose, Fields: map[string]string{"repo": "app", "issue": "7"}})); !rep.OK || !strings.Contains(rep.Out, "closed issue #7 at acme/app") {
 		t.Errorf("github close: %+v", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueClose, Repo: "app", Issue: "x"})); rep.Refused == "" {
+	if rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueClose, Fields: map[string]string{"repo": "app", "issue": "x"}})); rep.Refused == "" {
 		t.Errorf("a non-number: %+v", rep)
 	}
 	if got := strings.Join(forgeSaw, "; "); got != "GET /repos/acme/app/issues/7 ; POST /repos/acme/app/issues/7/comments on it; GET /repos/acme/app/issues/7 ; PATCH /repos/acme/app/issues/7 closed" {
 		t.Errorf("the forge saw %q", got)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueComment, Issue: "ENG-42", Body: "on it"})); !rep.OK || rep.Out != "commented on ENG-42: https://linear.app/x/issue/ENG-42#c1" {
+	if rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueComment, Body: "on it", Fields: map[string]string{"issue": "ENG-42"}})); !rep.OK || rep.Out != "commented on ENG-42: https://linear.app/x/issue/ENG-42#c1" {
 		t.Errorf("linear comment: %+v", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueClose, Issue: "ENG-42"})); !rep.OK || rep.Out != "closed ENG-42 (Done): https://linear.app/x/issue/ENG-42" {
+	if rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueClose, Fields: map[string]string{"issue": "ENG-42"}})); !rep.OK || rep.Out != "closed ENG-42 (Done): https://linear.app/x/issue/ENG-42" {
 		t.Errorf("linear close: %+v", rep)
 	}
 	if got := strings.Join(linearSaw, " "); got != "issue comment:on it states update:s9" {
@@ -262,14 +262,14 @@ func TestAnIssueVerbRefusesAPullRequest(t *testing.T) {
 		req     Request
 		refused string
 	}{
-		{Request{Op: OpGitHubIssueComment, Issue: "71", Body: "on it"}, "#71 is a pull request: comment on it with github-comment-pr"},
-		{Request{Op: OpGitHubIssueClose, Issue: "71"}, "#71 is a pull request, and github-issue does not close one"},
-		{Request{Op: OpGitHubIssueComment, Issue: "72", Body: "on it"}, "there is no issue #72 at acme/app"},
-		{Request{Op: OpGitHubIssueClose, Issue: "72"}, "there is no issue #72 at acme/app"},
+		{Request{Op: OpGitHubIssueComment, Body: "on it", Fields: map[string]string{"issue": "71"}}, "#71 is a pull request: comment on it with github-comment-pr"},
+		{Request{Op: OpGitHubIssueClose, Fields: map[string]string{"issue": "71"}}, "#71 is a pull request, and github-issue does not close one"},
+		{Request{Op: OpGitHubIssueComment, Body: "on it", Fields: map[string]string{"issue": "72"}}, "there is no issue #72 at acme/app"},
+		{Request{Op: OpGitHubIssueClose, Fields: map[string]string{"issue": "72"}}, "there is no issue #72 at acme/app"},
 	} {
-		tc.req.Repo = "app"
+		tc.req.Fields["repo"] = "app"
 		if rep := s.answer(tk, frame(t, tc.req)); rep.Refused != tc.refused {
-			t.Errorf("%s #%s: %+v, want refused %q", tc.req.Op, tc.req.Issue, rep, tc.refused)
+			t.Errorf("%s #%s: %+v, want refused %q", tc.req.Op, tc.req.Field("issue"), rep, tc.refused)
 		}
 	}
 	if len(writes) != 0 {

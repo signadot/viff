@@ -44,10 +44,10 @@ func verseTools(cl *delivery.Client) []verse.Tool {
 			if err != nil {
 				return delivery.Request{}, err
 			}
-			return delivery.Request{Op: delivery.OpVerseAskCreate, Ask: string(doc)}, nil
+			return delivery.Request{Op: delivery.OpVerseAskCreate, Fields: map[string]string{"ask": string(doc)}}, nil
 		}, nil),
 		toolOf(cl, verbs.AskGet, task.StepVerseAskGet, "not read", func(a verbs.Args) (delivery.Request, error) {
-			return delivery.Request{Op: delivery.OpVerseAskGet, Ask: a.Word("name_or_id")}, nil
+			return delivery.Request{Op: delivery.OpVerseAskGet, Fields: map[string]string{"ask": a.Word("name_or_id")}}, nil
 		}, nil),
 		toolOf(cl, verbs.AskList, task.StepVerseAskList, "not read", func(verbs.Args) (delivery.Request, error) {
 			return delivery.Request{Op: delivery.OpVerseAskList}, nil

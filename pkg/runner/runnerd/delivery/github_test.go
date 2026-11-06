@@ -187,7 +187,7 @@ func TestATaskReadsPullRequestsThroughTheRunner(t *testing.T) {
 
 	t.Run("a list that pages", func(t *testing.T) {
 		open, pages = 60, nil
-		rep := ask(Request{Op: OpGitHubListPRs, Repo: "app"})
+		rep := ask(Request{Op: OpGitHubListPRs, Fields: map[string]string{"repo": "app"}})
 		lines := strings.Split(rep.Out, "\n")
 		if !rep.OK || len(lines) != 61 || lines[0] != "acme/app: 60 open pull request(s), most recently changed first" {
 			t.Fatalf("reply: %+v", rep)
@@ -201,7 +201,7 @@ func TestATaskReadsPullRequestsThroughTheRunner(t *testing.T) {
 	})
 	t.Run("a list cut at its most says so", func(t *testing.T) {
 		open, pages = prsMost+30, nil
-		rep := ask(Request{Op: OpGitHubListPRs, Repo: "app"})
+		rep := ask(Request{Op: OpGitHubListPRs, Fields: map[string]string{"repo": "app"}})
 		if !rep.OK || !strings.HasPrefix(rep.Out, fmt.Sprintf("acme/app: %d open pull request(s), most recently changed first; the first %d, and more may be open", prsMost, prsMost)) {
 			t.Fatalf("reply: %.200s", rep.Out)
 		}
@@ -210,7 +210,7 @@ func TestATaskReadsPullRequestsThroughTheRunner(t *testing.T) {
 		}
 	})
 	t.Run("one pull request with its reviews", func(t *testing.T) {
-		rep := ask(Request{Op: OpGitHubReadPR, Repo: "app", PR: "7"})
+		rep := ask(Request{Op: OpGitHubReadPR, Fields: map[string]string{"repo": "app", "pr": "7"}})
 		want := "#7 change 7 (open) https://github.com/acme/app/pull/7\n" +
 			"by ana, main <- f7; created 2026-10-20T09:00:00Z, updated 2026-10-22T09:00:00Z\n" +
 			"review requested from zed, teams platform\n" +
@@ -229,7 +229,7 @@ func TestATaskReadsPullRequestsThroughTheRunner(t *testing.T) {
 		{"a pull request that is not there", "9", "there is no pull request #9 at acme/app"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if rep := ask(Request{Op: OpGitHubReadPR, Repo: "app", PR: tc.pr}); rep.Refused != tc.refused {
+			if rep := ask(Request{Op: OpGitHubReadPR, Fields: map[string]string{"repo": "app", "pr": tc.pr}}); rep.Refused != tc.refused {
 				t.Errorf("reply: %+v, want refused %q", rep, tc.refused)
 			}
 		})
@@ -238,22 +238,22 @@ func TestATaskReadsPullRequestsThroughTheRunner(t *testing.T) {
 		l := within([]string{"acme/app"}, "github")
 		l.Autonomy = task.Autonomy{{Name: "no-reads", Match: &task.Match{System: "github", Verb: "read-pr"}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
 		denied := Task{ID: "r2", Workspace: ws, Launch: l, Credential: tk.Credential}
-		if rep := s.answer(denied, frame(t, Request{Op: OpGitHubReadPR, Repo: "app", PR: "7"})); !strings.Contains(rep.Refused, "no-reads") {
+		if rep := s.answer(denied, frame(t, Request{Op: OpGitHubReadPR, Fields: map[string]string{"repo": "app", "pr": "7"}})); !strings.Contains(rep.Refused, "no-reads") {
 			t.Errorf("reply: %+v, want the deny row named", rep)
 		}
-		if rep := s.answer(denied, frame(t, Request{Op: OpGitHubListPRs, Repo: "app"})); !rep.OK {
+		if rep := s.answer(denied, frame(t, Request{Op: OpGitHubListPRs, Fields: map[string]string{"repo": "app"}})); !rep.OK {
 			t.Errorf("a list the row does not name: %+v", rep)
 		}
 	})
 	t.Run("a ceiling that gives only create-pr", func(t *testing.T) {
 		writes := &Server{Log: io.Discard, Services: s.Services, Ceilings: map[string]systems.Ceiling{"github": {{Verbs: map[string][]systems.Shape{"create-pr": {{}}}}}}}
-		if rep := writes.answer(tk, frame(t, Request{Op: OpGitHubListPRs, Repo: "app"})); !strings.Contains(rep.Refused, "ceiling") {
+		if rep := writes.answer(tk, frame(t, Request{Op: OpGitHubListPRs, Fields: map[string]string{"repo": "app"}})); !strings.Contains(rep.Refused, "ceiling") {
 			t.Errorf("reply: %+v, want the ceiling's refusal", rep)
 		}
 	})
 	t.Run("a runner with no github system", func(t *testing.T) {
 		none := &Server{Log: io.Discard, Services: s.Services, Ceilings: performs("github-issue")}
-		if rep := none.answer(tk, frame(t, Request{Op: OpGitHubListPRs, Repo: "app"})); !strings.Contains(rep.Refused, "it has no `github` system") {
+		if rep := none.answer(tk, frame(t, Request{Op: OpGitHubListPRs, Fields: map[string]string{"repo": "app"}})); !strings.Contains(rep.Refused, "it has no `github` system") {
 			t.Errorf("reply: %+v", rep)
 		}
 	})
@@ -384,7 +384,7 @@ func TestATaskCommentsOnAPullRequestThroughTheRunner(t *testing.T) {
 
 	t.Run("a comment on a pull request's conversation, merged or not", func(t *testing.T) {
 		posts = nil
-		rep := ask(Request{Op: OpGitHubCommentPR, Repo: "app", PR: "71", Body: "fixed in abc123"})
+		rep := ask(Request{Op: OpGitHubCommentPR, Body: "fixed in abc123", Fields: map[string]string{"repo": "app", "pr": "71"}})
 		if !rep.OK || rep.Out != "commented on pull request #71 at acme/app: https://github.com/acme/app/posted" {
 			t.Fatalf("reply: %+v", rep)
 		}
@@ -394,7 +394,7 @@ func TestATaskCommentsOnAPullRequestThroughTheRunner(t *testing.T) {
 	})
 	t.Run("a reply in a thread", func(t *testing.T) {
 		posts = nil
-		rep := ask(Request{Op: OpGitHubReplyComment, Repo: "app", PR: "71", Comment: "900", Body: "renamed"})
+		rep := ask(Request{Op: OpGitHubReplyComment, Body: "renamed", Fields: map[string]string{"repo": "app", "pr": "71", "comment": "900"}})
 		if !rep.OK || rep.Out != "replied in the thread of comment 900 on pull request #71 at acme/app: https://github.com/acme/app/posted" {
 			t.Fatalf("reply: %+v", rep)
 		}
@@ -404,7 +404,7 @@ func TestATaskCommentsOnAPullRequestThroughTheRunner(t *testing.T) {
 	})
 	t.Run("a reply to a reply lands on the thread's first comment", func(t *testing.T) {
 		posts = nil
-		rep := ask(Request{Op: OpGitHubReplyComment, Repo: "app", PR: "71", Comment: "902", Body: "done"})
+		rep := ask(Request{Op: OpGitHubReplyComment, Body: "done", Fields: map[string]string{"repo": "app", "pr": "71", "comment": "902"}})
 		if !rep.OK || rep.Out != "replied in the thread of comment 900 (902 is a reply in it) on pull request #71 at acme/app: https://github.com/acme/app/posted" {
 			t.Fatalf("reply: %+v", rep)
 		}
@@ -417,19 +417,19 @@ func TestATaskCommentsOnAPullRequestThroughTheRunner(t *testing.T) {
 		req     Request
 		refused string
 	}{
-		{"an issue's number to comment-pr", Request{Op: OpGitHubCommentPR, PR: "5", Body: "x"}, "#5 is an issue: comment on it with github-issue-comment"},
-		{"a number that is nothing", Request{Op: OpGitHubCommentPR, PR: "6", Body: "x"}, "there is no pull request #6 at acme/app"},
-		{"a pr that is not a number", Request{Op: OpGitHubCommentPR, PR: "seven", Body: "x"}, `"seven" is not a pull request number`},
-		{"a conversation comment to reply-comment", Request{Op: OpGitHubReplyComment, PR: "71", Comment: "800", Body: "x"},
+		{"an issue's number to comment-pr", Request{Op: OpGitHubCommentPR, Body: "x", Fields: map[string]string{"pr": "5"}}, "#5 is an issue: comment on it with github-issue-comment"},
+		{"a number that is nothing", Request{Op: OpGitHubCommentPR, Body: "x", Fields: map[string]string{"pr": "6"}}, "there is no pull request #6 at acme/app"},
+		{"a pr that is not a number", Request{Op: OpGitHubCommentPR, Body: "x", Fields: map[string]string{"pr": "seven"}}, `"seven" is not a pull request number`},
+		{"a conversation comment to reply-comment", Request{Op: OpGitHubReplyComment, Body: "x", Fields: map[string]string{"pr": "71", "comment": "800"}},
 			"comment 800 is on a conversation, not in a review thread, and has no thread to reply in: comment on the pull request with github-comment-pr"},
-		{"an id that is no comment", Request{Op: OpGitHubReplyComment, PR: "71", Comment: "801", Body: "x"}, "no comment 801 at acme/app"},
-		{"a comment on another pull request", Request{Op: OpGitHubReplyComment, PR: "71", Comment: "950", Body: "x"}, "comment 950 is on pull request #72, not #71"},
-		{"a comment id that is not a number", Request{Op: OpGitHubReplyComment, PR: "71", Comment: "abc", Body: "x"}, `"abc" is not a comment id`},
-		{"an empty body", Request{Op: OpGitHubCommentPR, PR: "71", Body: " "}, "a comment needs a body"},
+		{"an id that is no comment", Request{Op: OpGitHubReplyComment, Body: "x", Fields: map[string]string{"pr": "71", "comment": "801"}}, "no comment 801 at acme/app"},
+		{"a comment on another pull request", Request{Op: OpGitHubReplyComment, Body: "x", Fields: map[string]string{"pr": "71", "comment": "950"}}, "comment 950 is on pull request #72, not #71"},
+		{"a comment id that is not a number", Request{Op: OpGitHubReplyComment, Body: "x", Fields: map[string]string{"pr": "71", "comment": "abc"}}, `"abc" is not a comment id`},
+		{"an empty body", Request{Op: OpGitHubCommentPR, Body: " ", Fields: map[string]string{"pr": "71"}}, "a comment needs a body"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			posts = nil
-			tc.req.Repo = "app"
+			tc.req.Fields["repo"] = "app"
 			if rep := ask(tc.req); rep.Refused != tc.refused {
 				t.Errorf("reply: %+v, want refused %q", rep, tc.refused)
 			}
@@ -446,22 +446,22 @@ func TestATaskCommentsOnAPullRequestThroughTheRunner(t *testing.T) {
 		}
 		l.Autonomy = task.Autonomy{only71, {Name: "nothing-else", Then: task.Then{Mode: task.ThenDeny}}}
 		pin := Task{ID: "c2", Workspace: ws, Launch: l, Credential: tk.Credential}
-		if rep := s.answer(pin, frame(t, Request{Op: OpGitHubReplyComment, Repo: "app", PR: "71", Comment: "900", Body: "ok"})); !rep.OK {
+		if rep := s.answer(pin, frame(t, Request{Op: OpGitHubReplyComment, Body: "ok", Fields: map[string]string{"repo": "app", "pr": "71", "comment": "900"}})); !rep.OK {
 			t.Errorf("a reply on 71: %+v", rep)
 		}
-		if rep := s.answer(pin, frame(t, Request{Op: OpGitHubReplyComment, Repo: "app", PR: "72", Comment: "950", Body: "ok"})); !strings.Contains(rep.Refused, "nothing-else") {
+		if rep := s.answer(pin, frame(t, Request{Op: OpGitHubReplyComment, Body: "ok", Fields: map[string]string{"repo": "app", "pr": "72", "comment": "950"}})); !strings.Contains(rep.Refused, "nothing-else") {
 			t.Errorf("a reply on 72: %+v, want the deny row named", rep)
 		}
 	})
 	t.Run("a ceiling that lists verbs without them", func(t *testing.T) {
 		reads := &Server{Log: io.Discard, Services: s.Services, Ceilings: map[string]systems.Ceiling{"github": {{Verbs: map[string][]systems.Shape{"read-pr": {{}}}}}}}
-		if rep := reads.answer(tk, frame(t, Request{Op: OpGitHubCommentPR, Repo: "app", PR: "71", Body: "x"})); !strings.Contains(rep.Refused, "ceiling") {
+		if rep := reads.answer(tk, frame(t, Request{Op: OpGitHubCommentPR, Body: "x", Fields: map[string]string{"repo": "app", "pr": "71"}})); !strings.Contains(rep.Refused, "ceiling") {
 			t.Errorf("reply: %+v, want the ceiling's refusal", rep)
 		}
 	})
 	t.Run("a runner with no github system", func(t *testing.T) {
 		none := &Server{Log: io.Discard, Services: s.Services, Ceilings: performs("github-issue")}
-		if rep := none.answer(tk, frame(t, Request{Op: OpGitHubCommentPR, Repo: "app", PR: "71", Body: "x"})); !strings.Contains(rep.Refused, "it has no `github` system") {
+		if rep := none.answer(tk, frame(t, Request{Op: OpGitHubCommentPR, Body: "x", Fields: map[string]string{"repo": "app", "pr": "71"}})); !strings.Contains(rep.Refused, "it has no `github` system") {
 			t.Errorf("reply: %+v", rep)
 		}
 	})

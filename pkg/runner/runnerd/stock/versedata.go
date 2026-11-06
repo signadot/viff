@@ -41,7 +41,7 @@ func verseDataTools(cl *delivery.Client) []verse.Tool {
 			if err != nil {
 				return delivery.Request{}, err
 			}
-			return delivery.Request{Op: delivery.OpVerseDataGet, Query: r.Query.Encode()}, nil
+			return delivery.Request{Op: delivery.OpVerseDataGet, Fields: map[string]string{"query": r.Query.Encode()}}, nil
 		}, func(a verbs.Args, rep delivery.Reply) (string, bool, error) {
 			r, err := verbs.DataGetOf(a)
 			if err != nil {
@@ -84,7 +84,7 @@ func verseDataTools(cl *delivery.Client) []verse.Tool {
 			if err != nil {
 				return delivery.Request{}, err
 			}
-			return delivery.Request{Op: delivery.OpVerseDataRm, Query: q.Encode()}, nil
+			return delivery.Request{Op: delivery.OpVerseDataRm, Fields: map[string]string{"query": q.Encode()}}, nil
 		}, func(a verbs.Args, _ delivery.Reply) (string, bool, error) {
 			_, at, err := removal(a)
 			if err != nil {

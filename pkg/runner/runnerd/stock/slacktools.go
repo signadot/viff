@@ -60,6 +60,9 @@ func slackTools(cl *delivery.Client) []verse.Tool {
 func slackTool(cl *delivery.Client, name, op, step, what string, params map[string]any, required []string) verse.Tool {
 	params["channel"] = map[string]any{"type": "string"}
 	fields := func(in map[string]any) (map[string]string, bool) {
+		if _, stray := untaken(name, in, params); stray {
+			return nil, false
+		}
 		channel, ok := slack.ChannelName(str(in, "channel"))
 		if !ok {
 			return nil, false
@@ -82,15 +85,31 @@ func slackTool(cl *delivery.Client, name, op, step, what string, params map[stri
 		Name: name, Description: what, Params: params, Required: append([]string{"channel"}, required...),
 		Step: step, Fields: fields,
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			if why, stray := untaken(name, tu.Input, params); stray {
+				return why, true, nil
+			}
 			f, ok := fields(tu.Input)
 			if !ok {
 				return fmt.Sprintf("not sent: name the channel as Slack shows it, without the #, and give %s",
 					strings.Join(required, " and ")), true, nil
 			}
-			req := delivery.Request{Op: op, Channel: str(tu.Input, "channel"), Thread: f["thread"],
-				Body: str(tu.Input, "text"), Message: str(tu.Input, "message"), Emoji: str(tu.Input, "emoji"),
-				Since: str(tu.Input, "since"), Limit: limit(tu.Input)}
-			return relay(cl.Ask(req))
+			// Each verb is asked with what its op reads and no more (delivery's table): the
+			// runner refuses a name its op does not read, as untaken did above.
+			asked, text := map[string]string{"channel": str(tu.Input, "channel")}, ""
+			switch op {
+			case delivery.OpSlackPost:
+				text = str(tu.Input, "text")
+			case delivery.OpSlackReply:
+				asked["thread"], text = f["thread"], str(tu.Input, "text")
+			case delivery.OpSlackRead:
+				asked["thread"], asked["since"] = f["thread"], str(tu.Input, "since")
+				if n := limit(tu.Input); n != 0 {
+					asked["limit"] = strconv.Itoa(n)
+				}
+			case delivery.OpSlackReact:
+				asked["message"], asked["emoji"] = str(tu.Input, "message"), str(tu.Input, "emoji")
+			}
+			return relay(cl.Ask(delivery.Request{Op: op, Body: text, Fields: asked}))
 		},
 	}
 }

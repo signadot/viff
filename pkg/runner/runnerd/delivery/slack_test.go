@@ -58,23 +58,23 @@ func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 		{Match: &task.Match{System: "slack"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
 	tk := Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: l}
 
-	if rep := s.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "#Deploys", Body: "v1.3 is out"})); !rep.OK || rep.Out != "posted in #deploys: ts 17.2 https://acme.slack.com/p17" {
+	if rep := s.answer(tk, frame(t, Request{Op: OpSlackPost, Body: "v1.3 is out", Fields: map[string]string{"channel": "#Deploys"}})); !rep.OK || rep.Out != "posted in #deploys: ts 17.2 https://acme.slack.com/p17" {
 		t.Errorf("post: %+v", rep)
 	}
 	// A post naming a thread is a reply the policy decided as a post: refused, and nothing sent.
-	if rep := s.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "deploys", Thread: "17.2", Body: "in the thread"})); !strings.Contains(rep.Refused, "a post names no thread") || len(saw) != 1 {
+	if rep := s.answer(tk, frame(t, Request{Op: OpSlackPost, Body: "in the thread", Fields: map[string]string{"channel": "deploys", "thread": "17.2"}})); !strings.Contains(rep.Refused, "a post names no thread") || len(saw) != 1 {
 		t.Errorf("a post with a thread: %+v (sent %v)", rep, saw)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpSlackReply, Channel: "deploys", Thread: "17.2", Body: "it holds"})); !rep.OK || !strings.HasPrefix(rep.Out, "replied in #deploys, in the thread 17.2") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpSlackReply, Body: "it holds", Fields: map[string]string{"channel": "deploys", "thread": "17.2"}})); !rep.OK || !strings.HasPrefix(rep.Out, "replied in #deploys, in the thread 17.2") {
 		t.Errorf("reply: %+v", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpSlackRead, Channel: "deploys"})); !rep.OK || rep.Out != "#deploys: 1 message(s), newest last\n17.1 U1: deploying" {
+	if rep := s.answer(tk, frame(t, Request{Op: OpSlackRead, Fields: map[string]string{"channel": "deploys"}})); !rep.OK || rep.Out != "#deploys: 1 message(s), newest last\n17.1 U1: deploying" {
 		t.Errorf("read: %+v", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "general", Body: "hi"})); !strings.Contains(rep.Refused, "the runner's ceiling") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpSlackPost, Body: "hi", Fields: map[string]string{"channel": "general"}})); !strings.Contains(rep.Refused, "the runner's ceiling") {
 		t.Errorf("a post the ceiling closes: %+v", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpSlackReact, Channel: "deploys", Message: "17.2", Emoji: ":rocket:"})); !strings.Contains(rep.Refused, "the autonomy's row quiet") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpSlackReact, Fields: map[string]string{"channel": "deploys", "message": "17.2", "emoji": ":rocket:"}})); !strings.Contains(rep.Refused, "the autonomy's row quiet") {
 		t.Errorf("a reaction the policy denies: %+v", rep)
 	}
 	want := []string{
@@ -86,14 +86,14 @@ func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 	}
 
 	free := &Server{Log: io.Discard, Services: s.Services, Ceilings: map[string]systems.Ceiling{"slack": systems.Open()}}
-	if rep := free.answer(Task{ID: "t8", Launch: within(nil, "slack")}, frame(t, Request{Op: OpSlackReact, Channel: "deploys", Message: "17.2", Emoji: ":rocket:"})); !rep.OK || rep.Out != "reacted :rocket: to 17.2 in #deploys" {
+	if rep := free.answer(Task{ID: "t8", Launch: within(nil, "slack")}, frame(t, Request{Op: OpSlackReact, Fields: map[string]string{"channel": "deploys", "message": "17.2", "emoji": ":rocket:"}})); !rep.OK || rep.Out != "reacted :rocket: to 17.2 in #deploys" {
 		t.Errorf("react: %+v", rep)
 	}
-	if rep := free.answer(Task{ID: "t8", Launch: within(nil, "slack")}, frame(t, Request{Op: OpSlackPost, Channel: "C1", Body: "hi"})); !strings.Contains(rep.Refused, "no channel named c1") {
+	if rep := free.answer(Task{ID: "t8", Launch: within(nil, "slack")}, frame(t, Request{Op: OpSlackPost, Body: "hi", Fields: map[string]string{"channel": "C1"}})); !strings.Contains(rep.Refused, "no channel named c1") {
 		t.Errorf("a channel's id: %+v", rep)
 	}
 	none := &Server{Log: io.Discard}
-	if rep := none.answer(tk, frame(t, Request{Op: OpSlackPost, Channel: "deploys", Body: "x"})); !strings.Contains(rep.Error, "SLACK_BOT_TOKEN") {
+	if rep := none.answer(tk, frame(t, Request{Op: OpSlackPost, Body: "x", Fields: map[string]string{"channel": "deploys"}})); !strings.Contains(rep.Error, "SLACK_BOT_TOKEN") {
 		t.Errorf("a runner with no bot token: %+v", rep)
 	}
 }

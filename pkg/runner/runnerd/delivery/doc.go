@@ -17,6 +17,16 @@
 //	        work in its mirror, pushes from there, and answers with what happened
 //	task    what happened is the step's output
 //
+// A push is one op of the channel, and the rest are the acts of the other systems the runner
+// performs with a credential of its own: a pull request, an issue at a tracker, a message in
+// Slack, a request to verse. EVERY OP IS IN ONE TABLE (ops), and none performs anything itself:
+// it reads the request into the steps it asks about and the act that follows them, and the
+// server checks every step against the task's environment, its autonomy and the runner's ceiling
+// before it calls the act (Server.perform). A request is an op, what it is asked with by name,
+// and a body, so a system the channel comes to carry adds its ops to the table and nothing to
+// the protocol. Requests are performed in turn, in the order the task asked, except an op the
+// table performs apart.
+//
 // The channel is NOT the Runner API and does not pretend to be. The task can ask, and asking
 // cannot widen anything: what may be pushed is the launch's to say, and the trailers are the
 // runner's to check. The credential never leaves the runner, so the task's shell has neither the

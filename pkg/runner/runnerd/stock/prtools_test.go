@@ -166,7 +166,7 @@ func TestThePullRequestCommentsAreOfferedAsTheirSteps(t *testing.T) {
 		t.Error("a reply naming no comment has fields")
 	}
 	for _, tl := range []verse.Tool{comment, reply} {
-		out, refused, err := tl.Do(context.Background(), task.ToolUse{Input: map[string]any{"pr": 71, "comment": 900, "body": "  "}})
+		out, refused, err := tl.Do(context.Background(), task.ToolUse{Input: asTaken(tl.Params, map[string]any{"pr": 71, "comment": 900, "body": "  "})})
 		if err != nil || !refused || !strings.Contains(out, "needs a body") {
 			t.Errorf("%s with no body: %q %v %v", tl.Name, out, refused, err)
 		}

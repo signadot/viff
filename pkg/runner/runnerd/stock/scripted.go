@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -368,3 +370,35 @@ func scriptCommand(ctx context.Context, script string) (*exec.Cmd, func(), error
 }
 
 func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }
+
+// untaken is what a tool says to a call that gives it something it does not take, and whether
+// the call does: a `body` to a close, a `draft` to an update. The tool REFUSES IT RATHER THAN
+// DROP IT. A call that closes an issue "with this comment" and reads back `closed` has been told
+// the comment was made; told the tool takes none, the model makes it with the tool that does.
+// What is given as nothing (empty, false, zero) asks for nothing, and is let by.
+func untaken(tool string, in, params map[string]any) (string, bool) {
+	for _, k := range slices.Sorted(maps.Keys(in)) {
+		if _, ok := params[k]; ok {
+			continue
+		}
+		switch v := in[k].(type) {
+		case nil:
+			continue
+		case string:
+			if v == "" {
+				continue
+			}
+		case bool:
+			if !v {
+				continue
+			}
+		case int, int64, float64:
+			if v == 0 || v == int64(0) || v == float64(0) {
+				continue
+			}
+		}
+		return fmt.Sprintf("refused, and nothing was done: %s takes no `%s` (it takes: %s)",
+			tool, k, strings.Join(slices.Sorted(maps.Keys(params)), ", ")), true
+	}
+	return "", false
+}

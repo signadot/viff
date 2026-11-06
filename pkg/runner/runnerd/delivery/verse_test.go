@@ -37,7 +37,7 @@ func TestATasksRaiseIsCarriedToVerseForTheTask(t *testing.T) {
 	const ask = "{name: land, question: \"Land it?\"}"
 
 	s := &Server{Log: io.Discard, Services: Services{Verse: answer(http.StatusCreated, "id: land-1a2b")}, Ceilings: open}
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !rep.OK || rep.Out != "raised question land-1a2b: Land it?" {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Fields: map[string]string{"ask": ask}})); !rep.OK || rep.Out != "raised question land-1a2b: Land it?" {
 		t.Errorf("a raise: %+v", rep)
 	}
 	if len(saw) != 1 || saw[0] != (call{"t7", ask}) {
@@ -45,7 +45,7 @@ func TestATasksRaiseIsCarriedToVerseForTheTask(t *testing.T) {
 	}
 
 	s.Services.Verse = answer(http.StatusBadRequest, "then: spawn.environment.systems.network: beyond the task")
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !strings.Contains(rep.Refused, "the verse refused the ask: then: spawn.environment") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Fields: map[string]string{"ask": ask}})); !strings.Contains(rep.Refused, "the verse refused the ask: then: spawn.environment") {
 		t.Errorf("a raise verse refuses: %+v", rep)
 	}
 
@@ -54,17 +54,17 @@ func TestATasksRaiseIsCarriedToVerseForTheTask(t *testing.T) {
 	dl.Autonomy = task.Autonomy{{Name: "no-raise", Match: &task.Match{System: "verse", Verb: "ask-create"}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
 	denied.Launch = &dl
 	saw = nil
-	if rep := s.answer(denied, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !strings.Contains(rep.Refused, "the autonomy's row no-raise") || len(saw) != 0 {
+	if rep := s.answer(denied, frame(t, Request{Op: OpVerseAskCreate, Fields: map[string]string{"ask": ask}})); !strings.Contains(rep.Refused, "the autonomy's row no-raise") || len(saw) != 0 {
 		t.Errorf("a raise the autonomy denies: %+v (carried %v)", rep, saw)
 	}
 
 	s.Ceilings = map[string]systems.Ceiling{}
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !strings.Contains(rep.Refused, "ceiling") || len(saw) != 0 {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Fields: map[string]string{"ask": ask}})); !strings.Contains(rep.Refused, "ceiling") || len(saw) != 0 {
 		t.Errorf("a raise beyond the ceiling: %+v (carried %v)", rep, saw)
 	}
 
 	s.Services.Verse = nil
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Ask: ask})); !strings.Contains(rep.Error, "reaches no verse") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Fields: map[string]string{"ask": ask}})); !strings.Contains(rep.Error, "reaches no verse") {
 		t.Errorf("a runner with no raiser: %+v", rep)
 	}
 }
@@ -89,7 +89,7 @@ func TestATasksReadOfAnAskIsCarriedToVerse(t *testing.T) {
 	s := &Server{Log: io.Discard, Services: Services{Verse: verse}, Ceilings: map[string]systems.Ceiling{"verse": systems.Open()}}
 
 	for _, arg := range []string{"land-1a2b", "land"} {
-		rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Ask: arg}))
+		rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Fields: map[string]string{"ask": arg}}))
 		if !rep.OK || !strings.Contains(rep.Out, "answer: yes") || !strings.Contains(rep.Out, "id: land-1a2b") {
 			t.Errorf("the ask read by %q: %+v", arg, rep)
 		}
@@ -97,13 +97,13 @@ func TestATasksReadOfAnAskIsCarriedToVerse(t *testing.T) {
 	if len(saw) != 2 || saw[0] != "t7 GET /asks?ask=land-1a2b" || saw[1] != "t7 GET /asks?ask=land" {
 		t.Errorf("the reads were carried as %v, want the task's GET /asks naming the one ask", saw)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Ask: "tea-1"})); !strings.Contains(rep.Out, "answer: pending") || !strings.Contains(rep.Out, "dana") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Fields: map[string]string{"ask": "tea-1"}})); !strings.Contains(rep.Out, "answer: pending") || !strings.Contains(rep.Out, "dana") {
 		t.Errorf("a pending ask: %+v, want it pending and whom it waits on", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Ask: "tea"})); !strings.Contains(rep.Refused, "tea-1, tea-2") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Fields: map[string]string{"ask": "tea"}})); !strings.Contains(rep.Refused, "tea-1, tea-2") {
 		t.Errorf("a name two asks share: %+v, want it refused with their ids", rep)
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Ask: "nothing"})); !strings.Contains(rep.Refused, "no ask named or numbered") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Fields: map[string]string{"ask": "nothing"}})); !strings.Contains(rep.Refused, "no ask named or numbered") {
 		t.Errorf("an ask that is not there: %+v", rep)
 	}
 
@@ -112,11 +112,11 @@ func TestATasksReadOfAnAskIsCarriedToVerse(t *testing.T) {
 	dl.Autonomy = task.Autonomy{{Name: "no-read", Match: &task.Match{System: "verse", Verb: "ask-get"}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}
 	denied.Launch = &dl
 	saw = nil
-	if rep := s.answer(denied, frame(t, Request{Op: OpVerseAskGet, Ask: "land"})); !strings.Contains(rep.Refused, "the autonomy's row no-read") || len(saw) != 0 {
+	if rep := s.answer(denied, frame(t, Request{Op: OpVerseAskGet, Fields: map[string]string{"ask": "land"}})); !strings.Contains(rep.Refused, "the autonomy's row no-read") || len(saw) != 0 {
 		t.Errorf("a read the autonomy denies: %+v (carried %v)", rep, saw)
 	}
 	s.Services.Verse = nil
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Ask: "land"})); !strings.Contains(rep.Error, "reaches no verse") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseAskGet, Fields: map[string]string{"ask": "land"}})); !strings.Contains(rep.Error, "reaches no verse") {
 		t.Errorf("a runner that reaches no verse: %+v", rep)
 	}
 }
@@ -187,14 +187,14 @@ func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
 		req  Request
 		want carried
 	}{
-		{Request{Op: OpVerseDataGet, Query: "at=acme.notes.n1&paths=1"}, carried{http.MethodGet, "/state?at=acme.notes.n1&paths=1", ""}},
+		{Request{Op: OpVerseDataGet, Fields: map[string]string{"query": "at=acme.notes.n1&paths=1"}}, carried{http.MethodGet, "/state?at=acme.notes.n1&paths=1", ""}},
 		{Request{Op: OpVerseDataPut, Body: "{at: acme.notes.n1, payload: {stage: open}}"}, carried{http.MethodPost, "/entity", "{at: acme.notes.n1, payload: {stage: open}}"}},
-		{Request{Op: OpVerseDataRm, Query: "at=acme.notes.n1"}, carried{http.MethodDelete, "/entity?at=acme.notes.n1", ""}},
-		{Request{Op: OpVerseCharterGet, Query: "path=repos.r.hello"}, carried{http.MethodGet, "/charter?path=repos.r.hello", ""}},
-		{Request{Op: OpVerseCharterCheck, Query: "at=repos.r", Body: "at: repos.r.hello\n"}, carried{http.MethodPost, "/charter/check?at=repos.r", "at: repos.r.hello\n"}},
-		{Request{Op: OpVerseCharterInstall, Query: "prune=repos.r", Body: "at: repos.r.hello\n"}, carried{http.MethodPost, "/charter?prune=repos.r", "at: repos.r.hello\n"}},
+		{Request{Op: OpVerseDataRm, Fields: map[string]string{"query": "at=acme.notes.n1"}}, carried{http.MethodDelete, "/entity?at=acme.notes.n1", ""}},
+		{Request{Op: OpVerseCharterGet, Fields: map[string]string{"query": "path=repos.r.hello"}}, carried{http.MethodGet, "/charter?path=repos.r.hello", ""}},
+		{Request{Op: OpVerseCharterCheck, Body: "at: repos.r.hello\n", Fields: map[string]string{"query": "at=repos.r"}}, carried{http.MethodPost, "/charter/check?at=repos.r", "at: repos.r.hello\n"}},
+		{Request{Op: OpVerseCharterInstall, Body: "at: repos.r.hello\n", Fields: map[string]string{"query": "prune=repos.r"}}, carried{http.MethodPost, "/charter?prune=repos.r", "at: repos.r.hello\n"}},
 		{Request{Op: OpVerseCharterInstall, Body: "at: repos.r.hello\n"}, carried{http.MethodPost, "/charter", "at: repos.r.hello\n"}},
-		{Request{Op: OpVerseCharterRemove, Query: "path=repos.r.hello.rules.lift"}, carried{http.MethodDelete, "/charter?path=repos.r.hello.rules.lift", ""}},
+		{Request{Op: OpVerseCharterRemove, Fields: map[string]string{"query": "path=repos.r.hello.rules.lift"}}, carried{http.MethodDelete, "/charter?path=repos.r.hello.rules.lift", ""}},
 	} {
 		saw = nil
 		if rep := s.answer(tk, frame(t, c.req)); !rep.OK || rep.Out != said {
@@ -206,11 +206,11 @@ func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
 	}
 
 	saw = nil
-	for _, req := range []Request{{Op: OpVerseDataPut}, {Op: OpVerseDataRm}, {Op: OpVerseDataGet, Query: "%zz"},
-		{Op: OpVerseCharterCheck, Body: "at: repos.r.hello"}, {Op: OpVerseCharterCheck, Query: "at=repos.r"},
-		{Op: OpVerseCharterInstall, Query: "at=repos.r"}, {Op: OpVerseCharterRemove},
-		{Op: OpVerseDataPut, Query: "scope=elsewhere", Body: "{at: acme.notes.n1}"},
-		{Op: OpVerseCharterInstall, Query: "scope=elsewhere", Body: "at: repos.r.hello\n"}} {
+	for _, req := range []Request{{Op: OpVerseDataPut}, {Op: OpVerseDataRm}, {Op: OpVerseDataGet, Fields: map[string]string{"query": "%zz"}},
+		{Op: OpVerseCharterCheck, Body: "at: repos.r.hello"}, {Op: OpVerseCharterCheck, Fields: map[string]string{"query": "at=repos.r"}},
+		{Op: OpVerseCharterInstall, Fields: map[string]string{"query": "at=repos.r"}}, {Op: OpVerseCharterRemove},
+		{Op: OpVerseDataPut, Body: "{at: acme.notes.n1}", Fields: map[string]string{"query": "scope=elsewhere"}},
+		{Op: OpVerseCharterInstall, Body: "at: repos.r.hello\n", Fields: map[string]string{"query": "scope=elsewhere"}}} {
 		if rep := s.answer(tk, frame(t, req)); rep.Refused == "" {
 			t.Errorf("%+v: %+v, want it refused", req, rep)
 		}
@@ -237,7 +237,7 @@ func TestATasksDataActsAreCarriedToVerse(t *testing.T) {
 	s.Services.Verse = func(context.Context, string, string, string, []byte) (int, string, error) {
 		return 0, "", errors.New("context deadline exceeded")
 	}
-	if rep := s.answer(tk, frame(t, Request{Op: OpVerseDataGet, Query: "at=acme"})); !strings.Contains(rep.Error, "not carried") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpVerseDataGet, Fields: map[string]string{"query": "at=acme"}})); !strings.Contains(rep.Error, "not carried") {
 		t.Errorf("a read verse did not answer: %+v, want it not done", rep)
 	}
 	for _, req := range []Request{{Op: OpVerseDataPut, Body: "{at: acme.notes.n1}"}, {Op: OpVerseCharterInstall, Body: "at: repos.r.hello\n"}} {
@@ -272,10 +272,10 @@ func TestATasksInstallIsBoundByItsEnvironmentsAt(t *testing.T) {
 		req     Request
 		carried bool
 	}{
-		{Request{Op: OpVerseCharterInstall, Query: "prune=play.issues.issue", Body: "at: play.issues.issue.a\n---\nat: play.issues.issue.b\n"}, true},
+		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n---\nat: play.issues.issue.b\n", Fields: map[string]string{"query": "prune=play.issues.issue"}}, true},
 		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n---\nat: play.issues.issue.b\n"}, true},
-		{Request{Op: OpVerseCharterInstall, Query: "at=play.issues.issue", Body: "{name: r, condition: {subject: x}, action: {patch: {}}}\n"}, true},
-		{Request{Op: OpVerseCharterInstall, Query: "prune=play.issues", Body: "at: play.issues.issue.a\n"}, false},
+		{Request{Op: OpVerseCharterInstall, Body: "{name: r, condition: {subject: x}, action: {patch: {}}}\n", Fields: map[string]string{"query": "at=play.issues.issue"}}, true},
+		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n", Fields: map[string]string{"query": "prune=play.issues"}}, false},
 		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n"}, true},
 		{Request{Op: OpVerseCharterInstall, Body: "at: play.issues.issue.a\n---\nat: play.other\n"}, false},
 		{Request{Op: OpVerseCharterInstall, Body: "rules: []\n"}, false},
@@ -284,9 +284,9 @@ func TestATasksInstallIsBoundByItsEnvironmentsAt(t *testing.T) {
 		rep := s.answer(tk, frame(t, c.req))
 		switch {
 		case c.carried && (!rep.OK || len(saw) != 1):
-			t.Errorf("%s %q: %+v, want it carried", c.req.Query, c.req.Body, rep)
+			t.Errorf("%s %q: %+v, want it carried", c.req.Field("query"), c.req.Body, rep)
 		case !c.carried && (!strings.Contains(rep.Refused, "outside the environment") || len(saw) != 0):
-			t.Errorf("%s %q: %+v (carried %v), want it refused as outside the environment", c.req.Query, c.req.Body, rep, saw)
+			t.Errorf("%s %q: %+v (carried %v), want it refused as outside the environment", c.req.Field("query"), c.req.Body, rep, saw)
 		}
 	}
 }

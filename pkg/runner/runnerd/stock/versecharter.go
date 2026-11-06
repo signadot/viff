@@ -43,7 +43,7 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			if err != nil {
 				return delivery.Request{}, err
 			}
-			return delivery.Request{Op: delivery.OpVerseCharterGet, Query: r.Query.Encode()}, nil
+			return delivery.Request{Op: delivery.OpVerseCharterGet, Fields: map[string]string{"query": r.Query.Encode()}}, nil
 		}, func(a verbs.Args, rep delivery.Reply) (string, bool, error) {
 			r, err := verbs.CharterGetOf(a)
 			if err != nil {
@@ -106,7 +106,7 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			if err != nil {
 				return delivery.Request{}, err
 			}
-			return delivery.Request{Op: delivery.OpVerseCharterCheck, Query: q.Encode(), Body: body}, nil
+			return delivery.Request{Op: delivery.OpVerseCharterCheck, Body: body, Fields: map[string]string{"query": q.Encode()}}, nil
 		}, nil),
 		// The install's step is the address it acts at (delivery.StepOf), which an environment's
 		// shape bounds.
@@ -119,7 +119,7 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 			if err != nil {
 				return delivery.Request{}, err
 			}
-			return delivery.Request{Op: delivery.OpVerseCharterInstall, Query: q.Encode(), Body: body}, nil
+			return delivery.Request{Op: delivery.OpVerseCharterInstall, Body: body, Fields: map[string]string{"query": q.Encode()}}, nil
 		}, func(_ verbs.Args, rep delivery.Reply) (string, bool, error) {
 			node, err := codec.ParseNode([]byte(rep.Out), codec.Tony)
 			if err != nil {
@@ -137,7 +137,7 @@ func verseCharterTools(cl *delivery.Client) []verse.Tool {
 				return delivery.Request{}, err
 			}
 			q, _ := charterfile.Query(names, split, -1)
-			return delivery.Request{Op: delivery.OpVerseCharterRemove, Query: q.Encode()}, nil
+			return delivery.Request{Op: delivery.OpVerseCharterRemove, Fields: map[string]string{"query": q.Encode()}}, nil
 		}, func(a verbs.Args, _ delivery.Reply) (string, bool, error) {
 			names, split, err := verbs.CharterRemoveOf(a)
 			if err != nil {

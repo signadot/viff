@@ -211,7 +211,8 @@ func (c *Channel) Settle(ctx context.Context, l *runner.Launch, keep bool) bool 
 	// A push the process asked for before it died is finished first — staged, and delivered or
 	// not — because what Salvage decides about a tree is read off what delivery did with it,
 	// and a push half-performed is not an answer. Closing the near end is what ends Serve, so
-	// the wait is bounded by the one request in flight.
+	// the wait is bounded by the one request in turn that was begun: those behind it are not
+	// begun once the end is closed, and one performed apart is given up (Server.Serve).
 	if c.serving.Load() {
 		<-c.served
 	}

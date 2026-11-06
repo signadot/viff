@@ -39,75 +39,74 @@ func SlackFooter(taskID string) string { return "_verse task " + taskID + "_" }
 
 // slack answers a `slack.*` op with the runner's bot token: the channel by its name, decided by
 // the launch's autonomy and the runner's ceiling on the name, then the call.
-func (s *Server) slack(ctx context.Context, tk Task, req Request) Reply {
+func (s *Server) slack(ctx context.Context, tk Task, req Request) (asked, Reply) {
 	if s.Services.SlackToken == "" {
-		return Reply{Error: "this runner has no Slack bot token (SLACK_BOT_TOKEN), so it cannot act in Slack"}
+		return before(Reply{Error: "this runner has no Slack bot token (SLACK_BOT_TOKEN), so it cannot act in Slack"})
 	}
-	channel, ok := slack.ChannelName(req.Channel)
+	channel, ok := slack.ChannelName(req.Field("channel"))
 	if !ok {
-		return Reply{Refused: fmt.Sprintf("%q is not a channel's name: name it as Slack shows it, without the #", req.Channel)}
+		return before(Reply{Refused: fmt.Sprintf("%q is not a channel's name: name it as Slack shows it, without the #", req.Field("channel"))})
 	}
 	fields := map[string]string{"channel": channel}
-	emoji := strings.Trim(strings.TrimSpace(req.Emoji), ":")
+	emoji := strings.Trim(strings.TrimSpace(req.Field("emoji")), ":")
 	switch req.Op {
 	case OpSlackPost, OpSlackReply:
 		if strings.TrimSpace(req.Body) == "" {
-			return Reply{Refused: "a message needs text"}
+			return before(Reply{Refused: "a message needs text"})
 		}
 		switch {
-		case req.Op == OpSlackReply && req.Thread == "":
-			return Reply{Refused: "a reply names the thread it is in, by the ts of its first message"}
+		case req.Op == OpSlackReply && req.Field("thread") == "":
+			return before(Reply{Refused: "a reply names the thread it is in, by the ts of its first message"})
 		case req.Op == OpSlackReply:
-			fields["thread"] = req.Thread
-		case req.Thread != "":
+			fields["thread"] = req.Field("thread")
+		case req.Field("thread") != "":
 			// The autonomy decides a post by its channel and a reply by its thread too: a post
 			// naming a thread is a reply the autonomy was not asked about.
-			return Reply{Refused: "a post names no thread: a message in a thread is a reply"}
+			return before(Reply{Refused: "a post names no thread: a message in a thread is a reply"})
 		}
 	case OpSlackRead:
-		fields["thread"] = req.Thread
+		fields["thread"] = req.Field("thread")
 	case OpSlackReact:
-		if req.Message == "" || emoji == "" {
-			return Reply{Refused: "a reaction names the message, by its ts, and the emoji"}
+		if req.Field("message") == "" || emoji == "" {
+			return before(Reply{Refused: "a reaction names the message, by its ts, and the emoji"})
 		}
 		fields["emoji"] = emoji
 	}
-	if why := s.refused(tk, req.Decision, task.NewStep(req.Op, fields)); why != "" {
-		return Reply{Refused: why}
-	}
-	token, base, hc := s.Services.SlackToken, s.Services.SlackAPI, s.http()
-	var out string
-	switch req.Op {
-	case OpSlackPost, OpSlackReply:
-		p, err := slack.Post(ctx, token, base, hc, channel, req.Thread, req.Body+"\n\n"+SlackFooter(tk.ID))
-		if err != nil {
-			return slackFailed(err)
+	return asking(task.NewStep(req.Op, fields), func() Reply {
+		token, base, hc := s.Services.SlackToken, s.Services.SlackAPI, s.http()
+		var out string
+		switch req.Op {
+		case OpSlackPost, OpSlackReply:
+			p, err := slack.Post(ctx, token, base, hc, channel, req.Field("thread"), req.Body+"\n\n"+SlackFooter(tk.ID))
+			if err != nil {
+				return slackFailed(err)
+			}
+			where := "posted in #" + p.Channel.Name
+			if req.Field("thread") != "" {
+				where = "replied in #" + p.Channel.Name + ", in the thread " + req.Field("thread")
+			}
+			out = fmt.Sprintf("%s: ts %s %s", where, p.TS, p.Permalink)
+		case OpSlackRead:
+			limit := req.Int("limit")
+			if limit <= 0 {
+				limit = SlackReadDefault
+			}
+			limit = min(limit, SlackReadMost)
+			c, msgs, err := slack.Read(ctx, token, base, hc, channel, req.Field("thread"), req.Field("since"), limit)
+			if err != nil {
+				return slackFailed(err)
+			}
+			return Reply{OK: true, Out: readOut(c, req.Field("thread"), req.Field("since"), msgs)}
+		case OpSlackReact:
+			c, err := slack.React(ctx, token, base, hc, channel, req.Field("message"), emoji)
+			if err != nil {
+				return slackFailed(err)
+			}
+			out = fmt.Sprintf("reacted :%s: to %s in #%s", emoji, req.Field("message"), c.Name)
 		}
-		where := "posted in #" + p.Channel.Name
-		if req.Thread != "" {
-			where = "replied in #" + p.Channel.Name + ", in the thread " + req.Thread
-		}
-		out = fmt.Sprintf("%s: ts %s %s", where, p.TS, p.Permalink)
-	case OpSlackRead:
-		limit := req.Limit
-		if limit <= 0 {
-			limit = SlackReadDefault
-		}
-		limit = min(limit, SlackReadMost)
-		c, msgs, err := slack.Read(ctx, token, base, hc, channel, req.Thread, req.Since, limit)
-		if err != nil {
-			return slackFailed(err)
-		}
-		return Reply{OK: true, Out: readOut(c, req.Thread, req.Since, msgs)}
-	case OpSlackReact:
-		c, err := slack.React(ctx, token, base, hc, channel, req.Message, emoji)
-		if err != nil {
-			return slackFailed(err)
-		}
-		out = fmt.Sprintf("reacted :%s: to %s in #%s", emoji, req.Message, c.Name)
-	}
-	fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
-	return Reply{OK: true, Out: out}
+		fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
+		return Reply{OK: true, Out: out}
+	})
 }
 
 // slackFailed is a failed call as the task reads it: Slack's refusal, which asking again the same

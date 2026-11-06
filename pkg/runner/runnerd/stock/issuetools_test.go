@@ -1,6 +1,7 @@
 package stock
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -215,7 +216,7 @@ func TestAnIssueToolsStepNamesItsTracker(t *testing.T) {
 			delete(in, "repo")
 			in["team"], in["issue"] = "eng", "eng-42"
 		}
-		if got, ok := tl.Fields(in); !ok || !maps.Equal(got, w.fields) {
+		if got, ok := tl.Fields(asTaken(tl.Params, in)); !ok || !maps.Equal(got, w.fields) {
 			t.Errorf("%s derives %v (%v), want %v", tl.Name, got, ok, w.fields)
 		}
 		if _, ok := tl.Fields(map[string]any{"repo": "nope"}); ok {
@@ -268,5 +269,74 @@ func TestTheOffersInterceptTheTrackersSteps(t *testing.T) {
 	}
 	if o := (Config{Script: &Script{}}).Describe(nil).Offers[0]; !slices.Equal(slices.Sorted(maps.Keys(o.Systems)), []string{"network", "question"}) {
 		t.Errorf("no repos, no trackers: %v, want a script holding the network and its questions alone", o.Systems)
+	}
+}
+
+// asTaken is one input given to every tool of a system, narrowed to what a tool takes: a tool
+// refuses what it does not take (untaken).
+func asTaken(params, in map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range in {
+		if _, ok := params[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// A TOOL REFUSES WHAT IT DOES NOT TAKE, RATHER THAN DROP IT AND GO ON. A close given a body
+// would close without the comment and answer `closed`, and the model would believe the comment
+// made; so would a reaction given text, a read given text, an update given `draft: true`, and a
+// comment on a pull request given the id of a review comment it was meant as a reply to. Such a
+// call derives no fields, so no row is asked about it, and is refused by the tool before it
+// reaches the runner: the clients here have no connection to reach it by. What is given as
+// nothing asks for nothing, and is let by.
+func TestAToolRefusesWhatItDoesNotTake(t *testing.T) {
+	github := &workspace.Tree{Repo: workspace.Repo{Repo: runner.Repo{Repo: "example/app"}, Remote: "https://github.com/example/app.git"}}
+	ws := &workspace.Workspace{Branch: "verse/auto/t1", Trees: []*workspace.Tree{github}}
+	names := []string{github.Repo.Name()}
+	cl := &delivery.Client{}
+	byName := map[string]int{}
+	slacks := slackTools(cl)
+	for i, tl := range slacks {
+		byName[tl.Name] = i
+	}
+	githubClose := githubIssueVerb(cl, ws, names, githubIssueCloseTool, delivery.OpGitHubIssueClose, task.StepGitHubIssueClose)
+	linearClose := linearIssueVerb(cl, linearIssueCloseTool, delivery.OpLinearIssueClose, task.StepLinearIssueClose)
+	update := prTool(nil, ws, names, updatePRTool)
+	commentPR := commentPRToolFor(cl, ws, names)
+	for _, c := range []struct {
+		fields func(map[string]any) (map[string]string, bool)
+		do     func(context.Context, task.ToolUse) (string, bool, error)
+		name   string
+		in     map[string]any
+		stray  string
+	}{
+		{githubClose.Fields, githubClose.Do, githubIssueCloseTool, map[string]any{"issue": 7, "body": "done, see the PR"}, "body"},
+		{linearClose.Fields, linearClose.Do, linearIssueCloseTool, map[string]any{"issue": "eng-42", "body": "done, see the PR"}, "body"},
+		{update.Fields, update.Do, updatePRTool, map[string]any{"title": "t", "draft": true}, "draft"},
+		{commentPR.Fields, commentPR.Do, commentPRTool, map[string]any{"pr": 71, "body": "b", "comment": 9001}, "comment"},
+		{slacks[byName[slackReactTool]].Fields, slacks[byName[slackReactTool]].Do, slackReactTool,
+			map[string]any{"channel": "deploys", "message": "17.2", "emoji": "eyes", "text": "and a word"}, "text"},
+		{slacks[byName[slackReadTool]].Fields, slacks[byName[slackReadTool]].Do, slackReadTool,
+			map[string]any{"channel": "deploys", "text": "and a word"}, "text"},
+		{slacks[byName[slackPostTool]].Fields, slacks[byName[slackPostTool]].Do, slackPostTool,
+			map[string]any{"channel": "deploys", "text": "t", "thread": "17.1"}, "thread"},
+	} {
+		if f, ok := c.fields(c.in); ok {
+			t.Errorf("%s given `%s` derives %v, want no fields", c.name, c.stray, f)
+		}
+		out, blocked, err := c.do(t.Context(), task.ToolUse{Name: c.name, Input: c.in})
+		if want := "refused, and nothing was done: " + c.name + " takes no `" + c.stray + "`"; err != nil || !blocked || !strings.HasPrefix(out, want) {
+			t.Errorf("%s given `%s`: %q, %v, %v, want %q", c.name, c.stray, out, blocked, err, want)
+		}
+		// And given it as nothing, the call is the one without it.
+		for _, nothing := range []any{nil, "", false, 0, 0.0} {
+			in := maps.Clone(c.in)
+			in[c.stray] = nothing
+			if _, ok := c.fields(in); !ok {
+				t.Errorf("%s given `%s: %#v` derives no fields", c.name, c.stray, nothing)
+			}
+		}
 	}
 }

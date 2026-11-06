@@ -6,83 +6,89 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 )
 
 // Request / Reply are the whole protocol, and each op is an act the runner performs for the
-// task. `push` is for WRITING the world: the task names a repository and a branch, the runner
-// decides it by the launch's autonomy, stages the committed work in its mirror and pushes it from
-// there. `create-pr` opens a pull request from such a branch, and `update-pr` changes the open
-// one. `fetch` is for READING it: the runner brings its mirror up to upstream
-// and the checkout's `mirror/*` refs and tags up to the mirror. Nothing crosses but requests and answers: the credential
-// stays in the runner, used where it lives. Length-prefixed frames rather than newline-delimited
-// ones because tony is a multi-line format: framing a document by newlines would work until the
-// first document that had one.
+// task (ops): a `push` WRITES the world, a `fetch` READS it, and the rest are named for the step
+// each is, `slack.post`, `github-issue.create`, `verse.data-put`. Nothing crosses but requests
+// and answers: the credential stays in the runner, used where it lives. Length-prefixed frames
+// rather than newline-delimited ones because tony is a multi-line format: framing a document by
+// newlines would work until the first document that had one.
+//
+// A REQUEST IS AN OP, WHAT IT IS ASKED WITH, AND A BODY. What it is asked with is by name
+// (Fields), and which names an op reads, and how, is the op's to say (op.takes, op.flags,
+// op.numbers), so a system the channel
+// comes to carry adds its ops to the table and nothing here. A name an op does not read is
+// refused rather than dropped, and so is a body the op does not read: what the task sent and the
+// runner ignored is something the task believes was done.
 type Request struct {
-	// Op is `push`, `create-pr`, `update-pr` or `fetch`, a read of the forge's pull requests
-	// (github.go): `github.list-prs` and `github.read-pr`, a comment on a pull request (github.go):
-	// `github.comment-pr` and `github.reply-comment`, a tracker's act (issues.go): `git-issue.pull`,
-	// `git-issue.push`, and `github-issue.*` and `linear-issue.*` for create, comment and close,
-	// Slack's (slack.go): `slack.post`, `.reply`, `.read` and `.react`, or a verb of the verse system
-	// (verse.go): `verse.ask-create`, `verse.ask-get`, `verse.ask-list`, `verse.data-get`,
-	// `verse.data-put`, `verse.data-rm`, `verse.charter-get`, `verse.charter-check`,
-	// `verse.charter-install` and `verse.charter-remove`.
+	// ID names the request among those the task has sent and not yet heard about, and the
+	// answer to it carries the same (Reply.ID). The task's end gives it (Client.Ask). Requests
+	// are answered as each is done, not as they were sent: an op performed apart from the
+	// others (op.apart) does not wait for them.
+	ID int `tony:"field=id,omitzero"`
+	// Op is the op's word in the table (ops).
 	Op string `tony:"field=op"`
-	// Repo is which repository this is about, because ONE PUSH ACTION IS ONE REPOSITORY. That is
-	// what stops a mixed outcome from being a state anybody has to model: each action has its
-	// own gate, its own result and its own place in the record.
-	Repo string `tony:"field=repo,omitzero"`
-	// Branch is where a push goes, or the head a proposal is from, as the task named it. The
-	// runner decides it by the launch's autonomy — the task decided it too, and the task is the
-	// side that must not be trusted about what it may touch. A `fetch` names none.
-	Branch string `tony:"field=branch,omitzero"`
 	// Decision is the id of the decision that let this act through in the task's process
 	// (ToolUse.Decision, `<task>~d<n>`), so the runner matches the act to the answer it relayed
 	// for that decision by id, and only then by the call's fields. Empty where no gate decided it.
 	Decision string `tony:"field=decision,omitzero"`
-	// Delete asks to remove Branch rather than push to it: a different act, decided apart from a
-	// push (git.push, delete=true). Force asks to rewrite what the branch holds (git.push,
-	// force=true); without it a push fast-forwards, except to a branch this run created, which
-	// is its own to rewrite.
-	Delete bool `tony:"field=delete,omitzero"`
-	Force  bool `tony:"field=force,omitzero"`
-	// A pull request: into Base, with Title and Body. A verse system verb's document (a
-	// data-put's api.PutEntity, a charter-check's or charter-install's charters, in tony) is
-	// Body too.
-	Base  string `tony:"field=base,omitzero"`
-	Title string `tony:"field=title,omitzero"`
-	Body  string `tony:"field=body,omitzero"`
-	// Draft opens a pull request as a draft (github.create-pr, draft=true).
-	Draft bool `tony:"field=draft,omitzero"`
-	// PR is the pull request a read or a comment names, by its number at the forge.
-	PR string `tony:"field=pr,omitzero"`
-	// Comment is the review comment a reply is in the thread of, by its id at the forge. The
-	// reply's text is Body.
-	Comment string `tony:"field=comment,omitzero"`
-	// A tracker's act: Issue is the issue a comment or a close is about (a number at the forge,
-	// an identifier like `ENG-42` at Linear), Team the Linear team a filing goes to, by key.
-	Issue string `tony:"field=issue,omitzero"`
-	Team  string `tony:"field=team,omitzero"`
-	// Slack's acts: the Channel by name, the Thread a reply or a read is in, the Message a
-	// reaction is on and its Emoji, both by ts, and a read's Since (a ts) and Limit. A post's
-	// and a reply's text is Body.
-	Channel string `tony:"field=channel,omitzero"`
-	Thread  string `tony:"field=thread,omitzero"`
-	Message string `tony:"field=message,omitzero"`
-	Emoji   string `tony:"field=emoji,omitzero"`
-	Since   string `tony:"field=since,omitzero"`
-	Limit   int    `tony:"field=limit,omitzero"`
-	// Ask is a raise's ask, as a tony document in the shape POST /asks reads (api.Ask), or the
-	// ask a read names, by its name or its id.
-	Ask string `tony:"field=ask,omitzero"`
-	// Query is a verse system verb's query, URL-encoded, as its route takes it (api.StateQuery,
-	// api.RemoveQuery, charterfile.Query): the route is the op's, and only the query is the task's.
-	Query string `tony:"field=query,omitzero"`
+	// Fields is what the op is asked with, by name, as text: the repository and the branch of a
+	// push (ONE PUSH ACTION IS ONE REPOSITORY, which is what stops a mixed outcome from being a
+	// state anybody has to model), the channel and the thread of a Slack message, the issue a
+	// comment is on. The task names them, and the runner decides the act on what they say and
+	// on what it knows itself: the task decided it too, and the task is the side that must not
+	// be trusted about what it may touch.
+	Fields map[string]string `tony:"field=fields,omitzero"`
+	// Body is the act's document, where it has one: a pull request's or an issue's body, a
+	// message's text, what a verse verb writes or installs, in tony.
+	Body string `tony:"field=body,omitzero"`
+
+	// op is the op performing the request, on the runner's side: what its reading of a name is
+	// held to (reading). nil on the task's side, which reads as it likes what it wrote itself.
+	op *op
+}
+
+// Field is what the request names name with, as text, empty where it does not.
+func (r Request) Field(name string) string {
+	r.reading(name, "text", func(o *op) []string { return o.takes })
+	return r.Fields[name]
+}
+
+// Flag is whether the request says name. What is neither `true` nor `false` does not reach an
+// op (misread).
+func (r Request) Flag(name string) bool {
+	r.reading(name, "a flag", func(o *op) []string { return o.flags })
+	return r.Fields[name] == "true"
+}
+
+// Int is the number the request gives name, zero where it gives none. One that does not read
+// does not reach an op (misread).
+func (r Request) Int(name string) int {
+	r.reading(name, "a number", func(o *op) []string { return o.numbers })
+	n, _ := strconv.Atoi(r.Fields[name])
+	return n
+}
+
+// reading holds an op to its entry in the table: it reads a name as what the entry says it
+// reads it as, which is what misread checked the request against. Another reading is the op's
+// bug, and stops it (misreading, answered in Server.perform). A name the entry does not list
+// at all reads as nothing, which is what it is: several ops share one func, and no request
+// that gives the name reaches an op that does not list it.
+func (r Request) reading(name, as string, declared func(*op) []string) {
+	if r.op != nil && slices.Contains(r.op.reads(), name) && !slices.Contains(declared(r.op), name) {
+		panic(misreading{name, as})
+	}
 }
 
 type Reply struct {
+	// ID is the request this answers (Request.ID); none where the runner read no request in
+	// what it was sent, a frame too large or one that does not decode.
+	ID int  `tony:"field=id,omitzero"`
 	OK bool `tony:"field=ok"`
 	// Out is what happened, in the words the task reads and its events record: where the
 	// work went, which proposal it is, that there was nothing to push.

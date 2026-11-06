@@ -479,48 +479,47 @@ func prChecks(ctx context.Context, hc *http.Client, token, api, owner, repo, sha
 // githubRead answers a `github.list-prs` or a `github.read-pr`: the step decided by the launch's
 // autonomy and the runner's ceiling, then the read with this runner's token. A pull request that
 // is not there is a refusal, an answer to re-plan on, where a forge that fails is an error.
-func (s *Server) githubRead(ctx context.Context, tk Task, req Request) Reply {
-	t := tk.Workspace.Tree(req.Repo)
+func (s *Server) githubRead(ctx context.Context, tk Task, req Request) (asked, Reply) {
+	t := tk.Workspace.Tree(req.Field("repo"))
 	if t == nil {
-		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
+		return before(Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Field("repo"))})
 	}
 	if _, has := s.Ceilings["github"]; !has {
-		return Reply{Refused: "this runner reads nothing at GitHub for its tasks: it has no `github` system"}
+		return before(Reply{Refused: "this runner reads nothing at GitHub for its tasks: it has no `github` system"})
 	}
 	fields := map[string]string{"repo": t.Repo.Repo.Canonical()}
 	if req.Op == OpGitHubReadPR {
-		fields["pr"] = req.PR
+		fields["pr"] = req.Field("pr")
 	}
-	if why := s.refused(tk, req.Decision, task.NewStep(req.Op, fields)); why != "" {
-		return Reply{Refused: why}
-	}
-	owner, name, err := RepoPath(t.Repo.Remote)
-	if err != nil {
-		return Reply{Refused: err.Error()}
-	}
-	tok, err := tk.Credential(t.Repo)
-	if err != nil {
-		return Reply{Error: err.Error()}
-	}
-	var out string
-	if req.Op == OpGitHubListPRs {
-		out, err = ListGitHubPRs(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name)
-	} else {
-		n, nerr := strconv.Atoi(req.PR)
-		if nerr != nil || n <= 0 {
-			return Reply{Refused: fmt.Sprintf("%q is not a pull request number", req.PR)}
+	return asking(task.NewStep(req.Op, fields), func() Reply {
+		owner, name, err := RepoPath(t.Repo.Remote)
+		if err != nil {
+			return Reply{Refused: err.Error()}
 		}
-		out, err = ReadGitHubPR(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name, n)
-		var st *githubStatus
-		if errors.As(err, &st) && st.Code == http.StatusNotFound {
-			return Reply{Refused: fmt.Sprintf("there is no pull request #%d at %s/%s", n, owner, name)}
+		tok, err := tk.Credential(t.Repo)
+		if err != nil {
+			return Reply{Error: err.Error()}
 		}
-	}
-	if err != nil {
-		return Reply{Error: err.Error()}
-	}
-	fmt.Fprintf(s.Log, "delivery: %s: %s of %s/%s\n", tk.ID, req.Op, owner, name)
-	return Reply{OK: true, Out: out}
+		var out string
+		if req.Op == OpGitHubListPRs {
+			out, err = ListGitHubPRs(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name)
+		} else {
+			n, nerr := strconv.Atoi(req.Field("pr"))
+			if nerr != nil || n <= 0 {
+				return Reply{Refused: fmt.Sprintf("%q is not a pull request number", req.Field("pr"))}
+			}
+			out, err = ReadGitHubPR(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name, n)
+			var st *githubStatus
+			if errors.As(err, &st) && st.Code == http.StatusNotFound {
+				return Reply{Refused: fmt.Sprintf("there is no pull request #%d at %s/%s", n, owner, name)}
+			}
+		}
+		if err != nil {
+			return Reply{Error: err.Error()}
+		}
+		fmt.Fprintf(s.Log, "delivery: %s: %s of %s/%s\n", tk.ID, req.Op, owner, name)
+		return Reply{OK: true, Out: out}
+	})
 }
 
 // The pull request comments: github.comment-pr, on a pull request's conversation, and
@@ -638,54 +637,53 @@ func prOfURL(u string) int {
 // launch's autonomy and the runner's ceiling, on the pull request and the comment as the task
 // named them, then the comment with this runner's token. What the number or the id turns out to
 // be at the forge is a refusal to re-plan on, where a forge that fails is an error.
-func (s *Server) githubComment(ctx context.Context, tk Task, req Request) Reply {
-	t := tk.Workspace.Tree(req.Repo)
+func (s *Server) githubComment(ctx context.Context, tk Task, req Request) (asked, Reply) {
+	t := tk.Workspace.Tree(req.Field("repo"))
 	if t == nil {
-		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
+		return before(Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Field("repo"))})
 	}
 	if _, has := s.Ceilings["github"]; !has {
-		return Reply{Refused: "this runner comments nothing at GitHub for its tasks: it has no `github` system"}
+		return before(Reply{Refused: "this runner comments nothing at GitHub for its tasks: it has no `github` system"})
 	}
-	fields := map[string]string{"repo": t.Repo.Repo.Canonical(), "pr": req.PR}
+	fields := map[string]string{"repo": t.Repo.Repo.Canonical(), "pr": req.Field("pr")}
 	if req.Op == OpGitHubReplyComment {
-		fields["comment"] = req.Comment
+		fields["comment"] = req.Field("comment")
 	}
-	if why := s.refused(tk, req.Decision, task.NewStep(req.Op, fields)); why != "" {
-		return Reply{Refused: why}
-	}
-	owner, name, err := RepoPath(t.Repo.Remote)
-	if err != nil {
-		return Reply{Refused: err.Error()}
-	}
-	n, err := strconv.Atoi(req.PR)
-	if err != nil || n <= 0 {
-		return Reply{Refused: fmt.Sprintf("%q is not a pull request number", req.PR)}
-	}
-	var id int64
-	if req.Op == OpGitHubReplyComment {
-		if id, err = strconv.ParseInt(req.Comment, 10, 64); err != nil || id <= 0 {
-			return Reply{Refused: fmt.Sprintf("%q is not a comment id", req.Comment)}
+	return asking(task.NewStep(req.Op, fields), func() Reply {
+		owner, name, err := RepoPath(t.Repo.Remote)
+		if err != nil {
+			return Reply{Refused: err.Error()}
 		}
-	}
-	if strings.TrimSpace(req.Body) == "" {
-		return Reply{Refused: "a comment needs a body"}
-	}
-	tok, err := tk.Credential(t.Repo)
-	if err != nil {
-		return Reply{Error: err.Error()}
-	}
-	var out, refused string
-	if req.Op == OpGitHubCommentPR {
-		out, refused, err = CommentGitHubPR(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name, n, req.Body)
-	} else {
-		out, refused, err = ReplyGitHubComment(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name, n, id, req.Body)
-	}
-	switch {
-	case err != nil:
-		return Reply{Error: err.Error()}
-	case refused != "":
-		return Reply{Refused: refused}
-	}
-	fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
-	return Reply{OK: true, Out: out}
+		n, err := strconv.Atoi(req.Field("pr"))
+		if err != nil || n <= 0 {
+			return Reply{Refused: fmt.Sprintf("%q is not a pull request number", req.Field("pr"))}
+		}
+		var id int64
+		if req.Op == OpGitHubReplyComment {
+			if id, err = strconv.ParseInt(req.Field("comment"), 10, 64); err != nil || id <= 0 {
+				return Reply{Refused: fmt.Sprintf("%q is not a comment id", req.Field("comment"))}
+			}
+		}
+		if strings.TrimSpace(req.Body) == "" {
+			return Reply{Refused: "a comment needs a body"}
+		}
+		tok, err := tk.Credential(t.Repo)
+		if err != nil {
+			return Reply{Error: err.Error()}
+		}
+		var out, refused string
+		if req.Op == OpGitHubCommentPR {
+			out, refused, err = CommentGitHubPR(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name, n, req.Body)
+		} else {
+			out, refused, err = ReplyGitHubComment(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name, n, id, req.Body)
+		}
+		switch {
+		case err != nil:
+			return Reply{Error: err.Error()}
+		case refused != "":
+			return Reply{Refused: refused}
+		}
+		fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
+		return Reply{OK: true, Out: out}
+	})
 }
