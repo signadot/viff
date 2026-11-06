@@ -100,7 +100,8 @@ func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) v
 		Description: "Push this task's COMMITTED work to a branch of a repository, or delete a branch there. " +
 			"Commit what you want delivered first, every commit ending with the Verse-* trailers " +
 			"your brief names, which $" + TrailersEnv + " also holds; uncommitted changes are never delivered, and a commit without the trailers " +
-			"is refused with what is missing. `branch` is where it goes; omit it to push your own branch " +
+			"is refused with what is missing, and a commit authored or committed as anyone other than this " +
+			"checkout's identity is refused the same way. `branch` is where it goes; omit it to push your own branch " +
 			"under its own name. A push fast-forwards unless `force` says it may rewrite the branch; a " +
 			"branch you created is yours to rewrite. The task's autonomy decides each push by its " +
 			"repository, branch, and whether it deletes or rewrites: your brief says what it decides. The " +
@@ -453,7 +454,7 @@ func relay(rep delivery.Reply, err error) (string, bool, error) {
 }
 
 // repoBrief tells the agent what its working directory holds, and how its work leaves: commit
-// it, with the trailers, then push, as the autonomy decides. It rides the prompt, for the reason
+// it, with the trailers and as the checkout's identity, then push, as the autonomy decides. It rides the prompt, for the reason
 // #16 gave: the default frame is derived from the tools and gates, and this is the runner's
 // convention, not advice.
 func repoBrief(ws *workspace.Workspace, trailers []string, l *runner.Launch) string {
@@ -472,7 +473,11 @@ func repoBrief(ws *workspace.Workspace, trailers []string, l *runner.Launch) str
 	for _, line := range trailers {
 		b += "  " + line + "\n"
 	}
-	b += "A push of a commit without them is refused and tells you what is missing. If upstream may " +
+	id := workspace.IdentityFor(l)
+	b += "A push of a commit without them is refused and tells you what is missing. Commit as `" +
+		id.Name + " <" + id.Email + ">`, the identity this checkout is configured with: leave it as it " +
+		"is, and set no GIT_AUTHOR_*/GIT_COMMITTER_* or user.* of your own; a commit carrying another " +
+		"identity is refused at push. If upstream may " +
 		"have moved since you started, `git-fetch` updates the `mirror/*` refs and the tags here and you " +
 		"rebase onto them yourself.\n\n"
 	return b

@@ -86,6 +86,36 @@ func TestADeniedPushSendsNothingAndTheWorkIsHeld(t *testing.T) {
 	t.Fatal("the denied work is not held in the runner's mirror")
 }
 
+// AN AGENT'S COMMIT AS ANOTHER IDENTITY IS REFUSED AT PUSH: signadot/verse#1 as it happened, an
+// agent committing its own work with a test command's GIT_AUTHOR_* in front of it. The launch has
+// no person behind it, so the identity it must carry is the runner's; the agent is told so, and
+// the forge never sees the branch.
+func TestAnAgentsCommitAsAnotherIdentityIsRefusedAtPush(t *testing.T) {
+	forge := t.TempDir()
+	seed(t, forge, "acme/svc")
+	model := modeltest.New(t, func(r modeltest.Request) modeltest.Reply {
+		switch res := r.Results(); len(res) {
+		case 0:
+			return modeltest.Use("run_bash", map[string]any{"command": "cd svc && echo work > f && git add f && " +
+				"GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com git commit -qm work -m 'Verse-Task: t1'"})
+		case 1:
+			return modeltest.Use("git-push", map[string]any{})
+		default:
+			return modeltest.Say(res[len(res)-1])
+		}
+	})
+	rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})
+	launchPusher(rt, "t1", task.Row{Name: "push", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAllow}})
+	snap := ended(t, rt, "t1")
+	if snap.Status != task.Done || !strings.Contains(snap.Result, "author test <test@example.com>") ||
+		!strings.Contains(snap.Result, "verse runner <runner@invalid>") {
+		t.Fatalf("task: %+v, want the push refused naming the author and the identity to carry", snap)
+	}
+	if at(t, forge, "refs/heads/verse/auto/t1") {
+		t.Fatal("a commit as another identity reached the forge")
+	}
+}
+
 // A BRANCH A DENY ROW REFUSES IS REFUSED WITHOUT ASKING: no one is asked to approve a push the
 // policy refuses, and the agent is told which row did.
 func TestABranchADenyRowRefusesIsRefusedWithoutAsking(t *testing.T) {
