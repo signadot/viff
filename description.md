@@ -78,19 +78,23 @@ path to the task.
 
 ## `pkg-nix`
 
-- **What a task starts with is one attribute.** `flake` names a flake output or a profile. The
-  runner realises it before the task's process starts, as it checks out a repository. It is
-  fixed for the run, it is bounded by a pattern in the ceiling, and no row decides it.
+- **A base, per doer.** The operator names one profile for each doer, beside its ceiling. Every
+  task of that doer starts with it. It takes the place of the toolchain the image carries today.
+- **What a spawn adds at the start is one attribute.** `flake` names a flake output or a
+  profile. The runner realises it before the task's process starts, as it checks out a
+  repository. It is fixed for the run, it is bounded by a pattern in the ceiling, and no row
+  decides it.
 - **Why one attribute, and not a list of packages.** A block's attributes are scalars. An array
   under a block's key is read as a verb's shapes (`pkg/systems/environment.go`, `readBlock`).
   The list of packages lives in the flake.
 - **The verbs are steps.** `install` and `upgrade` carry the field `package`; `list` carries
-  none. The runner performs each: it realises into the store and moves a profile of the task's
+  none. The runner performs each: it realises into its store and moves a profile of the task's
   own. The task's `PATH` names that profile.
+- **A reference is remote.** The ceiling's patterns on `flake` and `package` admit no local
+  path. Given one, the runner would copy a task's files into a store that other tasks draw on.
 - **The sandbox changes.** bwrap binds a fixed list of system directories
-  (`pkg/runner/runnerd/sandbox.go`, `systemDirs`), and `/nix` is not one. `readOnly:` is the
-  existing slot for a host path bound read-only. `PATH` is the runner's own value today, passed
-  through per doer (`shellEnv`).
+  (`pkg/runner/runnerd/sandbox.go`, `systemDirs`), and `/nix` is not one. `PATH` is the runner's
+  own value today, passed through per doer (`shellEnv`).
 - **Its secrets are the operator's.** A private cache's token and a private flake's host
   credential come from the store, bound in the runner's configuration.
 - **Substitution only, at first.** A build runs a derivation's code on the runner's side. Until
@@ -108,43 +112,76 @@ script. So whatever a task is given has to stand at `/nix/store`, under the same
 of `bin` and `lib` somewhere else does not run. A store under another name changes every hash,
 and the public binary cache then serves nothing.
 
+**A profile restricts nothing.** A profile is a tree of `bin`, `lib` and `share` that holds
+symbolic links into the store, and no package. It is itself one path in the store. It says what
+was chosen. What a task can reach is what its filesystem holds, and a profile's closure is the
+list of that.
+
+**Profiles compose.** A profile takes another profile as one of its parts. So a task's profile
+is the base, then the spawn's flake, then what the task installed.
+
 There are three ways to give a task its packages. The first is tentatively preferred. Which one
 to build is open.
 
-### 1. A view of hard links, per task. Tentatively preferred
+### 1. A base, and the task's own installs. Tentatively preferred
 
-- The runner keeps one central store. Each task has a directory of its own, bound read-only at
-  `/nix`.
-- The runner fills that view with hard links: every store path in the closure of what the task
-  was given. That is the flake at the start, and each `install` after it.
-- It needs no mount and no privilege. So it works while the sandbox runs, and it uses no disk
-  beyond the links.
-- The task sees what it was given and that closure, and nothing else of the store.
+**The central store is the runner's alone.** It is never bound whole into a task. The runner
+realises into it, and it is a cache.
+
+A task's `/nix/store` is put together from two parts:
+
+- **The base, bound at the launch.** The closure of the doer's base is a list of store paths.
+  The runner binds each of them from the central store into the sandbox, read-only, when the
+  task starts. The closure of the spawn's `flake` is bound the same way. Nothing is linked. The
+  cost is one mount for each store path: hundreds for a toolchain, a few thousand for a large
+  one.
+- **The task's own installs, linked during the run.** The task has a directory of its own,
+  bound read-only under those mounts. An `install` makes hard links in it, for the paths of the
+  package's closure that the base and the flake do not already give. They appear in the running
+  sandbox.
+
+**So an install is scoped to its task.** It changes one task's directory. No other task sees
+it, and the central store keeps the bytes once.
 
 What it costs:
 
-- **One volume.** A hard link does not cross filesystems. The views live on the store's volume,
-  and not under `TMPDIR`, where a task's directory is today.
-- **One link per file.** A toolchain's closure is tens of thousands of files. The start, each
-  `install` and the removal each pay for them. A store's trees are read-only, which is the
-  removal problem of 54f9wqb3.
-- **A root per live task,** so that the central store's garbage collection keeps its paths.
+- **One volume.** A hard link does not cross filesystems. A task's directory of links lives on
+  the store's volume, and not under `TMPDIR`, where a task's directory is today.
+- **One link per file of what a task adds.** The base costs no links. The removal pays for the
+  links again, and a store's trees are read-only, which is the removal problem of 54f9wqb3.
+- **A root per live task, and per base,** so that the central store's garbage collection keeps
+  their paths. A task that started before a base changed keeps the paths it was bound.
 
-Not tested, under bwrap in the runner's pod: how long the links take for a real closure; that a
-task cannot link out of the view into its workspace; that a single-user store lets the runner
-make the links.
+What it does not bound: a task sees closures. A package the ceiling allows brings its
+dependencies, and the task can run each of them by its path. So the ceiling bounds what a task
+asks for, and not what is there.
 
-### 2. A profile per task, over the whole store. Simpler
+Not tested, under bwrap in the runner's pod:
+
+- binding single store paths on top of a directory that is itself a bind, and then read-only;
+- hard links made in that directory appearing in a running sandbox;
+- how long a few thousand mounts take at a launch;
+- that a task cannot link out of its store into its workspace;
+- that a single-user store lets the runner make the links.
+
+### 2. A profile per task, over the whole store. Simpler, and installs leak
 
 - The central store is bound read-only into every task, whole. Each task has a profile of its
   own, and its `PATH` names it.
-- **A profile is not a store.** It is a tree of `bin`, `lib` and `share` that holds symbolic
-  links into the store, and no package. It is itself one path in the store.
-- **Profiles compose.** A profile takes another profile as one of its parts. So a task's profile
-  can be the runner's base, then the spawn's flake, then what the task installed.
+- It costs the bind and the profile, and nothing else.
 - **What it bounds:** what is realised, and what is on the task's `PATH`. It does not bound what
   runs. A task can list the store, and run anything in it by its path.
-- It costs the bind and the profile, and nothing else.
+
+An install is not scoped to its task here, and that leaks tools across tasks:
+
+- **Past the environment and the gate.** A task runs a tool that its spawn did not give, and
+  that nobody was asked about, because another task installed it.
+- **Across ceilings.** A ceiling is a doer's, and doers share a runner. What a script installed,
+  an agent whose ceiling refuses it can run.
+- **Tasks see each other.** The store's listing shows what other tasks installed.
+
+It is not a way for a task's own data to reach another task, while the runner only substitutes
+and a reference is remote.
 
 ### 3. Several stores in one runner
 
@@ -152,20 +189,23 @@ make the links.
   `/nix/store` for what is in it. So the public cache still serves it. The runner keeps one
   store per environment (per doer, per ceiling, or by name), and binds one of them, whole, into
   each task.
-- A task sees its environment's store, not its own. An `install` is seen by every task of that
-  environment. A common dependency is kept once per environment.
+- An install is scoped to an environment, and not to a task. Every task of that environment
+  sees it. A common dependency is kept once per environment.
 - nix also has an experimental store that layers over a read-only lower store
   (`local-overlay`). It needs an overlay mount. It is not examined here.
 
 ### Why it is open
 
-The first is preferred because it is the only one where a task sees what its own environment
-gave it. But what the task sees is a closure. A package the ceiling allows brings its
-dependencies, and the task can run each of them by its path. So the ceiling bounds what a task
-asks for, and not what is there. That is worth less than a ceiling that bounds exactly.
+The main question is whether an install can be scoped to a task. The first way says yes, and
+it rests on mechanics that are not tested.
 
-If that is not worth one link per file and a volume shared with the store, the second is the
-simpler one. It says plainly what it bounds: what is realised and what is on the `PATH`.
+- **If they hold,** the base is easy to keep: the operator names one profile for each doer, and
+  a task pays only for what it adds.
+- **If they do not,** the choice is between the second way, which leaks tools across tasks, and
+  the third, which scopes an install to an environment.
+
+One limit stays in the first way: its ceiling takes in dependencies. It is worth less than a
+ceiling that bounds exactly what is there.
 
 ## `secret-exec`
 
@@ -202,7 +242,9 @@ agents:
     systems:
       mcp:     {ceiling: [{server: linear}]}
       secret:  {ceiling: [{name: npm-publish}]}     # linear-mcp is not here: no command gets it
-      pkg-nix: {ceiling: {flake: !regexp "^github:acme/", install: {package: !glob "nixpkgs#*"}}}
+      pkg-nix:
+        base: "github:acme/tools#base"              # what every claude task starts with
+        ceiling: {flake: !regexp "^github:acme/", install: {package: !glob "nixpkgs#*"}}
 
 # a spawn's environment
 environment:
@@ -226,10 +268,11 @@ environment:
 
 ## Open questions
 
-1. **What a task sees of the nix store.** The section above: a view of hard links per task
-   (tentatively preferred), a profile per task over the whole store, or several stores. The
-   view's ceiling takes in dependencies, so it is worth less than an exact one, and that may
-   point to the simpler profile.
+1. **What a task sees of the nix store.** The section above. A base bound at the launch, with
+   the task's own installs linked beside it, is tentatively preferred, and scopes an install to
+   its task. It rests on mechanics that are not tested. The other ways are a profile per task
+   over the whole store, which leaks installs across tasks, and several stores, which scope an
+   install to an environment.
 2. **Names.** `pkg-nix` or `nix-pkg`: the existing systems put the provider first
    (`linear-issue`, `github-issue`). And `secret-exec`, or another name for the same tool.
 3. **What an approver sees of an MCP call.** A question shows the step's fields (q3k89kva). The
