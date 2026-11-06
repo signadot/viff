@@ -25,18 +25,17 @@ bounds it, and the `autonomy` decides each step.
 |---|---|---|---|---|
 | `mcp` | performed | which servers | `call` | held by the runner, bound by the operator |
 | `pkg-nix` | provided at the start | the flake the task starts with | none at first; `install` later | held by the runner, bound by the operator |
-| `secret` | a release | which secrets | `exec` | given to one command, and readable by the task |
+| `secret` | performed | which secrets | `exec` | given to one command, and not to the task |
 
-The three are not the same kind of thing:
+There are two kinds here:
 
-- **Performed.** The runner acts in the world with a credential the task never holds, and
-  decides each act again from what it knows itself (`pkg/runner/runnerd/delivery/server.go`,
-  `refused`). `mcp` is this, as `git` and `slack` are.
+- **Performed.** The runner acts with a credential the task never holds, and decides each act
+  again from what it knows itself (`pkg/runner/runnerd/delivery/server.go`, `refused`). `mcp` is
+  this, as `git` and `slack` are. `secret.exec` is this too. What acts for `slack` is the
+  runner's own code. What acts for `secret.exec` is a command the environment admits.
 - **Provided at the start.** The runner prepares the task's sandbox before the task's process
   starts, as it checks out a repository. The environment and the ceiling bound it. No row decides
   it. `pkg-nix` is this at first.
-- **A release.** The runner gives a credential to a command the task chose, under a gate. The
-  task can read it. `secret.exec` is this.
 
 ## Secrets: one store, bound in two ways
 
@@ -236,8 +235,8 @@ is the bound.
 
 - **Why it exists.** A command that needs no secret is `commands.run`, or a script. This tool is
   only for a command that needs one.
-- **What kind it is.** A release, under a gate. The environment and the ceiling say which
-  secrets, and the autonomy decides each use. It does not keep the secret from the task.
+- **The goal.** The task never holds the secret. A command uses it, and the task has the
+  command's result.
 - **The shape.** The verb `exec` of the `secret` system, so the tool is `secret-exec` and the
   step is `secret.exec`. The call names an `argv` (a list, never a shell string), plain `env`,
   and each secret with where it goes: a variable's name, or a file.
@@ -248,26 +247,39 @@ is the bound.
 - **Where it runs.** The runner starts the command in a second sandbox, over the task's
   workspace and under the task's network. The secret is in that process alone. The task's other
   processes are in another pid namespace and cannot read it.
-- **What it promises.** The task chooses the argv, and `sh -c 'echo $S'` prints the secret. A
-  narrow shape on `argv` does not close this: `npm publish` runs scripts from the workspace,
-  and the task wrote them. So a secret given to a command is readable by the task.
+- **What keeps the secret.** The environment and the autonomy say which commands run with it.
+  Where each of those commands keeps the secret, the task never has it.
+- **A leak is the user's.** An environment and an autonomy that let through a command that
+  shows the secret (`sh -c 'echo $S'`) leak it. That is the leak of whoever wrote them. The
+  runner runs what they admit, and does not judge a command.
 - **Redaction is a second line.** The runner knows the values and can remove them from the
   output. An encoding defeats it.
 - **The output goes to a file.** The runner writes the command's output into the task's
   workspace, and answers with the exit status and the end of the output. So the channel carries
   no stream.
-- **What it needs.** The runner's check decides one step of an act today, and has to decide
-  each.
+
+What the runner has to give, so that an environment can keep a secret:
+
+- **The whole argv is matched.** A pattern on the start of it admits
+  `npm publish --registry <another host>`. The forms of a field are scalars today, so an argv
+  needs a form of its own.
+- **The plain `env` is shaped too,** and closed by default. `LD_PRELOAD` or `NODE_OPTIONS`
+  makes any command the task's.
+- **The program is the runner's.** It is found in the system's directories and the nix store,
+  and never in the workspace.
+- **The workspace is the task's.** A command that runs what it finds there runs the task's
+  code: `npm publish` runs the package's scripts, unless the argv says `--ignore-scripts`. The
+  shape has to say so. The runner cannot.
+- **The runner's check decides each step of an act.** It decides one today.
 
 Two other forms, set aside:
 
 - **A proxy that adds the credential.** The egress proxy would add a credential for a host the
-  operator binds, and the task would never hold it. It is not general. It works per protocol
-  and per service, and only where somebody has written it. A secret in a command's environment
-  works with whatever can use one: a signature, an ssh key, a database's password. And the task
-  could still do anything at that host.
-- **A secret placed in the sandbox at the start.** Only the ceiling would bound it. A step is
-  what gives the autonomy a use to decide.
+  operator binds. It is not general. It works per protocol and per service, and only where
+  somebody has written it. A secret in a command's environment works with whatever can use one:
+  a signature, an ssh key, a database's password.
+- **A secret placed in the sandbox at the start.** The task would hold it, and only the ceiling
+  would bound it. A step is what gives the autonomy a use to decide.
 
 ## Performed systems: what to shore up first
 
@@ -292,8 +304,8 @@ holds by convention today.
 5. **One deadline, one act at a time.** Every op runs under `workspace.ForgeTimeout`, in turn.
    An MCP call, an install and a command do not fit that.
 6. **A system's document does not say its kind.** Say it there, and publish it in the
-   description: performed, inner, provided at the start, or a release. A charter's author then
-   knows whether a row is a wall or advice.
+   description: performed, inner, or provided at the start. A charter's author then knows
+   whether a row is a wall or advice.
 7. **One conformance test,** once the dispatch is a table: no op acts under an empty
    environment.
 
@@ -302,7 +314,8 @@ holds by convention today.
 1. The channel: items 1, 2 and 5 above.
 2. The secret store, and `mcp`.
 3. `pkg-nix`, at the start only.
-4. `install` and `secret-exec`, once what each promises is settled.
+4. `secret-exec`.
+5. `install`, once its open question is settled.
 
 ## A sketch
 
@@ -316,7 +329,8 @@ agents:
   claude:
     systems:
       mcp:     {ceiling: [{server: linear}]}
-      secret:  {ceiling: [{name: npm-publish}]}     # linear-mcp is not here: no command gets it
+      # linear-mcp is not here: no command gets it
+      secret:  {ceiling: [{name: npm-publish, exec: {argv: !regexp "^npm publish --ignore-scripts( --tag [a-z]+)?$"}}]}
       pkg-nix:
         base: "github:acme/tools#base"              # what every claude task starts with
         ceiling: {flake: !regexp "^github:acme/"}   # later: install: {package: !glob "nixpkgs#*"}
@@ -326,12 +340,13 @@ environment:
   systems:
     mcp:     [{server: linear, call: {tool: !or [get_issue, list_issues]}}]
     pkg-nix: {flake: "github:acme/tools#ci"}
-    secret:  [{name: npm-publish, exec: {argv: !regexp "^npm publish"}}]
+    secret:  [{name: npm-publish, exec: {argv: "npm publish --ignore-scripts"}}]
 ```
 
 ## What holds whatever we choose
 
-- **The task chooses the argv.** A generic exec cannot keep a secret from the task that calls it.
+- **The task chooses the argv, within what the environment admits.** The runner does not judge
+  whether a command keeps a secret. An environment that admits one that shows it leaks it.
 - **A block's attributes are scalars.**
 - **A nix package cannot be moved.** What a task is given stands at `/nix/store`.
 - **A description is public.** `GET /describe` answers anyone, so the names of secrets are
@@ -358,3 +373,5 @@ environment:
 6. **stdio MCP servers.** How the runner confines one.
 7. **The empty block, when `install` arrives.** Whether a `pkg-nix` block that names no verb
    should give it.
+8. **A form for an argv.** How a shape matches a whole list, with no doubt about where one
+   argument ends.
