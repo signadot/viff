@@ -873,7 +873,30 @@ content type `application/json`.
 | `github.<org>.<name>.pr.<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees, requestedReviewers, requestedTeams`; an open one also `changes.<name>` for each `-tree` directory it changes. `requestedReviewers` (logins) and `requestedTeams` (slugs, without the org) are whom a review is waiting on: GitHub drops a reviewer once they review, and adds them back on a re-request. |
 | `github.<org>.<name>.discussion.<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
 | `github.<org>.<name>.run.<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
-| `github.<org>.<name>.comment.<n>.<id>` | `repo, on, id, kind`, and `author, authorId, body, url, createdAt, updatedAt`. `authorId` is GitHub's number for the account, which a rename does not change, and an [account binding](perms.md#accounts-in-other-systems) keys on it. |
+| `github.<org>.<name>.comment.<n>.<id>` | `repo, on, id, kind`, and `author, authorId, body, url, createdAt, updatedAt`. `authorId` is GitHub's number for the account, which a rename does not change, and an [account binding](perms.md#accounts-in-other-systems) keys on it. A review comment (`kind: review`, on a line of the diff) also says where it is and what it answers, each where GitHub gives it: `path`, `line`, `startLine` and `startSide` (a multi-line comment's first line and its side, which may differ from the side it ends on), `side` (`LEFT` or `RIGHT`), `commitId`, `inReplyTo` (the id of its thread's first comment, on a reply), and `diffHunk`, with `diffHunkTruncated: true` when it was cut. A conversation comment (`kind: conversation`) has none of them. |
+
+**A review comment's hunk is capped.** GitHub's `diff_hunk` runs from its hunk's `@@` header
+to the commented line, which can be hundreds of lines into a large hunk, and a comment window
+holds 200 comments. The iod keeps the header and the last lines, which end at the commented
+line: 20 of them, or for a multi-line comment its lines and 3 before them where that is more.
+The iod finds the line a multi-line comment starts on by numbering the hunk's lines from its
+`@@` header, so its lines are kept whole however many lines of the other side stand among them,
+and when it starts on one side and ends on the other. The hunk, and its header's numbers, are
+of the lines the comment was written on (GitHub's `original_line` and `original_start_line`),
+which differ from `line` and `startLine` once later commits move the code. A cut hunk carries
+`diffHunkTruncated: true`, and the whole file is in the repository at `commitId`, the comment at
+its `line`. An outdated comment, one whose line is no longer in the pull request's diff, has no
+`line` (GitHub gives null, and the iod leaves it absent), and the file at `commitId` may no
+longer hold the code it was on: its hunk is then the only record of that code, so the hunk is
+never dropped.
+
+These fields came with a release of the iod. Its first pass after the upgrade writes them onto
+every review comment in the window, and a rule whose condition watches `comment.*` wakes once for
+each of them.
+
+A rule reaches the replies in a thread by `inReplyTo`, and a task answers in the thread with
+[`github-reply-comment`](../systems/github.md#what-a-task-can-do), or on the conversation with
+`github-comment-pr`.
 
 **A repository is two levels of the address**, because it is two levels at GitHub. Everything
 that `signadot/verse` reflects stands under `github.signadot.verse`. A number is quoted where

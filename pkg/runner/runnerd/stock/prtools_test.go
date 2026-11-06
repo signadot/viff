@@ -1,7 +1,9 @@
 package stock
 
 import (
+	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -127,5 +129,46 @@ func TestAnEnvironmentCanGiveDraftsOnly(t *testing.T) {
 	}
 	if f, _ := update.Fields(map[string]any{"draft": true}); f["draft"] != "" {
 		t.Errorf("update-pr names draft %q, want nothing", f["draft"])
+	}
+}
+
+// THE PULL REQUEST COMMENTS ARE OFFERED WHERE THE FORGE IS A GITHUB, each the step its verb is,
+// on the pull request and, for a reply, the comment's id, however the model spelled them: a row
+// on `pr: 71` meets the act. A call without a number or an id has no fields, and one without a
+// body is refused before it reaches the runner.
+func TestThePullRequestCommentsAreOfferedAsTheirSteps(t *testing.T) {
+	ws := &workspace.Workspace{Branch: "verse/auto/t1",
+		Trees: []*workspace.Tree{{Repo: workspace.Repo{Repo: runner.Repo{Repo: "acme/app", From: "main"}}}}}
+	var all []string
+	for _, tl := range repoTools(nil, ws, true) {
+		all = append(all, tl.Name)
+	}
+	for _, want := range []string{"github-comment-pr", "github-reply-comment"} {
+		if !slices.Contains(all, want) {
+			t.Errorf("a GitHub forge offers %v, want %s among them", all, want)
+		}
+	}
+	comment := commentPRToolFor(nil, ws, []string{"app"})
+	if comment.Step != task.StepGitHubCommentPR {
+		t.Fatalf("github-comment-pr is the step %q", comment.Step)
+	}
+	if f, ok := comment.Fields(map[string]any{"pr": "#71", "body": "x"}); !ok || len(f) != 2 || f["repo"] != "github.com/acme/app" || f["pr"] != "71" {
+		t.Errorf("comment-pr fields %v, %v", f, ok)
+	}
+	reply := replyCommentToolFor(nil, ws, []string{"app"})
+	if reply.Step != task.StepGitHubReplyComment {
+		t.Fatalf("github-reply-comment is the step %q", reply.Step)
+	}
+	if f, ok := reply.Fields(map[string]any{"pr": 71.0, "comment": "2001234567"}); !ok || f["pr"] != "71" || f["comment"] != "2001234567" {
+		t.Errorf("reply-comment fields %v, %v", f, ok)
+	}
+	if _, ok := reply.Fields(map[string]any{"pr": 71}); ok {
+		t.Error("a reply naming no comment has fields")
+	}
+	for _, tl := range []verse.Tool{comment, reply} {
+		out, refused, err := tl.Do(context.Background(), task.ToolUse{Input: map[string]any{"pr": 71, "comment": 900, "body": "  "}})
+		if err != nil || !refused || !strings.Contains(out, "needs a body") {
+			t.Errorf("%s with no body: %q %v %v", tl.Name, out, refused, err)
+		}
 	}
 }

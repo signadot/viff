@@ -21,13 +21,17 @@ import (
 // asked over the task's delivery channel: the runner checks it against the launch again, and
 // holds the token. git-fetch reads upstream, and github-list-prs and github-read-pr read the
 // forge's pull requests; a read is a step too (git.fetch, github.list-prs, github.read-pr).
+// github-comment-pr and github-reply-comment comment on a pull request, its conversation and an
+// inline comment's thread (github.comment-pr, github.reply-comment).
 var (
-	pushTool     = systems.Tool("git", "push")
-	fetchTool    = systems.Tool("git", "fetch")
-	createPRTool = systems.Tool("github", "create-pr")
-	updatePRTool = systems.Tool("github", "update-pr")
-	listPRsTool  = systems.Tool("github", "list-prs")
-	readPRTool   = systems.Tool("github", "read-pr")
+	pushTool         = systems.Tool("git", "push")
+	fetchTool        = systems.Tool("git", "fetch")
+	createPRTool     = systems.Tool("github", "create-pr")
+	updatePRTool     = systems.Tool("github", "update-pr")
+	listPRsTool      = systems.Tool("github", "list-prs")
+	readPRTool       = systems.Tool("github", "read-pr")
+	commentPRTool    = systems.Tool("github", "comment-pr")
+	replyCommentTool = systems.Tool("github", "reply-comment")
 )
 
 // repoTools are what a task with repositories may ask its runner for: push and fetch for every
@@ -45,7 +49,8 @@ func repoTools(cl *delivery.Client, ws *workspace.Workspace, github bool) []vers
 	out := []verse.Tool{pushToolFor(cl, ws, all)}
 	if github {
 		out = append(out, prTool(cl, ws, all, createPRTool), prTool(cl, ws, all, updatePRTool),
-			listPRsToolFor(cl, ws, all), readPRToolFor(cl, ws, all))
+			listPRsToolFor(cl, ws, all), readPRToolFor(cl, ws, all),
+			commentPRToolFor(cl, ws, all), replyCommentToolFor(cl, ws, all))
 	}
 	return append(out, fetchToolFor(cl, ws, all))
 }
@@ -295,6 +300,97 @@ func readPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string)
 				return "refused: a pull request number is required", true, nil
 			}
 			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubReadPR, Repo: t.Repo.Name(), PR: strconv.Itoa(n)}))
+		},
+	}
+}
+
+// commentPRToolFor comments on a pull request's conversation by its number, with the runner's
+// token: a step the autonomy decides (github.comment-pr), on the repository and the number.
+func commentPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
+	return verse.Tool{
+		Name: commentPRTool,
+		Description: "Comment on a pull request's conversation at a GitHub repository, by its number, with the body " +
+			"given. A number that is an issue is refused (github-issue-comment comments on an issue), and so is " +
+			"one that is nothing. To answer an inline review comment in its thread, use " + replyCommentTool + ". " +
+			"The runner comments with its own token; what you read back is the comment's url. " +
+			"Repositories: " + strings.Join(names, ", ") + ".",
+		Params: repoParams(names, map[string]any{
+			"pr":   map[string]any{"type": "integer"},
+			"body": map[string]any{"type": "string"},
+		}),
+		Required: requiredWith(names, "pr", "body"),
+		Step:     task.StepGitHubCommentPR,
+		Fields: func(in map[string]any) (map[string]string, bool) {
+			t := treeOf(ws, names, in)
+			n, ok := numberIn(in, "pr")
+			if t == nil || !ok {
+				return nil, false
+			}
+			return map[string]string{"repo": t.Repo.Repo.Canonical(), "pr": strconv.Itoa(n)}, true
+		},
+		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			t := treeOf(ws, names, tu.Input)
+			if t == nil {
+				return noSuchRepo(tu.Input, names), true, nil
+			}
+			n, ok := numberIn(tu.Input, "pr")
+			if !ok {
+				return "refused: a pull request number is required", true, nil
+			}
+			if strings.TrimSpace(str(tu.Input, "body")) == "" {
+				return "not commented: a comment needs a body", true, nil
+			}
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubCommentPR, Repo: t.Repo.Name(),
+				PR: strconv.Itoa(n), Body: str(tu.Input, "body")}))
+		},
+	}
+}
+
+// replyCommentToolFor replies in the thread of an inline review comment, by the pull request and
+// the comment's id: a step the autonomy decides (github.reply-comment), on the repository, the
+// number and the id as the task gave them. The runner checks that the thread is on that pull
+// request.
+func replyCommentToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
+	fields := func(in map[string]any) (t *workspace.Tree, pr, comment int, ok bool) {
+		t = treeOf(ws, names, in)
+		pr, okPR := numberIn(in, "pr")
+		comment, okC := numberIn(in, "comment")
+		return t, pr, comment, t != nil && okPR && okC
+	}
+	return verse.Tool{
+		Name: replyCommentTool,
+		Description: "Reply in the thread of an inline review comment (a comment on a pull request's diff), " +
+			"by the pull request's number and the comment's id, with the body given. A reply to a reply goes " +
+			"into the thread it is in. A comment on the pull request's conversation has no thread and is " +
+			"refused: answer it with " + commentPRTool + ". So is a comment on another pull request. The " +
+			"runner replies with its own token; what you read back is the reply's url. " +
+			"Repositories: " + strings.Join(names, ", ") + ".",
+		Params: repoParams(names, map[string]any{
+			"pr":      map[string]any{"type": "integer"},
+			"comment": map[string]any{"type": "integer"},
+			"body":    map[string]any{"type": "string"},
+		}),
+		Required: requiredWith(names, "pr", "comment", "body"),
+		Step:     task.StepGitHubReplyComment,
+		Fields: func(in map[string]any) (map[string]string, bool) {
+			t, pr, comment, ok := fields(in)
+			if !ok {
+				return nil, false
+			}
+			return map[string]string{"repo": t.Repo.Repo.Canonical(), "pr": strconv.Itoa(pr), "comment": strconv.Itoa(comment)}, true
+		},
+		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			t, pr, comment, ok := fields(tu.Input)
+			switch {
+			case t == nil:
+				return noSuchRepo(tu.Input, names), true, nil
+			case !ok:
+				return "refused: a pull request number and a comment id are required", true, nil
+			case strings.TrimSpace(str(tu.Input, "body")) == "":
+				return "not replied: a reply needs a body", true, nil
+			}
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubReplyComment, Repo: t.Repo.Name(),
+				PR: strconv.Itoa(pr), Comment: strconv.Itoa(comment), Body: str(tu.Input, "body")}))
 		},
 	}
 }

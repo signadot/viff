@@ -49,8 +49,15 @@ spawn:
 | Tool | What it does | Step |
 |---|---|---|
 | `github-issue-create` | opens an issue at the repository, with a title and body; the task reads back its number and url | `github-issue.create`, with `repo` |
-| `github-issue-comment` | comments on an issue there, by its number | `github-issue.comment`, with `repo`, `issue` |
-| `github-issue-close` | closes an issue there, by its number | `github-issue.close`, with `repo`, `issue` |
+| `github-issue-comment` | comments on an issue there, by its number. A pull request's number is refused, naming `github-comment-pr`. | `github-issue.comment`, with `repo`, `issue` |
+| `github-issue-close` | closes an issue there, by its number. A pull request's number is refused: this system does not close a pull request. | `github-issue.close`, with `repo`, `issue` |
+
+GitHub keeps a pull request's conversation as an issue's, so its issue routes take a pull
+request's number too. The runner reads the number before a comment or a close, and refuses one
+that is a pull request: a comment on a pull request is the [`github`](github.md) system's
+`comment-pr`, and `github-issue` closes no pull request. A number that is nothing is refused as
+no issue. So a doer given `github-issue` and no `github` block cannot comment on a pull
+request, as it could before.
 
 Every verb is a step, because each one uses the runner's credential. So an environment can leave
 any of them out (above, `comment`), and an autonomy can refuse or ask about any it gives. In a

@@ -48,7 +48,7 @@ of any branch; a charter that ships writes its git push shapes instead.
 |---|---|---|
 | [`git`](git.md) | `push`, `fetch` | [iod git](../reference/iod.md#git) |
 | [`git-issue`](git-issue.md) | `create`, `comment`, `close`, `pull`, `push` | [iod git-issue](../reference/iod.md#git-issue) |
-| [`github`](github.md) | `create-pr`, `update-pr`, `list-prs`, `read-pr` | [iod github](../reference/iod.md#github) |
+| [`github`](github.md) | `create-pr`, `update-pr`, `list-prs`, `read-pr`, `comment-pr`, `reply-comment` | [iod github](../reference/iod.md#github) |
 | [`github-issue`](github-issue.md) | `create`, `comment`, `close` | [iod github](../reference/iod.md#github) |
 | [`linear-issue`](linear-issue.md) | `create`, `comment`, `close` | [iod linear](../reference/iod.md#linear) |
 | [`slack`](slack.md) | `post`, `reply`, `read`, `react` | [iod slack](../reference/iod.md#slack) |

@@ -22,7 +22,8 @@ import (
 // first document that had one.
 type Request struct {
 	// Op is `push`, `create-pr`, `update-pr` or `fetch`, a read of the forge's pull requests
-	// (github.go): `github.list-prs` and `github.read-pr`, a tracker's act (issues.go): `git-issue.pull`,
+	// (github.go): `github.list-prs` and `github.read-pr`, a comment on a pull request (github.go):
+	// `github.comment-pr` and `github.reply-comment`, a tracker's act (issues.go): `git-issue.pull`,
 	// `git-issue.push`, and `github-issue.*` and `linear-issue.*` for create, comment and close,
 	// Slack's (slack.go): `slack.post`, `.reply`, `.read` and `.react`, or a verb of the verse system
 	// (verse.go): `verse.ask-create`, `verse.ask-get`, `verse.ask-list`, `verse.data-get`,
@@ -55,8 +56,11 @@ type Request struct {
 	Body  string `tony:"field=body,omitzero"`
 	// Draft opens a pull request as a draft (github.create-pr, draft=true).
 	Draft bool `tony:"field=draft,omitzero"`
-	// PR is the pull request a read names, by its number at the forge.
+	// PR is the pull request a read or a comment names, by its number at the forge.
 	PR string `tony:"field=pr,omitzero"`
+	// Comment is the review comment a reply is in the thread of, by its id at the forge. The
+	// reply's text is Body.
+	Comment string `tony:"field=comment,omitzero"`
 	// A tracker's act: Issue is the issue a comment or a close is about (a number at the forge,
 	// an identifier like `ENG-42` at Linear), Team the Linear team a filing goes to, by key.
 	Issue string `tony:"field=issue,omitzero"`

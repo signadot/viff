@@ -1,5 +1,5 @@
 name: github
-description: "GitHub as the forge of a repository the task checked out: pull requests, which are the forge's and not git's, opened, updated and read. The runner acts with its credential for the repository."
+description: "GitHub as the forge of a repository the task checked out: pull requests, which are the forge's and not git's, opened, updated, read and commented on. The runner acts with its credential for the repository."
 attributes:
 - {name: repo, form: repo, unique: true, required: true, description: "the repository, as `host/owner/name` in lower case (`github.com/acme/app`), whichever way the spawn named it"}
 verbs:
@@ -22,3 +22,12 @@ verbs:
   description: "Read one pull request by its number: its fields, whom a review is waiting on, the reviews given so far, and its description. What its author and reviewers wrote comes into the task as they wrote it."
   fields:
   - {name: pr, form: text, description: "the pull request's number"}
+- name: comment-pr
+  description: "Comment on a pull request's conversation, by its number. A number that is an issue, or nothing, is refused."
+  fields:
+  - {name: pr, form: text, description: "the pull request's number"}
+- name: reply-comment
+  description: "Reply in the thread of an inline review comment on a pull request, by the comment's id. A reply to a reply goes to its thread. A conversation comment has no thread and is refused, as is a comment on another pull request."
+  fields:
+  - {name: pr, form: text, description: "the pull request's number; the comment's thread must be on it"}
+  - {name: comment, form: text, description: "the review comment's id, as the task gave it"}

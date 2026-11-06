@@ -522,3 +522,170 @@ func (s *Server) githubRead(ctx context.Context, tk Task, req Request) Reply {
 	fmt.Fprintf(s.Log, "delivery: %s: %s of %s/%s\n", tk.ID, req.Op, owner, name)
 	return Reply{OK: true, Out: out}
 }
+
+// The pull request comments: github.comment-pr, on a pull request's conversation, and
+// github.reply-comment, in the thread of an inline review comment. GitHub keeps a pull request's
+// conversation as an issue's, so an issue's comment route would take either; these ask what the
+// number is first, so a comment meant for a pull request lands on one and says so, and an issue
+// is left to github-issue. Each step carries the pull request's number, and a reply the comment's
+// id as the task gave it, so a row or a ceiling pins a task to one pull request.
+const (
+	OpGitHubCommentPR    = "github.comment-pr"
+	OpGitHubReplyComment = "github.reply-comment"
+)
+
+// prComment is what the replies decode of a review comment: the thread it is in, and the pull
+// request it is on.
+type prComment struct {
+	ID             int64  `json:"id"`
+	InReplyTo      int64  `json:"in_reply_to_id"`
+	PullRequestURL string `json:"pull_request_url"`
+	HTMLURL        string `json:"html_url"`
+}
+
+// CommentGitHubPR comments on pull request n's conversation. A number that is not a pull request
+// is a refusal naming what it is: an issue, which github-issue-comment comments on, or nothing.
+// A closed or merged pull request takes a comment, as GitHub lets it.
+func CommentGitHubPR(ctx context.Context, hc *http.Client, token, api, owner, repo string, n int, body string) (out, refused string, err error) {
+	at := fmt.Sprintf("%s/repos/%s/%s", api, url.PathEscape(owner), url.PathEscape(repo))
+	var p struct {
+		Number int `json:"number"`
+	}
+	err = githubCall(ctx, hc, token, http.MethodGet, fmt.Sprintf("%s/pulls/%d", at, n), nil, &p, readLimit)
+	var st *githubStatus
+	if errors.As(err, &st) && st.Code == http.StatusNotFound {
+		var issue struct {
+			Number int `json:"number"`
+		}
+		ierr := githubCall(ctx, hc, token, http.MethodGet, fmt.Sprintf("%s/issues/%d", at, n), nil, &issue, readLimit)
+		switch {
+		case ierr == nil:
+			return "", fmt.Sprintf("#%d is an issue: comment on it with github-issue-comment", n), nil
+		case errors.As(ierr, &st) && st.Code == http.StatusNotFound:
+			return "", fmt.Sprintf("there is no pull request #%d at %s/%s", n, owner, repo), nil
+		}
+		return "", "", fmt.Errorf("reading #%d of %s/%s: %w", n, owner, repo, ierr)
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("reading pull request #%d of %s/%s: %w", n, owner, repo, err)
+	}
+	var c struct {
+		HTMLURL string `json:"html_url"`
+	}
+	if err := githubAPI(ctx, hc, token, http.MethodPost, fmt.Sprintf("%s/issues/%d/comments", at, n), map[string]string{"body": body}, &c); err != nil {
+		return "", "", fmt.Errorf("commenting on pull request #%d of %s/%s: %w", n, owner, repo, err)
+	}
+	return fmt.Sprintf("commented on pull request #%d at %s/%s: %s", n, owner, repo, c.HTMLURL), "", nil
+}
+
+// ReplyGitHubComment replies in the thread of review comment id, on pull request n. GitHub
+// threads one level deep, so a reply to a reply is posted to the thread's first comment, and the
+// answer names both. The thread is checked to be on pull request n: the step was decided on n,
+// and a reply elsewhere is not what was decided. A conversation comment has no thread and is
+// refused, naming github-comment-pr; an id that is no comment is refused as one.
+func ReplyGitHubComment(ctx context.Context, hc *http.Client, token, api, owner, repo string, n int, id int64, body string) (out, refused string, err error) {
+	at := fmt.Sprintf("%s/repos/%s/%s", api, url.PathEscape(owner), url.PathEscape(repo))
+	var c prComment
+	err = githubCall(ctx, hc, token, http.MethodGet, fmt.Sprintf("%s/pulls/comments/%d", at, id), nil, &c, readLimit)
+	var st *githubStatus
+	if errors.As(err, &st) && st.Code == http.StatusNotFound {
+		var conv struct {
+			ID int64 `json:"id"`
+		}
+		cerr := githubCall(ctx, hc, token, http.MethodGet, fmt.Sprintf("%s/issues/comments/%d", at, id), nil, &conv, readLimit)
+		switch {
+		case cerr == nil:
+			return "", fmt.Sprintf("comment %d is on a conversation, not in a review thread, and has no thread to reply in: comment on the pull request with github-comment-pr", id), nil
+		case errors.As(cerr, &st) && st.Code == http.StatusNotFound:
+			return "", fmt.Sprintf("no comment %d at %s/%s", id, owner, repo), nil
+		}
+		return "", "", fmt.Errorf("reading comment %d of %s/%s: %w", id, owner, repo, cerr)
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("reading review comment %d of %s/%s: %w", id, owner, repo, err)
+	}
+	if on := prOfURL(c.PullRequestURL); on != n {
+		return "", fmt.Sprintf("comment %d is on pull request #%d, not #%d", id, on, n), nil
+	}
+	root := id
+	if c.InReplyTo != 0 {
+		root = c.InReplyTo
+	}
+	var made struct {
+		HTMLURL string `json:"html_url"`
+	}
+	if err := githubAPI(ctx, hc, token, http.MethodPost, fmt.Sprintf("%s/pulls/%d/comments/%d/replies", at, n, root), map[string]string{"body": body}, &made); err != nil {
+		return "", "", fmt.Errorf("replying to comment %d on pull request #%d of %s/%s: %w", root, n, owner, repo, err)
+	}
+	thread := fmt.Sprintf("comment %d", root)
+	if root != id {
+		thread = fmt.Sprintf("comment %d (%d is a reply in it)", root, id)
+	}
+	return fmt.Sprintf("replied in the thread of %s on pull request #%d at %s/%s: %s", thread, n, owner, repo, made.HTMLURL), "", nil
+}
+
+// prOfURL is the number a pull request's API url ends in (`…/pulls/71`), 0 for none.
+func prOfURL(u string) int {
+	i := strings.LastIndex(u, "/pulls/")
+	if i < 0 {
+		return 0
+	}
+	n, _ := strconv.Atoi(u[i+len("/pulls/"):])
+	return n
+}
+
+// githubComment answers a `github.comment-pr` or a `github.reply-comment`: the step decided by the
+// launch's autonomy and the runner's ceiling, on the pull request and the comment as the task
+// named them, then the comment with this runner's token. What the number or the id turns out to
+// be at the forge is a refusal to re-plan on, where a forge that fails is an error.
+func (s *Server) githubComment(ctx context.Context, tk Task, req Request) Reply {
+	t := tk.Workspace.Tree(req.Repo)
+	if t == nil {
+		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
+	}
+	if _, has := s.Ceilings["github"]; !has {
+		return Reply{Refused: "this runner comments nothing at GitHub for its tasks: it has no `github` system"}
+	}
+	fields := map[string]string{"repo": t.Repo.Repo.Canonical(), "pr": req.PR}
+	if req.Op == OpGitHubReplyComment {
+		fields["comment"] = req.Comment
+	}
+	if why := s.refused(tk, req.Decision, task.NewStep(req.Op, fields)); why != "" {
+		return Reply{Refused: why}
+	}
+	owner, name, err := RepoPath(t.Repo.Remote)
+	if err != nil {
+		return Reply{Refused: err.Error()}
+	}
+	n, err := strconv.Atoi(req.PR)
+	if err != nil || n <= 0 {
+		return Reply{Refused: fmt.Sprintf("%q is not a pull request number", req.PR)}
+	}
+	var id int64
+	if req.Op == OpGitHubReplyComment {
+		if id, err = strconv.ParseInt(req.Comment, 10, 64); err != nil || id <= 0 {
+			return Reply{Refused: fmt.Sprintf("%q is not a comment id", req.Comment)}
+		}
+	}
+	if strings.TrimSpace(req.Body) == "" {
+		return Reply{Refused: "a comment needs a body"}
+	}
+	tok, err := tk.Credential(t.Repo)
+	if err != nil {
+		return Reply{Error: err.Error()}
+	}
+	var out, refused string
+	if req.Op == OpGitHubCommentPR {
+		out, refused, err = CommentGitHubPR(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name, n, req.Body)
+	} else {
+		out, refused, err = ReplyGitHubComment(ctx, s.http(), tok, s.Services.GitHubAPI, owner, name, n, id, req.Body)
+	}
+	switch {
+	case err != nil:
+		return Reply{Error: err.Error()}
+	case refused != "":
+		return Reply{Refused: refused}
+	}
+	fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
+	return Reply{OK: true, Out: out}
+}

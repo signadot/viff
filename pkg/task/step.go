@@ -76,15 +76,19 @@ func (s Step) Field(name string) *ir.Node {
 // that keeps its base has no `base`, a read of a channel no `thread`, and a row on an absent
 // field does not match.
 var (
-	StepGitPush           = systems.Step("git", "push", "repo", "from", "ref", "delete", "force", "exists", "own")
-	StepGitFetch          = systems.Step("git", "fetch", "repo", "from")
-	StepGitHubCreatePR    = systems.Step("github", "create-pr", "repo", "base", "head", "own", "draft")
-	StepGitHubUpdatePR    = systems.Step("github", "update-pr", "repo", "head", "base", "own")
-	StepGitHubListPRs     = systems.Step("github", "list-prs", "repo")
-	StepGitHubReadPR      = systems.Step("github", "read-pr", "repo", "pr")
-	StepFilesWrite        = systems.Step("files", "write", "path")
-	StepCommandsRun       = systems.Step("commands", "run", "command")
-	StepAgentCallSubAgent = systems.Step("agent", "call-sub-agent", "agent")
+	StepGitPush        = systems.Step("git", "push", "repo", "from", "ref", "delete", "force", "exists", "own")
+	StepGitFetch       = systems.Step("git", "fetch", "repo", "from")
+	StepGitHubCreatePR = systems.Step("github", "create-pr", "repo", "base", "head", "own", "draft")
+	StepGitHubUpdatePR = systems.Step("github", "update-pr", "repo", "head", "base", "own")
+	StepGitHubListPRs  = systems.Step("github", "list-prs", "repo")
+	StepGitHubReadPR   = systems.Step("github", "read-pr", "repo", "pr")
+	// A comment on a pull request's conversation, and a reply in an inline comment's thread: each
+	// carries the pull request, so a row pins a task to one.
+	StepGitHubCommentPR    = systems.Step("github", "comment-pr", "repo", "pr")
+	StepGitHubReplyComment = systems.Step("github", "reply-comment", "repo", "pr", "comment")
+	StepFilesWrite         = systems.Step("files", "write", "path")
+	StepCommandsRun        = systems.Step("commands", "run", "command")
+	StepAgentCallSubAgent  = systems.Step("agent", "call-sub-agent", "agent")
 	// The trackers' steps. A repository's own tracker (git-issue) is written in the checkout, as
 	// commits are, and leaves when pushed; GitHub's issues and a Linear team are remote. Each verb
 	// of each is a step.

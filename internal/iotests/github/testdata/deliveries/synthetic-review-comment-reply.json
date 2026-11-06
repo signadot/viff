@@ -1,0 +1,35 @@
+{
+  "id": 0,
+  "guid": "synthetic-not-captured",
+  "delivered_at": "2026-01-01T00:00:00Z",
+  "status": "OK",
+  "status_code": 200,
+  "event": "pull_request_review_comment",
+  "action": "created",
+  "verseWant": "github.acme.app.comment.\"7\".\"902\"",
+  "request": {
+    "headers": {"X-GitHub-Event": "pull_request_review_comment"},
+    "payload": {
+      "action": "created",
+      "repository": {"full_name": "acme/app", "name": "app", "owner": {"login": "acme"}},
+      "pull_request": {
+        "number": 7,
+        "title": "a change",
+        "state": "open",
+        "url": "https://api.github.com/repos/acme/app/pulls/7"
+      },
+      "comment": {
+        "id": 902,
+        "body": "done",
+        "path": "pkg/a.go",
+        "line": 12,
+        "start_line": null,
+        "side": "RIGHT",
+        "commit_id": "cafe1234",
+        "in_reply_to_id": 900,
+        "diff_hunk": "@@ -10,3 +10,3 @@\n func f() {\n-\told()\n+\tnew()",
+        "pull_request_url": "https://api.github.com/repos/acme/app/pulls/7"
+      }
+    }
+  }
+}

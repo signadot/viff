@@ -24,6 +24,8 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 		"git.push":              "repo,from,ref,delete,force,exists,own",
 		"github.create-pr":      "repo,base,head,own,draft",
 		"github.update-pr":      "repo,head,base,own",
+		"github.comment-pr":     "repo,pr",
+		"github.reply-comment":  "repo,pr,comment",
 		"git-issue.push":        "repo",
 		"github-issue.comment":  "repo,issue",
 		"linear-issue.create":   "team",
@@ -63,7 +65,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 	if ToolName("git", "push") != "git-push" || StepName("git", "push") != "git.push" {
 		t.Error("the names")
 	}
-	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 36 {
+	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 38 {
 		t.Errorf("steps: %v", steps)
 	}
 }

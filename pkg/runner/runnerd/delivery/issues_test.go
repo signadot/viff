@@ -175,6 +175,10 @@ func TestCommentAndCloseAtTheRemoteTrackers(t *testing.T) {
 		var in map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&in)
 		forgeSaw = append(forgeSaw, r.Method+" "+r.URL.Path+" "+in["body"]+in["state"])
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"number":7,"state":"open"}`))
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"state":"closed","html_url":"https://github.com/acme/app/issues/7#c1"}`))
 	}))
@@ -215,7 +219,7 @@ func TestCommentAndCloseAtTheRemoteTrackers(t *testing.T) {
 	if rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueClose, Repo: "app", Issue: "x"})); rep.Refused == "" {
 		t.Errorf("a non-number: %+v", rep)
 	}
-	if got := strings.Join(forgeSaw, "; "); got != "POST /repos/acme/app/issues/7/comments on it; PATCH /repos/acme/app/issues/7 closed" {
+	if got := strings.Join(forgeSaw, "; "); got != "GET /repos/acme/app/issues/7 ; POST /repos/acme/app/issues/7/comments on it; GET /repos/acme/app/issues/7 ; PATCH /repos/acme/app/issues/7 closed" {
 		t.Errorf("the forge saw %q", got)
 	}
 	if rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueComment, Issue: "ENG-42", Body: "on it"})); !rep.OK || rep.Out != "commented on ENG-42: https://linear.app/x/issue/ENG-42#c1" {
@@ -226,6 +230,50 @@ func TestCommentAndCloseAtTheRemoteTrackers(t *testing.T) {
 	}
 	if got := strings.Join(linearSaw, " "); got != "issue comment:on it states update:s9" {
 		t.Errorf("Linear saw %q", got)
+	}
+}
+
+// AN ISSUE VERB DOES NOT ACT ON A PULL REQUEST. GitHub keeps a pull request's conversation as an
+// issue's, so its issue routes take a pull request's number; the runner reads the number first,
+// refuses a comment naming github-comment-pr and a close saying github-issue closes none, and
+// writes nothing. A number that is nothing is refused as no issue.
+func TestAnIssueVerbRefusesAPullRequest(t *testing.T) {
+	var writes []string
+	forge := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			writes = append(writes, r.Method+" "+r.URL.Path)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		switch r.URL.Path {
+		case "/repos/acme/app/issues/71":
+			_, _ = w.Write([]byte(`{"number":71,"state":"open","pull_request":{"url":"https://api.github.com/repos/acme/app/pulls/71"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"message": "Not Found"}`))
+		}
+	}))
+	defer forge.Close()
+	ws := githubTree("acme/app", "https://github.com/acme/app.git")
+	s := &Server{Log: io.Discard, Services: Services{GitHubAPI: forge.URL}, Ceilings: performs("github-issue")}
+	tk := Task{ID: "v2", Workspace: ws, Launch: within([]string{"acme/app"}, "github-issue"), Credential: func(workspace.Repo) (string, error) { return "tok", nil }}
+	for _, tc := range []struct {
+		req     Request
+		refused string
+	}{
+		{Request{Op: OpGitHubIssueComment, Issue: "71", Body: "on it"}, "#71 is a pull request: comment on it with github-comment-pr"},
+		{Request{Op: OpGitHubIssueClose, Issue: "71"}, "#71 is a pull request, and github-issue does not close one"},
+		{Request{Op: OpGitHubIssueComment, Issue: "72", Body: "on it"}, "there is no issue #72 at acme/app"},
+		{Request{Op: OpGitHubIssueClose, Issue: "72"}, "there is no issue #72 at acme/app"},
+	} {
+		tc.req.Repo = "app"
+		if rep := s.answer(tk, frame(t, tc.req)); rep.Refused != tc.refused {
+			t.Errorf("%s #%s: %+v, want refused %q", tc.req.Op, tc.req.Issue, rep, tc.refused)
+		}
+	}
+	if len(writes) != 0 {
+		t.Errorf("a refused issue verb wrote %v", writes)
 	}
 }
 

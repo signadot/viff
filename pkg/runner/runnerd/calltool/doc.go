@@ -1,8 +1,9 @@
 // Package calltool is how a PROGRAM in a task's workspace calls the task's tools: `question-ask`,
 // `git-push`, `git-fetch`, `github-create-pr`, `github-update-pr`, `github-list-prs`,
-// `github-read-pr`, and whatever the runner offers next. The verse agent has those tools because
-// each is wired to the loop in Go; a script has only a shell. This gives the shell one command,
-// `verse-call-tool` (cmd/verse-call-tool), and the task process one socket to answer it on.
+// `github-read-pr`, `github-comment-pr`, `github-reply-comment`, and whatever the runner offers
+// next. The verse agent has those tools because each is wired to the loop in Go; a script has
+// only a shell. This gives the shell one command, `verse-call-tool` (cmd/verse-call-tool), and
+// the task process one socket to answer it on.
 //
 // It knows no agent package: the host offers its tools as Tool and performs a call by name.
 //
