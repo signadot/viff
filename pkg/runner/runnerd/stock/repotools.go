@@ -454,9 +454,9 @@ func relay(rep delivery.Reply, err error) (string, bool, error) {
 }
 
 // repoBrief tells the agent what its working directory holds, and how its work leaves: commit
-// it, with the trailers and as the checkout's identity, then push, as the autonomy decides. It rides the prompt, for the reason
-// #16 gave: the default frame is derived from the tools and gates, and this is the runner's
-// convention, not advice.
+// it, with the trailers and as the checkout's identity, then push, as the autonomy decides. It
+// rides the prompt, for the reason #16 gave: the default frame is derived from the tools and
+// gates, and this is the runner's convention, not advice.
 func repoBrief(ws *workspace.Workspace, trailers []string, l *runner.Launch) string {
 	b := ws.Brief()
 	if !ws.Deliverable(l) {
