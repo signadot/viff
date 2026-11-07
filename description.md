@@ -1,8 +1,10 @@
 # secret: a system for one command run with one secret of the store, by the runner
 
-**Status:** a plan. Nothing is built. It blocks 1f5art3x. It waits on 1q5art3x (the secret
-store, which it reads) and on 1k5art3x (the table of ops, built). It shares the first op
-performed apart with 1v5art3x, whichever lands first.
+**Status:** a plan, reviewed twice (the second against the code: "At the second review",
+below), being built in the worktree `.worktrees/secret-exec` (branch `verse/secret-exec`, over
+`verse/secret-store`), step by step; nothing is committed yet. It blocks 1f5art3x. It waits on
+1q5art3x (the secret store, which it reads) and on 1k5art3x (the table of ops, built). It shares
+the first op performed apart with 1v5art3x, whichever lands first.
 
 ## What it is
 
@@ -92,8 +94,10 @@ autonomy:
 ```
 
 - **`name`** is the block's unique attribute: the secret's name in the store, a literal in the
-  environment and in the ceiling both. A ceiling that names a pattern is refused: the operator
-  says which secrets, one by one, as a name is what a doer is trusted with.
+  environment and in the ceiling both. A ceiling that names a pattern is refused, and so is a
+  block that names none (the empty block, `secret: {ceiling: {}}`, would be every secret): the
+  operator says which secrets, one by one, as a name is what a doer is trusted with. `as` a
+  ceiling block may pattern or leave out, for any variable.
 - **`as`** is the block's other attribute, required: the variable the secret is given in, for
   every command of the block (`NPM_TOKEN`), in the form `var` (`^[A-Za-z_][A-Za-z0-9_]*$`, the
   `varName` of the environment's `vars`). A secret has one conventional variable, so the spawn
@@ -126,38 +130,63 @@ autonomy:
   own object match lets a key it does not name by. A shape that says no `env` is read as
   `env: {}` (the field's default), so plain variables are closed by default, and `env: null` is
   any. A row matches it as tony matches, by what it names: `env: {LD_PRELOAD: null}` is every
-  call that gives `LD_PRELOAD`. Last the secret, under the block's `as`, which no plain variable
-  may name.
+  call that gives `LD_PRELOAD`. The two readings are the two an address has (`Reading`): a
+  shape, a ceiling and an `allow` row read Within, the call's variables lying among those named;
+  a `deny` or an `ask` row reads Touches, the call giving one of those named; `Row.reading`
+  already splits them so, and each errs toward refusing. Last the secret, under the block's
+  `as`, which no plain variable may name.
   `PATH` given this way is the `PATH` the program is found on, under the rule below.
   `LD_PRELOAD` and its family are admitted as any name is: a ceiling that admits a command
   admits what that command does with the secret, by construction, so a variable that changes
   what the command does adds nothing the ceiling has not granted. It is the offer's and the
   spawn's to name the variables, one by one, and a row's to deny one.
-- **Where it runs.** A second bwrap of the same shape as the task's (`Wrap`), over the task's
-  root, `--chdir` to `dir`, with the task's `Network` (the same egress socket, so the proxy
-  decides its connections under the task's autonomy), its own pid namespace, and no capability.
+- **Where it runs.** A second bwrap of the same shape as the task's (`Wrap`, which gains a
+  working directory apart from the directory it binds: the root bound, `--chdir` to `dir`
+  within it), with the task's `Network` (the same egress socket, so the proxy decides its
+  connections under the task's autonomy), its own pid namespace, and no capability. `dir` is
+  checked as a path under the root and nothing more: the runner does not open it, and bwrap
+  resolves it inside the sandbox, where a link out of the root reaches a system directory at
+  most, read only.
+  The sandbox is runnerd's and the channel is delivery's, which runnerd imports, so delivery
+  names what it needs itself: `Services.Confine`, an interface runnerd implements over its
+  sandbox (`Confine(cmd, root, dir, network)`), which also refuses a program that resolves
+  neither under a system directory nor under a `readOnly` path (`UnderSystem` stays where it
+  is), and `Task.Network{Mode, Egress}` as two strings. The store it imports as it is
+  (`secretstore` imports nothing of runnerd).
   Its `/tmp` is a tmpfs of its own, not the task's, so what the task left in `/tmp` is not there;
   and under `allow` the proxy is the task's, so the model's hosts are on it too. The secret is in
   that process's environment and nowhere else: the task's processes are in another pid namespace
   and see no `/proc` of it. The value is in the runner's memory while the command runs, and in no
   log, no reply and no file.
-- **The output is a stream the task's process serves.** The command's stdin, stdout and stderr
-  are a socket pair the runner makes. The runner pumps its end: what the command writes goes on
-  with the secret's value replaced by `[secret <name>]` wherever it appears whole (a second
-  line: an encoding defeats it), and, later, what comes back goes to the command's stdin. The
-  task's end it hands to the task's process over the channel, as a descriptor on the first frame
-  of the answer. So the runner opens no path under the task's root: that tree is the task's to
-  write, and a link in it is resolved by whoever opens it, with that side's reach. The task's
-  process serves the descriptor as a unix socket at `<root>/.verse/exec/<id>.sock`, where a
-  shell of the task's connects to read along, and to start writes what comes out to
-  `<root>/.verse/exec/<id>.out`, cut at 16 MiB and said. The final frame is the exit status;
-  the tool answers the model with it, the file's path and the last 16 KiB.
+- **The output is a stream the task's process serves, and the runner is in the middle of it.**
+  Two pairs. The command's stdout and stderr are one pipe to the runner, its stdin another from
+  it; between the runner and the task's process is a socket pair the runner makes. The runner
+  pumps: what the command writes goes on to the task's end with the secret's value replaced by
+  `[secret <name>]` wherever it appears whole (a second line: an encoding defeats it), and,
+  later, what comes back goes to the command's stdin. The task's end it hands to the task's
+  process over the channel, as a descriptor on the first frame of the answer. So the runner
+  opens no path under the task's root: that tree is the task's to write, and a link in it is
+  resolved by whoever opens it, with that side's reach. The task's process serves the descriptor
+  as a unix socket at `<root>/.verse/exec/<id>.sock`, where a shell of the task's connects to
+  read along, and to start writes what comes out to `<root>/.verse/exec/<id>.out`, cut at 16 MiB
+  and said. The final frame is the exit status; the tool answers the model with it, the file's
+  path and the last 16 KiB.
+  - **A descriptor rides the bytes it was sent with,** and a plain read drops it. So the task's
+    side reads the channel with `ReadMsgUnix` throughout, queueing each descriptor it is handed,
+    and a frame that says `Stream: true` takes the next; the kernel ends a read at the message
+    that carried rights, so the descriptor is queued by the time its frame decodes. The runner
+    writes that frame, length and body, in one `WriteMsgUnix`. Over a connection that is no unix
+    socket (a test's `net.Pipe`) a stream frame cannot be carried, and the op says so instead.
+    The op sends it from inside its act, through a `stream(id, file)` the server sets on the task
+    it hands the op (`Serve`'s write lock, as `send` takes it).
 - **The run is bounded.** `timeout` on the call, seconds, 10 minutes where none, an hour at
   most (the op's deadline). Past it the command is killed and the reply says so. When the
   task's process goes, the command is killed with it (the `gone` context an op apart runs
-  under). A kill reaches the whole of it: bwrap runs in a process group of its own and the group
-  is signalled, since killing bwrap alone leaves its children to `--die-with-parent` while the
-  output pipe stays open; `cmd.WaitDelay` bounds the wait on that pipe either way.
+  under). A kill reaches the whole of it by the pid namespace, not a process group:
+  `--new-session` makes the sandbox's processes a session of their own, which a signal to bwrap's
+  group from outside does not reach, but bwrap killed kills its init (`--die-with-parent`), and
+  a pid namespace whose init dies dies whole. `cmd.Process.Kill`, then; `cmd.WaitDelay` bounds
+  the wait on the output pipe either way.
 - **Closed without a sandbox.** A runner with `-sandbox none` does not perform `secret`: a
   command there runs as the runner's user on the whole machine, and the secret would be the
   machine's. `Standalone`, which has the sandbox where `Config.Held` has none, closes it at
@@ -177,39 +206,54 @@ Each step builds and passes on its own.
    carries `repo` and `from`.
    - **The form `var`** in `pkg/systems`: a variable's name, `varName`; a pattern on it is text.
    - **The form `env`** in `pkg/systems`: `Accepts` takes `null`, the combinators, and an object
-     whose keys are variable names (`varName`) and whose values are text patterns; `MatchFieldAs`
-     reads it closed, as `FormPath` has its reading; `FieldContains` holds an inner object within
-     an outer where every key of the inner is the outer's and its pattern within the outer's, so
-     a ceiling bounds an environment by name. `Field` gains `Default`, as `Attribute` has it,
-     read where a shape omits the field; the generated schema follows.
+     whose keys are variable names (`varName`) and whose values are text patterns, and refuses
+     `!glob` and `!regexp` on the whole; `MatchFieldAs` reads it by its `Reading`, Within every
+     variable of the call among the pattern's and matching its pattern, Touches some variable
+     the pattern names given and matching; `FieldContains` holds an inner object within an outer
+     where every key of the inner is the outer's and its pattern within the outer's, so a
+     ceiling bounds an environment by name; `FieldMeets` is yes (a call with no variable meets
+     every two). `Field` gains `Default`, as `Attribute` has it, a pattern in tony read where a
+     shape or a ceiling's shape omits the field (`Shape.Matches`, `ShapeWithin`, `Shape.Meets`,
+     through one `filled`); a row's match is not filled, since a row names what it names and an
+     omitted field is any. The generated schema follows.
    `docs/systems/secret.md`. `systems.Argv(list) string` and `systems.ArgvList(line)` in one
    place, with the quoting rule, and a test that every list round-trips and that two lists
    never spell the same.
-2. **The configuration.** `secret` in `performedSystems`: performed where `secrets.dir` is set,
-   a ceiling names it and the sandbox is bwrap; it needs "a secret store (`secrets.dir`) and a
-   sandbox". `Config.Check` refuses a ceiling block whose `name` is not a literal store name
-   (`secretstore.CheckName`), and an `as` pattern no variable's name matches. `Held` drops a block
-   whose secret is absent at start, saying which and where, and closes the system where none is
-   left. `Standalone` closes it whole under `-sandbox none`, since the sandbox is its to know.
+2. **The configuration.** `secret` in `performedSystems`: performed where `secrets.dir` is set
+   and a ceiling names it (`when` reads the file alone); it needs "a secret store
+   (`secrets.dir`) and a sandbox". `Config.Check` refuses a ceiling block that names no `name`,
+   one whose `name` is not a literal store name (`secretstore.CheckName`), and an `as` pattern no
+   variable's name matches. `Held` drops a block whose secret is absent at start, saying which
+   and where, and closes the system where none is left (a rewrite of each doer's `secret`
+   ceiling, beside `without`). `Standalone` closes it whole under `-sandbox none`, since the
+   sandbox is its to know, before the task's configuration is marshalled, so the task's process
+   offers nothing of it either.
 3. **The task apart, and a descriptor on a frame.** `delivery.Task` gains `Root` (the
-   workspace root) and `Network`, set at the launch and kept by `Task.apart`: what an op apart
-   may read, since nothing in turn writes them. `Services` gains the store
-   (`*secretstore.Store`) and the sandbox. This is the fix 1v5art3x's note asks for, and the
-   first op apart's test. `Reply` gains `Stream bool`: a frame that says it carries one
-   descriptor (`WriteMsgUnix` and `ReadMsgUnix` on the channel's `*net.UnixConn`), which
-   `Client.hear` takes and hands to the asker with the reply; an answer may now be two frames, the
-   stream's and the final one, by the one id. Nothing else of the protocol changes.
+   workspace root) and `Network{Mode, Egress}`, set at the launch (`Channel.SetNetwork`, in
+   `SubprocessHandler.start` once the egress socket is there, before `Serve`) and kept by
+   `Task.apart`: what an op apart may read, since nothing in turn writes them. `Services` gains
+   the store (`*secretstore.Store`) and `Confine` (above). This is the fix 1v5art3x's note asks
+   for, and the first op apart's test. `Reply` gains `Stream bool`: a frame that says it carries
+   one descriptor, written in one `WriteMsgUnix`; the task's side reads with `ReadMsgUnix`
+   throughout (a reader over the `*net.UnixConn` that queues what arrives), and `Client.hear`
+   hands the next queued descriptor to the asker with such a reply, `Ask` returning both; an
+   answer may now be two frames, the stream's and the final one, by the one id. `Task` gains the
+   unexported `stream(id, *os.File) error` `Serve` sets. `op` gains `apart()` and
+   `withDeadline()`. Nothing else of the protocol changes.
 4. **The op.** `OpSecretExec = "secret.exec"` on the table: takes `name`, `dir`, numbers
-   `timeout`, body (`{argv: [...], env: {...}}`, tony), apart, deadline one hour. `ask` finds the
-   environment's block for `name` and reads `as` from it (no block: refused, saying which the
-   environment has), checks `dir` as above and that each name of `env` is a variable's name and
-   none is `as`, and asks about the one step: `name` and `as` from the block, `argv` spelled from
-   the body's list, `env` as given (`Step.With`). The act: read the secret (absent: a refusal naming it), build the
-   environment, resolve `argv[0]` on its `PATH`, make the socket pair, build the second sandbox
-   with the command's stdio on the pair's one end, start it in its own process group with
-   `WaitDelay` set, send the first frame with the pair's other end, pump the command's output
-   through the redacting writer to it, run with the timeout, answer the final frame with the
-   exit status; past the timeout or once the task is gone, signal the group.
+   `timeout`, body (`{argv: [...], env: {...}}`, tony, read strictly), apart, deadline one hour.
+   `ask` reads the body, checks `dir` as a path under the root, `argv` non-empty with a bare
+   `argv[0]`, each name of `env` a variable's name, and `timeout` within the hour; finds the
+   environment's block for `name` and reads `as` from it where there is one (none: the step
+   carries no `as`, and `refused` says the environment gives no such block, as it does for every
+   op); refuses an `env` naming `as`; and asks about the one step: `name` and `as` from the
+   block, `argv` spelled from the body's list, `env` as given (`Step.With`). The act: read the
+   secret (absent: a refusal naming it), build the environment, resolve `argv[0]` on its `PATH`
+   and run that path, make the pipes and the socket pair, `Confine` the command over the root in
+   `dir`, start it with `WaitDelay` set, send the stream frame with the pair's far end, pump the
+   command's output through the redacting writer to the near end and the near end to its stdin,
+   run with the timeout, answer the final frame with the exit status; past the timeout or once
+   the task is gone, kill it.
 5. **The tool.** `secret-exec` in `stock`, beside `slackTools`, offered to every doer where the
    runner performs `secret`: params `name`, `argv` (an array of strings), `env` (an object of
    strings), `dir`, `timeout`. `Build` makes the step whole, as the verse tools' do for a field
@@ -312,6 +356,15 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   in the step's fields, and not on the call.
 - **The live tree for now.** What a command acts on is unreviewed and may change while it
   runs; the doc says so, and an export with a `commit` field is the step after.
+
+- **At the second review, against the code:** the runner is in the middle of the stream (two
+  pairs), since redaction is its; a descriptor rides its frame's bytes and a plain read drops it,
+  so the task's side reads with `ReadMsgUnix` throughout; the kill is the pid namespace's,
+  `--new-session` putting a process group out of reach; delivery names its own `Confine` and
+  `Network`, since runnerd imports it; `env` reads by `Reading`, Within for a shape, a ceiling
+  and an allow row, Touches for a deny or an ask row, as an address does; a `secret` ceiling
+  block names its `name`; a missing block is `refused`'s to say, as for every op, so the
+  table's test holds.
 
 ## Open questions
 
