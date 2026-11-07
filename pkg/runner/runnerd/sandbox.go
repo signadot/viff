@@ -44,7 +44,6 @@ type Confiner struct {
 	ReadOnly []string
 	// Kept is the runner's own directories (KeptDirs), which no readOnly path may reach.
 	Kept map[string]string
-	Log  io.Writer
 }
 
 // Confine implements delivery.Confine.
@@ -67,23 +66,21 @@ func (c Confiner) Confine(cmd *exec.Cmd, root, dir string, net delivery.Network)
 	}
 	for _, p := range []string{cmd.Path, resolved(cmd.Path)} {
 		if !UnderSystem(p) && !underAny(p, kept) {
-			return fmt.Errorf("the program %s is under no system directory and no readOnly path of the runner's, "+
-				"and a command run with a secret is one of the runner's own", p)
+			return fmt.Errorf("the program %s is under no system directory and no readOnly path of the runner's; "+
+				"a command run with a secret starts from one of the runner's own, and what that one runs is the "+
+				"environment's shapes' to bound", p)
 		}
 	}
-	log := c.Log
-	if log == nil {
-		log = io.Discard
-	}
 	cmd.Dir = dir
-	return c.Sandbox.Wrap(cmd, root, Network{Mode: net.Mode, Egress: net.Egress}, withReadOnly(nil, c.ReadOnly, c.Kept, log))
+	// The readOnly paths this host lacks were said when the task's own process started
+	// (SubprocessHandler), and are not said again for each command.
+	return c.Sandbox.Wrap(cmd, root, Network{Mode: net.Mode, Egress: net.Egress}, withReadOnly(nil, c.ReadOnly, c.Kept, io.Discard))
 }
 
 // underAny is whether path is, or lies under, one of dirs.
 func underAny(path string, dirs []string) bool {
 	for _, d := range dirs {
-		d = filepath.Clean(d)
-		if path == d || strings.HasPrefix(path, d+"/") {
+		if within(path, d) {
 			return true
 		}
 	}

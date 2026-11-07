@@ -160,7 +160,15 @@ func writeFrameWith(uc *net.UnixConn, body []byte, files []*os.File) error {
 		}
 	}
 	frame := append([]byte(strconv.Itoa(len(body))+"\n"), body...)
-	_, _, err := uc.WriteMsgUnix(frame, syscall.UnixRights(fds...), nil)
+	n, _, err := uc.WriteMsgUnix(frame, syscall.UnixRights(fds...), nil)
+	if err != nil {
+		return err
+	}
+	// The rights ride the first byte, which went; what a short write left of the frame is
+	// plain bytes, written as any frame is (Write loops until all of it has gone).
+	if n < len(frame) {
+		_, err = uc.Write(frame[n:])
+	}
 	return err
 }
 
@@ -230,20 +238,33 @@ func (r *rights) Read(p []byte) (int, error) {
 // frame starts. Called by the one goroutine that reads br.
 func (r *rights) consumed(br *bufio.Reader) int64 { return r.read - int64(br.Buffered()) }
 
-// take is the next n descriptors read, as files, and whether there were that many: the oldest
-// batch's, which is the frame's own, since batches come in the order of the frames they ride.
-func (r *rights) take(n int) ([]*os.File, bool) {
+// take is the next n descriptors read, as files: the oldest batch's, which is the frame's own,
+// since batches come in the order of the frames they ride. An error is the channel's end
+// (hear): there were not that many, or one could not be made a file the task can use.
+func (r *rights) take(n int) ([]*os.File, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.batches) == 0 || len(r.batches[0].fds) != n {
-		return nil, false
+		return nil, fmt.Errorf("a frame says it carries %d descriptors, and the channel read fewer", n)
 	}
-	files := make([]*os.File, n)
-	for i, fd := range r.batches[0].fds {
-		files[i] = os.NewFile(uintptr(fd), "stream")
-	}
+	batch := r.batches[0]
 	r.batches = r.batches[1:]
-	return files, true
+	files := make([]*os.File, 0, n)
+	for i, fd := range batch.fds {
+		// Non-blocking, so the file is the runtime's to poll: a read on it is interrupted by
+		// its Close, which then closes the descriptor at once. Blocking, Close would wait on
+		// the read, and closing an end to let go of a stream would let go of nothing while
+		// the far side was quiet. One that cannot be is no use, and the rest go with it.
+		if err := syscall.SetNonblock(fd, true); err != nil {
+			closeAll(files)
+			for _, fd := range batch.fds[i:] {
+				_ = syscall.Close(fd)
+			}
+			return nil, fmt.Errorf("descriptor %d of %d on a frame could not be made non-blocking: %w", i+1, n, err)
+		}
+		files = append(files, os.NewFile(uintptr(fd), "stream"))
+	}
+	return files, nil
 }
 
 // unclaimed is whether a batch came with bytes read wholly before a frame starting at start,

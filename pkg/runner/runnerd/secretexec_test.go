@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/runnerd"
@@ -71,7 +72,7 @@ func TestASecretCommandRunsInTheSandboxWithTheProgramTheRunnerKeeps(t *testing.T
 	s := &delivery.Server{Log: &log,
 		Ceilings: map[string]systems.Ceiling{"secret": {{Verbs: map[string][]systems.Shape{"exec": exec}}}},
 		Services: delivery.Services{Secrets: secretstore.Open(store),
-			Confine: runnerd.Confiner{Sandbox: runnerd.BwrapAt(bwrap), ReadOnly: []string{ro}, Log: &log}}}
+			Confine: runnerd.Confiner{Sandbox: runnerd.BwrapAt(bwrap), ReadOnly: []string{ro}}}}
 	l := &runner.Launch{ID: "t1", Prompt: "p", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 		Environment: systems.Environment{Systems: systems.Systems{
 			"secret": {{Attributes: map[string]string{"name": "npm-token", "as": "NPM_TOKEN"}, Verbs: map[string][]systems.Shape{"exec": exec}}},
@@ -140,5 +141,130 @@ func TestASecretCommandRunsInTheSandboxWithTheProgramTheRunnerKeeps(t *testing.T
 	}
 	if strings.Contains(log.String(), "s3cr3t") {
 		t.Error("the value is in the log")
+	}
+}
+
+// THE SECRET STAYS WITH THE RUNNER WHERE THE ENVIRONMENT, THE CEILING OR THE AUTONOMY FORBIDS
+// THE RUN: each way a call might reach it past them is refused before anything runs, and after
+// all of them nothing in the workspace, the answers or the log holds the value. The ceiling
+// names one secret; the environment names which programs and which variables; the rows deny
+// one variable and one command; the runner's own check holds the program to one it keeps,
+// wherever the PATH the call was allowed to set points.
+func TestASecretStaysWithTheRunnerWhereTheRunIsForbidden(t *testing.T) {
+	bin := t.TempDir()
+	bwrap := filepath.Join(bin, "bwrap")
+	if err := os.WriteFile(bwrap, []byte(fakeBwrap), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "tools"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A program of the task's that would write the value into the workspace, were it run.
+	if err := os.WriteFile(filepath.Join(root, "tools", "mine"), []byte("#!/bin/sh\necho $NPM_TOKEN > "+filepath.Join(root, "leak")+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := t.TempDir()
+	for _, name := range []string{"npm-token", "pypi-token"} {
+		if err := os.WriteFile(filepath.Join(store, name), []byte("npm_s3cr3t\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pat := func(text string) *ir.Node {
+		n, err := parse.Parse([]byte(text))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return systems.Plain(n)
+	}
+	var log bytes.Buffer
+	s := &delivery.Server{Log: &log,
+		// The ceiling: one secret, any command, any variable.
+		Ceilings: map[string]systems.Ceiling{"secret": {{Attributes: map[string]*ir.Node{"name": ir.FromString("npm-token")},
+			Verbs: map[string][]systems.Shape{"exec": {{"env": pat("null")}}}}}},
+		Services: delivery.Services{Secrets: secretstore.Open(store),
+			Confine: runnerd.Confiner{Sandbox: runnerd.BwrapAt(bwrap)}}}
+	// The environment: sh -c and mine, with PATH and NODE_OPTIONS; and a block for a secret the
+	// ceiling does not name.
+	exec := []systems.Shape{{"argv": pat(`!regexp "^(sh -c |mine)"`), "env": pat(`{PATH: null, NODE_OPTIONS: null}`)}}
+	l := &runner.Launch{ID: "t1", Prompt: "p",
+		Autonomy: task.Autonomy{
+			{Name: "no-preload", Match: &task.Match{System: "secret", Params: map[string]*ir.Node{"env": pat(`{LD_PRELOAD: null}`)}}, Then: task.Then{Mode: task.ThenDeny}},
+			{Name: "no-oops", Match: &task.Match{System: "secret", Params: map[string]*ir.Node{"argv": pat(`!regexp "oops"`)}}, Then: task.Then{Mode: task.ThenDeny}},
+			{Then: task.Then{Mode: task.ThenAllow}}},
+		Environment: systems.Environment{Systems: systems.Systems{
+			"secret": {{Attributes: map[string]string{"name": "npm-token", "as": "NPM_TOKEN"}, Verbs: map[string][]systems.Shape{"exec": exec}},
+				{Attributes: map[string]string{"name": "pypi-token", "as": "PYPI_TOKEN"}, Verbs: map[string][]systems.Shape{"exec": exec}}},
+		}}}
+	near, far, err := delivery.SocketPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan struct{})
+	go func() {
+		s.Serve(delivery.Task{ID: "t1", Root: root, Launch: l, Env: []string{"PATH=/usr/bin:/bin", "HOME=" + root}}, near)
+		close(served)
+	}()
+	conn, err := net.FileConn(far)
+	far.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl := delivery.NewClient(conn)
+	var answers []string
+	ask := func(body string, fields map[string]string) delivery.Reply {
+		t.Helper()
+		var got bytes.Buffer
+		rep, err := cl.AskStreaming(delivery.Request{Op: delivery.OpSecretExec, Body: body, Fields: fields}, func(files []*os.File) {
+			for _, f := range files {
+				io.Copy(&got, f)
+				f.Close()
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		answers = append(answers, rep.Out, rep.Refused, rep.Error, got.String())
+		return rep
+	}
+	npm := map[string]string{"name": "npm-token"}
+	for _, c := range []struct{ name, body, says string }{
+		{"a program of the task's, by path", `{argv: ["./tools/mine"]}`, "never a path"},
+		{"a program of the task's, on a PATH the call set", `{argv: [mine], env: {PATH: "` + filepath.Join(root, "tools") + `"}}`, "under no system directory and no readOnly path"},
+		{"a variable the environment does not name", `{argv: [sh, -c, "echo $NPM_TOKEN"], env: {NPM_CONFIG_REGISTRY: x}}`, "outside the environment"},
+		{"the variable the secret is in", `{argv: [sh, -c, "echo"], env: {NPM_TOKEN: x}}`, "env names NPM_TOKEN, which is the secret's"},
+		{"a variable a row denies", `{argv: [sh, -c, "echo"], env: {LD_PRELOAD: x}}`, "outside the environment"},
+		{"a command a row denies", `{argv: [sh, -c, "echo oops"]}`, "refused by the autonomy's row no-oops"},
+		{"a command spelled to look like another", `{argv: [sh, "-c echo"]}`, "outside the environment"},
+	} {
+		if rep := ask(c.body, npm); rep.OK || !strings.Contains(rep.Refused, c.says) {
+			t.Errorf("%s: %+v, want refused: %s", c.name, rep, c.says)
+		}
+	}
+	for _, c := range []struct {
+		name   string
+		fields map[string]string
+		says   string
+	}{
+		{"a directory above the root", map[string]string{"name": "npm-token", "dir": "../"}, "reaches above"},
+		{"a secret the ceiling does not name", map[string]string{"name": "pypi-token"}, "beyond the runner's ceiling"},
+		{"a secret by a path", map[string]string{"name": "../npm-token"}, "no secret's name"},
+		{"a secret the environment does not name", map[string]string{"name": "other-token"}, "outside the environment"},
+	} {
+		if rep := ask(`{argv: [sh, -c, "echo"]}`, c.fields); rep.OK || !strings.Contains(rep.Refused, c.says) {
+			t.Errorf("%s: %+v, want refused: %s", c.name, rep, c.says)
+		}
+	}
+	// And the one the environment gives: run, and redacted.
+	if rep := ask(`{argv: [sh, -c, "echo $NPM_TOKEN"]}`, npm); !rep.OK || rep.Out != "exited 0" || answers[len(answers)-1] != "[secret npm-token]\n" {
+		t.Errorf("the run the environment gives: %+v, %q", rep, answers[len(answers)-1])
+	}
+	cl.Close()
+	<-served
+	if _, err := os.Stat(filepath.Join(root, "leak")); err == nil {
+		t.Error("a program of the task's ran with the secret")
+	}
+	if all := strings.Join(answers, "\n") + log.String(); strings.Contains(all, "s3cr3t") {
+		t.Error("the value is in an answer or the log")
 	}
 }

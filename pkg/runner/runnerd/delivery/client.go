@@ -168,12 +168,10 @@ func (c *Client) hear() {
 			err = errors.New("descriptors came on the channel with a frame that takes none")
 		}
 		if err == nil && rep.Streams > 0 {
-			var ok bool
-			if c.rights != nil {
-				files, ok = c.rights.take(rep.Streams)
-			}
-			if !ok {
-				err = fmt.Errorf("a frame says it carries %d descriptors, and the channel read fewer", rep.Streams)
+			if c.rights == nil {
+				err = fmt.Errorf("a frame says it carries %d descriptors, and this connection is no unix socket, which carries none", rep.Streams)
+			} else {
+				files, err = c.rights.take(rep.Streams)
 			}
 		}
 		if err == nil && rep.Streams > 0 {

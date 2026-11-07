@@ -151,7 +151,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 		// A command run with a secret is confined as the task's process is, over the task's
 		// root and under its network, with what the operator keeps read only.
 		repos.Services.Confine = runnerd.Confiner{Sandbox: sb, ReadOnly: c.ReadOnly,
-			Kept: runnerd.KeptDirs(work, control, mirrors, secrets), Log: log}
+			Kept: runnerd.KeptDirs(work, control, mirrors, secrets)}
 		repos.Ceilings = func(l *runner.Launch) map[string]systems.Ceiling { return c.ceilings(c.doer(l)) }
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{
@@ -270,6 +270,9 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		tools = append(repoTools(cl, ws, r.cfg.atGitHub()), issueTools(cl, ws, l.Trackers(), r.cfg.atGitHub(), slices.Contains(performs, "linear-issue"))...)
 		if slices.Contains(performs, "slack") {
 			tools = append(tools, slackTools(cl)...)
+		}
+		if slices.Contains(performs, "secret") {
+			tools = append(tools, secretTools(cl, ws, l.Environment)...)
 		}
 		if r.cfg.reachesVerse {
 			tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)

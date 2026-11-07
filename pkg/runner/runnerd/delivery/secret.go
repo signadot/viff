@@ -60,6 +60,66 @@ type execBody struct {
 	Env  map[string]string `tony:"field=env,omitzero"`
 }
 
+// Exec is a `secret.exec` as read from a call (ReadExec): the secret's name and the variable the
+// environment's block gives it in ("" where the environment has no block for it), the command as
+// a list, the plain variables, and the directory as a clean path under the root ("" for the root).
+type Exec struct {
+	Name, As string
+	Argv     []string
+	Env      map[string]string
+	Dir      string
+}
+
+// ReadExec reads a `secret.exec` from what a call gives, and says why it is refused before any
+// row decides it, "" where it is not: the secret's name, the command a list naming a bare
+// program first, each variable by a name, the directory under the root, and no variable where
+// the secret goes. The runner reads it as the request arrives (secretExec), and the task's tool
+// before it sends the call, so a row decides one step (Exec.Step) on both sides.
+func ReadExec(env systems.Environment, name string, argv []string, vars map[string]string, dir string) (Exec, string) {
+	if err := secretstore.CheckName(name); err != nil {
+		return Exec{}, err.Error()
+	}
+	switch {
+	case len(argv) == 0 || argv[0] == "":
+		return Exec{}, "argv names the program first, then its arguments"
+	case strings.Contains(argv[0], "/"):
+		return Exec{}, fmt.Sprintf("the program is a bare name found on the command's PATH, never a path (%s)", argv[0])
+	}
+	for _, k := range slices.Sorted(maps.Keys(vars)) {
+		if !systems.IsVarName(k) {
+			return Exec{}, fmt.Sprintf("env: %q is no variable's name: letters, digits and `_`, not starting with a digit", k)
+		}
+	}
+	rel, err := underRoot(dir)
+	if err != nil {
+		return Exec{}, err.Error()
+	}
+	// The environment's block for the secret says what the secret is called. With none, the
+	// step carries no `as`, and is refused as outside the environment, as every op's is.
+	var as string
+	for _, b := range env.Blocks("secret") {
+		if b.Attributes["name"] == name {
+			as = b.Attributes["as"]
+			break
+		}
+	}
+	if _, taken := vars[as]; as != "" && taken {
+		return Exec{}, fmt.Sprintf("env names %s, which is the secret's", as)
+	}
+	return Exec{Name: name, As: as, Argv: argv, Env: vars, Dir: rel}, ""
+}
+
+// Step is the step the run is, as the autonomy and the ceiling see it: the list spelled as one
+// line (systems.Argv), `as` where the environment gives it, and the variables an object the form
+// env matches closed.
+func (e Exec) Step() task.Step {
+	fields := map[string]string{"name": e.Name, "argv": systems.Argv(e.Argv), "dir": e.Dir}
+	if e.As != "" {
+		fields["as"] = e.As
+	}
+	return task.NewStep(task.StepSecretExec, fields).With("env", envNode(e.Env))
+}
+
 // secretExec answers a `secret.exec`: the request read into the one step, decided by the
 // environment's block for the secret, the autonomy and the ceiling, and then the run.
 func (s *Server) secretExec(ctx context.Context, tk Task, req Request) (asked, Reply) {
@@ -67,24 +127,9 @@ func (s *Server) secretExec(ctx context.Context, tk Task, req Request) (asked, R
 	if err := codec.UnmarshalStrict([]byte(req.Body), &body, codec.Tony); err != nil {
 		return before(Reply{Refused: "the body does not read as {argv: [...], env: {...}}: " + err.Error()})
 	}
-	name := req.Field("name")
-	if err := secretstore.CheckName(name); err != nil {
-		return before(Reply{Refused: err.Error()})
-	}
-	switch {
-	case len(body.Argv) == 0 || body.Argv[0] == "":
-		return before(Reply{Refused: "argv names the program first, then its arguments"})
-	case strings.Contains(body.Argv[0], "/"):
-		return before(Reply{Refused: fmt.Sprintf("the program is a bare name found on the command's PATH, never a path (%s)", body.Argv[0])})
-	}
-	for _, k := range slices.Sorted(maps.Keys(body.Env)) {
-		if !systems.IsVarName(k) {
-			return before(Reply{Refused: fmt.Sprintf("env: %q is no variable's name: letters, digits and `_`, not starting with a digit", k)})
-		}
-	}
-	rel, err := underRoot(req.Field("dir"))
-	if err != nil {
-		return before(Reply{Refused: err.Error()})
+	e, why := ReadExec(tk.environment(), req.Field("name"), body.Argv, body.Env, req.Field("dir"))
+	if why != "" {
+		return before(Reply{Refused: why})
 	}
 	timeout := time.Duration(req.Int("timeout")) * time.Second
 	switch {
@@ -93,28 +138,11 @@ func (s *Server) secretExec(ctx context.Context, tk Task, req Request) (asked, R
 	case timeout < 0 || timeout > ExecTimeoutMost:
 		return before(Reply{Refused: fmt.Sprintf("timeout: %d seconds; a run is up to %s", req.Int("timeout"), ExecTimeoutMost)})
 	}
-	// The environment's block for the secret says what the secret is called. With none, the
-	// step carries no `as`, and is refused as outside the environment, as every op's is.
-	var as string
-	for _, b := range tk.environment().Blocks("secret") {
-		if b.Attributes["name"] == name {
-			as = b.Attributes["as"]
-			break
-		}
-	}
-	if _, taken := body.Env[as]; as != "" && taken {
-		return before(Reply{Refused: fmt.Sprintf("env names %s, which is the secret's", as)})
-	}
-	fields := map[string]string{"name": name, "argv": systems.Argv(body.Argv), "dir": rel}
-	if as != "" {
-		fields["as"] = as
-	}
-	st := task.NewStep(task.StepSecretExec, fields).With("env", envNode(body.Env))
-	return asking(st, func() Reply {
-		if as == "" {
+	return asking(e.Step(), func() Reply {
+		if e.As == "" {
 			return s.bug(tk, "%s acts with no variable for the secret", req.Op)
 		}
-		return s.runSecret(ctx, tk, req.ID, name, as, body, rel, timeout)
+		return s.runSecret(ctx, tk, req.ID, e, timeout)
 	})
 }
 
@@ -152,7 +180,8 @@ var letGo = errors.New("the task let go of the command's output")
 // command confined and started, its output handed to the task and pumped through the redaction,
 // and the exit status answered. The value is in this process's memory and the command's
 // environment while it runs, and in no log, no reply and no file.
-func (s *Server) runSecret(ctx context.Context, tk Task, id int, name, as string, body execBody, rel string, timeout time.Duration) Reply {
+func (s *Server) runSecret(ctx context.Context, tk Task, id int, e Exec, timeout time.Duration) Reply {
+	name, as, rel := e.Name, e.As, e.Dir
 	value, err := s.Services.Secrets.Get(name)
 	if err != nil {
 		return Reply{Refused: "no secret to run with: " + err.Error()}
@@ -163,8 +192,8 @@ func (s *Server) runSecret(ctx context.Context, tk Task, id int, name, as string
 	if tk.Root == "" {
 		return Reply{Error: "this task has no workspace root to run a command over"}
 	}
-	env := mergeEnv(tk.Env, body.Env)
-	prog, err := findProgram(body.Argv[0], env)
+	env := mergeEnv(tk.Env, e.Env)
+	prog, err := findProgram(e.Argv[0], env)
 	if err != nil {
 		return Reply{Refused: err.Error()}
 	}
@@ -174,7 +203,7 @@ func (s *Server) runSecret(ctx context.Context, tk Task, id int, name, as string
 	defer stop(nil)
 	timed, cancel := context.WithTimeout(run, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(timed, prog, body.Argv[1:]...)
+	cmd := exec.CommandContext(timed, prog, e.Argv[1:]...)
 	cmd.Env = append(env, as+"="+value)
 	cmd.WaitDelay = execWaitDelay
 	if err := s.Services.Confine.Confine(cmd, tk.Root, filepath.Join(tk.Root, rel), tk.Network); err != nil {
@@ -251,7 +280,7 @@ func (s *Server) runSecret(ctx context.Context, tk Task, id int, name, as string
 	if errors.Is(waited, exec.ErrWaitDelay) {
 		rep.Out += fmt.Sprintf("; its output was left %s after it, held open by something it started", execWaitDelay)
 	}
-	fmt.Fprintf(s.Log, "delivery: %s: %s with the secret %s: %s\n", tk.ID, systems.Argv(body.Argv), name, rep.Out)
+	fmt.Fprintf(s.Log, "delivery: %s: %s with the secret %s: %s\n", tk.ID, systems.Argv(e.Argv), name, rep.Out)
 	return rep
 }
 
