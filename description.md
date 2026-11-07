@@ -1,8 +1,10 @@
 # mcp: a system for the tools of remote MCP servers, called by the runner
 
 **Status:** a plan, reviewed once, and edited since: a call's arguments are a field of its step
-("At the second edit", below), and a session the server ended is opened again and a server's
-instructions reach the brief ("At the third edit", against mcp.signadot.com). Nothing is built. It blocks 1f5art3x. It waits on 1k5art3x (the
+("At the second edit", below), a session the server ended is opened again and a server's
+instructions reach the brief ("At the third edit", against mcp.signadot.com), and a `null`
+argument stays a `null` ("At the fourth edit", against mcp.linear.app). Nothing is built. It
+blocks 1f5art3x. It waits on 1k5art3x (the
 channel's table of ops and its general request), on 1q5art3x (the secret store), and on 275art3x
 (an answer performs only the act it was given about), which is what binds an approval to the
 arguments.
@@ -161,7 +163,11 @@ Each step builds and passes on its own.
      a JSON object, read into the step's `arguments` as tony structure, so the step the
      autonomy, the ceiling and an answer see is the call that is sent. What the runner sends the
      server is that structure, written back as JSON, and not the body's bytes: nothing is sent
-     that the step did not say. Both sides read a call with one function in `delivery`
+     that the step did not say. **A `null` stays a `null`,** in the step, in what an answer is
+     bound to, and in what is sent, and is never an absent argument: a server may read the two
+     apart (Linear's `save_issue` reads `assignee: null` as unassign and no `assignee` as
+     unchanged), so dropping one would send a call nobody was asked about, and an approval of an
+     unassign would perform nothing. Both sides read a call with one function in `delivery`
      (`ReadCall`, as `ReadExec` is for `secret.exec`), so the tool's step and the runner's are
      the same (275art3x's conformance test holds it). A call whose arguments are larger than a
      bound well under the frame (64 KiB, to be settled at review) is refused, and says the
@@ -209,7 +215,13 @@ Each step builds and passes on its own.
    - a shape and a row match `arguments` open: a ceiling that must pin an argument names it;
    - a url holds no key;
    - a server's own word for which tools read and which write is not trusted. The ceiling
-     names tools.
+     names tools. Where a server keeps the line itself (Linear's `/mcp/readonly`, which exposes
+     read tools alone, or a key with read permission only), naming that endpoint or that key
+     is a second bound under the ceiling, and the example shows it;
+   - what a tool needs that the runner does not carry does not work through it: a result the
+     task must act on outside the call (Linear's `prepare_file_upload` answers a signed url the
+     task would have to reach), and content that is not text (`extract_images`);
+   - a credential reaches one workspace, so a second workspace is a second server.
 
 ## Tests
 
@@ -225,6 +237,12 @@ under `httptest`).
   reach the server (275art3x). What the server is sent is the step's arguments, byte for byte
   as JSON of that structure. A call past the bound is refused. The tool's step and the
   runner's are `Same` for a call with nested objects, arrays, numbers and booleans.
+- **A `null`.** A call with `assignee: null` reaches the server with `"assignee": null`, and one
+  with no `assignee` reaches it with none; the two are not `Same` as steps, so an answer about
+  one does not perform the other; a shape that pins `assignee` to a value refuses the `null`.
+- **Schemas as servers write them.** A tool whose properties use `anyOf`, a type list
+  (`["string", "null"]`) or a `oneOf` inside an array's items is listed, and a call of it with
+  each branch is admitted by `verse-call-tool`'s check (`calltool.Check`) and sent as given.
 - **The table's tests.** `TestEveryOpAsksAboutADocumentedStep` names the two ops that ask
   about no step. `TestNoOpActsUnderAnEmptyEnvironment` has a request for each, and `mcp.list`
   refuses there.
@@ -335,3 +353,41 @@ takes no key). It runs on configuration alone:
   org's, and reaches what the org's does (`list_devboxes` lists every devbox for a key): the
   ceiling is the bound for each task, and a task's own identity there is hfh7km3t's. The runner
   pod reaches mcp.signadot.com.
+
+## At the fourth edit (against mcp.linear.app)
+
+The plan was read against Linear's server: `POST https://mcp.linear.app/mcp` with no
+credential (401, `WWW-Authenticate: Bearer realm="OAuth"`, scopes `read write`, no redirect),
+its protected-resource and authorization-server metadata, linear.app/docs/mcp, and the tools'
+schemas as a client connected to it lists them. It runs on configuration alone:
+
+```tony
+mcp:
+  servers:
+    linear:   {url: "https://mcp.linear.app/mcp/readonly", auth: {secret: linear}}   # read tools only, by the server
+    linear_w: {url: "https://mcp.linear.app/mcp", auth: {secret: linear}}
+```
+
+- **Fits as planned:** streamable HTTP at `/mcp` (`/sse` is deprecated and was not tried). A
+  key as `Authorization: Bearer`, the plan's default `auth`: the docs say "The MCP server
+  supports passing OAuth token and API keys directly in the `Authorization: Bearer
+  <yourtoken>` header instead of using the interactive authentication flow", so its OAuth 2.1
+  sign-in is not needed, and the `linear` secret the `linear-issue` system reads can serve
+  both. No tool sampled has a `$ref` or a `oneOf` at the top, so none is left out; they use
+  `anyOf` in a property, type lists and a `oneOf` inside `patch`'s items, which `Params`
+  carries as given and `calltool.Check` does not refuse (it checks a type it can name, and
+  takes a null as absent for the check alone). The longest tool's name is
+  `mcp__verse__mcp-linear-create_attachment_from_upload`, 52 characters. It sends
+  instructions at `initialize`, which the third edit brings to the brief.
+- **Added:** a `null` argument stays a `null` (step 5, tests). `save_issue` says "Null to
+  remove" of `assignee`, `cycle`, `project`, `parentId` and `dueDate`, and an absent one is
+  left unchanged.
+- **In the words (step 9):** a server's own read-only line (`/mcp/readonly`, or a key with read
+  permission only) as a second bound under the ceiling; tools that need what the runner does
+  not carry (`prepare_file_upload`'s signed url, `extract_images`'s images); one workspace for
+  each credential, so a second workspace is a second server (`linear_acme`).
+- **Noted, unchanged:** about 90 tools, which the environment's shapes cut to what a spawn
+  gives (`mcp.list`), so a task's context holds those and not the rest. A personal key acts as
+  the person who made it, for every task; an app's token acts as the app but has to be
+  refreshed, and OAuth is not in this issue; a task's own identity is hfh7km3t's. The session
+  lifetime is not documented; the third edit's reopening covers it.
