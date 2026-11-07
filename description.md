@@ -94,9 +94,9 @@ autonomy:
   never a shell string, and the runner runs that list. The step's field is the list spelled as
   one line, each argument quoted where it holds a space, a quote or a character a shell reads
   (`npm publish --tag 'a b'`), so a shape, a row and an approver read a command line as they do
-  `commands.run`'s, and where one argument ends is never in doubt. The task's process and the
-  runner spell it with one function, and the runner refuses a request whose field is not the
-  spelling of its body. No new form: `argv` is `text`.
+  `commands.run`'s, and where one argument ends is never in doubt. The list alone is on the
+  wire, in the request's body; the task's process and the runner each spell the step's field
+  from it with one function, so there is no second copy to check. No new form: `argv` is `text`.
 - **`dir`** is where the command runs, a path under the workspace root (form `file`), the root
   where empty. **`as`** is the variable the secret is given in (`^[A-Z_][A-Z0-9_]*$`).
 - **The program is the runner's.** `argv[0]` is a bare name; one with a `/` is refused. The
@@ -121,20 +121,26 @@ autonomy:
 - **Where it runs.** A second bwrap of the same shape as the task's (`Wrap`), over the task's
   root, `--chdir` to `dir`, with the task's `Network` (the same egress socket, so the proxy
   decides its connections under the task's autonomy), its own pid namespace, and no capability.
-  The secret is in that process's environment and nowhere else: the task's processes are in
-  another pid namespace and see no `/proc` of it. The value is in the runner's memory while the
-  command runs, and in no log, no reply and no file.
+  Its `/tmp` is a tmpfs of its own, not the task's, so what the task left in `/tmp` is not there;
+  and under `allow` the proxy is the task's, so the model's hosts are on it too. The secret is in
+  that process's environment and nowhere else: the task's processes are in another pid namespace
+  and see no `/proc` of it. The value is in the runner's memory while the command runs, and in no
+  log, no reply and no file.
 - **The output goes to the workspace.** stdout and stderr, interleaved, to
   `<root>/.verse/exec/<request id>.out`, with the secret's value replaced by `[secret <name>]`
   wherever it appears whole (a second line: an encoding defeats it). The reply is the exit
   status, the file's path and the last 16 KiB. The file is cut at 16 MiB and says so.
 - **The run is bounded.** `timeout` on the call, seconds, 10 minutes where none, an hour at
   most (the op's deadline). Past it the command is killed and the reply says so. When the
-  task's process goes, the command is killed with it (`--die-with-parent`, and the `gone`
-  context an op apart runs under).
+  task's process goes, the command is killed with it (the `gone` context an op apart runs
+  under). A kill reaches the whole of it: bwrap runs in a process group of its own and the group
+  is signalled, since killing bwrap alone leaves its children to `--die-with-parent` while the
+  output pipe stays open; `cmd.WaitDelay` bounds the wait on that pipe either way.
 - **Closed without a sandbox.** A runner with `-sandbox none` does not perform `secret`: a
   command there runs as the runner's user on the whole machine, and the secret would be the
-  machine's. `Held` closes it and says so. This is `verse up`'s runner on macOS.
+  machine's. `Standalone`, which has the sandbox where `Config.Held` has none, closes it at
+  start and says so, beside its warning about the store under `none`. This is `verse up`'s
+  runner on macOS.
 - **The offer** says nothing under `builds`: the ceiling already names the secrets a doer may
   use, and a store's other names are nobody's to read.
 
@@ -160,19 +166,19 @@ Each step builds and passes on its own.
    sandbox". `Config.Check` refuses a ceiling block whose `name` is not a literal store name
    (`secretstore.CheckName`), and an `as` pattern no variable name matches. `Held` drops a block
    whose secret is absent at start, saying which and where, and closes the system where none is
-   left; and closes it whole under `-sandbox none`.
+   left. `Standalone` closes it whole under `-sandbox none`, since the sandbox is its to know.
 3. **The task apart.** `delivery.Task` gains `Root` (the workspace root) and `Network`, set at
    the launch and kept by `Task.apart`: what an op apart may read, since nothing in turn writes
    them. `Services` gains the store (`*secretstore.Store`) and the sandbox. This is the fix
    1v5art3x's note asks for, and the first op apart's test.
 4. **The op.** `OpSecretExec = "secret.exec"` on the table: takes `name`, `as`, `dir`, numbers
    `timeout`, body (`{argv: [...], env: {...}}`, tony), apart, deadline one hour. `ask` reads the
-   body, spells the argv, refuses a request whose `argv` field differs, checks `name`, `as` and
-   `dir` as above, that each name of `env` is a variable's name and none is `as`, and asks about
-   the one step with `argv` spelled and `env` as given (`Step.With`). The act: read the secret
-   (absent: a refusal naming it), build the environment, resolve `argv[0]` on its `PATH`, build
-   the second sandbox, run with the timeout, write the output through the redacting writer,
-   answer.
+   body, checks `name`, `as` and `dir` as above and that each name of `env` is a variable's name
+   and none is `as`, and asks about the one step: `argv` spelled from the body's list, `env` as
+   given (`Step.With`). The act: read the secret (absent: a refusal naming it), build the
+   environment, resolve `argv[0]` on its `PATH`, build the second sandbox, start it in its own
+   process group with `WaitDelay` set, run with the timeout, write the output through the
+   redacting writer, answer; past the timeout or once the task is gone, signal the group.
 5. **The tool.** `secret-exec` in `stock`, beside `slackTools`, offered to every doer where the
    runner performs `secret`: params `name`, `argv` (an array of strings), `env` (an object of
    strings), `as`, `dir`, `timeout`. `Build` makes the step whole, as the verse tools' do for a
@@ -192,8 +198,7 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   argv, another dir, a variable the shape does not name, a value its pattern does not admit), by
   a `deny` row, by a row on `env` naming one of its variables, by an `ask` row with no answer
   relayed, beyond the ceiling, for an `argv[0]` with a `/`, for one that resolves under the
-  workspace, for a `dir` that leaves the root, for `as` among `env`, and for a field that is not
-  its body's spelling. No command runs. A shape with no `env` admits a call with none and refuses
+  workspace, for a `dir` that leaves the root, and for `as` among `env`. No command runs. A shape with no `env` admits a call with none and refuses
   one with any; `env: null` admits any.
 - **The form.** `Accepts` refuses a key that is no variable's name and a value that is no text
   pattern; the closed match and `FieldContains` on nested objects; an environment whose `env`
@@ -203,19 +208,22 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   log hold no value. A changed file between two calls is the next
   call's. An absent secret refuses the call naming it, with no value.
 - **The output.** The file is written, the reply carries the exit status and the tail, the
-  value is redacted, a long output is cut and says so, a slow command is killed at `timeout`.
+  value is redacted, a long output is cut and says so, a slow command is killed at `timeout`,
+  its children with it, and the op answers within `WaitDelay` of that though a child holds the
+  pipe.
 - **Apart.** A run that is held does not hold a push; a run in flight when the task's process
   goes is killed; the op is handed a task with `Root` and `Network` and no workspace.
 - **The network.** Under `allow`, the command's connection to a host the environment gives
   passes the proxy and one it does not is refused (`httptest`, the egress server).
-- **The configuration.** A ceiling naming a pattern, a bad `as`, and a runner under `-sandbox
-  none` are each refused or closed as said; the description shows `secret` under the doer with
+- **The configuration.** A ceiling naming a pattern and a bad `as` are refused; a runner under
+  `-sandbox none` starts with `secret` closed and says so (`Standalone`); the description shows `secret` under the doer with
   the ceiling and nothing under `builds`.
 - **Each doer.** The patterns of `claude_test.go`, `codex_test.go` and `scripted_test.go`: the
   tool is offered, a use is the step `secret.exec` with the spelled argv and the `env` object,
   the question shows them, the result comes back.
-- **The spelling.** Round trip, uniqueness, and that `!regexp "^npm publish"` does not admit
-  `npm "publish --registry evil"`.
+- **The spelling.** Round trip, uniqueness, that `!regexp "^npm publish"` does not admit
+  `npm "publish --registry evil"`, and that the task's side and the runner's spell one list the
+  same.
 
 ## What does not change
 
@@ -244,6 +252,10 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   environment name the variables one by one. `LD_PRELOAD` and its family add no risk the
   ceiling has not granted by construction, since a ceiling that admits a command admits what it
   does with the secret; it is the offer's and the spawn's to limit the names.
+
+- **The argv is on the wire once,** as the body's list; the step's field is spelled from it on
+  each side. A kill signals bwrap's process group, with `WaitDelay`. `-sandbox none` is closed
+  in `Standalone`. The command's `/tmp` is its own, and its proxy the task's.
 
 ## Open questions
 
