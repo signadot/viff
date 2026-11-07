@@ -3,8 +3,9 @@
 **Status:** steps 1 to 6 and the runner's part of step 8 are committed as b3f323d7 on
 `verse/secret-store` (worktree `.worktrees/secret-store`), one commit over 81250f61, the commit
 of 1k5art3x; reviewed once after it was written, and what that changed is in the commit. Step 7
-and the deployment's part of step 8 are cbeddd1e on top (2026-11-07), and staging's side is
-ee2a6bb on `secret-store` in `verse-staging` (worktree `.worktrees/secret-store`, over its main).
+and the deployment's part of step 8 are cbeddd1e on top (2026-11-07), the systems' pages and
+the deployment table 0b6fa080, and staging's side is ee2a6bb on `secret-store` in
+`verse-staging` (worktree `.worktrees/secret-store`, over its main). Every step is written.
 Not yet run on a cluster: see "What is left". Not merged, not pushed. It blocks 1f5art3x, and the
 `mcp` system waits on it.
 
@@ -69,7 +70,10 @@ Not yet run on a cluster: see "What is left". Not merged, not pushed. It blocks 
   `runnerStoreKey` (not `runnerSecretsKey`, which is one letter from `runnerSecretKey`, the push
   token's). The deployment's part of step 8: the credentials table in `deploy/README.md` gains
   the row and the Slack and Linear rows say the file, and a section "The runners' secret store"
-  says how a deployment moves a system to it.
+  says how a deployment moves a system to it. And three pages the plan had not named,
+  which said the runner reads its token from the environment alone: `docs/systems/slack.md`,
+  `docs/systems/linear-issue.md` ("Where the credential lives") and the runners' rows of
+  `docs/platform/deployment.md` (0b6fa080).
 - **Staging** (`verse-staging`, `deploy/runners/*.tony`, ee2a6bb): `secrets: {dir: /secrets,
   systems: {slack: slack-bot, linear-issue: linear}}` in all three, so staging's runners act with
   the store.
