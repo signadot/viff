@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"net"
@@ -224,8 +225,11 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 	}
 	cl.Close()
 
-	// The task's side, fed frames by hand: a stand-in for a runner with a bug.
-	feed := func(t *testing.T) (*net.UnixConn, *Client) {
+	// The task's side, fed frames by hand: a stand-in for a runner with a bug, which still reads
+	// each request before it answers, as a runner does (asked). An answer fed before the request
+	// has gone ends the channel under the asker's feet, and what it reports is its own write
+	// failing, not what came.
+	feed := func(t *testing.T) (*net.UnixConn, func(), *Client) {
 		t.Helper()
 		near, far, err := SocketPair()
 		if err != nil {
@@ -237,7 +241,14 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { near.Close(); conn.Close() })
-		return near.(*net.UnixConn), NewClient(conn)
+		br := bufio.NewReader(near)
+		asked := func() {
+			t.Helper()
+			if _, err := readFrame(br); err != nil {
+				t.Fatal("the request: ", err)
+			}
+		}
+		return near.(*net.UnixConn), asked, NewClient(conn)
 	}
 	frame := func(rep Reply) []byte {
 		t.Helper()
@@ -257,7 +268,7 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 	}
 
 	// Two stream frames for request 1: the second does not read, and ends the channel.
-	runner, cl := feed(t)
+	runner, asked, cl := feed(t)
 	r, w := pipe()
 	defer w.Close()
 	answer := make(chan error, 1)
@@ -265,6 +276,7 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 		_, err := cl.AskStreaming(Request{Op: "x"}, func(f []*os.File) { closeAll(f) })
 		answer <- err
 	}()
+	asked()
 	for range 2 {
 		if err := writeFrameWith(runner, frame(Reply{ID: 1, Streams: 1}), []*os.File{r}); err != nil {
 			t.Fatal(err)
@@ -277,12 +289,13 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 
 	// Descriptors on a frame that says it carries none: the frame after it does not read.
 	// Nobody took them, and the channel's end closes them: the pipe's writer finds no reader.
-	runner, cl = feed(t)
+	runner, asked, cl = feed(t)
 	r, w = pipe()
 	go func() {
 		_, err := cl.Ask(Request{Op: "x"})
 		answer <- err
 	}()
+	asked()
 	if err := writeFrameWith(runner, frame(Reply{ID: 1, OK: true}), []*os.File{r}); err != nil {
 		t.Fatal(err)
 	}
@@ -294,6 +307,7 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 		_, err := cl.Ask(Request{Op: "x"})
 		answer <- err
 	}()
+	asked()
 	if err := writeFrame(runner, frame(Reply{ID: 2, OK: true})); err != nil {
 		t.Fatal(err)
 	}
@@ -315,13 +329,14 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 	w.Close()
 
 	// A stream frame that says more than came does not read either.
-	runner, cl = feed(t)
+	runner, asked, cl = feed(t)
 	r, w = pipe()
 	defer w.Close()
 	go func() {
 		_, err := cl.Ask(Request{Op: "x"})
 		answer <- err
 	}()
+	asked()
 	if err := writeFrameWith(runner, frame(Reply{ID: 1, Streams: 2}), []*os.File{r}); err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +347,7 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 
 	// The descriptor handed over reads as the sender's does, and its reader can be closed
 	// from under a read: it was not put in blocking mode by being sent.
-	runner, cl = feed(t)
+	runner, asked, cl = feed(t)
 	r, w = pipe()
 	defer w.Close()
 	var got []*os.File
@@ -340,6 +355,7 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 		_, err := cl.AskStreaming(Request{Op: "x"}, func(f []*os.File) { got = f })
 		answer <- err
 	}()
+	asked()
 	if err := writeFrameWith(runner, frame(Reply{ID: 1, Streams: 1}), []*os.File{r}); err != nil {
 		t.Fatal(err)
 	}
