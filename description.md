@@ -2,7 +2,9 @@
 
 **Status:** a plan, reviewed twice (the second against the code: "At the second review",
 below), being built in the worktree `.worktrees/secret-exec` (branch `verse/secret-exec`, over
-`verse/secret-store`), step by step: steps 1 and 2 are committed (11809adf, e4272019); step 3 is next. It blocks 1f5art3x. It waits on
+`verse/secret-store`), step by step: steps 1 and 2 are committed (11809adf, e4272019); step 3 is next, on the third
+pass's design (stderr its own socket, a kill the task's closing of its stream: "At the third
+pass", below). It blocks 1f5art3x. It waits on
 1q5art3x (the secret store, which it reads) and on 1k5art3x (the table of ops, built). It shares
 the first op performed apart with 1v5art3x, whichever lands first.
 
@@ -158,27 +160,35 @@ autonomy:
   that process's environment and nowhere else: the task's processes are in another pid namespace
   and see no `/proc` of it. The value is in the runner's memory while the command runs, and in no
   log, no reply and no file.
-- **The output is a stream the task's process serves, and the runner is in the middle of it.**
-  Two pairs. The command's stdout and stderr are one pipe to the runner, its stdin another from
-  it; between the runner and the task's process is a socket pair the runner makes. The runner
-  pumps: what the command writes goes on to the task's end with the secret's value replaced by
-  `[secret <name>]` wherever it appears whole (a second line: an encoding defeats it), and,
-  later, what comes back goes to the command's stdin. The task's end it hands to the task's
-  process over the channel, as a descriptor on the first frame of the answer. So the runner
-  opens no path under the task's root: that tree is the task's to write, and a link in it is
-  resolved by whoever opens it, with that side's reach. The task's process serves the descriptor
-  as a unix socket at `<root>/.verse/exec/<id>.sock`, where a shell of the task's connects to
-  read along, and to start writes what comes out to `<root>/.verse/exec/<id>.out`, cut at 16 MiB
-  and said. The final frame is the exit status; the tool answers the model with it, the file's
-  path and the last 16 KiB.
+- **The output is two streams the task's process serves, and the runner is in the middle of
+  them.** The command's stdout, stderr and stdin are three pipes to the runner; between the
+  runner and the task's process are two socket pairs the runner makes: the I/O pair, which
+  carries stdout to the task and, when input comes (below), what the task writes to stdin; and
+  the stderr pair, stderr alone, which the task reads and never writes. Stderr is apart because
+  a shell keeps it apart (`2>`), and a reader following `npm` along wants its progress, which
+  goes there, told from what it prints; multiplexing both on one stream under a header would
+  make the socket something a shell cannot `nc -U` and read as it comes, which is the point of
+  it. The runner pumps both: what the command writes goes on to the task's end with the
+  secret's value replaced by `[secret <name>]` wherever it appears whole (a second line: an
+  encoding defeats it). The task's ends it hands to the task's process over the channel, as two
+  descriptors on the first frame of the answer. So the runner opens no path under the task's
+  root: that tree is the task's to write, and a link in it is resolved by whoever opens it, with
+  that side's reach. The task's process serves the descriptors as unix sockets at
+  `<root>/.verse/exec/<id>.sock` and `<root>/.verse/exec/<id>.err.sock`, where a shell of the
+  task's connects to read along, and to start writes what comes out to
+  `<root>/.verse/exec/<id>.out` and `<id>.err`, each cut at 16 MiB and said. The final frame is
+  the exit status; the tool answers the model with it, the files' paths and the last 16 KiB of
+  each.
   - **A descriptor rides the bytes it was sent with,** and a plain read drops it. So the task's
     side reads the channel with `ReadMsgUnix` throughout, queueing each descriptor it is handed,
-    and a frame that says `Stream: true` takes the next; the kernel ends a read at the message
-    that carried rights, so the descriptor is queued by the time its frame decodes. The runner
-    writes that frame, length and body, in one `WriteMsgUnix`. Over a connection that is no unix
-    socket (a test's `net.Pipe`) a stream frame cannot be carried, and the op says so instead.
-    The op sends it from inside its act, through a `stream(id, file)` the server sets on the task
-    it hands the op (`Serve`'s write lock, as `send` takes it).
+    and a frame that says `Stream: true` takes the next two, the I/O end then the stderr end
+    (one `SCM_RIGHTS` message carries both, `syscall.UnixRights(a, b)`, and the count is the
+    op's, fixed); the kernel ends a read at the message that carried rights, so the descriptors
+    are queued by the time their frame decodes. The runner writes that frame, length and body,
+    in one `WriteMsgUnix`. Over a connection that is no unix socket (a test's `net.Pipe`) a
+    stream frame cannot be carried, and the op says so instead. The op sends it from inside its
+    act, through a `stream(id, files...)` the server sets on the task it hands the op (`Serve`'s
+    write lock, as `send` takes it).
 - **The run is bounded.** `timeout` on the call, seconds, 10 minutes where none, an hour at
   most (the op's deadline). Past it the command is killed and the reply says so. When the
   task's process goes, the command is killed with it (the `gone` context an op apart runs
@@ -187,6 +197,16 @@ autonomy:
   group from outside does not reach, but bwrap killed kills its init (`--die-with-parent`), and
   a pid namespace whose init dies dies whole. `cmd.Process.Kill`, then; `cmd.WaitDelay` bounds
   the wait on the output pipe either way.
+- **The command lives while the task holds its stream, and a kill is the task letting go.** The
+  task's side closing both descriptors kills the run, by the same path as the task's process
+  dying, where the kernel closes them: one mechanism, no op and nothing on the wire. The stderr
+  pair is what makes it detectable: the task never writes on it, so the runner's read there
+  returns EOF only when the far end is wholly gone; a half-close on the I/O pair, when input
+  comes, is EOF on the command's stdin and never a kill, and a full close on the I/O pair alone
+  is unseen until the command writes (EPIPE), which a silent command never does. No graceful
+  signal is on offer: bwrap forwards none from outside into the command, and the kill is the
+  namespace's, whole; the graceful "please finish" a task has is closing stdin. The doc says so
+  rather than offering a `signal` it cannot deliver.
 - **Closed without a sandbox.** A runner with `-sandbox none` does not perform `secret`: a
   command there runs as the runner's user on the whole machine, and the secret would be the
   machine's. `Standalone`, which has the sandbox where `Config.Held` has none, closes it at
@@ -228,18 +248,19 @@ Each step builds and passes on its own.
    ceiling, beside `without`). `Standalone` closes it whole under `-sandbox none`, since the
    sandbox is its to know, before the task's configuration is marshalled, so the task's process
    offers nothing of it either.
-3. **The task apart, and a descriptor on a frame.** `delivery.Task` gains `Root` (the
+3. **The task apart, and descriptors on a frame.** `delivery.Task` gains `Root` (the
    workspace root) and `Network{Mode, Egress}`, set at the launch (`Channel.SetNetwork`, in
    `SubprocessHandler.start` once the egress socket is there, before `Serve`) and kept by
    `Task.apart`: what an op apart may read, since nothing in turn writes them. `Services` gains
    the store (`*secretstore.Store`) and `Confine` (above). This is the fix 1v5art3x's note asks
    for, and the first op apart's test. `Reply` gains `Stream bool`: a frame that says it carries
-   one descriptor, written in one `WriteMsgUnix`; the task's side reads with `ReadMsgUnix`
-   throughout (a reader over the `*net.UnixConn` that queues what arrives), and `Client.hear`
-   hands the next queued descriptor to the asker with such a reply, `Ask` returning both; an
-   answer may now be two frames, the stream's and the final one, by the one id. `Task` gains the
-   unexported `stream(id, *os.File) error` `Serve` sets. `op` gains `apart()` and
-   `withDeadline()`. Nothing else of the protocol changes.
+   descriptors, written in one `WriteMsgUnix`, two for this op (the I/O end, the stderr end);
+   the task's side reads with `ReadMsgUnix` throughout (a reader over the `*net.UnixConn` that
+   queues what arrives), and `Client.hear` hands the queued descriptors to the asker with such a
+   reply, `Ask` returning both; an answer may now be two frames, the stream's and the final
+   one, by the one id. `Task` gains the unexported `stream(id int, files ...*os.File) error`
+   `Serve` sets. `op` gains `apart()` and `withDeadline()`. Nothing else of the protocol
+   changes.
 4. **The op.** `OpSecretExec = "secret.exec"` on the table: takes `name`, `dir`, numbers
    `timeout`, body (`{argv: [...], env: {...}}`, tony, read strictly), apart, deadline one hour.
    `ask` reads the body, checks `dir` as a path under the root, `argv` non-empty with a bare
@@ -249,20 +270,30 @@ Each step builds and passes on its own.
    op); refuses an `env` naming `as`; and asks about the one step: `name` and `as` from the
    block, `argv` spelled from the body's list, `env` as given (`Step.With`). The act: read the
    secret (absent: a refusal naming it), build the environment, resolve `argv[0]` on its `PATH`
-   and run that path, make the pipes and the socket pair, `Confine` the command over the root in
-   `dir`, start it with `WaitDelay` set, send the stream frame with the pair's far end, pump the
-   command's output through the redacting writer to the near end and the near end to its stdin,
-   run with the timeout, answer the final frame with the exit status; past the timeout or once
-   the task is gone, kill it.
+   and run that path, make the pipes and the two socket pairs, `Confine` the command over the
+   root in `dir`, start it with `WaitDelay` set and its stdin empty (input is the step after),
+   send the stream frame with the pairs' far ends, pump stdout and stderr each through the
+   redacting writer to its near end, read the stderr pair's near end for the EOF that says the
+   task let go, run with the timeout, answer the final frame with the exit status; past the
+   timeout, once the task let go, or once the task is gone, kill it.
 5. **The tool.** `secret-exec` in `stock`, beside `slackTools`, offered to every doer where the
    runner performs `secret`: params `name`, `argv` (an array of strings), `env` (an object of
    strings), `dir`, `timeout`. `Build` makes the step whole, as the verse tools' do for a field
-   with structure, reading `as` from the launch's environment as the runner does; `Do` sends the op with `Request.Decision`, takes the descriptor the
-   first frame brings, serves it at `<root>/.verse/exec/<id>.sock` and copies it to
-   `<root>/.verse/exec/<id>.out`, and answers the model the exit status, the path and the tail
-   when the final frame comes. The description says the task never reads the secret, which the
-   command finds under the block's `as`, the output is a socket and a file in its workspace, the
-   program must be on the command's `PATH`, and the variables are part of what is asked about.
+   with structure, reading `as` from the launch's environment as the runner does; `Do` sends
+   the op with `Request.Decision`, takes the two descriptors the first frame brings, serves
+   them at `<root>/.verse/exec/<id>.sock` and `<id>.err.sock` and copies them to
+   `<root>/.verse/exec/<id>.out` and `<id>.err`, and answers the model the exit status, the
+   paths and the tails when the final frame comes. The description says the task never reads
+   the secret, which the command finds under the block's `as`, the output is two sockets and two
+   files in its workspace, the program must be on the command's `PATH`, and the variables are
+   part of what is asked about.
+   - **The tool's shape is decided here, not before.** `secret-exec` as planned blocks until
+     the command ends, and a `secret-exec-kill <id>` beside it closes the task's ends, which
+     kills the run; that is reachable by a doer that runs two tool calls at once (a script,
+     `verse-call-tool … &` then kill), and not by an agent whose loop runs one tool at a time.
+     If agents need to kill, the shape is `secret-exec` returning at start with the paths and
+     the id, beside `secret-exec-wait` and `secret-exec-kill`. That changes `Do` and nothing
+     else, so steps 3 and 4 are built the same either way, and this is settled when 5 is.
 6. **The words.** `docs/systems/secret.md`, the row in `docs/systems/README.md`,
    `docs/reference/runnerd.md` (the performed system, what a `secret` ceiling says, and that it
    is closed under `-sandbox none`), the example ceiling in `deploy/verse-runner`'s comments.
@@ -286,13 +317,15 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   over the task's shell's; the task's process's environment, the reply, the output file and the
   log hold no value. A changed file between two calls is the next
   call's. An absent secret refuses the call naming it, with no value.
-- **The output.** The task's process gets the descriptor on the first frame and the exit status
-  on the final one by the same id; what the command wrote comes through it, the value redacted;
-  the task's process writes the file and serves the socket, and a client on the socket reads
-  along; a long output is cut by the task's side and says so; a slow command is killed at
-  `timeout`, its children with it, and the op answers within `WaitDelay` of that though a child
-  holds the pair. The runner opens no path under the root: a `.verse/exec` the task made a link
-  changes nothing on the runner's side.
+- **The output.** The task's process gets the two descriptors on the first frame and the exit
+  status on the final one by the same id; what the command wrote comes through them, stdout on
+  one and stderr on the other, the value redacted on each; the task's process writes the files
+  and serves the sockets, and a client on a socket reads along; a long output is cut by the
+  task's side and says so; a slow command is killed at `timeout`, its children with it, and the
+  op answers within `WaitDelay` of that though a child holds a pair. The task's side closing
+  both ends kills a command that writes nothing, and the op answers so; closing the I/O end
+  alone does not, until the command writes. The runner opens no path under the root: a
+  `.verse/exec` the task made a link changes nothing on the runner's side.
 - **Apart.** A run that is held does not hold a push; a run in flight when the task's process
   goes is killed; the op is handed a task with `Root` and `Network` and no workspace.
 - **The network.** Under `allow`, the command's connection to a host the environment gives
@@ -330,8 +363,12 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   write, with a `commit` field the runner fills as it fills a push's `exists` and `own`: then
   what is acted on is one commit, and the approver sees its sha. It needs a build inside or a
   prepared tree, since an export has no `node_modules` and no build output; the live tree first.
-- **Input to the command.** The pair is duplex and the task's process holds its end, so a
-  client on the socket can write once the runner pumps that way too; it does not yet.
+- **Input to the command.** The I/O pair is duplex and the task's process holds its end, so a
+  client on the socket can write once the runner pumps that way too; it does not yet, and the
+  command's stdin is empty. When it does, a half-close on the I/O pair is EOF on stdin, and the
+  kill stays the stderr pair's EOF, so nothing of the kill changes.
+- **A signal to the command.** None is deliverable through bwrap from outside; the kill is the
+  namespace's, whole. A graceful stop is closing stdin, once input is in.
 
 ## Decided at review
 
@@ -365,6 +402,12 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   and an allow row, Touches for a deny or an ask row, as an address does; a `secret` ceiling
   block names its `name`; a missing block is `refused`'s to say, as for every op, so the
   table's test holds.
+- **At the third pass, before step 3:** stderr is a socket pair of its own beside the I/O
+  pair, both descriptors on the one stream frame, so a shell reads each as it comes and tells
+  them apart as `2>` does; a kill is the task's side closing its ends, the same path as the
+  task's process dying, detected on the stderr pair's EOF, with no op and nothing on the wire;
+  no graceful signal, since bwrap delivers none from outside; whether the exec tool blocks, or
+  splits into start, wait and kill, is settled at step 5 and changes `Do` alone.
 
 ## Open questions
 
