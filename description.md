@@ -65,4 +65,5 @@ elsewhere. Where it is not, an approved act is refused.
 - **What is not a field is not bound.** A Slack post's text is not in its step (1z5art3x has the
   note), nor an MCP call's arguments until 1v5art3x adds them. This issue binds what the step
   says; those make the step say more.
-- **What the approver sees** of the step is q3k89kva.
+- **What the approver sees** of the step: the question's record carries it (q3k89kva, closed), and
+  the Slack ask showing it is 2f5art3x.
