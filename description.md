@@ -281,15 +281,15 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   end to the task's process on a frame of the channel, which is a unix socket pair already. The
   task's process serves it as a unix socket in its workspace and, to start, writes the file.
   Input comes later over the same pair.
+- **The argv is a list on the wire and text in the step,** which a shape and a row match with
+  the patterns they have (`!regexp`, anchored by their author). No form of its own.
 - **The argv is on the wire once,** as the body's list; the step's field is spelled from it on
   each side. A kill signals bwrap's process group, with `WaitDelay`. `-sandbox none` is closed
   in `Standalone`. The command's `/tmp` is its own, and its proxy the task's.
 
 ## Open questions
 
-1. **Spelling as text, or a form `argv`.** Text reuses every pattern a row knows; a form could
-   refuse a shape that is not anchored. Text is proposed; the docs say to anchor.
-2. **Whether `as` is a field.** Proposed yes: a ceiling pins the variable's name, and an
+1. **Whether `as` is a field.** Proposed yes: a ceiling pins the variable's name, and an
    approver sees where the secret goes. It costs one more name in each shape.
-3. **Whether a `dir` under a checkout is enough,** or the command needs to run with the
+2. **Whether a `dir` under a checkout is enough,** or the command needs to run with the
    checkout's own branch state (it runs over the live tree, whatever the task has done to it).
