@@ -1,13 +1,17 @@
 # mcp: a system for the tools of remote MCP servers, called by the runner
 
-**Status:** a plan, reviewed once, and edited since: a call's arguments are a field of its step
-("At the second edit", below), a session the server ended is opened again and a server's
-instructions reach the brief ("At the third edit", against mcp.signadot.com), and a `null`
-argument stays a `null` ("At the fourth edit", against mcp.linear.app). Nothing is built. It
-blocks 1f5art3x. It waits on 1k5art3x (the
-channel's table of ops and its general request), on 1q5art3x (the secret store), and on 275art3x
-(an answer performs only the act it was given about), which is what binds an approval to the
-arguments.
+**Status:** a plan, reviewed twice ("At the second review", below), and edited between: a
+call's arguments are a field of its step ("At the second edit"), a session the server ended is
+opened again and a server's instructions reach the brief ("At the third edit", against
+mcp.signadot.com), and a `null` argument stays a `null` ("At the fourth edit", against
+mcp.linear.app). Nothing is built. It blocks 1f5art3x.
+
+**Where it is built:** on `verse/secret-exec`, as a pull request on top of it. The team is shown
+secret-exec as one pull request and what it enables, this and pkg-nix (2b5art3x) as far as each
+is done cleanly, as one or two on top; so secret-exec does not merge to main first. What this
+needs is there on that branch: 1k5art3x (the channel's table of ops and its general request),
+1q5art3x (the secret store), and 275art3x (an answer performs only the act it was given about),
+which is what binds an approval to the arguments.
 
 ## What it is
 
@@ -58,11 +62,20 @@ reaches the server and never holds the credential. It is the same kind of thing 
   without its checkout, and it is given up when the task's process goes. One op asks about no
   step, `state`, and two tests hold that: only `state` may, and such an op refuses under an
   empty environment.
-- **No op of the table is apart yet.** `apart` is used by the channel's tests alone, so
-  `mcp.call` is the first. The task an op apart is handed has no workspace (`Task.apart` sets
-  it nil), and `Workspace.Tree` on nil panics; `Server.perform` recovers a misreading and
-  nothing else, in a goroutine of `Serve`'s own, so that panic takes the runner down. An op
-  apart reads nothing of the checkout, then, and the test of `mcp.call` runs it apart to show it.
+- **One op of the table is apart,** `secret.exec` (`performedApart`). The task an op apart is
+  handed keeps its root and its network and has no workspace (`Task.apart` sets it nil);
+  `mcp.call` needs none of the three. `Workspace.Tree` on nil panics, and `Server.perform`
+  recovers a misreading and nothing else, in a goroutine of `Serve`'s own, so that panic takes
+  the runner down. An op apart reads nothing of the checkout, then, and the test of `mcp.call`
+  runs it apart to show it.
+- **An answer is bound to its call** (275art3x). `Channel.answered` refuses an act naming the
+  decision of an answer about another call, keeps the answer, and names the fields that differ
+  and no value (`task.Step.Differs`). `TestEachToolsStepIsTheRunners` (`stock/steps_test.go`)
+  holds each stock tool's step to the step the runner reads from the tool's request, for the
+  tools there are at build time; a tool made from a server's list is not among them.
+- **The verse tools read their step from their request.** Their `Build` makes the `Request` its
+  `Do` sends and reads the step with `delivery.StepOf(req)`, so the tool and the runner read the
+  same bytes with the same function.
 
 ## The shape
 
@@ -115,6 +128,9 @@ Each step builds and passes on its own.
      and here an argument is the tool's own input, which the server validates, and a shape that
      had to name every one would be rewritten with each version of the server's schema. A
      ceiling or a spawn that must pin an argument names it.
+   - **A refusal names the argument that differs.** `Differs` goes one level into a field of
+     form `doc`, so an act under the answer about another call is refused as differing in
+     `arguments.assignee`, by name and never by value, rather than in `arguments`.
 2. **A tool is filtered by its step.** `offered`, `given` and `toolsBrief` read the tool's
    `Step` where it has one, and its name as today where it has none. Nothing changes for the
    tools there are. A test gives a tool whose name does not split, and sees it dropped.
@@ -137,11 +153,17 @@ Each step builds and passes on its own.
    - **A session the server ended is opened again.** A server may end an idle session
      (mcp.signadot.com does after 30 minutes with no request), and a task may wait longer than
      that between calls. Where the server answers that it does not know the session (404 on the
-     session's id, as streamable HTTP says), the client opens a new one, initializes it, and
-     sends the call on it, once. That answer means the server took nothing of the call. A
-     connection lost after the call was sent is not that: the call fails, and whether the server
-     did it is not known, as for a call given up (step 5). Several calls finding the session
-     gone at once open one new session between them, under the sessions' lock.
+     session's id, as streamable HTTP says, which the SDK answers as `mcp.ErrSessionMissing`),
+     the client opens a new one, initializes it, and sends the call on it, once. That answer
+     means the server took nothing of the call. Several calls finding the session gone at once
+     open one new session between them, under the sessions' lock.
+   - **A call is never sent twice.** A response cut after the call was sent is resumed where
+     the server gives event ids: the SDK's transport asks again for the rest with
+     `Last-Event-ID` (`MaxRetries`, set explicitly), a GET that does not send the call again.
+     Where it gives none, or the resumption fails, the call fails, and whether the server did
+     it is not known, as for a call given up (step 5).
+   - **The client declares no capability:** no elicitation, no sampling, no roots. A request
+     of the server's for one is refused.
    - **Where the sessions live.** One value for a task, made when `Serve` begins, with a lock
      of its own. The task an op apart is handed keeps it (`Task.apart`), as it keeps the
      launch: it is nothing an op in turn writes.
@@ -158,7 +180,10 @@ Each step builds and passes on its own.
      refuses a server the environment gives no block for, so under an empty environment it
      refuses. It answers the server's tools, less those the environment's shapes and the
      ceiling do not admit, and the server's instructions (the `instructions` of its answer to
-     `initialize`), cut at a bound. It is performed in turn.
+     `initialize`), cut at a bound. It is performed **apart**, with a deadline of its own
+     (15s), shorter than a call's: it reads nothing of the checkout, and `Runner.Build` asks
+     the servers at once, so a slow server delays the task's start by its own deadline and not
+     by every server's in turn.
    - **`mcp.call`** is the step. It reads `server` and `tool`, and its body is the arguments,
      a JSON object, read into the step's `arguments` as tony structure, so the step the
      autonomy, the ceiling and an answer see is the call that is sent. What the runner sends the
@@ -167,12 +192,15 @@ Each step builds and passes on its own.
      bound to, and in what is sent, and is never an absent argument: a server may read the two
      apart (Linear's `save_issue` reads `assignee: null` as unassign and no `assignee` as
      unchanged), so dropping one would send a call nobody was asked about, and an approval of an
-     unassign would perform nothing. Both sides read a call with one function in `delivery`
-     (`ReadCall`, as `ReadExec` is for `secret.exec`), so the tool's step and the runner's are
-     the same (275art3x's conformance test holds it). A call whose arguments are larger than a
-     bound well under the frame (64 KiB, to be settled at review) is refused, and says the
-     bound: the step is what a person is asked about, and is carried whole (open, below).
-     The table checks it with `refused` before the act. It is performed **apart**: a server
+     unassign would perform nothing. The op reads its request with one function in `delivery`
+     (`ReadCall`), and the tool reads its step from the request it sends, through
+     `delivery.StepOf`, as the verse tools do: the two read the same bytes with the same
+     function, so the tool's step and the runner's are the same, and a number is spelled the
+     same on both sides (`1` and `1.0` are not the same step). What is sent is the step's
+     arguments as JSON, a `json.RawMessage` in `CallToolParams.Arguments`. A call whose
+     arguments are larger than 64 KiB is refused, and says the bound: the step is what a person
+     is asked about, and is carried whole, in the task's events, its snapshot and the
+     question's record. The table checks it with `refused` before the act. It is performed **apart**: a server
      that takes a minute does not hold a push, and it reads nothing of the checkout. When the
      task's process goes, a call in flight is given up, and whether the server did it is then
      not known. The request names its decision (`Request.Decision`), which the Slack tools'
@@ -183,12 +211,16 @@ Each step builds and passes on its own.
      as every act is. A tool the list left out for its name or its schema is one the
      environment admits, so a call of it is no more than the spawn gave.
 6. **The tools, in the task's process.** `mcpTools` in `stock`, beside `slackTools`.
-   `Runner.Build` asks `mcp.list` for each server and makes one `verse.Tool` for each tool: its
-   `Step` is `task.StepMCPCall`, its `Build` makes the step whole from the call (`ReadCall`:
-   the server, the tool, and the input as `arguments`), and its `Do` sends `mcp.call` with
-   `Request.Decision`. `Params` and `Required` are the schema's `properties` and
-   `required`. A tool whose schema needs more than that (a `$ref` anywhere in it, `oneOf` at
-   the top) is left out and logged, until `verse.Tool` carries a whole schema.
+   `Runner.Build` asks `mcp.list` for each server, at once, and makes one `verse.Tool` for each
+   tool: its `Step` is `task.StepMCPCall`, its `Build` makes the request its `Do` sends (the
+   server, the tool, and the input as the body's JSON) and reads the step from it
+   (`delivery.StepOf`), and its `Do` sends that request with `Request.Decision`. `Params` and
+   `Required` are the schema's `properties` and `required`. A tool whose schema needs more than
+   that (a `$ref` anywhere in it, `oneOf` at the top) is left out and logged, until
+   `verse.Tool` carries a whole schema.
+   - **The conformance test takes them.** `TestEachToolsStepIsTheRunners` gains the tools of a
+     test server's list, with a use of each, so a tool made from a list is held to the runner's
+     step as a stock tool is.
    - **A server that does not answer.** Its tools are left out, the task starts, and the task
      is told: the brief says the server did not answer and its tools are not there. The
      runner's log says why.
@@ -198,8 +230,12 @@ Each step builds and passes on its own.
      description is (step 8): they say how to use the tools and grant nothing, since every call
      is still decided at the runner. A server with none adds nothing.
 7. **The result.** The text of the result's content, in order. Content that is not text is
-   named and left out. A result the server marks an error is what the model reads, and no
-   error of the runner's. It is cut at a bound well under the frame, and says it was cut.
+   named and left out. A result with no text and a `structuredContent` is that, as JSON text.
+   A result the server marks an error is what the model reads, and no error of the runner's.
+   A result that asks for more input (`resultType: input_required`) is not a completed call:
+   the runner gives no input and sends nothing more, and the answer says the server asked for
+   input the runner does not give and the call was not completed. It is cut at a bound well
+   under the frame, and says it was cut.
 8. **What a server says is the server's.** A tool's description, the server's instructions and
    a result come into the model's context. Each description ends with a line that says the
    answer is data and no instruction, as `slack-read`'s does. A description and the
@@ -234,9 +270,17 @@ under `httptest`).
 - **The arguments.** A shape and a row decide a call by them (`{team: ENG}` admits a call with
   `team: ENG` and another argument beside it, and refuses `team: OPS`). A call answered with
   one set of arguments and sent with another, under the same decision, is refused and does not
-  reach the server (275art3x). What the server is sent is the step's arguments, byte for byte
-  as JSON of that structure. A call past the bound is refused. The tool's step and the
-  runner's are `Same` for a call with nested objects, arrays, numbers and booleans.
+  reach the server (275art3x); the refusal names the argument that differs and no value. What
+  the server is sent is the step's arguments, byte for byte as JSON of that structure. A call
+  past 64 KiB is refused. The tool's step and the runner's are `Same` for a call with nested
+  objects, arrays, numbers and booleans, and `TestEachToolsStepIsTheRunners` holds a test
+  server's tools to it.
+- **An approval of these arguments performs them.** Through a stock runner, the whole way: a row
+  asks, the person answers, the runner reads the step back from the task (`gateAbout`), and
+  the call is performed, once, on arguments with a nested object, an array, a `null`, a bool,
+  the strings `"true"` and `"007"`, a float, an empty `{}` and `[]`, and text that is not
+  ASCII. An answer about these arguments refused as about another call is the failure this
+  catches.
 - **A `null`.** A call with `assignee: null` reaches the server with `"assignee": null`, and one
   with no `assignee` reaches it with none; the two are not `Same` as steps, so an answer about
   one does not perform the other; a shape that pins `assignee` to a value refuses the `null`.
@@ -248,7 +292,9 @@ under `httptest`).
   refuses there.
 - **Apart.** A call that is held does not hold a request in turn. A call in flight when the
   task's end goes is given up. Two calls at once on one session both answer. A call is performed
-  on the task as `Task.apart` hands it, with no workspace, and reads none.
+  on the task as `Task.apart` hands it, with no workspace, and reads none. The lists of two
+  servers are asked at once, and a server that does not answer its list delays the task's
+  start by the list's deadline and no more.
 - **The deadline.** A server slower than its `timeout` fails the call at the timeout. A
   `timeout` over the table's is refused in the configuration.
 - **The credential.** The header is the secret's value, as `Bearer` or under the header named.
@@ -258,8 +304,12 @@ under `httptest`).
   response past the bound fails the call.
 - **A session ended.** The test server ends a task's session between two calls (its
   `SessionTimeout`, or the session closed): the second call opens a new session and answers,
-  and the server saw it once. A connection cut after a call reached the server fails the call
-  and does not send it again. Two calls finding the session gone at once open one session.
+  and the server saw it once. Two calls finding the session gone at once open one session.
+- **A response cut.** A connection cut after a call reached the server never sends the call
+  again: against a server that gives event ids the answer is resumed and the server saw the
+  call once; against one that gives none the call fails.
+- **What the client does not do.** A server's request for elicitation, sampling or roots is
+  refused, and the call it came in goes on.
 - **The instructions.** A server's instructions are in the brief under its name, cut at the
   bound; a server with none adds nothing.
 - **The configuration.** A server's name with a `-`, a url with a user or a query, and a
@@ -273,7 +323,9 @@ under `httptest`).
 - **Closed.** A server whose secret is absent is out of every ceiling and every offer.
 - **Each doer.** The patterns of `claude_test.go`, `codex_test.go` and `scripted_test.go` in
   `stock`: the tool is offered, a use of it is the step `mcp.call`, and its result comes back.
-- **The result.** A long one is cut and says so. One marked an error is read as text.
+- **The result.** A long one is cut and says so. One marked an error is read as text. One with
+  only `structuredContent` is read as its JSON. One that asks for input says the call was not
+  completed, and nothing more is sent.
 - **The description.** `TestDescribePublishesBuildsAndSettings` gains the servers.
 
 ## What does not change
@@ -292,7 +344,8 @@ under `httptest`).
 - **What a person is shown of the arguments in Slack** (2f5art3x). The arguments are in the
   step, bound to the answer, and on the question's record (`fields`, since q3k89kva and the
   systems work); the Slack ask showing them is 2f5art3x's.
-- **A digest in the step,** for arguments past the bound. Open below.
+- **A digest in the step,** for arguments past the bound. Worth deciding once the question
+  shows what it would digest (2f5art3x); until then a call past 64 KiB is refused.
 - **OAuth.** A server that takes only an interactive sign-in is not reached. The secret is a
   token the operator has.
 - **Resources and prompts.** Tools only.
@@ -328,9 +381,8 @@ under `httptest`).
 - **A shape matches them open,** and `env`'s closed match is not carried over (step 1 says why).
 - **What is sent is the step's,** written back as JSON, never the body's bytes.
 - **Open, for the next review:** the bound on the arguments (64 KiB proposed), and whether a call
-  past it is refused or carried with a digest of its long values in the step. Refused is the
-  first version; a digest needs the question to show what it digests (2f5art3x) to be worth
-  approving.
+  past it is refused or carried with a digest of its long values in the step. Settled at the
+  second review: refused, at 64 KiB.
 
 ## At the third edit (against mcp.signadot.com)
 
@@ -391,3 +443,28 @@ mcp:
   the person who made it, for every task; an app's token acts as the app but has to be
   refreshed, and OAuth is not in this issue; a task's own identity is hfh7km3t's. The session
   lifetime is not documented; the third edit's reopening covers it.
+
+## At the second review (against `verse/secret-exec` and the SDK at v1.8.0)
+
+- **Built on `verse/secret-exec`,** as a pull request on top of it, with pkg-nix, rather than
+  after it merges (the status). What is there today is read from that branch: `secret.exec` is
+  the first op apart, an answer is bound to its call (275art3x), and the verse tools read their
+  step from their request.
+- **The tool reads its step from its request** (`delivery.StepOf`), not from its input (steps
+  5, 6): the tool and the runner then read the same bytes, and a number is spelled the same on
+  both sides.
+- **The conformance test takes the listed tools** (step 6). As it stands it builds the tools
+  there are at build time, and a tool made from a server's list is not among them.
+- **An approval is tested the whole way** (tests): a step read back from the task's snapshot
+  that is not `Same` as the runner's would refuse every approval of a call, and `arguments` is
+  the second deep field of form `doc` to make that trip, after an ask's `on`.
+- **`mcp.list` is apart,** with a deadline of its own, and the servers are asked at once
+  (step 5): in turn, a slow server's minute was every task's start.
+- **The SDK's own words** (step 4): `mcp.ErrSessionMissing` for a session the server ended;
+  a cut response resumed by `Last-Event-ID`, which sends nothing again; no capability
+  declared. **The result** (step 7): `structuredContent` with no text is read as its JSON, and
+  `input_required` is a call not completed.
+- **A refusal names the argument** (step 1): `Differs` goes one level into a field of form
+  `doc`.
+- **The bound:** refused at 64 KiB. The step is carried whole in the task's events, its
+  snapshot and the question's record; nothing on verse's side bounds it smaller.
