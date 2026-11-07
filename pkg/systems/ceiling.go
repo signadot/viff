@@ -197,8 +197,10 @@ func (cb CeilingBlock) admits(d Document, name, v string, written bool) bool {
 
 // ShapeWithin is whether every call inner allows, outer allows too: each field outer names, inner
 // names, with a pattern within outer's (FieldContains). A field outer leaves out is any; one
-// inner leaves out is any too, and so beyond an outer that names it.
+// inner leaves out is any too, and so beyond an outer that names it. A field with a default is
+// read as the default where either leaves it out (filled).
 func ShapeWithin(step string, outer, inner Shape) bool {
+	outer, inner = filled(step, outer), filled(step, inner)
 	for name, op := range outer {
 		ip, named := inner[name]
 		if !named || !FieldContains(FormOf(step, name), op, ip) {

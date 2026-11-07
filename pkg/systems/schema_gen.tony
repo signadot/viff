@@ -15,6 +15,7 @@ signature:
 context:
 - tony-format/context
 define:
+  default: .[string]
   description: .[string]
   form: .[string]
   name: .[string]

@@ -81,8 +81,66 @@ func MatchFieldAs(form string, r Reading, pattern, value *ir.Node) bool {
 	if pattern = canon(form, pattern); form == FormPath {
 		return pathMatch(r, pattern, value)
 	}
+	if form == FormEnv {
+		return envMatch(r, pattern, value)
+	}
 	ok, err := safeMatch(value, pattern)
 	return err == nil && ok
+}
+
+// ── variables ───────────────────────────────────────────────────────────────────────────────
+
+// VARIABLES READ TWO WAYS TOO (the form env). A step's variables are an object, each a name and
+// its value, and a pattern on them is an object of names, each with a pattern on its value
+// (`null` for any). Read Within, the step's variables lie among those the pattern names, each
+// matching its pattern: a variable the pattern does not name puts the step outside, where tony's
+// own object match would let it by, so a shape and a ceiling give variables one by one and a
+// shape that names none gives none. Read Touches, the step gives each variable the pattern
+// names, matching: what a deny or an ask row means by `env: {LD_PRELOAD: null}`, every step that
+// gives it, as tony reads it.
+
+// envMatch is whether a step's variables meet a pattern over them, read as r says. A pattern or
+// a value that is no object meets nothing.
+func envMatch(r Reading, pattern, value *ir.Node) bool {
+	if pattern.Tag != "" || pattern.Type != ir.ObjectType || value.Type != ir.ObjectType {
+		return false
+	}
+	if r == Touches {
+		for i, k := range pattern.Fields {
+			v := ir.Get(value, k.String)
+			if v == nil || !MatchField(FormText, pattern.Values[i], v) {
+				return false
+			}
+		}
+		return true
+	}
+	for i, k := range value.Fields {
+		p := ir.Get(pattern, k.String)
+		if p == nil && !slices.ContainsFunc(pattern.Fields, func(f *ir.Node) bool { return f.String == k.String }) {
+			return false
+		}
+		if !MatchField(FormText, p, value.Values[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// envContains is whether every set of variables inner admits, outer admits too: each name inner
+// gives is outer's, with its pattern within outer's. Either that is no object holds nothing.
+func envContains(outer, inner *ir.Node) bool {
+	if outer.Tag != "" || outer.Type != ir.ObjectType || inner.Tag != "" || inner.Type != ir.ObjectType {
+		return false
+	}
+	for i, k := range inner.Fields {
+		if !slices.ContainsFunc(outer.Fields, func(f *ir.Node) bool { return f.String == k.String }) {
+			return false
+		}
+		if !FieldContains(FormText, ir.Get(outer, k.String), inner.Values[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // FieldContains is whether every value inner matches, outer matches too: inner is within outer.
@@ -118,6 +176,9 @@ func FieldContains(form string, outer, inner *ir.Node) bool {
 	}
 	if form == FormPath {
 		return pathContains(outer, inner)
+	}
+	if form == FormEnv {
+		return envContains(outer, inner)
 	}
 	if isLiteral(inner) {
 		return MatchField(form, outer, inner)
@@ -179,6 +240,9 @@ func FieldMeets(form string, a, b *ir.Node) bool {
 	}
 	if form == FormPath {
 		return pathMeets(a, b)
+	}
+	if form == FormEnv {
+		return true // a step giving no variable lies within every two
 	}
 	if isLiteral(a) {
 		return MatchField(form, b, a)

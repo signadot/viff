@@ -89,6 +89,11 @@ type Field struct {
 	// Required is whether every shape of an environment's block gives it (`null` for any). A row's
 	// match may leave it out, as any field.
 	Required bool `tony:"field=required,omitzero"`
+	// Default is the pattern a shape that leaves the field out is read with, in tony (`{}`), where
+	// the field has one: what an environment's or a ceiling's shape means by saying nothing of
+	// it, where saying nothing would otherwise be any. A row's match is not read so: it names what
+	// it names. Empty is none, and a required field has none.
+	Default string `tony:"field=default,omitzero"`
 }
 
 // The forms a field's value takes: how a step carries it, and what a pattern on it is checked
@@ -105,7 +110,12 @@ const (
 	FormFile   = "file"   // a file's path in the workspace, `/` between its directories: db/x.sql
 	FormPath   = "path"   // an address in the store, its names in order: [play, issues, issue]
 	FormDoc    = "doc"    // structure, held as given: an ask's `on`
+	FormVar    = "var"    // a variable's name, as a shell spells one: NPM_TOKEN
+	FormEnv    = "env"    // variables by name, each with a value: {NODE_OPTIONS: --max-old-space-size=4096}
 )
+
+// forms is every form, in the order a refusal lists them.
+var forms = []string{FormBool, FormInt, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText, FormFile, FormPath, FormDoc, FormVar, FormEnv}
 
 // Accepts says why a pattern on the field can never match a value of its form, or one of its
 // values where it lists them, or nil where it can. A literal is a value of the form: a string of
@@ -179,7 +189,7 @@ func sampleOf(form string) *ir.Node {
 		return ir.FromInt(0)
 	case FormPath:
 		return ir.FromSlice(nil)
-	case FormDoc:
+	case FormDoc, FormEnv:
 		return ir.FromKeyVals(nil)
 	}
 	return ir.FromString("")
@@ -190,6 +200,8 @@ func (f Field) acceptsValue(n *ir.Node) error {
 	switch f.Form {
 	case FormDoc:
 		return nil
+	case FormEnv:
+		return acceptsEnv(n)
 	case FormBool:
 		if n.Type == ir.BoolType {
 			return nil
@@ -251,7 +263,7 @@ func (f Field) acceptsValue(n *ir.Node) error {
 // values, it matches one; and a glob is spelled as the form's values are, its `*` within a `/`.
 func (f Field) acceptsText(op, text string, matches func(string) bool) error {
 	switch f.Form {
-	case FormBool, FormInt, FormPath, FormDoc:
+	case FormBool, FormInt, FormPath, FormDoc, FormEnv:
 		return fmt.Errorf("%s matches text, and the field is %s", op, formWords(f.Form))
 	}
 	if len(f.Values) > 0 {
@@ -306,16 +318,40 @@ func formWords(form string) string {
 		return "an address (a list of segments, or play.issues.*)"
 	case FormDoc:
 		return "structure, matched as tony matches it"
+	case FormEnv:
+		return "variables by name, an object whose keys are their names and whose values are patterns on theirs"
 	}
 	return "text"
 }
 
+// acceptsEnv is why an untagged pattern is no pattern over variables (the form env), or nil: an
+// object, each key a variable's name, each value a pattern over text (`null` for any).
+func acceptsEnv(n *ir.Node) error {
+	if n.Type != ir.ObjectType {
+		return errors.New("the field is " + formWords(FormEnv))
+	}
+	for i, k := range n.Fields {
+		k = ir.Uncomment(k)
+		if k == nil || k.Type != ir.StringType || !varName.MatchString(k.String) {
+			return fmt.Errorf("%s: a key is a variable's name: letters, digits and `_`, not starting with a digit", Words(k))
+		}
+		if err := (Field{Form: FormText}).Accepts(n.Values[i]); err != nil {
+			return fmt.Errorf("%s: %w", k.String, err)
+		}
+	}
+	return nil
+}
+
 // checkText is why a string is no value of a text form's spelling, or nil.
 func checkText(form, v string) error {
-	if v == "" && (form == FormRef || form == FormRepo) {
+	if v == "" && (form == FormRef || form == FormRepo || form == FormVar) {
 		return errors.New("an empty value: the field is never empty")
 	}
 	switch form {
+	case FormVar:
+		if !varName.MatchString(v) {
+			return fmt.Errorf("%q: the field is a variable's name: letters, digits and `_`, not starting with a digit", v)
+		}
 	case FormRepo:
 		if v != "" && strings.Count(v, "/") < 2 {
 			return fmt.Errorf("%q: the field is a repository as `host/owner/name` (github.com/acme/app)", v)
@@ -512,9 +548,74 @@ func (d Document) check() error {
 			if err := checkValues(f.Form, f.Values); err != nil {
 				return fmt.Errorf("%s.%s: field %s: %w", d.Name, v.Name, f.Name, err)
 			}
+			if f.Default != "" {
+				if f.Required {
+					return fmt.Errorf("%s.%s: field %s is required and has a default; it is one or the other", d.Name, v.Name, f.Name)
+				}
+				p, err := f.defaultPattern()
+				if err == nil {
+					err = f.Accepts(p)
+				}
+				if err != nil {
+					return fmt.Errorf("%s.%s: field %s: the default %q is no pattern of its: %w", d.Name, v.Name, f.Name, f.Default, err)
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// defaultPattern is the field's default as the pattern it is, nil where it has none: tony, read
+// as a shape's value is.
+func (f Field) defaultPattern() (*ir.Node, error) {
+	if f.Default == "" {
+		return nil, nil
+	}
+	n, err := parse.Parse([]byte(f.Default))
+	if err != nil {
+		return nil, err
+	}
+	return Plain(ir.Uncomment(n)), nil
+}
+
+// filled is a shape with the document's default put in for each field of the verb it leaves out
+// that has one: what an environment's or a ceiling's shape means by saying nothing of such a
+// field. A shape of a step no document describes is as given, and so is one that leaves out no
+// such field.
+func filled(step string, s Shape) Shape {
+	system, verb, ok := Split(step)
+	if !ok {
+		return s
+	}
+	d, ok := Get(system)
+	if !ok {
+		return s
+	}
+	v, ok := d.Verb(verb)
+	if !ok {
+		return s
+	}
+	var out Shape
+	for _, f := range v.Fields {
+		if _, named := s[f.Name]; named || f.Default == "" {
+			continue
+		}
+		p, err := f.defaultPattern()
+		if err != nil {
+			continue // refused at load
+		}
+		if out == nil {
+			out = maps.Clone(s)
+			if out == nil {
+				out = Shape{}
+			}
+		}
+		out[f.Name] = p
+	}
+	if out == nil {
+		return s
+	}
+	return out
 }
 
 // checkValues is whether a field's listed values are each one of its form, and not a pattern.
@@ -531,11 +632,11 @@ func checkForm(form string) error {
 	switch form {
 	case "":
 		return errors.New("a field has a form, which says what its value is and how a pattern on it is checked")
-	case FormBool, FormInt, FormRef, FormBranch, FormUpper, FormLower, FormRepo, FormText, FormFile, FormPath, FormDoc:
+	}
+	if slices.Contains(forms, form) {
 		return nil
 	}
-	return fmt.Errorf("the form %q is not one of %s", form, strings.Join([]string{FormBool, FormInt, FormRef,
-		FormBranch, FormUpper, FormLower, FormRepo, FormText, FormFile, FormPath, FormDoc}, ", "))
+	return fmt.Errorf("the form %q is not one of %s", form, strings.Join(forms, ", "))
 }
 
 // starRegexp is the regexp a text with `*`s in it was meant as: each `*` any run, anchored at an

@@ -52,11 +52,12 @@ of any branch; a charter that ships writes its git push shapes instead.
 | [`github-issue`](github-issue.md) | `create`, `comment`, `close` | [iod github](../reference/iod.md#github) |
 | [`linear-issue`](linear-issue.md) | `create`, `comment`, `close` | [iod linear](../reference/iod.md#linear) |
 | [`slack`](slack.md) | `post`, `reply`, `read`, `react` | [iod slack](../reference/iod.md#slack) |
+| [`secret`](secret.md) | `exec` | none: one command the runner runs with a secret of its store, which the task never holds |
 | [`verse`](verse.md) | `ask-create`, `ask-get`, `ask-list`, `data-get`, `data-put`, `data-rm`, `charter-get`, `charter-check`, `charter-install`, `charter-remove` | none: verse itself, reached through the runner's own token |
 | [`question`](question.md) | `ask` | none: a question goes to the docket ([asking](../asking.md)) |
 | [`files`, `commands`, `agent`](inside.md) | `write`; `run`; `call-sub-agent` | none: these are what an agent does inside its run |
 | [`network`](inside.md#the-network) | `tcp-client` | none: the connections a run opens through its runner's proxy |
 
 The runner performs the verbs of `git`, `git-issue`, `github`, `github-issue`, `linear-issue`,
-`slack` and `verse`. It uses its own credential, and stays within the ceiling its configuration puts
-over each system ([the verse runner](../reference/runnerd.md#configuration)).
+`slack`, `secret` and `verse`. It uses its own credential, and stays within the ceiling its
+configuration puts over each system ([the verse runner](../reference/runnerd.md#configuration)).

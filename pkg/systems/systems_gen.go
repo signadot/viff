@@ -481,6 +481,11 @@ func (s *Field) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["required"] = ir.FromBool(bool(s.Required))
 	}
 
+	// Field: Default
+	if s.Default != "" {
+		irMap["default"] = ir.FromString(string(s.Default))
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -555,6 +560,12 @@ func (s *Field) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected bool, got %v", "required", fieldNodeUnwrapped.Type)
 			}
 			s.Required = bool(fieldNodeUnwrapped.Bool)
+		case "default":
+			// Field: Default
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "default", fieldNodeUnwrapped.Type)
+			}
+			s.Default = string(fieldNodeUnwrapped.String)
 		default:
 			if gomap.IsStrict(opts...) {
 				return fmt.Errorf("unknown field %q for Field", fieldName.String)
