@@ -40,6 +40,12 @@ data:
     # a secret here, so each system reads its variable as before; a deployment moves one to the
     # store by naming it (`systems: {slack: slack-bot, linear-issue: linear}`, the files the
     # volume gives), and its variable is then not read.
+    # The store is also what the `secret` system runs a command with (docs/systems/secret.md):
+    # no doer here has a `secret` ceiling, so it is closed. A deployment opens it per doer, a
+    # secret at a time, with the commands and the one host the command needs:
+    #   systems:
+    #     secret:  {ceiling: [{name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm publish --ignore-scripts$"}}]}
+    #     network: {ceiling: {mode: allow, tcp-client: {host: registry.npmjs.org}}}
     secrets: {dir: /secrets}
     # The operator's line over every system a doer holds for its tasks, a doer at a time: what a
     # spawn's environment may give, held at install, at launch and again at each act. A ceiling

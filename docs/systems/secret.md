@@ -37,7 +37,8 @@ spawn:
 
 | Tool | What it does | Step |
 |---|---|---|
-| `secret-exec` | runs one command with the block's secret in its environment under `as`; the task reads back the exit status, the path of the output in its workspace, and the output's tail | `secret.exec`, with `name`, `as`, `argv`, `dir` and `env` |
+| `secret-exec` | runs one command with the block's secret in its environment under `as`, and blocks until it ends; the task reads back the run's id, the exit status, and each stream's file in its workspace, size and tail | `secret.exec`, with `name`, `as`, `argv`, `dir` and `env` |
+| `secret-exec-kill` | kills a run `secret-exec` is waiting on, by its id (`e1`) | none: it acts on a run already decided, and is offered with `secret-exec` |
 
 **The command is a list, and the step is one line.** The tool takes `argv` as a list of arguments,
 never a shell line, and the runner runs that list. The step's `argv` is the list spelled as one
@@ -47,9 +48,16 @@ publish --tag 'a b'`), so a shape, a row and a person approving read a command l
 argument ends is never in doubt: `npm "publish --registry evil"` spells as `npm 'publish --registry
 evil'`, which no pattern on the bare line admits.
 
-**The program is the runner's.** `argv[0]` is a bare name, found on the command's `PATH`, and the
-runner runs it only where it resolves under a system directory or a `readOnly` path of the
-runner's: never under the workspace, where a program of the task's would read the secret for it.
+**The program is the runner's; what it runs is the shapes'.** `argv[0]` is a bare name, found on
+the command's `PATH` on the runner's side, and the runner runs it only where it resolves, links
+followed, under a system directory or a `readOnly` path of the runner's: never under the
+workspace, and never through a `PATH` the call set to point there. That bounds `argv[0]` and no
+more. What the program then runs runs with the secret too, and it may be the workspace's: `npm
+publish` runs the package's lifecycle scripts, `node x.js` and `sh -c` run what they are given,
+and a program reads its configuration from the task's `HOME`, which is the workspace. So the
+shapes are the guard, and a shape is written for what the command does, not for its name: `npm
+publish --ignore-scripts` rather than `npm publish`, and no interpreter or shell with an argument
+the task chooses.
 
 **`dir` is where the command runs,** a path under the workspace root; empty is the root. The
 command runs over the live tree, as the task has it at that moment. What it acts on is not any
@@ -73,19 +81,32 @@ lying among those the row names; a `deny` or an `ask` row reads it as above, the
 them. Each errs toward refusing, as a row on an address does
 ([autonomy](../reference/gates.md)).
 
-**The output is a stream.** The command's output comes to the task's process with the secret's
-value replaced by `[secret <name>]` wherever it appears whole (an encoding of it is not caught).
-The task's process serves it as a unix socket at `.verse/exec/<id>.sock` in the workspace, where a
-shell of the task's can connect to read along, and writes it to `.verse/exec/<id>.out`, cut at 16
-MiB and said. The tool answers the model with the exit status, the file's path and the last 16 KiB
-of the output.
+**The output is two streams.** The command's stdout and stderr each come to the task's process on
+a unix socket of their own, with the secret's value replaced by `[secret <name>]` wherever it
+appears whole: an encoding of it, or the value split by the command's own formatting, is not
+caught, which is the shapes' to prevent and not the redaction's. The task's process writes each to
+a file in the workspace, `.verse/exec/<id>.out` and `<id>.err`, cut at 16 MiB and said, and serves
+each while the command runs at `<id>.sock` and `<id>.err.sock` beside them, where a shell of the
+task's can connect and read along from then on. A reader that stops reading is dropped after ten
+seconds, and the run goes on. The tool answers the model with the run's id and its end (`exited
+3`, `killed after 30s, the timeout`), then each stream's file, size and last 16 KiB. A file that
+cannot be written, or a socket whose path is too long, is said in the answer, and the run goes on.
 
-**The run is bounded.** `timeout` on the call is in seconds, 10 minutes where none, an hour at
-most. Past it the command is killed, with everything it started, and the answer says so. When the
-task's process goes, the command is killed with it.
+**The run lives while the task holds its output.** `timeout` on the call is in seconds, 10 minutes
+where none, an hour at most, and refused where it is no whole number. Past it the command is
+killed, with everything it started, and the answer says so. The task lets go of the run, and the
+runner kills it, when `secret-exec-kill` names its id, when the call is given up (the task
+cancelled), and when the task's process goes. There is no other signal: a command that wants a
+graceful end gets one from its own timeout.
 
-A script calls the same tool with `verse-call-tool secret-exec`, and the same environment and rows
-decide it.
+`secret-exec` blocks, so the kill is reachable from beside it: a script makes the call in the
+background (`verse-call-tool secret-exec … &`) and kills it by id, and the same environment and
+rows decide the call. An agent whose loop runs one tool at a time bounds a run with `timeout`.
+
+**The network bounds where the secret can go.** The command runs under the task's network, so a
+command the shapes admit sends the secret wherever the task's network reaches, configured by
+files the task can write. Pair a `secret` block with a network that reaches the one host the
+command needs (`tcp-client: {host: registry.npmjs.org}`, as above), and in the ceiling too.
 
 ## Where the secret lives
 
@@ -119,7 +140,9 @@ agents:
 ```
 
 A ceiling block names its secret as a literal, never a pattern, and a block that names none is
-refused: a name is what a doer is trusted with. `as` it may pattern or leave out. A block whose
+refused: a name is what a doer is trusted with. `as` it may pattern or leave out. Its `exec`
+shapes match variables closed, as an environment's do: a block that says nothing of `env`, or an
+empty `exec: {}`, gives no variables, and one that gives any says `env: null`. A block whose
 secret is not in the store when the runner starts is left out of the ceiling, and said. Verse
 refuses to install a spawn whose environment gives a secret, a command or a variable the ceiling
 does not ([the verse runner](../reference/runnerd.md#what-it-offers)), and the runner holds each

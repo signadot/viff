@@ -128,6 +128,7 @@ listen: ":9802"
 verse: {url: http://verse:9797}            # the one verse this runner serves; required
 repos:
   mirrors: /var/lib/verse-runner/mirrors
+secrets: {dir: /secrets}                   # the secret store; `secret` is performed only with one
 agents:
   claude:
     bin: /usr/local/bin/claude             # `claude` on PATH when absent
@@ -147,8 +148,8 @@ agents:
         ceiling:
         - name: npm-token                  # left out where the store has no npm-token
           as: NPM_TOKEN
-          exec: {argv: !regexp "^npm (publish --ignore-scripts|view )", dir: !glob "packages/*"}
-      network: {ceiling: {mode: !or [none, allow], tcp-client: [{host: !glob "*.github.com"}, {host: pypi.org}]}}
+          exec: {argv: !regexp "^npm (publish --ignore-scripts|view )", dir: !glob "packages/*"}   # no variables
+      network: {ceiling: {mode: !or [none, allow], tcp-client: [{host: !glob "*.github.com"}, {host: pypi.org}, {host: registry.npmjs.org}]}}
       files: {ceiling: {}}
       commands: {ceiling: {}}
 script:                                    # scripts are offered only with this section
@@ -282,6 +283,7 @@ offers:
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
     slack: {ceiling: {post: {channel: deploys}, read: {channel: deploys}}}
+    secret: {ceiling: {name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm (publish --ignore-scripts|view )", dir: !glob "packages/*"}}}
     verse: {}
     files: {ceiling: {}}
     commands: {ceiling: {}}
@@ -302,6 +304,7 @@ offers:
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
     slack: {ceiling: {post: {channel: deploys}, read: {channel: deploys}}}
+    secret: {ceiling: {name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm (publish --ignore-scripts|view )", dir: !glob "packages/*"}}}
     verse: {}
     question: {}
 ```
