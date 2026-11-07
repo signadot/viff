@@ -29,6 +29,10 @@ data:
     # github.com, and the token is GITHUB_TOKEN (the verse-runner Secret, below).
     repos:
       mirrors: /state/mirrors
+    # The secret store, as deploy/verse-runner has it: the projected volume below, read by the
+    # runner at each act and by no task. A deployment moves a system to it by naming its secret
+    # (`systems: {slack: slack-bot, linear-issue: linear}`), and its variable is then not read.
+    secrets: {dir: /secrets}
     # The operator's line over every system a doer holds for its tasks, a doer at a time: what a
     # spawn's environment may give, held at install, at launch and again at each act. A ceiling
     # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer
@@ -154,6 +158,7 @@ spec:
         volumeMounts:
         - {name: config, mountPath: /config, readOnly: true}
         - {name: state, mountPath: /state}
+        - {name: secrets, mountPath: /secrets, readOnly: true}
         readinessProbe:
           # The server up, and nothing else (deploy/verse-runner, the same probe).
           httpGet: {path: /ready, port: control}
@@ -172,6 +177,22 @@ spec:
         configMap: {name: codex-runner-config}
       - name: state
         emptyDir: {}
+      # The secret store, as deploy/verse-runner has it and explains it: every source optional,
+      # the iods' keys under the store's names, verse-runner-secrets for the rest, no subPath.
+      - name: secrets
+        projected:
+          sources:
+          - secret:
+              name: verse-slack
+              optional: true
+              items: [{key: SLACK_BOT_TOKEN, path: slack-bot}]
+          - secret:
+              name: verse-linear
+              optional: true
+              items: [{key: LINEAR_API_KEY, path: linear}]
+          - secret:
+              name: verse-runner-secrets
+              optional: true
 ---
 apiVersion: v1
 kind: Service
