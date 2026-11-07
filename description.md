@@ -2,8 +2,7 @@
 
 **Status:** a plan, reviewed twice (the second against the code: "At the second review",
 below), being built in the worktree `.worktrees/secret-exec` (branch `verse/secret-exec`, over
-`verse/secret-store`), step by step: step 1 is committed (11809adf), step 2 is built and
-passes, uncommitted. It blocks 1f5art3x. It waits on
+`verse/secret-store`), step by step: steps 1 and 2 are committed (11809adf, e4272019); step 3 is next. It blocks 1f5art3x. It waits on
 1q5art3x (the secret store, which it reads) and on 1k5art3x (the table of ops, built). It shares
 the first op performed apart with 1v5art3x, whichever lands first.
 
