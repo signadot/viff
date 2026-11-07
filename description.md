@@ -2,9 +2,11 @@
 
 **Status:** a plan, reviewed twice (the second against the code: "At the second review",
 below), being built in the worktree `.worktrees/secret-exec` (branch `verse/secret-exec`, over
-`verse/secret-store`), step by step: steps 1 to 3 are committed (11809adf, e4272019, and the delivery commit after
-them); step 4, the op, is next, on the third pass's design (stderr its own socket, a kill the task's closing of its
-stream: "At the third pass", below). As built, the frame's field is `Streams int`, the count,
+`verse/secret-store`), step by step: steps 1 to 3 are committed (11809adf, e4272019, 4de18b41); step 4, the op, is
+built and tested in the worktree, uncommitted, on the third pass's design (stderr its own socket, a kill the task's
+closing of its stream: "At the third pass", below): `delivery/secret.go` (the op, the redaction, the program found on
+the command's PATH on the runner's side), `Task.Env`/`Channel.SetEnv`, `systems.IsVarName`, and tests in delivery
+and an end-to-end one in runnerd under a fake bwrap. Step 5, the tool, is next. As built, the frame's field is `Streams int`, the count,
 rather than `Stream bool`: the frame says how many it carries, and the client takes that many. It blocks 1f5art3x. It waits on
 1q5art3x (the secret store, which it reads) and on 1k5art3x (the table of ops, built). It shares
 the first op performed apart with 1v5art3x, whichever lands first.
