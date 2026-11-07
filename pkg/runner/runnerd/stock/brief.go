@@ -24,10 +24,11 @@ import (
 func toolsBrief(tools []verse.Tool, env systems.Environment) string {
 	bySystem := map[string][]string{}
 	for _, t := range tools {
-		system, _, ok := systems.SplitTool(t.Name)
+		st, ok := t.StepName()
 		if !ok {
 			continue
 		}
+		system, _, _ := systems.Split(st)
 		bySystem[system] = append(bySystem[system], "`"+t.Name+"`")
 	}
 	if len(bySystem) == 0 {

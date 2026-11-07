@@ -382,13 +382,13 @@ func (c Config) doer(l *runner.Launch) string {
 	return AgentName
 }
 
-// offered is the runner's tools whose verb the environment gives: a tool is its system's verb
-// (systems.SplitTool), and one the environment does not give is not offered, so the doer never
+// offered is the runner's tools whose verb the environment gives: a tool is its step
+// (verse.Tool.StepName), and one the environment does not give is not offered, so the doer never
 // sees it.
 func offered(tools []verse.Tool, env systems.Environment) []verse.Tool {
 	return slices.DeleteFunc(slices.Clone(tools), func(t verse.Tool) bool {
-		system, verb, ok := systems.SplitTool(t.Name)
-		return ok && !env.Gives(systems.StepName(system, verb))
+		st, ok := t.StepName()
+		return ok && !env.Gives(st)
 	})
 }
 

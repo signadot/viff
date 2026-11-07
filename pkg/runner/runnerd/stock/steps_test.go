@@ -142,6 +142,12 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 			continue
 		}
 		seen[tl.Name] = true
+		// A stock tool's name is its step's (git-push, git.push): the tools are filtered by their
+		// step (verse.Tool.StepName), and one whose name said another step would read otherwise
+		// wherever a name is read.
+		if system, verb, ok := systems.SplitTool(tl.Name); !ok || systems.StepName(system, verb) != tl.Step {
+			t.Errorf("%s is the step %s, and its name is not that step's", tl.Name, tl.Step)
+		}
 		in, ok := stepInputs[tl.Name]
 		if !ok {
 			t.Errorf("%s is the step %s, and stepInputs has no use of it", tl.Name, tl.Step)

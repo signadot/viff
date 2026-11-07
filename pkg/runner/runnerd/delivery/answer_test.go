@@ -108,4 +108,28 @@ func TestDiffersNamesTheFieldsAndNoValue(t *testing.T) {
 			t.Errorf("%s: %v, want %v", c.name, got, c.want)
 		}
 	}
+	// A call's arguments are one field of form doc, named by the argument that differs: a
+	// `null` is not an absent argument, and arguments that are no object are the field.
+	call := func(tool, arguments string) task.Step {
+		return task.NewStep(task.StepMCPCall, map[string]string{"server": "linear", "tool": tool}).With("arguments", pattern(t, arguments))
+	}
+	answered := call("save_issue", `{id: ENG-1, assignee: null, labels: [bug]}`)
+	for _, c := range []struct {
+		name string
+		o    task.Step
+		want []string
+	}{
+		{"the same", call("save_issue", `{id: ENG-1, assignee: null, labels: [bug]}`), nil},
+		{"an argument changed", call("save_issue", `{id: ENG-2, assignee: null, labels: [bug]}`), []string{"arguments.id"}},
+		{"a null dropped", call("save_issue", `{id: ENG-1, labels: [bug]}`), []string{"arguments.assignee"}},
+		{"a null given a value", call("save_issue", `{id: ENG-1, assignee: bo, labels: [bug]}`), []string{"arguments.assignee"}},
+		{"one added", call("save_issue", `{id: ENG-1, assignee: null, labels: [bug], priority: 1}`), []string{"arguments.priority"}},
+		{"a list changed", call("save_issue", `{id: ENG-1, assignee: null, labels: [bug, p1]}`), []string{"arguments.labels"}},
+		{"another tool", call("delete_issue", `{id: ENG-1, assignee: null, labels: [bug]}`), []string{"tool"}},
+		{"no object", call("save_issue", `[ENG-1]`), []string{"arguments"}},
+	} {
+		if got := answered.Differs(c.o); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
 }

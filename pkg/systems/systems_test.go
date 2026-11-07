@@ -15,7 +15,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 	if len(all) < 10 {
 		t.Fatalf("%d systems", len(all))
 	}
-	for _, want := range []string{"git", "github", "git-issue", "github-issue", "linear-issue", "slack", "question", "files", "commands", "agent", "network", "secret"} {
+	for _, want := range []string{"git", "github", "git-issue", "github-issue", "linear-issue", "slack", "question", "files", "commands", "agent", "network", "secret", "mcp"} {
 		if _, ok := Get(want); !ok {
 			t.Errorf("no document describes %s", want)
 		}
@@ -49,6 +49,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 		"slack.react":           "channel,emoji",
 		"network.tcp-client":    "mode,host,port",
 		"secret.exec":           "name,as,argv,dir,stdin,env",
+		"mcp.call":              "server,tool,arguments",
 	} {
 		fields, ok := Fields(step)
 		if !ok || strings.Join(fields, ",") != want {
@@ -66,7 +67,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 	if ToolName("git", "push") != "git-push" || StepName("git", "push") != "git.push" {
 		t.Error("the names")
 	}
-	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 39 {
+	if steps := Steps(); steps[0] != "agent.call-sub-agent" || len(steps) != 40 {
 		t.Errorf("steps: %v", steps)
 	}
 }

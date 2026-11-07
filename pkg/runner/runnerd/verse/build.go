@@ -208,12 +208,27 @@ func lessUngiven(tds []toolDef, env systems.Environment) []toolDef {
 	})
 }
 
+// StepName is the step each use of the tool is: its Step where it has one, so a tool whose name
+// is no verb's (`mcp-linear-get_issue`) is still its step's, and else what its name says
+// (systems.SplitTool: `git-push` is git.push). False for a tool that is no step
+// (`secret-exec-kill`).
+func (t Tool) StepName() (string, bool) {
+	if t.Step != "" {
+		return t.Step, true
+	}
+	system, verb, ok := systems.SplitTool(t.Name)
+	if !ok {
+		return "", false
+	}
+	return systems.StepName(system, verb), true
+}
+
 // given is the extra tools whose verb env gives; the agent's own are dropped by lessUngiven
 // after selectTools.
 func given(env systems.Environment, extra []Tool) []Tool {
 	return slices.DeleteFunc(slices.Clone(extra), func(t Tool) bool {
-		system, verb, ok := systems.SplitTool(t.Name)
-		return ok && !env.Gives(systems.StepName(system, verb))
+		st, ok := t.StepName()
+		return ok && !env.Gives(st)
 	})
 }
 
