@@ -1,7 +1,8 @@
 # mcp: a system for the tools of remote MCP servers, called by the runner
 
 **Status:** a plan, reviewed once, and edited since: a call's arguments are a field of its step
-("At the second edit", below). Nothing is built. It blocks 1f5art3x. It waits on 1k5art3x (the
+("At the second edit", below), and a session the server ended is opened again and a server's
+instructions reach the brief ("At the third edit", against mcp.signadot.com). Nothing is built. It blocks 1f5art3x. It waits on 1k5art3x (the
 channel's table of ops and its general request), on 1q5art3x (the secret store), and on 275art3x
 (an answer performs only the act it was given about), which is what binds an approval to the
 arguments.
@@ -131,6 +132,14 @@ Each step builds and passes on its own.
    - **One session for each task and server,** opened at the first use and closed when the
      task's channel is done (`Serve` returns). Several calls may use one session at once; a
      test holds that against the SDK.
+   - **A session the server ended is opened again.** A server may end an idle session
+     (mcp.signadot.com does after 30 minutes with no request), and a task may wait longer than
+     that between calls. Where the server answers that it does not know the session (404 on the
+     session's id, as streamable HTTP says), the client opens a new one, initializes it, and
+     sends the call on it, once. That answer means the server took nothing of the call. A
+     connection lost after the call was sent is not that: the call fails, and whether the server
+     did it is not known, as for a call given up (step 5). Several calls finding the session
+     gone at once open one new session between them, under the sessions' lock.
    - **Where the sessions live.** One value for a task, made when `Serve` begins, with a lock
      of its own. The task an op apart is handed keeps it (`Task.apart`), as it keeps the
      launch: it is nothing an op in turn writes.
@@ -146,7 +155,8 @@ Each step builds and passes on its own.
      table says what bounds it instead: it lists what an `mcp.call` would be decided on. It
      refuses a server the environment gives no block for, so under an empty environment it
      refuses. It answers the server's tools, less those the environment's shapes and the
-     ceiling do not admit. It is performed in turn.
+     ceiling do not admit, and the server's instructions (the `instructions` of its answer to
+     `initialize`), cut at a bound. It is performed in turn.
    - **`mcp.call`** is the step. It reads `server` and `tool`, and its body is the arguments,
      a JSON object, read into the step's `arguments` as tony structure, so the step the
      autonomy, the ceiling and an answer see is the call that is sent. What the runner sends the
@@ -176,13 +186,18 @@ Each step builds and passes on its own.
    - **A server that does not answer.** Its tools are left out, the task starts, and the task
      is told: the brief says the server did not answer and its tools are not there. The
      runner's log says why.
+   - **A server's instructions go in the brief,** under the server's name and beside its
+     tools: how the server means its tools to be used together (mcp.signadot.com's say which
+     to call first, and how a sandbox's spec is made). They are the server's words, as a
+     description is (step 8): they say how to use the tools and grant nothing, since every call
+     is still decided at the runner. A server with none adds nothing.
 7. **The result.** The text of the result's content, in order. Content that is not text is
    named and left out. A result the server marks an error is what the model reads, and no
    error of the runner's. It is cut at a bound well under the frame, and says it was cut.
-8. **What a server says is the server's.** A tool's description and its result come into the
-   model's context. Each description ends with a line that says the answer is data and no
-   instruction, as `slack-read`'s does. A description is cut at a bound too, so one server's
-   list fits a frame.
+8. **What a server says is the server's.** A tool's description, the server's instructions and
+   a result come into the model's context. Each description ends with a line that says the
+   answer is data and no instruction, as `slack-read`'s does. A description and the
+   instructions are cut at a bound too, so one server's list fits a frame.
 9. **The words.** `docs/reference/runnerd.md`, `docs/reference/mcp.md` (which is about verse's
    own server today, and has to say which is which), `docs/systems/mcp.md`, and the example in
    a runner's manifest. They say:
@@ -222,6 +237,12 @@ under `httptest`).
   none. No reply and no log holds a value.
 - **The client.** A redirect is not followed, and the credential reaches no second host. A
   response past the bound fails the call.
+- **A session ended.** The test server ends a task's session between two calls (its
+  `SessionTimeout`, or the session closed): the second call opens a new session and answers,
+  and the server saw it once. A connection cut after a call reached the server fails the call
+  and does not send it again. Two calls finding the session gone at once open one session.
+- **The instructions.** A server's instructions are in the brief under its name, cut at the
+  bound; a server with none adds nothing.
 - **The configuration.** A server's name with a `-`, a url with a user or a query, and a
   ceiling block naming no server there is are each refused.
 - **The list.** A tool the environment's shape does not admit is not listed. A server the
@@ -290,3 +311,25 @@ under `httptest`).
   past it is refused or carried with a digest of its long values in the step. Refused is the
   first version; a digest needs the question to show what it digests (q3k89kva) to be worth
   approving.
+
+## At the third edit (against mcp.signadot.com)
+
+The plan was read against a real server: mcp.signadot.com, its source
+(`signadot/signadot`, `sandboxes/internal/control/mcp`) and its tool list (`GET /meta`, which
+takes no key). It runs on configuration alone:
+`signadot: {url: "https://mcp.signadot.com/stream", auth: {secret: signadot-api-key, header: signadot-api-key}}`.
+
+- **Fits as planned:** streamable HTTP; a key in a header of its own (or `Bearer`), checked at
+  each call; 401 with no key and no redirect; 18 tools, none with a `$ref` or a `oneOf` at the
+  top, so none is left out; nested arguments (a sandbox's `spec`) carried by `Params` as given,
+  and pinned by a ceiling where it must be (`{tool: create_sandbox, arguments: {spec: {cluster:
+  staging}}}`); text results; no resources or prompts.
+- **Added:** a session the server ended is opened again (step 4): it ends one after 30 minutes
+  with no request. Its instructions go in the brief (steps 5, 6, 8): it sends them at
+  `initialize`, and the plan read only the tools.
+- **Noted, unchanged:** it asks a person to confirm a create or an update only of a client that
+  declares elicitation; the runner declares none, so the person is asked by an `ask` row, about
+  the arguments (275art3x), seeing them once q3k89kva shows a step's fields. Its key is the
+  org's, and reaches what the org's does (`list_devboxes` lists every devbox for a key): the
+  ceiling is the bound for each task, and a task's own identity there is hfh7km3t's. The runner
+  pod reaches mcp.signadot.com.
