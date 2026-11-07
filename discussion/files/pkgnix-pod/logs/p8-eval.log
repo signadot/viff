@@ -1,0 +1,42 @@
+=== 1. the settings nix reads (nix config show, the ones step 4 sets)
+accept-flake-config = false
+allow-import-from-derivation = false
+always-allow-substitutes = true
+builders = 
+flake-registry = 
+max-jobs = 0
+pure-eval = true
+require-sigs = true
+restrict-eval = true
+substituters = https://cache.nixos.org
+trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+use-registries = false
+=== 2. the list, cold (empty nix home), in the bwrap, under restrict-eval
+       … while updating the lock file of flake 'git+file:///home/nonroot/h/flake'
+
+       error: opening file "/home/nonroot/h/flake/flake.lock": Read-only file system
+[peak] rc=1 VmHWM=1MiB wall=38502ms
+=== 3. warm
+       error: opening file "/home/nonroot/h/flake/flake.lock": Read-only file system
+[peak] rc=1 VmHWM=1MiB wall=113ms
+=== 4. pure-eval: a flake reading the runner's files
+error:
+       error: opening file "/home/nonroot/h/flake/flake.lock": Read-only file system
+    and does the bwrap show /state/secrets at all?
+ls: cannot access '/state/secrets': No such file or directory
+=== 5. restrict-eval: a flake fetching a URL at evaluation
+error:
+       error: opening file "/home/nonroot/h/flake/flake.lock": Read-only file system
+=== 6. nixConfig, with accept-flake-config = false: is the extra cache used?
+warning: ignoring untrusted flake configuration setting 'extra-substituters'.
+warning: ignoring untrusted flake configuration setting 'extra-trusted-public-keys'.
+=== 7. the same, with a trusted-settings.json in the runner's own XDG_DATA_HOME accepting it
+Using saved setting for 'extra-substituters = https://cache.example.invalid' from ~/.local/share/nix/trusted-settings.json.
+Using saved setting for 'extra-trusted-public-keys = cache.example.invalid-1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' from ~/.local/share/nix/trusted-settings.json.
+=== 8. github's host attribute: does nix fetch from the host it names?
+[1mResolved URL:[0m  github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601?host=example.invalid
+[1mLocked URL:[0m    github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601?host=example.invalid&narHash=sha256-WrSODdZFVIs/Hh2NzC0bY%2BROByi0bATg8WfePX8dPj8%3D
+=== 9. a remote flake in the runner's form (nixpkgs itself): eval of a list, cold home
+unpacking 'github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601' into the Git cache...
+[["/nix/store/9l0j15jg8634hkb6d4c9y95mpxl0nhrd-jq-1.8.2-bin","/nix/store/kyc6a29vbm7k4nh84bj17gxaljnic3a9-jq-1.8.2-man"],["/nix/store/fkz7zn1a0yiryf9kri2yh1s12k1sv557-go-1.26.10"],["/nix/store/yn2n603bacr51pigr0d9ldx7bcd51vlh-ripgrep-15.2.0"]]
+[peak] rc=0 VmHWM=1MiB wall=33313ms

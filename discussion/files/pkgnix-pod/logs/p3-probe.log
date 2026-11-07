@@ -1,0 +1,22 @@
+=== bubblewrap 0.8.0
+uid=65532 gid=65532 groups=65532
+CapEff:	0000000000000000
+NoNewPrivs:	1
+uid_map:      65532          0          1
+inside-ok
+rc=0
+--- --remount-ro / after the binds:
+touch: cannot touch '/planted': Read-only file system
+workspace-writable
+tmp-writable
+=== bubblewrap 0.13.1
+uid=65532 gid=65532 groups=65532
+CapEff:	0000000000000000
+NoNewPrivs:	1
+uid_map:      65532          0          1
+inside-ok
+rc=0
+--- --remount-ro / after the binds:
+touch: cannot touch '/planted': Read-only file system
+workspace-writable
+tmp-writable

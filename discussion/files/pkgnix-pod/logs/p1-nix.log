@@ -1,0 +1,9 @@
+variables are set, please add the line
+
+  . /home/nonroot/h/.nix-profile/etc/profile.d/nix.sh
+
+to your shell profile (e.g. ~/.profile).
+install: 37s
+nix (Nix) 2.35.4
+nix: /nix/store/8lza1b8nnci8lmm4q68p0l33pg975s0q-nix-2.35.4/bin/nix
+73

@@ -1,0 +1,5 @@
+nixpkgs 4fe25e12eb9f4c744966dd3de5a05246cf098601: bubblewrap 0.12.0
+nixpkgs nixpkgs-unstable: bubblewrap 0.12.0
+nixpkgs nixos-unstable: bubblewrap 0.12.0
+no nixpkgs here ships bwrap >= 0.13
+its closure: 0 paths

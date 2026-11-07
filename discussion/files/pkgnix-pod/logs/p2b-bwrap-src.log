@@ -1,0 +1,8 @@
+error: Cannot build '/nix/store/bdzdyw6k9q8jqrxf6inn8jgqg6lzk4cp-bubblewrap-0.13.1.drv'.
+       Reason: 1 dependency failed.
+       Output paths:
+         /nix/store/581hhrclxjl5ppfs50l2af06abxd43rb-bubblewrap-0.13.1-dev
+         /nix/store/glgnai4jvhn2nbv8ly1m4n5l1pnfxla5-bubblewrap-0.13.1
+source hash: sha256-sgIATYiBYbHaftA+ShIqfxS3OScz7VurjPciL2WB1oQ=
+build rc=0 in 6860ms: /nix/store/b1rvfg0qys6lcns86bdnhw9ngkp878ak-bubblewrap-0.13.1
+bw13: bubblewrap 0.13.1; closure 10 paths

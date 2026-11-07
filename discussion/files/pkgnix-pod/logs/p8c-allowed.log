@@ -1,0 +1,13 @@
+=== 1. allowed-uris = github:NixOS/nixpkgs (the input's source), and the flake's own place
+copying path '/nix/store/22wgynxys0wkin1s3g38y9fghidikm0w-source' from 'https://cache.nixos.org'...
+[["/nix/store/9l0j15jg8634hkb6d4c9y95mpxl0nhrd-jq-1.8.2-bin","/nix/store/kyc6a29vbm7k4nh84bj17gxaljnic3a9-jq-1.8.2-man"],["/nix/store/fkz7zn1a0yiryf9kri2yh1s12k1sv557-go-1.26.10"],["/nix/store/yn2n603bacr51pigr0d9ldx7bcd51vlh-ripgrep-15.2.0"]]
+    the URL fetch still refused?
+       error: access to URI 'https://example.com/' is forbidden in restricted mode
+=== 2. allowed-uris = github:acme (the input's source outside it)
+       error: access to URI 'github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601?narHash=sha256-WrSODdZFVIs/Hh2NzC0bY%2BROByi0bATg8WfePX8dPj8%3D' is forbidden in restricted mode
+=== 3. a prefix: does allowed-uris = github:NixOS/nix admit github:NixOS/nixpkgs?
+       error: access to URI 'github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601?narHash=sha256-WrSODdZFVIs/Hh
+=== 4. nix's own memory: nixpkgs list cold (cache emptied), then warm
+unpacking 'github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601' into the Git cache...
+[peak] rc=0 VmHWM=578MiB wall=35945ms
+[peak] rc=0 VmHWM=462MiB wall=3179ms

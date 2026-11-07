@@ -1,0 +1,7 @@
+copying path '/nix/store/9l0j15jg8634hkb6d4c9y95mpxl0nhrd-jq-1.8.2-bin' from 'https://cache.nixos.org'...
+bash: line 33: pgrep: command not found
+jq running: 
+roots nix sees: 3
+1 store paths deleted, 36.8 KiB freed
+jq-bin (running, no root): kept
+7 store paths deleted, 37.4 MiB freed

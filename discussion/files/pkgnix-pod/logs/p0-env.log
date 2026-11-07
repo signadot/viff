@@ -1,0 +1,30 @@
+uid=65532 gid=65532 groups=65532
+Linux pkgnix 6.18.54 #2 SMP PREEMPT_DYNAMIC Thu Oct 22 00:16:59 UTC 2026 x86_64 GNU/Linux
+bwrap: bubblewrap 0.8.0
+max_user_namespaces=2147483647 mount-max=100000
+uid_map:          0  267517952      65536
+CapEff:	0000000000000000
+NoNewPrivs:	1
+Seccomp:	0
+xz: missing
+tar: /usr/bin/tar
+gzip: /usr/bin/gzip
+curl: /usr/bin/curl
+git: /usr/bin/git
+python3: missing
+time: time
+2
+MemTotal:        8005156 kB
+--- /nix
+root:UNKNOWN 2777
+/var/lib/kubelet/pods/adf567ce-bd3f-4bc7-b332-88fce54971b4/volumes/kubernetes.io~empty-dir/nix /nix rw,nosuid,nodev,noatime,idmapped - xfs /dev/nvme1n1p1 rw,seclabel,inode64,logbufs=8,logbsize=32k,sunit=8,swidth=8,noquota
+/dev/nvme1n1p1   20G   11G  9.6G  53% /nix
+--- /home/nonroot
+root:UNKNOWN 2777
+/var/lib/kubelet/pods/adf567ce-bd3f-4bc7-b332-88fce54971b4/volumes/kubernetes.io~empty-dir/home /home/nonroot rw,nosuid,nodev,noatime,idmapped - xfs /dev/nvme1n1p1 rw,seclabel,inode64,logbufs=8,logbsize=32k,sunit=8,swidth=8,noquota
+/dev/nvme1n1p1   20G   11G  9.6G  53% /home/nonroot
+--- /state
+root:UNKNOWN 2775
+/ /state rw,relatime,idmapped - ext4 /dev/nvme2n1 rw,seclabel
+/dev/nvme2n1     30G   24K   30G   1% /state
+/state writable

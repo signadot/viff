@@ -1,0 +1,52 @@
+# pkg-nix step 0 (2b5art3x): throwaway. The runner pod's settings (hostUsers: false, procMount:
+# Unmasked, seccomp Unconfined, uid 65532, every capability dropped), its image, and a gp3 claim
+# for the store. Its own namespace, so `kubectl delete namespace pkgnix-try` removes all of it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pkgnix-try
+  labels: {purpose: pkg-nix-step-0, issue: 2b5art3x}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: store, namespace: pkgnix-try}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: gp3
+  resources: {requests: {storage: 30Gi}}
+---
+apiVersion: v1
+kind: Pod
+metadata: {name: pkgnix, namespace: pkgnix-try}
+spec:
+  hostUsers: false
+  imagePullSecrets: [{name: signadot-registry}]
+  automountServiceAccountToken: false
+  securityContext:
+    fsGroup: 65532
+  containers:
+  - name: pkgnix
+    image: signadot/verse-runner:0cc21d35
+    command: [sleep, infinity]
+    env:
+    - {name: HOME, value: /home/nonroot}
+    - {name: USER, value: nonroot}
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities: {drop: [ALL]}
+      procMount: Unmasked
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      seccompProfile: {type: Unconfined}
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 6Gi}
+    volumeMounts:
+    - {name: nix, mountPath: /nix}            # nix itself, as the image's /nix would hold it
+    - {name: home, mountPath: /home/nonroot}
+    - {name: store, mountPath: /state}        # the store apart (nix --store /state/nix), on gp3
+  volumes:
+  - {name: nix, emptyDir: {}}
+  - {name: home, emptyDir: {}}
+  - {name: store, persistentVolumeClaim: {claimName: store}}

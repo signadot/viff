@@ -1,0 +1,31 @@
+roots left by p7: during-2
+--- 1. realise and root in one command, indirect, under the runner's roots directory
+copying path '/nix/store/fkz7zn1a0yiryf9kri2yh1s12k1sv557-go-1.26.10' from 'https://cache.nixos.org'...
+/state/roots/task-1
+rc=0
+00 task-1 -> /nix/store/fkz7zn1a0yiryf9kri2yh1s12k1sv557-go-1.26.10
+gcroots/auto: 59 2anrhym6rjnc6qby20wcdz6a7j9y5d71 -> /state/roots/during-2
+59 fw7jxp8kgj3zc17rg90fs4paz63wjrkk -> /state/roots/during
+00 ys06faz80i8qsdsb2nv8iy83v6lnqp9p -> /state/roots/task-1
+--- 1b. the same with nix build --out-link
+00 task-1 -> /nix/store/fkz7zn1a0yiryf9kri2yh1s12k1sv557-go-1.26.10
+00 task-1b -> /nix/store/fkz7zn1a0yiryf9kri2yh1s12k1sv557-go-1.26.10
+--- 2. a running task with jq's closure bound and jq executing, no root
+these 4 paths will be fetched (478.4 KiB download, 1.2 MiB unpacked):
+  /nix/store/hcagcif4hcac22rrspzgg8p9g0aqs741-jq-1.8.2
+  /nix/store/9l0j15jg8634hkb6d4c9y95mpxl0nhrd-jq-1.8.2-bin
+  /nix/store/kyc6a29vbm7k4nh84bj17gxaljnic3a9-jq-1.8.2-man
+  /nix/store/90slnrlyxdl8yamw602y236fa8jcyxwd-oniguruma-6.9.10-lib
+error: path '/nix/store/9l0j15jg8634hkb6d4c9y95mpxl0nhrd-jq-1.8.2-bin' is not valid
+sh: 1: /nix/store/9l0j15jg8634hkb6d4c9y95mpxl0nhrd-jq-1.8.2-bin/bin/jq: not found
+dead before: 355
+355 store paths deleted, 1.5 GiB freed
+gc wall: 1406ms
+go (rooted):           kept  closure:       9 kept 
+jq (running, no root): GONE
+postgresql (nothing):  GONE
+imagemagick (nothing): GONE
+--- 3. remove the root, collect: go goes
+14 store paths deleted, 268.4 MiB freed
+go: GONE
+store after: 0 entries, 532K

@@ -1,0 +1,16 @@
+--- 0. collect everything unrooted, so the realises have work
+5467 store paths deleted, 4.1 GiB freed
+ffmpeg-full closure:     367 GONE ; imagemagick:      89 GONE 
+--- 1. two realises at once (overlapping closures)
+ffmpeg-full rc=0, imagemagick rc=0, wall 12004ms
+tail: option used in invalid context -- 2
+verify: checking '/nix/store/yw950kjzpymzi4kp7c7qb0pki6dgjkhr-libraw-0.22.3-lib'...
+checking '/nix/store/w8cc4yrx4b31mgahbyj6am0sk3z98cdf-imagemagick-7.1.2-34'...
+ffmpeg-full:     367 kept 
+--- 2. a collection during a realise (python3's and ffmpeg's closures collected first)
+378 store paths deleted, 1.5 GiB freed
+gc during: rc=0 wall 803ms: 0 store paths deleted, 0.0 KiB freed
+realise rc=0 wall 11554ms: /state/roots/during-2
+ffmpeg-full after both:     367 kept 
+verify: checking '/nix/store/a1yprmpxzlkcsrg1w46f64scnzpfpnmx-ffmpeg-full-9.0.2-lib'...
+checking '/nix/store/3ibhgmahxx990wqlpvvck7jbpnac3nch-ffmpeg-full-9.0.2-bin'...

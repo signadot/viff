@@ -1,0 +1,48 @@
+=== 0. lock the stand-in flake outside (a remote one is locked by its own lock file)
+    'github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601?narHash=sha256-WrSODdZFVIs/Hh2NzC0bY%2BROByi0bATg8WfePX8dPj8%3D' (2026-11-06)
+=== 2. the list, in the bwrap, under pure- and restrict-eval
+       (stack trace truncated; use '--show-trace' to show the full, detailed trace)
+
+       error: access to URI 'github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601?narHash=sha256-WrSODdZFVIs/Hh2NzC0bY%2BROByi0bATg8WfePX8dPj8%3D' is forbidden in restricted mode
+wall 68ms
+=== 4. pure-eval: a flake reading a file of the runner's (outside the bwrap, where it exists)
+error:
+       error: access to absolute path '/state/secrets/probe' is forbidden in pure evaluation mode (use '--impure' to override)
+=== 5. restrict-eval: a flake fetching a URL at evaluation
+error:
+       error: access to URI 'https://example.com/' is forbidden in restricted mode
+=== memory and time of nix itself (outside the bwrap): the stand-in, then nixpkgs cold
+warning: Git tree '/home/nonroot/h/flake' is dirty
+warning: ignoring untrusted flake configuration setting 'extra-substituters'.
+Pass '--accept-flake-config' to trust it
+warning: ignoring untrusted flake configuration setting 'extra-trusted-public-keys'.
+Pass '--accept-flake-config' to trust it
+error:
+       … while evaluating list element at index 0
+
+       … while calling the 'map' builtin
+         at «string»:1:13:
+            1| ps: map (p: map (o: p.${o}.outPath) (p.meta.outputsToInstall or [ "out" ])) ps
+             |             ^
+
+       … while evaluating the attribute 'nixpkgs.result'
+         at «flakes-internal»/call-flake.nix:94:7:
+           93|     {
+           94|       result =
+             |       ^
+           95|         if node.flake or true then
+
+       (stack trace truncated; use '--show-trace' to show the full, detailed trace)
+
+       error: access to URI 'github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601?narHash=sha256-WrSODdZFVIs/Hh2NzC0bY%2BROByi0bATg8WfePX8dPj8%3D' is forbidden in restricted mode
+[peak] rc=1 VmHWM=1MiB wall=112ms
+unpacking 'github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601' into the Git cache...
+[peak] rc=0 VmHWM=1MiB wall=40721ms
+[peak] rc=0 VmHWM=1MiB wall=3271ms
+=== 8. github's host attribute, with a reference nothing has cached
+warning: unable to download 'https://example.invalid/api/v3/repos/NixOS/nixpkgs/commits/HEAD': Could not resolve hostname (6) Could not resolve host: example.invalid; retrying in 22 ms (attempt 1/5)
+warning: unable to download 'https://example.invalid/api/v3/repos/NixOS/nixpkgs/commits/HEAD': Could not resolve hostname (6) Could not resolve host: example.invalid; retrying in 165 ms (attempt 2/5)
+warning: unable to download 'https://example.invalid/api/v3/repos/NixOS/nixpkgs/commits/HEAD': Could not resolve hostname (6) Could not resolve host: example.invalid; retrying in 232 ms (attempt 3/5)
+unpacking 'github:NixOS/nixpkgs/0000000000000000000000000000000000000001?host=example.invalid' into the Git cache...
+warning: unable to download 'https://example.invalid/api/v3/repos/NixOS/nixpkgs/tarball/0000000000000000000000000000000000000001': Could not resolve hostname (6) Could not resolve host: example.invalid; retrying in 90 ms (attempt 1/5)
+warning: unable to download 'https://example.invalid/api/v3/repos/NixOS/nixpkgs/tarball/0000000000000000000000000000000000000001': Could not resolve hostname (6) Could not resolve host: example.invalid; retrying in 100 ms (attempt 2/5)
