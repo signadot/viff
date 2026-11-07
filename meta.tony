@@ -6,7 +6,9 @@ commits: []
 created: "2026-11-07T21:42:24.74084+01:00"
 duplicates: []
 id: 2f5art3xh12krc4dxxn0
-labels: []
+labels:
+- bug
+- slack
 related_issues: []
 status: open
-updated: "2026-11-07T21:42:24.74084+01:00"
+updated: "2026-11-07T21:42:24.8235+01:00"
