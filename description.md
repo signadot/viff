@@ -15,9 +15,10 @@ bounds both.
 
 - **For a command that needs a secret,** and nothing else. A command that needs none is
   `commands.run`, or a script.
-- **One verb,** `exec`, with the fields `argv`, `dir`, `as` and `env`: the command, where it
-  runs, the variable the secret is given in, and the plain variables it is given beside it. One
-  secret a call, one step a call.
+- **One verb,** `exec`, with the fields `argv`, `dir` and `env`: the command, where it runs,
+  and the plain variables it is given beside the secret. The block says the secret (`name`) and
+  the variable it is given in (`as`), once for every command of it. One secret a call, one step
+  a call.
 - **The leak is the environment's.** The runner runs what the environment admits and does not
   judge a command. An environment that admits `sh -c 'echo $S'` has leaked `S` itself.
 
@@ -71,10 +72,10 @@ agents:
       secret:
         ceiling:
         - name: npm-token
+          as: NPM_TOKEN
           exec:
             argv: !regexp "^npm publish --ignore-scripts( --tag [a-z]+)?$"
             dir: !glob "packages/*"
-            as: NPM_TOKEN
             # the plain variables a command may be given, each by name with a pattern on its
             # value, null for any; a shape that says no `env` gives none
             env: {NPM_CONFIG_REGISTRY: !regexp "^https://registry\\.npmjs\\.org/", NODE_OPTIONS: null}
@@ -82,7 +83,7 @@ agents:
 # a spawn's environment
 environment:
   systems:
-    secret: [{name: npm-token, exec: {argv: "npm publish --ignore-scripts", as: NPM_TOKEN, env: {NODE_OPTIONS: null}}}]
+    secret: [{name: npm-token, as: NPM_TOKEN, exec: {argv: "npm publish --ignore-scripts", env: {NODE_OPTIONS: null}}}]
 
 # a spawn's autonomy
 autonomy:
@@ -93,6 +94,12 @@ autonomy:
 - **`name`** is the block's unique attribute: the secret's name in the store, a literal in the
   environment and in the ceiling both. A ceiling that names a pattern is refused: the operator
   says which secrets, one by one, as a name is what a doer is trusted with.
+- **`as`** is the block's other attribute, required: the variable the secret is given in, for
+  every command of the block (`NPM_TOKEN`), in the form `var` (`^[A-Za-z_][A-Za-z0-9_]*$`, the
+  `varName` of the environment's `vars`). A secret has one conventional variable, so the spawn
+  says it once; the ceiling patterns it as it patterns `name`; and it is a field of the step, as
+  a block's attributes are, so a row and a question see where the secret goes. The call does
+  not carry it: the runner and the task's process read it from the block.
 - **`argv` is a list on the wire and one string in the step.** The call gives a list of strings,
   never a shell string, and the runner runs that list. The step's field is the list spelled as
   one line, each argument quoted where it holds a space, a quote or a character a shell reads
@@ -101,7 +108,11 @@ autonomy:
   wire, in the request's body; the task's process and the runner each spell the step's field
   from it with one function, so there is no second copy to check. No new form: `argv` is `text`.
 - **`dir`** is where the command runs, a path under the workspace root (form `file`), the root
-  where empty. **`as`** is the variable the secret is given in (`^[A-Z_][A-Z0-9_]*$`).
+  where empty. **The command runs over the live tree**, as the task has it at that moment: what
+  it acts on is not any commit, so an approver of `npm publish` approves the command and not
+  its content, and the tree may change while it runs, since the task runs on. Both are said in
+  the doc. Running over an export of the task's branch tip, with a `commit` field the runner
+  fills, is the step after this one (below).
 - **The program is the runner's.** `argv[0]` is a bare name; one with a `/` is refused. The
   runner finds it on the command's `PATH` and runs it only where it resolves under a system
   directory (`UnderSystem`) or a `readOnly` path, never under the workspace: a program of the
@@ -115,7 +126,8 @@ autonomy:
   own object match lets a key it does not name by. A shape that says no `env` is read as
   `env: {}` (the field's default), so plain variables are closed by default, and `env: null` is
   any. A row matches it as tony matches, by what it names: `env: {LD_PRELOAD: null}` is every
-  call that gives `LD_PRELOAD`. Last the secret, under `as`, which no plain variable may name.
+  call that gives `LD_PRELOAD`. Last the secret, under the block's `as`, which no plain variable
+  may name.
   `PATH` given this way is the `PATH` the program is found on, under the rule below.
   `LD_PRELOAD` and its family are admitted as any name is: a ceiling that admits a command
   admits what that command does with the secret, by construction, so a variable that changes
@@ -158,10 +170,12 @@ autonomy:
 
 Each step builds and passes on its own.
 
-1. **The document and the step.** `pkg/systems/documents/secret.tony`: the attribute `name`
-   (unique, required, form `lower`), and the verb `exec` with the fields `argv` (text, the
-   spelling above), `dir` (file), `as` (text) and `env` (form `env`, default `{}`).
-   `task.StepSecretExec` in `pkg/task/step.go`.
+1. **The document and the step.** `pkg/systems/documents/secret.tony`: the attributes `name`
+   (unique, required, form `lower`) and `as` (required, form `var`), and the verb `exec` with
+   the fields `argv` (text, the spelling above), `dir` (file) and `env` (form `env`, default
+   `{}`). `task.StepSecretExec` in `pkg/task/step.go`, carrying both attributes as `git.push`
+   carries `repo` and `from`.
+   - **The form `var`** in `pkg/systems`: a variable's name, `varName`; a pattern on it is text.
    - **The form `env`** in `pkg/systems`: `Accepts` takes `null`, the combinators, and an object
      whose keys are variable names (`varName`) and whose values are text patterns; `MatchFieldAs`
      reads it closed, as `FormPath` has its reading; `FieldContains` holds an inner object within
@@ -174,7 +188,7 @@ Each step builds and passes on its own.
 2. **The configuration.** `secret` in `performedSystems`: performed where `secrets.dir` is set,
    a ceiling names it and the sandbox is bwrap; it needs "a secret store (`secrets.dir`) and a
    sandbox". `Config.Check` refuses a ceiling block whose `name` is not a literal store name
-   (`secretstore.CheckName`), and an `as` pattern no variable name matches. `Held` drops a block
+   (`secretstore.CheckName`), and an `as` pattern no variable's name matches. `Held` drops a block
    whose secret is absent at start, saying which and where, and closes the system where none is
    left. `Standalone` closes it whole under `-sandbox none`, since the sandbox is its to know.
 3. **The task apart, and a descriptor on a frame.** `delivery.Task` gains `Root` (the
@@ -185,11 +199,12 @@ Each step builds and passes on its own.
    descriptor (`WriteMsgUnix` and `ReadMsgUnix` on the channel's `*net.UnixConn`), which
    `Client.hear` takes and hands to the asker with the reply; an answer may now be two frames, the
    stream's and the final one, by the one id. Nothing else of the protocol changes.
-4. **The op.** `OpSecretExec = "secret.exec"` on the table: takes `name`, `as`, `dir`, numbers
-   `timeout`, body (`{argv: [...], env: {...}}`, tony), apart, deadline one hour. `ask` reads the
-   body, checks `name`, `as` and `dir` as above and that each name of `env` is a variable's name
-   and none is `as`, and asks about the one step: `argv` spelled from the body's list, `env` as
-   given (`Step.With`). The act: read the secret (absent: a refusal naming it), build the
+4. **The op.** `OpSecretExec = "secret.exec"` on the table: takes `name`, `dir`, numbers
+   `timeout`, body (`{argv: [...], env: {...}}`, tony), apart, deadline one hour. `ask` finds the
+   environment's block for `name` and reads `as` from it (no block: refused, saying which the
+   environment has), checks `dir` as above and that each name of `env` is a variable's name and
+   none is `as`, and asks about the one step: `name` and `as` from the block, `argv` spelled from
+   the body's list, `env` as given (`Step.With`). The act: read the secret (absent: a refusal naming it), build the
    environment, resolve `argv[0]` on its `PATH`, make the socket pair, build the second sandbox
    with the command's stdio on the pair's one end, start it in its own process group with
    `WaitDelay` set, send the first frame with the pair's other end, pump the command's output
@@ -197,13 +212,13 @@ Each step builds and passes on its own.
    exit status; past the timeout or once the task is gone, signal the group.
 5. **The tool.** `secret-exec` in `stock`, beside `slackTools`, offered to every doer where the
    runner performs `secret`: params `name`, `argv` (an array of strings), `env` (an object of
-   strings), `as`, `dir`, `timeout`. `Build` makes the step whole, as the verse tools' do for a
-   field with structure; `Do` sends the op with `Request.Decision`, takes the descriptor the
+   strings), `dir`, `timeout`. `Build` makes the step whole, as the verse tools' do for a field
+   with structure, reading `as` from the launch's environment as the runner does; `Do` sends the op with `Request.Decision`, takes the descriptor the
    first frame brings, serves it at `<root>/.verse/exec/<id>.sock` and copies it to
    `<root>/.verse/exec/<id>.out`, and answers the model the exit status, the path and the tail
-   when the final frame comes. The description says the task never reads the secret, the output
-   is a socket and a file in its workspace, the program must be on the command's `PATH`, and
-   the variables are part of what is asked about.
+   when the final frame comes. The description says the task never reads the secret, which the
+   command finds under the block's `as`, the output is a socket and a file in its workspace, the
+   program must be on the command's `PATH`, and the variables are part of what is asked about.
 6. **The words.** `docs/systems/secret.md`, the row in `docs/systems/README.md`,
    `docs/reference/runnerd.md` (the performed system, what a `secret` ceiling says, and that it
    is closed under `-sandbox none`), the example ceiling in `deploy/verse-runner`'s comments.
@@ -217,7 +232,8 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   argv, another dir, a variable the shape does not name, a value its pattern does not admit), by
   a `deny` row, by a row on `env` naming one of its variables, by an `ask` row with no answer
   relayed, beyond the ceiling, for an `argv[0]` with a `/`, for one that resolves under the
-  workspace, for a `dir` that leaves the root, and for `as` among `env`. No command runs. A shape with no `env` admits a call with none and refuses
+  workspace, for a `dir` that leaves the root, and for the block's `as` among `env`. No command
+  runs. A shape with no `env` admits a call with none and refuses
   one with any; `env: null` admits any.
 - **The form.** `Accepts` refuses a key that is no variable's name and a value that is no text
   pattern; the closed match and `FieldContains` on nested objects; an environment whose `env`
@@ -237,7 +253,8 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   goes is killed; the op is handed a task with `Root` and `Network` and no workspace.
 - **The network.** Under `allow`, the command's connection to a host the environment gives
   passes the proxy and one it does not is refused (`httptest`, the egress server).
-- **The configuration.** A ceiling naming a pattern and a bad `as` are refused; a runner under
+- **The configuration.** A ceiling whose `name` is a pattern, an environment whose `as` is no
+  variable's name, and a ceiling `as` no variable's name matches are refused; a runner under
   `-sandbox none` starts with `secret` closed and says so (`Standalone`); the description shows `secret` under the doer with
   the ceiling and nothing under `builds`.
 - **Each doer.** The patterns of `claude_test.go`, `codex_test.go` and `scripted_test.go`: the
@@ -265,6 +282,10 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
 - **Redaction of encodings.** The whole value, as it is, only.
 - **A program from the nix store** (`pkg-nix`): `UnderSystem` and `readOnly` until then.
 - **`-sandbox none`.** Closed, not worked around.
+- **A command over an export of the task's branch tip,** in a directory the task cannot
+  write, with a `commit` field the runner fills as it fills a push's `exists` and `own`: then
+  what is acted on is one commit, and the approver sees its sha. It needs a build inside or a
+  prepared tree, since an export has no `node_modules` and no build output; the live tree first.
 - **Input to the command.** The pair is duplex and the task's process holds its end, so a
   client on the socket can write once the runner pumps that way too; it does not yet.
 
@@ -287,9 +308,11 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   each side. A kill signals bwrap's process group, with `WaitDelay`. `-sandbox none` is closed
   in `Standalone`. The command's `/tmp` is its own, and its proxy the task's.
 
+- **`as` is an attribute of the block,** said once for the secret, patterned by the ceiling,
+  in the step's fields, and not on the call.
+- **The live tree for now.** What a command acts on is unreviewed and may change while it
+  runs; the doc says so, and an export with a `commit` field is the step after.
+
 ## Open questions
 
-1. **Whether `as` is a field.** Proposed yes: a ceiling pins the variable's name, and an
-   approver sees where the secret goes. It costs one more name in each shape.
-2. **Whether a `dir` under a checkout is enough,** or the command needs to run with the
-   checkout's own branch state (it runs over the live tree, whatever the task has done to it).
+None.
