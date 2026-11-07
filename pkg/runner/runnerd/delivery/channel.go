@@ -30,6 +30,8 @@ type Channel struct {
 
 	near net.Conn
 	far  *os.File
+	// network is the task's network as the sandbox built it (SetNetwork), set before Serve.
+	network Network
 
 	// autonomy is the task's CURRENT autonomy: the launch's until a replacement is set (SetPolicy),
 	// and what the server decides each act by and settle reads. The launch's own copy (l) never
@@ -183,11 +185,21 @@ func Open(id string, ws *workspace.Workspace, mirrors *workspace.Mirrors,
 // Child is the end the task's process inherits, as an extra descriptor.
 func (c *Channel) Child() *os.File { return c.far }
 
+// SetNetwork is the task's network as the sandbox built it, which a command run for the task
+// apart from its process is held to (Task.Network). Set it before Serve, once the egress
+// socket is there.
+func (c *Channel) SetNetwork(n Network) { c.network = n }
+
 // Serve answers the task's requests for as long as its process lives.
 func (c *Channel) Serve() {
 	c.serving.Store(true)
 	defer close(c.served)
-	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Launch: c.l, Policy: c.Autonomy, Answered: c.answered, Credential: c.cred}, c.near)
+	var root string
+	if c.ws != nil {
+		root = c.ws.Root
+	}
+	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Root: root, Network: c.network, Launch: c.l, Policy: c.Autonomy,
+		Answered: c.answered, Credential: c.cred}, c.near)
 }
 
 // Close shuts the near end. The far end is the handler's to close once the process has it.

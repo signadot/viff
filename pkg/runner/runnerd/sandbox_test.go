@@ -3,10 +3,12 @@ package runnerd_test
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/signadot/verse/pkg/runner/runnerd"
+	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
 )
 
 // An unconfined process has the runner's network, so Unconfined provides an open network and
@@ -110,5 +112,84 @@ func TestWrappingKeepsTheInheritedDescriptors(t *testing.T) {
 		if !strings.Contains(strings.Join(cmd.Args, " "), "runner -task") {
 			t.Errorf("%s: the task process is no longer what gets run: %v", sb.Name(), cmd.Args)
 		}
+	}
+}
+
+// A COMMAND RUN FOR A TASK IS CONFINED AS THE TASK'S PROCESS IS, over the task's root and under
+// its network, started in the directory of the tree it is for: the sandbox binds the root and
+// changes to the directory. The program is one of the runner's, under a system directory or a
+// readOnly path; another is refused, and so is every command where the tasks run unconfined.
+func TestAConfinedCommandRunsOverTheRootInItsDirectory(t *testing.T) {
+	ro := t.TempDir()
+	c := runnerd.Confiner{Sandbox: runnerd.BwrapAt("/usr/bin/bwrap"), ReadOnly: []string{ro}}
+	cmd := exec.Command("/usr/bin/npm", "publish")
+	if err := c.Confine(cmd, "/w", "/w/packages/a", delivery.Network{Mode: runnerd.NetworkAllow, Egress: "/ctl/e1.sock"}); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(cmd.Args, " ")
+	for _, want := range []string{"--bind /w /w --chdir /w/packages/a", "--unshare-net --bind /ctl/e1.sock " + runnerd.EgressPath,
+		"--ro-bind " + ro + " " + ro, "-- /usr/bin/npm publish"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("argv is missing %q:\n%s", want, joined)
+		}
+	}
+	// A program the operator keeps read only is the runner's too; one anywhere else is not.
+	if err := c.Confine(exec.Command(filepath.Join(ro, "bin/node")), "/w", "/w", delivery.Network{}); err != nil {
+		t.Errorf("a program under a readOnly path: %v", err)
+	}
+	own := exec.Command(filepath.Join(t.TempDir(), "node"))
+	if err := c.Confine(own, "/w", "/w", delivery.Network{}); err == nil || !strings.Contains(err.Error(), "under no system directory and no readOnly path") {
+		t.Errorf("a program of the task's: %v", err)
+	}
+	// A link under a system directory to a program elsewhere is refused for where it resolves.
+	link := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(link, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "evil")
+	if err := os.WriteFile(target, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(link, "node")); err != nil {
+		t.Fatal(err)
+	}
+	linked := runnerd.Confiner{Sandbox: runnerd.BwrapAt("/usr/bin/bwrap"), ReadOnly: []string{link}}
+	if err := linked.Confine(exec.Command(filepath.Join(link, "node")), "/w", "/w", delivery.Network{}); err == nil || !strings.Contains(err.Error(), target) {
+		t.Errorf("a link out of a readOnly path: %v", err)
+	}
+	// Unconfined, nothing is run.
+	none := runnerd.Confiner{Sandbox: runnerd.Unconfined{}}
+	if err := none.Confine(exec.Command("/usr/bin/npm"), "/w", "/w", delivery.Network{}); err == nil || !strings.Contains(err.Error(), "unconfined") {
+		t.Errorf("unconfined: %v", err)
+	}
+}
+
+// THE DIRECTORY IS UNDER THE ROOT, AND THE CHANGE OF DIRECTORY IS THE SANDBOX'S: a Confiner
+// refuses a directory outside the root, and bwrap's Wrap takes cmd.Dir for its own --chdir and
+// leaves it unset, so nothing changes directory on the runner's side. The task process's own
+// Wrap, which sets no cmd.Dir, changes to the root as it did.
+func TestTheDirectoryIsUnderTheRootAndTheSandboxChangesToIt(t *testing.T) {
+	c := runnerd.Confiner{Sandbox: runnerd.BwrapAt("/usr/bin/bwrap")}
+	for _, dir := range []string{"/etc", "/", "/w2", "/w/../etc", "packages"} {
+		if err := c.Confine(exec.Command("/usr/bin/npm"), "/w", dir, delivery.Network{}); err == nil || !strings.Contains(err.Error(), "not under the task's root") {
+			t.Errorf("dir %s: %v", dir, err)
+		}
+	}
+	if err := c.Confine(exec.Command("no-such-program-here"), "/w", "/w", delivery.Network{}); err == nil || !strings.Contains(err.Error(), "no absolute path") {
+		t.Errorf("a bare program: %v", err)
+	}
+	cmd := exec.Command("/usr/bin/npm")
+	if err := c.Confine(cmd, "/w", "/w/a", delivery.Network{}); err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Dir != "" || !strings.Contains(strings.Join(cmd.Args, " "), "--chdir /w/a") {
+		t.Errorf("Dir %q, args %v", cmd.Dir, cmd.Args)
+	}
+	own := exec.Command("runner", "-task")
+	if err := runnerd.BwrapAt("/usr/bin/bwrap").Wrap(own, "/w", runnerd.Network{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if own.Dir != "" || !strings.Contains(strings.Join(own.Args, " "), "--chdir /w") {
+		t.Errorf("the task's process: Dir %q, args %v", own.Dir, own.Args)
 	}
 }

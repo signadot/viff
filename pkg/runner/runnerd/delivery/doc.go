@@ -25,7 +25,9 @@
 // before it calls the act (Server.perform). A request is an op, what it is asked with by name,
 // and a body, so a system the channel comes to carry adds its ops to the table and nothing to
 // the protocol. Requests are performed in turn, in the order the task asked, except an op the
-// table performs apart.
+// table performs apart. An answer is one frame, but for an act that streams (a command's
+// output, `secret.exec`): a frame ahead of it carries the task's ends as descriptors on the
+// socket pair the channel is (Reply.Streams), and the final frame the answer.
 //
 // The channel is NOT the Runner API and does not pretend to be. The task can ask, and asking
 // cannot widen anything: what may be pushed is the launch's to say, and the trailers are the

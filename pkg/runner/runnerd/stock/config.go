@@ -375,8 +375,10 @@ func (c Config) services(t Tokens) delivery.Services {
 		api = cmp.Or(c.Repos.API, api)
 	}
 	api = cmp.Or(t.GitHubAPI, api)
+	// The store is the channel's too, for the secret a `secret.exec` runs a command with: one
+	// over no directory where the runner has none, which has no secret.
 	return delivery.Services{LinearAuth: c.credential("linear-issue", t.Linear), LinearAPI: t.LinearAPI, GitHubAPI: api,
-		SlackToken: c.credential("slack", t.Slack), SlackAPI: t.SlackAPI}
+		SlackToken: c.credential("slack", t.Slack), SlackAPI: t.SlackAPI, Secrets: secretstore.Open(c.secretsDir())}
 }
 
 // TokensFromEnv reads the runner's tokens from its environment, each where the runner performs

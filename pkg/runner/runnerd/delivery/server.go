@@ -9,6 +9,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
 	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
 	"github.com/signadot/verse/pkg/systems"
 	"github.com/signadot/verse/pkg/task"
@@ -59,6 +62,29 @@ type Services struct {
 	// Verse carries a task's request to the verse the runner serves, a verb of the verse system
 	// (verse.go); nil for a runner with no verse to reach, or no token of its own to reach it with.
 	Verse Verse
+	// Secrets is the runner's secret store, which a `secret.exec` reads the one secret it runs
+	// a command with from, at the act; nil, or one over no directory, has no secret.
+	Secrets *secretstore.Store
+	// Confine confines a command the runner runs for a task apart from the task's own process
+	// (`secret.exec`); nil, the runner runs none.
+	Confine Confine
+}
+
+// Confine confines a command the runner runs for a task, apart from the task's own process and
+// in a sandbox of its own: over the task's root, in dir under it, under the task's network. The
+// program is cmd.Path, and one the runner does not keep (under no system directory and no path
+// it keeps read only) is refused: a program of the task's would read the secret for it. The
+// runner's sandbox implements it (runnerd.Confiner), which this package cannot name.
+type Confine interface {
+	Confine(cmd *exec.Cmd, root, dir string, net Network) error
+}
+
+// Network is a task's network as the sandbox built it, which a command run for the task is held
+// to as well: its mode (open, none, allow), and under allow the egress socket of the proxy that
+// decides its connections, on the runner's side.
+type Network struct {
+	Mode   string
+	Egress string
 }
 
 // A Credential is what the runner acts with at a service, READ WHEN IT IS ASKED FOR: one the
@@ -90,7 +116,13 @@ func (c Credential) read() (string, error) {
 type Task struct {
 	ID        string
 	Workspace *workspace.Workspace
-	Launch    *runner.Launch
+	// Root is the directory the task works in, the workspace's root: what an op apart has of
+	// the workspace, since nothing in turn writes it (a command runs over it, `secret.exec`).
+	Root string
+	// Network is the task's network as the sandbox built it (Channel.SetNetwork): what a
+	// command run for the task apart is held to as well.
+	Network Network
+	Launch  *runner.Launch
 	// Autonomy is the task's current autonomy, where something holds it apart from the launch (a
 	// Channel, after a replacement); nil reads the launch's.
 	Policy func() task.Autonomy
@@ -109,11 +141,18 @@ type Task struct {
 	// again, rewrite, and propose from. pushed is every branch it pushed, created or not: what
 	// a proposal may be from.
 	created, pushed map[string]bool
+
+	// stream sends the task's process descriptors on a frame of the answer to request id,
+	// ahead of the final one (Reply.Streams), which an act that streams calls from inside: the
+	// task's ends of a command's output. Serve sets it; the files stay the caller's to close.
+	// Over a connection that is no unix socket nothing can be sent, and it says so.
+	stream func(id int, files ...*os.File) error
 }
 
 // apart is the task as an op performed apart is given it: without its checkout and without the
 // branches it made and pushed, which the ops in turn write. So what an op apart may not read it
-// cannot: the rule is the value it is handed, not a thing it remembers.
+// cannot: the rule is the value it is handed, not a thing it remembers. Its root and its
+// network it keeps, since nothing in turn writes them.
 func (tk Task) apart() Task {
 	tk.Workspace, tk.created, tk.pushed = nil, nil, nil
 	return tk
@@ -179,6 +218,30 @@ func (s *Server) Serve(tk Task, conn net.Conn) {
 			room()
 		}
 		_ = writeFrame(conn, body) // a task that is gone is found so at the next read
+	}
+	// A stream frame is written as send writes, under the same lock, with the descriptors on
+	// it: a frame of the answer, not the answer, so no place is given back for it. ONE AT MOST
+	// PER ANSWER: the asker has room for one and the answer, and a second is refused here.
+	streamed := map[int]bool{}
+	tk.stream = func(id int, files ...*os.File) error {
+		uc, ok := conn.(*net.UnixConn)
+		if !ok {
+			return errors.New("the channel cannot carry a descriptor: it is no unix socket")
+		}
+		if len(files) == 0 || len(files) > maxRights {
+			return fmt.Errorf("a frame carries 1 to %d descriptors, not %d", maxRights, len(files))
+		}
+		body, err := codec.Marshal(Reply{ID: id, Streams: len(files)}, codec.Tony)
+		if err != nil {
+			return err
+		}
+		writing.Lock()
+		defer writing.Unlock()
+		if streamed[id] {
+			return fmt.Errorf("request %d has its stream frame already, and an answer has one at most", id)
+		}
+		streamed[id] = true
+		return writeFrameWith(uc, body, files)
 	}
 	br := bufio.NewReader(conn)
 	for {

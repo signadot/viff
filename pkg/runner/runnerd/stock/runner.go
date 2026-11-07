@@ -148,6 +148,10 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	if repos != nil {
 		repos.Services = c.services(tokens)
 		repos.Services.Verse = toVerse
+		// A command run with a secret is confined as the task's process is, over the task's
+		// root and under its network, with what the operator keeps read only.
+		repos.Services.Confine = runnerd.Confiner{Sandbox: sb, ReadOnly: c.ReadOnly,
+			Kept: runnerd.KeptDirs(work, control, mirrors, secrets), Log: log}
 		repos.Ceilings = func(l *runner.Launch) map[string]systems.Ceiling { return c.ceilings(c.doer(l)) }
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{

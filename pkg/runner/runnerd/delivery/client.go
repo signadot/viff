@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"sync"
@@ -20,18 +21,28 @@ import (
 type Client struct {
 	conn    net.Conn
 	br      *bufio.Reader
+	rights  *rights    // the descriptors frames bring, where the connection carries them (a unix socket)
 	writing sync.Mutex // one frame onto the connection at a time
 
 	mu      sync.Mutex
 	last    int
-	waiting map[int]chan heard
+	waiting map[int]*asker
 	ended   error // why no answer will come, once the channel has ended
 }
 
-// heard is what one Ask hears: the runner's answer, or why there is none.
+// asker is one request waiting for its answer: where it hears, and whether a stream frame has
+// come for it, since one at most does.
+type asker struct {
+	got      chan heard
+	streamed bool
+}
+
+// heard is what one Ask hears: the runner's answer, with the descriptors a stream frame
+// brought, or why there is none.
 type heard struct {
-	rep Reply
-	err error
+	rep   Reply
+	files []*os.File
+	err   error
 }
 
 // Attach opens the task process's end of the channel, inherited as descriptor fd.
@@ -45,15 +56,28 @@ func Attach(fd uintptr) (*Client, error) {
 	return NewClient(conn), nil
 }
 
-// NewClient is a Client over a connection already open.
+// NewClient is a Client over a connection already open. Over a unix socket the frames are read
+// with the descriptors they carry (rights); over anything else no frame carries one.
 func NewClient(conn net.Conn) *Client {
-	c := &Client{conn: conn, br: bufio.NewReader(conn), waiting: map[int]chan heard{}}
+	c := &Client{conn: conn, waiting: map[int]*asker{}}
+	var r io.Reader = conn
+	if uc, ok := conn.(*net.UnixConn); ok {
+		c.rights = newRights(uc)
+		r = c.rights
+	}
+	c.br = bufio.NewReader(r)
 	go c.hear()
 	return c
 }
 
-// Ask sends one request and waits for the runner's answer to it.
-func (c *Client) Ask(req Request) (Reply, error) {
+// Ask sends one request and waits for the runner's answer to it. A stream frame ahead of the
+// answer brings descriptors nobody asked to be handed, and they are closed.
+func (c *Client) Ask(req Request) (Reply, error) { return c.AskStreaming(req, nil) }
+
+// AskStreaming sends one request and waits for the runner's answer, handing stream the
+// descriptors a stream frame brings ahead of it (Reply.Streams): the task's ends of what the act
+// streams, which are the caller's to close. One stream frame at most comes before the answer.
+func (c *Client) AskStreaming(req Request, stream func([]*os.File)) (Reply, error) {
 	c.mu.Lock()
 	if c.ended != nil {
 		c.mu.Unlock()
@@ -61,8 +85,10 @@ func (c *Client) Ask(req Request) (Reply, error) {
 	}
 	c.last++
 	req.ID = c.last
-	got := make(chan heard, 1)
-	c.waiting[req.ID] = got
+	// Room for the one stream frame and the answer, or the end of the channel, so hear and tell
+	// never wait on an asker: a second stream frame for one request does not read (hear).
+	got := make(chan heard, 2)
+	c.waiting[req.ID] = &asker{got: got}
 	c.mu.Unlock()
 	if err := c.send(req); err != nil {
 		c.mu.Lock()
@@ -70,11 +96,21 @@ func (c *Client) Ask(req Request) (Reply, error) {
 		c.mu.Unlock()
 		return Reply{}, err
 	}
-	h := <-got
-	if h.err != nil {
-		return Reply{}, fmt.Errorf("the runner's answer: %w", h.err)
+	for {
+		h := <-got
+		if h.err != nil {
+			return Reply{}, fmt.Errorf("the runner's answer: %w", h.err)
+		}
+		if h.rep.Streams > 0 {
+			if stream == nil {
+				closeAll(h.files)
+			} else {
+				stream(h.files)
+			}
+			continue
+		}
+		return h.rep, nil
 	}
-	return h.rep, nil
 }
 
 func (c *Client) send(req Request) error {
@@ -101,9 +137,17 @@ func (c *Client) send(req Request) error {
 // been done, which is what keeps a write from being made twice on a retry.
 func (c *Client) hear() {
 	// However the reading ends, this end is closed, so the runner sees it go: it then gives up
-	// what waits its turn, and does not write answers nobody reads.
+	// what waits its turn, and does not write answers nobody reads. A descriptor read and
+	// handed to nobody is closed with it.
 	defer c.conn.Close()
+	if c.rights != nil {
+		defer c.rights.drop()
+	}
 	for {
+		var start int64
+		if c.rights != nil {
+			start = c.rights.consumed(c.br)
+		}
 		raw, err := readFrame(c.br)
 		var big frameTooLarge
 		if err != nil && !errors.As(err, &big) {
@@ -114,17 +158,49 @@ func (c *Client) hear() {
 		if err == nil {
 			err = codec.Unmarshal(raw, &rep, codec.Tony)
 		}
+		// A STREAM FRAME TAKES THE DESCRIPTORS SENT WITH IT, which are queued by the time it
+		// decodes. A frame does not read where it says it carries some and the channel read
+		// fewer, or carries none at all; where descriptors came with a frame already read whole
+		// that took none (unclaimed); or where it is a second stream frame for one request, which
+		// an asker has no room for. In each the descriptors are some other frame's, or nobody's.
+		var files []*os.File
+		if err == nil && c.rights != nil && c.rights.unclaimed(start) {
+			err = errors.New("descriptors came on the channel with a frame that takes none")
+		}
+		if err == nil && rep.Streams > 0 {
+			var ok bool
+			if c.rights != nil {
+				files, ok = c.rights.take(rep.Streams)
+			}
+			if !ok {
+				err = fmt.Errorf("a frame says it carries %d descriptors, and the channel read fewer", rep.Streams)
+			}
+		}
+		if err == nil && rep.Streams > 0 {
+			c.mu.Lock()
+			if a, ok := c.waiting[rep.ID]; ok && a.streamed {
+				err = fmt.Errorf("a second stream frame for request %d, which has one at most", rep.ID)
+			}
+			c.mu.Unlock()
+		}
 		if err != nil {
+			closeAll(files)
 			c.tell(heard{err: fmt.Errorf("an answer on the channel does not read (%w), so the channel is closed and "+
 				"whether what was asked was done is not known; read it back before doing it again", err)})
 			return
 		}
 		c.mu.Lock()
-		got, ok := c.waiting[rep.ID]
-		delete(c.waiting, rep.ID)
+		a, ok := c.waiting[rep.ID]
+		if rep.Streams == 0 {
+			delete(c.waiting, rep.ID) // the answer; a stream frame leaves the asker waiting for it
+		} else if ok {
+			a.streamed = true
+		}
 		c.mu.Unlock()
 		if ok {
-			got <- heard{rep: rep}
+			a.got <- heard{rep: rep, files: files}
+		} else {
+			closeAll(files)
 		}
 	}
 }
@@ -135,8 +211,8 @@ func (c *Client) tell(h heard) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.ended = h.err
-	for id, got := range c.waiting {
-		got <- h
+	for id, a := range c.waiting {
+		a.got <- h
 		delete(c.waiting, id)
 	}
 }

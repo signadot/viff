@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 )
 
@@ -111,6 +112,12 @@ type Reply struct {
 	Exists bool   `tony:"field=exists,omitzero"`
 	Own    bool   `tony:"field=own,omitzero"`
 	Error  string `tony:"field=error,omitzero"`
+	// Streams is how many descriptors ride this frame: a frame of an answer ahead of the final
+	// one, which carries the task's ends of what an act streams (a command's output, under
+	// `secret.exec`). The descriptors are sent with the frame's bytes (SCM_RIGHTS, in one
+	// WriteMsgUnix) and read with them (ReadMsgUnix), so a frame that says it carries some has
+	// them by the time it decodes. Only a unix socket carries one; the final frame says none.
+	Streams int `tony:"field=streams,omitzero"`
 }
 
 // ── framing ─────────────────────────────────────────────────────────────────────────────────
@@ -134,6 +141,135 @@ func writeFrame(w io.Writer, body []byte) error {
 	}
 	_, err := w.Write(body)
 	return err
+}
+
+// writeFrameWith writes one frame with descriptors riding its bytes, in one message: the length
+// line and the body together, so the rights are attached to the frame they are for and to no
+// other. The files are the sender's still, to close once sent.
+func writeFrameWith(uc *net.UnixConn, body []byte, files []*os.File) error {
+	fds := make([]int, len(files))
+	for i, f := range files {
+		// Not f.Fd(), which puts the description, shared with the end sent, into blocking
+		// mode: the receiver's reads would then not be interruptible by its Close.
+		sc, err := f.SyscallConn()
+		if err != nil {
+			return err
+		}
+		if err := sc.Control(func(fd uintptr) { fds[i] = int(fd) }); err != nil {
+			return err
+		}
+	}
+	frame := append([]byte(strconv.Itoa(len(body))+"\n"), body...)
+	_, _, err := uc.WriteMsgUnix(frame, syscall.UnixRights(fds...), nil)
+	return err
+}
+
+// maxRights is the most descriptors one frame carries.
+const maxRights = 8
+
+// rights reads a unix connection message by message, keeping the descriptors that ride the
+// bytes: A DESCRIPTOR RIDES THE BYTES IT WAS SENT WITH, and a plain read drops it. The reader
+// over the task's end of the channel is one of these, under the bufio.Reader the frames are read
+// through. What the kernel promises, on Linux and on macOS: the rights of a message come with
+// the read that consumes its first byte, never a later one, and in the order sent (a read may
+// take earlier plain bytes before them, on Linux, or later plain bytes after them, on macOS, and
+// neither matters). So by the time a frame decodes the descriptors sent with it are queued, and
+// the frame takes its own (take); a batch that a frame read whole after its arrival has not
+// taken is nobody's (unclaimed).
+type rights struct {
+	uc  *net.UnixConn
+	oob []byte
+	// read is the bytes read so far, where each batch of descriptors arrived (batch.at: the
+	// bytes read once the read that brought it was done), as hear places a frame against it.
+	read int64
+
+	mu      sync.Mutex
+	batches []batch
+}
+
+// batch is the descriptors one read brought, and where in the bytes read it ended.
+type batch struct {
+	fds []int
+	at  int64
+}
+
+func newRights(uc *net.UnixConn) *rights {
+	return &rights{uc: uc, oob: make([]byte, syscall.CmsgSpace(4*maxRights))}
+}
+
+func (r *rights) Read(p []byte) (int, error) {
+	n, oobn, flags, _, err := r.uc.ReadMsgUnix(p, r.oob)
+	if n < 0 { // what the system call answered with its error, and no count
+		n = 0
+	}
+	r.read += int64(n)
+	if oobn > 0 {
+		msgs, perr := syscall.ParseSocketControlMessage(r.oob[:oobn])
+		if perr != nil {
+			return n, fmt.Errorf("the descriptors on the channel do not read: %w", perr)
+		}
+		var fds []int
+		for _, m := range msgs {
+			got, ferr := syscall.ParseUnixRights(&m)
+			if ferr != nil {
+				return n, fmt.Errorf("the descriptors on the channel do not read: %w", ferr)
+			}
+			fds = append(fds, got...) // close-on-exec already, as net reads them
+		}
+		r.mu.Lock()
+		r.batches = append(r.batches, batch{fds: fds, at: r.read})
+		r.mu.Unlock()
+	}
+	if flags&syscall.MSG_CTRUNC != 0 {
+		return n, fmt.Errorf("a frame of the channel carried more descriptors than the %d it may", maxRights)
+	}
+	return n, err
+}
+
+// consumed is how far into the bytes read the frames decoded so far reach: where the next
+// frame starts. Called by the one goroutine that reads br.
+func (r *rights) consumed(br *bufio.Reader) int64 { return r.read - int64(br.Buffered()) }
+
+// take is the next n descriptors read, as files, and whether there were that many: the oldest
+// batch's, which is the frame's own, since batches come in the order of the frames they ride.
+func (r *rights) take(n int) ([]*os.File, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.batches) == 0 || len(r.batches[0].fds) != n {
+		return nil, false
+	}
+	files := make([]*os.File, n)
+	for i, fd := range r.batches[0].fds {
+		files[i] = os.NewFile(uintptr(fd), "stream")
+	}
+	r.batches = r.batches[1:]
+	return files, true
+}
+
+// unclaimed is whether a batch came with bytes read wholly before a frame starting at start,
+// and no frame took it: the frame it rode took none, which is nobody's to have.
+func (r *rights) unclaimed(start int64) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.batches) > 0 && r.batches[0].at <= start
+}
+
+// drop closes every descriptor read and not taken.
+func (r *rights) drop() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, b := range r.batches {
+		for _, fd := range b.fds {
+			syscall.Close(fd)
+		}
+	}
+	r.batches = nil
+}
+
+func closeAll(files []*os.File) {
+	for _, f := range files {
+		f.Close()
+	}
 }
 
 func readFrame(br *bufio.Reader) ([]byte, error) {

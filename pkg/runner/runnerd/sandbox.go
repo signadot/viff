@@ -1,7 +1,10 @@
 package runnerd
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
 )
 
 // Sandbox confines a task's process. It is drawn once, around the whole process, so everything
@@ -21,11 +25,69 @@ type Sandbox interface {
 	Name() string
 	// Provides reports whether this sandbox can build net, and says what it can't if not.
 	Provides(net Network) error
-	// Wrap rewrites cmd to run confined, with dir its working directory and the only path it
-	// may write, and net what it may reach. programs are the other programs it runs (a script's
-	// verse-call-tool), which it finds where they are, read only. The descriptors on
-	// cmd.ExtraFiles are passed through. Called only after Provides said yes.
+	// Wrap rewrites cmd to run confined, with dir the only path it may write and its working
+	// directory, unless cmd.Dir names one under it, and net what it may reach. programs are
+	// the other programs it runs (a script's verse-call-tool), which it finds where they are,
+	// read only. The descriptors on cmd.ExtraFiles are passed through. Called only after
+	// Provides said yes.
 	Wrap(cmd *exec.Cmd, dir string, net Network, programs []string) error
+}
+
+// Confiner confines a command the runner runs for a task apart from the task's own process
+// (delivery.Confine, for `secret.exec`): in the same kind of sandbox the task's process is in,
+// over the task's root, under the task's network, with the paths the operator keeps read only.
+// The program is one of the runner's, under a system directory or a readOnly path, where it is
+// and where it resolves to: a program of the task's would read the secret for it. A runner that
+// runs its tasks unconfined confines nothing, and says so.
+type Confiner struct {
+	Sandbox  Sandbox
+	ReadOnly []string
+	// Kept is the runner's own directories (KeptDirs), which no readOnly path may reach.
+	Kept map[string]string
+	Log  io.Writer
+}
+
+// Confine implements delivery.Confine.
+func (c Confiner) Confine(cmd *exec.Cmd, root, dir string, net delivery.Network) error {
+	if c.Sandbox == nil || c.Sandbox.Name() == (Unconfined{}).Name() {
+		return errors.New("this runner runs its tasks unconfined (-sandbox none), and runs no command with a secret")
+	}
+	if !filepath.IsAbs(cmd.Path) {
+		return fmt.Errorf("the program %q is no absolute path", cmd.Path)
+	}
+	if !filepath.IsAbs(root) || !filepath.IsAbs(dir) || !underAny(filepath.Clean(dir), []string{root}) {
+		return fmt.Errorf("the directory %s is not under the task's root %s", dir, root)
+	}
+	// Each path as written and as it resolves, on both sides: a link under a kept path to a
+	// program elsewhere is refused for where it resolves, and a readOnly path that is itself
+	// reached through a link (/var on macOS) admits what lies under where it resolves.
+	var kept []string
+	for _, d := range c.ReadOnly {
+		kept = append(kept, d, resolved(d))
+	}
+	for _, p := range []string{cmd.Path, resolved(cmd.Path)} {
+		if !UnderSystem(p) && !underAny(p, kept) {
+			return fmt.Errorf("the program %s is under no system directory and no readOnly path of the runner's, "+
+				"and a command run with a secret is one of the runner's own", p)
+		}
+	}
+	log := c.Log
+	if log == nil {
+		log = io.Discard
+	}
+	cmd.Dir = dir
+	return c.Sandbox.Wrap(cmd, root, Network{Mode: net.Mode, Egress: net.Egress}, withReadOnly(nil, c.ReadOnly, c.Kept, log))
+}
+
+// underAny is whether path is, or lies under, one of dirs.
+func underAny(path string, dirs []string) bool {
+	for _, d := range dirs {
+		d = filepath.Clean(d)
+		if path == d || strings.HasPrefix(path, d+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // Network is what a task's process may reach: the runner's own network (NetworkOpen,
@@ -100,7 +162,7 @@ func (Unconfined) Provides(net Network) error {
 }
 
 func (Unconfined) Wrap(cmd *exec.Cmd, dir string, _ Network, _ []string) error {
-	cmd.Dir = dir
+	cmd.Dir = cmp.Or(cmd.Dir, dir)
 	return nil
 }
 
@@ -165,7 +227,11 @@ func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []s
 			args = append(args, "--ro-bind", prog, prog)
 		}
 	}
-	args = append(args, "--bind", dir, dir, "--chdir", dir)
+	// The working directory is dir, or what cmd.Dir names under it: a command run for the task
+	// in one directory of its tree (Confiner). It is bwrap's to change to, inside, and not the
+	// host's: cmd.Dir is taken off, so nothing changes directory on the runner's side.
+	args = append(args, "--bind", dir, dir, "--chdir", cmp.Or(cmd.Dir, dir))
+	cmd.Dir = ""
 	switch net.mode() {
 	case NetworkNone:
 		args = append(args, "--unshare-net")

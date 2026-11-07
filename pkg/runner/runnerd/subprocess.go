@@ -26,6 +26,7 @@ import (
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/client"
+	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
 	"github.com/signadot/verse/pkg/systems"
 	"github.com/signadot/verse/pkg/task"
 )
@@ -448,6 +449,11 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 		}
 		p.eg, network.Egress = eg, eg.Sock()
 		p.egress.Store(eg.Egress)
+	}
+	if p.co != nil {
+		// What a command the runner runs for the task is held to as well, before the channel
+		// is served.
+		p.co.ch.SetNetwork(delivery.Network{Mode: network.Mode, Egress: network.Egress})
 	}
 
 	sock := fmt.Sprintf("%s/t%d.sock", h.Control, h.seq.Add(1))

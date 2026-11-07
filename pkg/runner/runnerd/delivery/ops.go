@@ -137,6 +137,18 @@ func (o op) withNumbers(names ...string) op {
 	return o
 }
 
+// performedApart is the op, performed apart from those in turn.
+func (o op) performedApart() op {
+	o.apart = true
+	return o
+}
+
+// withDeadline is the op, with d from when it is begun to its answer.
+func (o op) withDeadline(d time.Duration) op {
+	o.deadline = d
+	return o
+}
+
 // reads is every name the op reads of what a request is asked with, however it reads each.
 func (o op) reads() []string { return slices.Concat(o.takes, o.flags, o.numbers) }
 
