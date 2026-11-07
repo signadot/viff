@@ -4,7 +4,8 @@
 
 Related issues: 55crejnf (three faces for an MCP server; the task face grew as named tools
 through the runner), bst6zbs0 (what a gate on a command can honestly promise), hfh7km3t
-(credentials a gate mints), q3k89kva (approvers answer blind).
+(credentials a gate mints), q3k89kva (approvers answer blind; closed, the record's side) and 2f5art3x (the Slack ask shows
+the step).
 
 ## What this is for
 
@@ -297,7 +298,7 @@ holds by convention today.
 3. **An answer is not bound to what is performed.** The runner matches an answer by the
    decision's id and the step's fields. A Slack post's text is not a field, and an MCP call's
    arguments would not be. So a task can be approved for one body and send another. Put a
-   digest of the body in the step. This fits q3k89kva.
+   digest of the body in the step. This fits 2f5art3x.
 4. **What a runner performs is three lists in the code** (`performs`, `held`, `credentials` in
    `pkg/runner/runnerd/stock/config.go`). Register a performed system as one value. With the
    store, a system whose secret is absent is closed, for every system.
@@ -362,7 +363,8 @@ environment:
    version, which provides packages at the start only.
 2. **Names.** `pkg-nix` or `nix-pkg`: the existing systems put the provider first
    (`linear-issue`, `github-issue`). And `secret-exec`, or another name for the same tool.
-3. **What an approver sees of an MCP call.** A question shows the step's fields (q3k89kva). The
+3. **What an approver sees of an MCP call.** A question's record carries the step's fields (q3k89kva), and the Slack ask
+shows them with 2f5art3x. The
    call's arguments are fields only if the document says so, in the form `doc`. Item 3 of the
    shoring list binds the answer to them either way.
 4. **Which names an offer publishes.** Every secret the runner holds, or only those some ceiling
