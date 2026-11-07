@@ -1,0 +1,43 @@
+kernel: 6.12.76-linuxkit  mount-max: 100000  ARG_MAX(getconf): 2097152  stack: 8192
+mounts in the pod's own namespace: 13
+
+n_binds | argv bytes | direct argv: rc / median ms | --args fd: rc / median ms (runs=7) | mounts inside
+0 | 600 | 0 / 3ms  | 0 / 2ms  | 21
+32 | 4932 | 0 / 5ms  | 0 / 4ms  | 53
+471 | 63072 | 0 / 190ms  | 0 / 185ms  | 492
+1000 | 121262 | 0 / 767ms  | 0 / 737ms  | 1021
+3000 | 341262 | 1 / 8ms bwrap: Exceeded maximum number of arguments 9000 | 1 / 1ms bwrap: Exceeded maximum number of arguments 9000 | bwrap: Exceeded maximum number of arguments 9000
+10000 | 1111262 | 1 / 27ms bwrap: Exceeded maximum number of arguments 9000 | 1 / 1ms bwrap: Exceeded maximum number of arguments 9000 | bwrap: Exceeded maximum number of arguments 9000
+20000 | 2211262 | 126 / 55ms bash: line 30: /usr/bin/bwrap: Argument list too long | 1 / 1ms bwrap: Exceeded maximum number of arguments 9000 | bwrap: Exceeded maximum number of arguments 9000
+30000 | 3311262 | 126 / 84ms bash: line 30: /usr/bin/bwrap: Argument list too long | 1 / 2ms bwrap: Exceeded maximum number of arguments 9000 | bwrap: Exceeded maximum number of arguments 9000
+
+=== do the programs run from the binds? (union of real closures only: 471 binds)
+PATH made of the closures' bin dirs: 138 dirs, 8864 bytes
+ls /nix/store | wc -l -> 471
+by store path:
+v22.23.4
+go version go1.26.10 linux/arm64
+by PATH:
+node v22.23.4 /nix/store/ns6c1b2zwsfvvwqc0qxc2bmdpzd57ddz-nodejs-slim-22.23.4/bin/node
+go version go1.26.10 linux/arm64
+/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10/bin/go
+python 3.14.8 OpenSSL 3.5.9 29 Sep 2026
+git version 2.56.0
+ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers
+psql (PostgreSQL) 18.6
+rustc 1.99.0 (b940084d7 2026-09-28) (built from a source tarball)
+cargo 1.99.0 (5f94df478 2026-08-27)
+jq-1.8.2
+Version: ImageMagick 7.1.2-34 Q16-HDRI aarch64 c5d4ca8a0:20261014 https://imagemagick.org
+GOCACHE build test:
+hello from go build
+writability:
+CAN create /nix/store/planted (sandbox root tmpfs)
+touch: cannot touch '/nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4/x': Read-only file system
+drwxr-xr-x  13 nonroot nonroot  280 Nov  7 12:43 /
+drwx------   3 nonroot nonroot   60 Nov  7 12:43 /nix
+drwx------ 472 nonroot nonroot 9480 Nov  7 12:43 /nix/store
+=== same, with --remount-ro / added at the end of the args
+touch: cannot touch '/nix/store/planted': Read-only file system
+touch: cannot touch '/newfile-at-root': Read-only file system
+ws-writable: yes

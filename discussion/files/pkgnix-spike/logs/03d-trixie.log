@@ -1,0 +1,6 @@
+bwrap: bubblewrap 0.12.0
+n=471 shape=ro: rc=0 median=193ms 
+n=1000 shape=ro: rc=0 median=742ms 
+n=2000 shape=ro: rc=0 median=2890ms 
+n=2980 shape=ro: rc=0 median=6163ms 
+n=2990 shape=ro: rc=1 median=1ms bwrap: Exceeded maximum number of arguments 9000

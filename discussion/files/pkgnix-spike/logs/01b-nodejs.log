@@ -1,0 +1,18 @@
+drv=/nix/store/17rdnkqvjj8lq8l6g5jh0ps1qfidzyxl-nodejs-22.23.4.drv
+out=/nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4
+allowSubstitutes / preferLocalBuild in the derivation:
+"builder":"/nix/store/czx7cscpnqqmc9nwmbpnv2zcvck64mmf-bash-5.3p20/bin/bash"
+"allowSubstitutes":""
+"builder":"/nix/store/czx7cscpnqqmc9nwmbpnv2zcvck64mmf-bash-5.3p20/bin/bash"
+"preferLocalBuild":"1"
+is the output in cache.nixos.org?
+/nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4
+--- retry with always-allow-substitutes = true, still max-jobs 0
+rc=0 wall=0.2s out=/nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4
+this path will be fetched (45.5 KiB download, 779.2 KiB unpacked):
+  /nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4
+copying path '/nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4' from 'https://cache.nixos.org'...
+store paths in closure: 32
+closure NAR size: 219272712
+on disk: 230M	total
+gcc (main output) closure paths: 27, NAR 410040064

@@ -1,0 +1,39 @@
+id: uid=65532(nonroot) gid=65532(nonroot) groups=65532(nonroot)
+caps: CapEff:	0000000000000000
+nix (Nix) 2.35.4
+drwxr-xr-x  4 nonroot nonroot 4096 Nov  7 12:37 /nix
+drwxr-xr-x 66 nonroot nonroot 4096 Nov  7 12:37 /nix/store
+unpacking 'github:NixOS/nixpkgs/4fe25e12eb9f4c744966dd3de5a05246cf098601' into the Git cache...
+nixpkgs rev: 4fe25e12eb9f4c744966dd3de5a05246cf098601  (metadata+source fetch 16.488s)
+--- nodejs_22
+rc=1  wall=4.1s  out=
+copying path '/nix/store/qjv9fg113zbwk07pz50mf4qc5i3w2qq3-nodejs-slim-22.23.4-corepack' from 'https://cache.nixos.org'...
+copying path '/nix/store/gbjd0pa5j26jca9ck4lji9bhyf1gk6hs-nodejs-slim-22.23.4-npm' from 'https://cache.nixos.org'...
+error: Cannot build '/nix/store/17rdnkqvjj8lq8l6g5jh0ps1qfidzyxl-nodejs-22.23.4.drv'.
+       Reason: local builds are disabled (max-jobs = 0)
+       Hint: set 'max-jobs' to a non-zero value to enable local builds, or configure remote builders via 'builders'
+--- go
+rc=0  wall=3.3s  out=/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10
+store paths in closure: 9
+closure size (nix path-info -S, NAR bytes): 279130992
+closure size on disk (du -sh of the paths): 305M	total
+--- python3
+rc=0  wall=3.3s  out=/nix/store/lq2fsnmg0q3y0vlxn91w8s8wvj1m6fld-python3-3.14.8
+store paths in closure: 23
+closure size (nix path-info -S, NAR bytes): 239607752
+closure size on disk (du -sh of the paths): 247M	total
+--- git
+rc=0  wall=2.9s  out=/nix/store/xqp1x3qm8j8hxqpddwzp9mg73wvrc4xb-git-2.56.0
+store paths in closure: 87
+closure size (nix path-info -S, NAR bytes): 424082968
+closure size on disk (du -sh of the paths): 438M	total
+--- gcc
+rc=0  wall=5.3s  out=/nix/store/bk9imwkja1v548gviyshq4j33987m0cg-gcc-wrapper-16.2.0-man
+/nix/store/6gj4dzcv6gaxh5raqyrq7jmy605qaj3z-gcc-wrapper-16.2.0
+store paths in closure: 29
+closure size (nix path-info -S, NAR bytes): 410040064
+484552
+closure size on disk (du -sh of the paths): 404M	total
+--- store total
+1.3G	/nix/store
+1333

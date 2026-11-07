@@ -1,0 +1,25 @@
+bwrap-big: bubblewrap 0.13.1 (MAX_ARGS patched to 200000); mount-max=100000
+n=471: rc=0 median=8ms all=[22 9 8 8 7] 
+n=2980: rc=0 median=37ms all=[40 40 37 35 35] 
+n=3000: rc=0 median=33ms all=[35 33 33 34 33] 
+n=10000: rc=0 median=110ms all=[112 109 114 106 110] 
+n=20000: rc=0 median=218ms all=[228 220 218 214 212] 
+n=30471: rc=0 median=324ms all=[346 323 321 324 325] 
+=== at 10000 binds (471 real + synthetic): do programs run, how many mounts, is ro enforced?
+v22.23.4
+go version go1.26.10 linux/arm64
+mounts: 10021
+store entries: 471 synth entries: 9529
+chmod: changing permissions of '/nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4': Read-only file system
+touch: cannot touch '/nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4/x': Read-only file system
+=== the kernel's ceiling: N binds of one directory to N distinct destinations
+mounts inside: 50021
+  n=50000 wall=498ms
+bwrap: Exceeded maximum number of arguments 200000
+  n=99990 wall=5ms
+bwrap: Exceeded maximum number of arguments 200000
+  n=100010 wall=5ms
+bwrap: Exceeded maximum number of arguments 200000
+  n=120000 wall=4ms
+=== the same through released 0.13.1 (MAX_ARGS 9000) at 2980, for the record
+bwrap-new n=2980: rc=0 median=31ms all=[33 31 31 31 32] 

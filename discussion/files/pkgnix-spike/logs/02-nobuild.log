@@ -1,0 +1,43 @@
+nix show-config (defaults that matter):
+allow-import-from-derivation = true
+always-allow-substitutes = false
+builders = @/etc/nix/machines
+max-jobs = 1
+require-sigs = true
+sandbox = false
+substituters = https://cache.nixos.org/
+trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+--- max-jobs 0 (no builders configured: builders is empty by default)
+rc=1 out=
+error: Cannot build '/nix/store/3gpjwvpyw5cz1kkvd8z2hcaksv3ygwpc-spike-1794055212078020630.drv'.
+       Reason: local builds are disabled (max-jobs = 0)
+       Hint: set 'max-jobs' to a non-zero value to enable local builds, or configure remote builders via 'builders'
+--- max-jobs 0 + builders '' explicit
+rc=1 out=
+error: Cannot build '/nix/store/3gpjwvpyw5cz1kkvd8z2hcaksv3ygwpc-spike-1794055212078020630.drv'.
+       Reason: local builds are disabled (max-jobs = 0)
+       Hint: set 'max-jobs' to a non-zero value to enable local builds, or configure remote builders via 'builders'
+--- --offline only (does NOT stop builds; expect it to build)
+rc=0 out=/nix/store/l8q6nhsyjd9pqlg38xnkp1qm5wwf60sb-spike-1794055212078020630
+built-by-
+--- max-jobs 0 + --offline
+rc=1 out=
+error: Cannot build '/nix/store/xq7r1kmz66r2lnkzl62n3brvf5y5ci2h-spike-1794055212078020630-b.drv'.
+       Reason: local builds are disabled (max-jobs = 0)
+       Hint: set 'max-jobs' to a non-zero value to enable local builds, or configure remote builders via 'builders'
+=== the same, fixed in a config file the runner owns (NIX_CONF_DIR), then overridden on the command line
+--- config max-jobs = 0
+rc=1 out=
+error: Cannot build '/nix/store/r1qlpk1m00n2di4i0d864q44slzi6vyk-spike-1794055212078020630-b-c.drv'.
+       Reason: local builds are disabled (max-jobs = 0)
+       Hint: set 'max-jobs' to a non-zero value to enable local builds, or configure remote builders via 'builders'
+--- config max-jobs = 0, caller passes --option max-jobs 1 (single-user: nothing stops it)
+rc=0 out=/nix/store/dvfkppi6hzfdgv8lwa862pi1ycj6kmvc-spike-1794055212078020630-b-c
+built-by-
+=== a cached package still substitutes under that config:
+/nix/store/16bc59xb22679a0mdzvlirr9n6i8ca8m-jq-1.8.2-bin
+/nix/store/35czxi6qcb15jwlv2n2aksahkx4yr4wd-jq-1.8.2-man
+=== nix-store --realise of an uncached .drv under max-jobs 0:
+error: Cannot build '/nix/store/mg75nyya9prfqax2rv78pk0jpc5isk37-spike-1794055212078020630-b-c-d.drv'.
+       Reason: local builds are disabled (max-jobs = 0)
+       Hint: set 'max-jobs' to a non-zero value to enable local builds, or configure remote builders via 'builders'

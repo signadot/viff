@@ -1,0 +1,8 @@
+store before: 65 entries (126M), the installer's nix
+eval only (fetch nixpkgs source + evaluate nodejs_22.outPath): rc=0 20999ms
+eval go (source now cached): rc=0 178ms
+nodejs_22: substitute rc=0 11427ms; paths=32; closure NAR=209 MiB; copied=32
+go: substitute rc=0 3096ms; paths=9; closure NAR=266 MiB; copied=4
+--- a pre-evaluated store path instead of a flake ref (what a runner would do with a locked output):
+go by store path, after gc: 4103ms
+store after: 480 entries (431M)

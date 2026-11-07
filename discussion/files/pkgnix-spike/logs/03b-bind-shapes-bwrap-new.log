@@ -1,0 +1,25 @@
+bwrap: bubblewrap 0.13.1
+base args: 40
+n=471 shape=ro: rc=0 median=9ms 
+n=471 shape=rw: rc=0 median=7ms 
+n=471 shape=rwro: rc=0 median=8ms 
+n=1000 shape=ro: rc=0 median=14ms 
+n=1000 shape=rw: rc=0 median=13ms 
+n=1000 shape=rwro: rc=0 median=13ms 
+n=2000 shape=ro: rc=0 median=24ms 
+n=2000 shape=rw: rc=0 median=22ms 
+n=2000 shape=rwro: rc=0 median=22ms 
+n=2980 shape=ro: rc=0 median=32ms 
+n=2980 shape=rw: rc=0 median=33ms 
+n=2980 shape=rwro: rc=0 median=32ms 
+n=2990 shape=ro: rc=1 median=1ms bwrap: Exceeded maximum number of arguments 9000
+n=2990 shape=rw: rc=1 median=1ms bwrap: Exceeded maximum number of arguments 9000
+n=2990 shape=rwro: rc=1 median=1ms bwrap: Exceeded maximum number of arguments 9000
+=== rw+ro shape: is a bound store path writable inside? (n=471)
+touch: cannot touch '/nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4/x': Permission denied
+touch: cannot touch '/nix/store/planted': Read-only file system
+v22.23.4
+11
+494
+=== rw shape: is it writable? (it must not be, and it IS here) n=471
+WROTE INTO THE SHARED STORE: /nix/store/bwkaqhf9650zqdk497yifczi89xxg573-nodejs-22.23.4/x

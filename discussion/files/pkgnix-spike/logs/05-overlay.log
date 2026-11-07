@@ -1,0 +1,30 @@
+##### bwrap 0.8.0
+bwrap: bubblewrap 0.8.0; nix package: /nix/store/zfrjbq03bwr3wbab3z47w03l19d73rrf-nix-2.35.4
+bwrap: Unknown option --overlay-src
+bwrap: Unknown option --overlay-src
+bwrap: Unknown option --overlay-src
+##### bwrap 0.13.1
+bwrap: bubblewrap 0.13.1; nix package: /nix/store/zfrjbq03bwr3wbab3z47w03l19d73rrf-nix-2.35.4
+--- put nix itself into the base store (nix copy into the local chroot store)
+base store now: 209 non-drv paths
+target (not in the base): /nix/store/3h93x8j616gi8wsc5dj3s0bcjgkl78w2-ripgrep-15.2.0 ; in base? no
+[task] /nix mount: overlay overlay rw,lowerdir=/proc/self/fd/10,upperdir=/proc/
+[task] base go runs: go version go1.26.10 linux/arm64
+[task] nix-store --realise of ripgrep (substitute, max-jobs 0):
+warning: you did not specify '--add-root'; the result might be removed by the garbage collector
+/nix/store/3h93x8j616gi8wsc5dj3s0bcjgkl78w2-ripgrep-15.2.0
+ripgrep 15.2.0
+[task] nix path-info sees base and own: 2 of 2
+[task] try to write a base path:
+  chmod ok (copy-up into the upper only?)
+sandbox wall: 727ms
+--- after the task:
+upper holds: 3g2mlwyf1wkiwkjcv86hi9j9d73r9xz9-pcre2-10.49 3h93x8j616gi8wsc5dj3s0bcjgkl78w2-ripgrep-15.2.0 c1h1q4h9bfmb5d0w342qwjmhw8cxkxzc-gcc-16.2.0-libgcc k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10 nhrkwapk0zzzmc8x1f2k24qpyz9gy5qb-gcc-16.2.0-lib 
+upper size: 20M; db copied up: 352256 /home/nonroot/ovl/t1/upper/var/nix/db/db.sqlite
+base untouched? ripgrep in lower: no; base go mode: 555
+--- --tmp-overlay variant (upper on a tmpfs, gone at exit):
+ripgrep 15.2.0
+--- the same task with --unshare-net (no route to the cache):
+  /nix/store/3h93x8j616gi8wsc5dj3s0bcjgkl78w2-ripgrep-15.2.0
+error: path '/nix/store/3h93x8j616gi8wsc5dj3s0bcjgkl78w2-ripgrep-15.2.0' is required, but there is no substituter that can build it
+cleaned: ls: cannot access '/home/nonroot/ovl': No such file or directory

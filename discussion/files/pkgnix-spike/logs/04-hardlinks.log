@@ -1,0 +1,29 @@
+same filesystem? store dev=65025 T dev=65025 ws dev=65025 home dev=65025
+fs.protected_hardlinks=1
+[task] started; /nix/store has 9 entries; jq there? no
+go version go1.26.10 linux/arm64
+[runner] T on the host now holds 9 entries (bwrap's mountpoints for the base binds)
+[runner] linked 4 store paths (6 files, 19 dirs) into T in 23ms; link count of jq now 2
+[task] after the runner linked jq: entries= 13
+jq-1.8.2
+[task] jq RUNS from links made after the sandbox started
+[task] link out of the store into the workspace (same fs, other mount):
+ln: failed to create hard link '/nix/tasks/t1-ws/jq-link' => '/nix/store/16bc59xb22679a0mdzvlirr9n6i8ca8m-jq-1.8.2-bin/bin/jq': Invalid cross-device link
+[task] link inside T (ro mount):
+ln: failed to create hard link '/nix/store/jq-link': Read-only file system
+[task] symlink into ws (allowed, harmless?):
+lrwxrwxrwx 1 nonroot nonroot 63 Nov  7 12:53 /nix/tasks/t1-ws/jq-sym -> /nix/sto
+[task] write via chmod on a linked file:
+chmod: changing permissions of '/nix/store/16bc59xb22679a0mdzvlirr9n6i8ca8m-jq-1.8.2-bin/bin/jq': Read-only file system
+[task] mountpoints the base binds left in T (seen from inside): 13
+[runner] after the task: does the workspace hold a hard link to a store inode? 0
+=== the hazard to know about: the store's inodes are owned by the task's uid
+nonroot 555 /nix/store/16bc59xb22679a0mdzvlirr9n6i8ca8m-jq-1.8.2-bin/bin/jq
+[runner, outside any sandbox] a hard link made by the RUNNER into a writable dir would let 65532 write the store:
+  chmod through a runner-made link changed the STORE inode: now mode 755
+  restored: 555
+[runner] cleanup: rm -rf T alone fails, the copied dirs are r-x:
+rm: cannot remove '/nix/tasks/t1/x8g0a13kma26kca8f5a1w6f0n54jyp65-jq-1.8.2/lib/libjq.so.1.0.4': Permission denied
+  (a first version of this script ran chmod -R u+w T here: that chmods the STORE's files, which are the same inodes. Restored by hand; see REPORT.)
+  removed after chmod u+w on T's DIRECTORIES only
+  store files still read-only? writable files in jq's closure: 0

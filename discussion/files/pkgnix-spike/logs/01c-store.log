@@ -1,0 +1,35 @@
+##### pod-like container (seccomp unconfined)
+seccomp: Seccomp:	0  caps: CapEff:	0000000000000000
+can this container make a user namespace? yes
+nix build --store /home/nonroot/s3 go: rc=0 wall=4.1s out=/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10
+copying path '/nix/store/a9l8h2d532wk9zpyvl3qms0v5iwbjp67-iana-etc-20251215' from 'https://cache.nixos.org'...
+copying path '/nix/store/7kfrkscfmm8p09q9w392p86rxqji8cbf-mailcap-2.1.54' from 'https://cache.nixos.org'...
+logical path: /nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10 ; physical: /home/nonroot/s3/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10
+drwxr-xr-x 12 nonroot nonroot 36864 Nov  7 12:39 /home/nonroot/s3/nix/store
+dr-xr-xr-x  4 nonroot nonroot  4096 Jan  1  1970 /home/nonroot/s3/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10
+store paths physically under /home/nonroot/s3/nix/store: 417
+same output hash as the /nix store's go? /nix/store/6py5pwyazb6fx2ai40s08qyc1w2zzvdg-go-1.26.10.drv
+--- does the logical path exist at /nix/store in THIS store's view? path-info --store /home/nonroot/s3:
+/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10        	  279130992
+--- run go from the alternative store without nix: bwrap it to /nix/store
+go version go1.26.10 linux/arm64
+--- nix shell --store (nix makes the namespace itself)
+go version go1.26.10 linux/arm64
+##### strict container (default seccomp: no user namespaces)
+seccomp: Seccomp:	2  caps: CapEff:	0000000000000000
+can this container make a user namespace? unshare: unshare failed: Operation not permitted
+nix build --store /home/nonroot/s3-strict go: rc=0 wall=3.4s out=/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10
+copying path '/nix/store/09mqjwlgdr2jchjchwpgff2vryn4zc4q-xgcc-16.2.0-libgcc' from 'https://cache.nixos.org'...
+copying path '/nix/store/7kfrkscfmm8p09q9w392p86rxqji8cbf-mailcap-2.1.54' from 'https://cache.nixos.org'...
+logical path: /nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10 ; physical: /home/nonroot/s3-strict/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10
+drwxr-xr-x 12 nonroot nonroot 36864 Nov  7 12:39 /home/nonroot/s3-strict/nix/store
+dr-xr-xr-x  4 nonroot nonroot  4096 Jan  1  1970 /home/nonroot/s3-strict/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10
+store paths physically under /home/nonroot/s3-strict/nix/store: 417
+ls: cannot access '/nix/store/*-go-1.26*': No such file or directory
+same output hash as the /nix store's go? 
+--- does the logical path exist at /nix/store in THIS store's view? path-info --store /home/nonroot/s3-strict:
+/nix/store/k2vfr5rajk1gjpsdzgqdfz1gkadrc7v7-go-1.26.10        	  279130992
+--- run go from the alternative store without nix: bwrap it to /nix/store
+bwrap: No permissions to create new namespace, likely because the kernel does not allow non-privileged user namespaces. See <https://deb.li/bubblewrap> or <file:///usr/share/doc/bubblewrap/README.Debian.gz>.
+--- nix shell --store (nix makes the namespace itself)
+error: setting up a private mount namespace: Operation not permitted
