@@ -2,8 +2,9 @@
 
 **Status:** a plan, reviewed once (2026-11-07, the first comment) and revised for it. **Step 0
 is done** (2026-11-07, a pod on staging, the third comment; report, scripts and logs attached as
-`pkgnix-pod/`), and the plan is revised for what it found. Nothing else is built. It blocks
-1f5art3x.
+`pkgnix-pod/`), and the plan is revised for what it found. The bases are prepared at the
+runner's start, ahead of any launch (step 5; the fourth comment). Nothing else is built. It
+blocks 1f5art3x.
 
 ## What it is
 
@@ -172,24 +173,44 @@ Each step builds and passes on its own.
    **An evaluation is a flake's code run on the runner's side.** It runs under a timeout (2
    minutes; a cold one is about 40 s) and a memory bound (1 GiB; one takes about 580 MiB), in a
    bwrap with the network and without the secret store or the runner's state.
-5. **Resolve, realise, root.** At a launch that gives `pkg-nix`, before the task's process
-   starts:
-   - parse the reference (above), then evaluate the base and the flake to their packages'
-     outputs. The runner keeps the answer by the locked reference and the system: nix caches no
-     evaluation through `--apply`, so a warm one still costs 3 s. The locked reference is
-     recorded with the task;
+5. **Resolve, realise, root: the bases at the runner's start, a spawn's flake at its launch.**
+   Each is the same three acts:
+   - parse the reference (above), then evaluate it to its packages' outputs. The runner keeps
+     the answer by the locked reference and the system, on the store's volume, so it outlives a
+     restart: nix caches no evaluation through `--apply`, so without it a warm one still costs
+     3 s, and a cold one about 40 s;
    - realise and root them in one command, `nix-store --add-root … --indirect --realise`, so no
-     collection falls between the two: roots for the task, and for each base, under the
-     runner's own roots directory. Given several paths, nix names the roots `<name>-1`,
-     `<name>-2`, …, so a task's are removed by its prefix. Substituting, never building;
+     collection falls between the two, under the runner's own roots directory. Given several
+     paths, nix names the roots `<name>-1`, `<name>-2`, …, so a root is removed by its prefix.
+     Substituting, never building;
    - read each closure (`nix path-info -r`) into the list of paths to bind.
 
-   The task's roots are removed when the task ends, and a base's when no doer names it. At its
-   start, the runner removes the roots of tasks that are not live, which a crash left. A failure
-   fails the launch, naming the reference and nix's words, before any process starts.
+   **The bases, at the runner's start.** Once the start's collection is done (step 6), the
+   runner prepares every base a doer names, a root for each, so no launch pays a base's
+   evaluation or its substitution:
+   - **It serves while they are prepared.** A launch that gives `pkg-nix` for a doer whose base
+     is not ready waits for it, as long as an evaluation's timeout (step 4), rather than doing
+     the work a second time or being refused.
+   - **A base is locked once.** A base with no `rev` is locked when it is prepared, and every
+     launch until the runner restarts, or its configuration names another base, uses that lock.
+     The locked reference is in the runner's log and recorded with each task. A base moves only
+     when the operator moves it; the words (step 9) say to name a `rev`.
+   - **A base that fails** is said in the runner's log with nix's words, and prepared again by
+     the next launch that needs it. A launch whose base fails again fails before any process,
+     naming the base and nix's words. A network that fails at the start closes nothing for
+     good.
+   - A base's root is removed when no doer names it.
+
+   **A spawn's flake, at its launch,** before the task's process starts. Its locked reference is
+   recorded with the task, and a flake evaluated before costs nothing to evaluate again. The
+   task's roots are removed when the task ends. A failure fails the launch, naming the reference
+   and nix's words, before any process starts.
 6. **Collection.** The runner collects (`nix-store --gc`) at its start, and whenever the store
-   passes `collect-above`. A collection during a realise takes nothing of it (step 0), so no
-   lock orders them.
+   passes `collect-above`. At the start, in this order: the roots of tasks that are not live,
+   which a crash left, are removed; then the roots of bases no doer names; then the collection;
+   then the bases are prepared (step 5). A base whose root outlived the restart is kept through
+   the collection, so preparing it again is warm. A collection during a realise takes nothing of
+   it (step 0), so no lock orders them.
 7. **The sandbox.** `Sandbox.Wrap` takes the store paths beside its programs:
    - one `--ro-bind <store>/nix/store/p /nix/store/p` each, on the command line;
    - a store path that is itself a symlink is recreated, `--symlink <target> /nix/store/p`: its
@@ -240,6 +261,15 @@ Each step builds and passes on its own.
   - roots of tasks not live are removed at the start;
   - a second launch of the same locked reference does not evaluate;
   - a failure fails the launch before any process.
+- **The bases at the start,** against the same fake nix:
+  - every base a doer names is evaluated, realised and rooted at the start, in step 6's order,
+    and a launch afterwards evaluates and realises only its flake;
+  - a launch while its base is being prepared waits, then starts, and the base is prepared once;
+  - a base with no `rev` is locked once: two launches record the same locked reference;
+  - a restart with the same locked base does not evaluate it (the answer is on the volume);
+  - a base that fails at the start is prepared again by the next launch that needs it; failing
+    again, that launch fails before any process, naming the base;
+  - a base no doer names any more loses its root.
 - **`secret-exec`** admits a program under the base's closure, refuses one of the spawn's flake
   under `kept: base` and admits it under `base-and-flake`, and refuses one beside both. The ask
   carries the program's path.
@@ -275,6 +305,8 @@ Each step builds and passes on its own.
 3. **`kept`.** Its name and values, and whether `base` is the right default.
 4. **The store's volume.** Its size, its class, and what happens to a store on a node the pod
    moves off (step 0 did not move one).
-5. **The launch's latency.** A cold evaluation is about 40 s from inside the cluster, a cold
-   substitution of a large base tens of seconds. The review proposes the runner evaluate and
-   realise the bases at its start, ahead of any launch.
+5. **A spawn's flake's latency.** The bases are prepared at the start (step 5), so what a launch
+   still pays is its flake's: nothing for one evaluated before, about 3 s for a new one over a
+   nixpkgs the store has, about 40 s for one over a nixpkgs it has not, and the substitution of
+   whatever its closure adds. Whether that wants more (the ceiling's flakes prepared ahead too,
+   say) is the measure of the first users' launches.
