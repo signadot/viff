@@ -6,7 +6,10 @@ below), being built in the worktree `.worktrees/secret-exec` (branch `verse/secr
 committed (28b7f392) on the third pass's design (stderr its own socket, a kill the task's
 closing of its stream: "At the third pass", below): `delivery/secret.go` (the op, the redaction, the program found on
 the command's PATH on the runner's side), `Task.Env`/`Channel.SetEnv`, `systems.IsVarName`, and tests in delivery
-and an end-to-end one in runnerd under a fake bwrap. Step 5, the tool, is next. As built, the frame's field is `Streams int`, the count,
+and an end-to-end one in runnerd under a fake bwrap. Step 5, the tool, is built and tested, uncommitted, in the
+blocking shape (decided: the sub-bullet of step 5): `stock/secrettools.go`, `secret-exec` and `secret-exec-kill`,
+the step read once for both sides by `delivery.ReadExec`/`Exec.Step`, and the task's received descriptors made
+non-blocking (`rights.take`), so closing one lets go at once. Step 6, the words, is next. As built, the frame's field is `Streams int`, the count,
 rather than `Stream bool`: the frame says how many it carries, and the client takes that many. It blocks 1f5art3x. It waits on
 1q5art3x (the secret store, which it reads) and on 1k5art3x (the table of ops, built). It shares
 the first op performed apart with 1v5art3x, whichever lands first.
@@ -297,6 +300,14 @@ Each step builds and passes on its own.
      If agents need to kill, the shape is `secret-exec` returning at start with the paths and
      the id, beside `secret-exec-wait` and `secret-exec-kill`. That changes `Do` and nothing
      else, so steps 3 and 4 are built the same either way, and this is settled when 5 is.
+     - **Decided at step 5: the blocking shape.** `secret-exec` blocks until the command ends,
+       `timeout` bounds a run for an agent, and `secret-exec-kill <id>` is beside it for a
+       script, and for the loop: a call the loop gives up (its context) lets go of the ends
+       too, so a task that is cancelled kills its command. The kill tool is no step, and is
+       offered with the run tool, where the environment gives `secret.exec`. The answer is
+       `<id>: <exit>`, then each stream's file, size and tail. A socket whose path is too long
+       for a unix socket, or a file that cannot be written, is said in the answer, and the run
+       goes on.
 6. **The words.** `docs/systems/secret.md`, the row in `docs/systems/README.md`,
    `docs/reference/runnerd.md` (the performed system, what a `secret` ceiling says, and that it
    is closed under `-sandbox none`), the example ceiling in `deploy/verse-runner`'s comments.
