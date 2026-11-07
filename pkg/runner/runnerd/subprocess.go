@@ -486,6 +486,9 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 		env = h.Env(l)
 	}
 	cmd.Env = append(append([]string{}, env...), "HOME="+root, "TMPDIR=/tmp")
+	if p.co != nil {
+		p.co.ch.SetEnv(cmd.Env) // what a command run for the task is given too
+	}
 	out := tagged(h.Log, p.id)
 	cmd.Stdout, cmd.Stderr = out, out
 	cmd.ExtraFiles = append([]*os.File{lf, lifeR}, extra...) // fd 3, fd 4, and fd 5

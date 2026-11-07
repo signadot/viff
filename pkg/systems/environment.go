@@ -95,6 +95,10 @@ func blockAt(system string, i, n int) string {
 // varName is a variable's name as a shell spells one.
 var varName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// IsVarName is whether name is a variable's name as a shell spells one: letters, digits and
+// `_`, not starting with a digit (the form var, and the keys of the form env).
+func IsVarName(name string) bool { return varName.MatchString(name) }
+
 func (b Block) check(d Document) error {
 	for _, name := range slices.Sorted(maps.Keys(b.Attributes)) {
 		a, ok := d.Attribute(name)

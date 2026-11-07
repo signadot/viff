@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,8 +31,10 @@ type Channel struct {
 
 	near net.Conn
 	far  *os.File
-	// network is the task's network as the sandbox built it (SetNetwork), set before Serve.
+	// network is the task's network as the sandbox built it (SetNetwork), and env the
+	// environment its process was started with (SetEnv), each set before Serve.
 	network Network
+	env     []string
 
 	// autonomy is the task's CURRENT autonomy: the launch's until a replacement is set (SetPolicy),
 	// and what the server decides each act by and settle reads. The launch's own copy (l) never
@@ -190,6 +193,10 @@ func (c *Channel) Child() *os.File { return c.far }
 // socket is there.
 func (c *Channel) SetNetwork(n Network) { c.network = n }
 
+// SetEnv is the environment the task's process was started with (Task.Env): what a command run
+// for the task is given, under the call's own variables and the secret. Set it before Serve.
+func (c *Channel) SetEnv(env []string) { c.env = slices.Clone(env) }
+
 // Serve answers the task's requests for as long as its process lives.
 func (c *Channel) Serve() {
 	c.serving.Store(true)
@@ -198,7 +205,7 @@ func (c *Channel) Serve() {
 	if c.ws != nil {
 		root = c.ws.Root
 	}
-	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Root: root, Network: c.network, Launch: c.l, Policy: c.Autonomy,
+	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Root: root, Network: c.network, Env: c.env, Launch: c.l, Policy: c.Autonomy,
 		Answered: c.answered, Credential: c.cred}, c.near)
 }
 

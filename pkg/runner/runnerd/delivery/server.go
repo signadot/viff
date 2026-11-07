@@ -122,7 +122,11 @@ type Task struct {
 	// Network is the task's network as the sandbox built it (Channel.SetNetwork): what a
 	// command run for the task apart is held to as well.
 	Network Network
-	Launch  *runner.Launch
+	// Env is the environment the task's process was started with (Channel.SetEnv), `k=v`
+	// each: what a command run for the task is given, under the call's variables and the
+	// secret. It holds no credential of the runner's, by the runner's own rule (shellEnv).
+	Env    []string
+	Launch *runner.Launch
 	// Autonomy is the task's current autonomy, where something holds it apart from the launch (a
 	// Channel, after a replacement); nil reads the launch's.
 	Policy func() task.Autonomy

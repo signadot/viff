@@ -67,6 +67,8 @@ var wellFormed = map[string]Request{
 	OpVerseCharterCheck:   {Body: "at: repos.r.hello\n", Fields: map[string]string{"query": "at=repos.r"}},
 	OpVerseCharterInstall: {Body: "at: repos.r.hello\n"},
 	OpVerseCharterRemove:  {Fields: map[string]string{"query": "path=repos.r.hello.rules.lift"}},
+
+	OpSecretExec: {Body: "{argv: [npm, publish, --ignore-scripts]}", Fields: map[string]string{"name": "npm-token", "dir": "packages/a"}},
 }
 
 // unreached fails a test that reaches a service: what an act would call, on a server no act of

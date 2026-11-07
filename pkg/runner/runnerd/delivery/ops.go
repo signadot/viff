@@ -117,6 +117,11 @@ var ops = map[string]op{
 	OpVerseCharterCheck:   named(OpVerseCharterCheck, (*Server).verseRouted, "query").withBody(),
 	OpVerseCharterInstall: named(OpVerseCharterInstall, (*Server).verseRouted, "query").withBody(),
 	OpVerseCharterRemove:  named(OpVerseCharterRemove, (*Server).verseRouted, "query"),
+
+	// A command run with a secret: apart, since it may take the whole of its hour, and no push
+	// waits on it; the deadline is the longest run and the kill and the wait after it.
+	OpSecretExec: named(OpSecretExec, (*Server).secretExec, "name", "dir").withNumbers("timeout").withBody().
+		performedApart().withDeadline(ExecTimeoutMost + execGrace),
 }
 
 // named is an op whose word on the wire is its step's name, with the deadline of a call to a
