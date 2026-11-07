@@ -8,8 +8,10 @@ commits: []
 created: "2026-11-07T03:31:11.560393+01:00"
 duplicates: []
 id: pa35grmzh12krvwdxsn0
-labels: []
+labels:
+- runners
+- secret
 related_issues:
 - 1v5art3xh12ksddyxnn0
 status: open
-updated: "2026-11-07T03:31:23.325325+01:00"
+updated: "2026-11-07T03:31:23.580105+01:00"
