@@ -65,6 +65,7 @@ deploying it.
 | its config | the ConfigMap in `deploy/<runner>/<runner>.yaml`, or a file of the deployment's: `runnerConfig`, `codexRunnerConfig`, `claudeRunnerConfig` | `runner.tony` in `VERSE_LOCAL_RUNNER_DIR` |
 | how it proves itself | its pod's ServiceAccount token (`runnerTokens`) | `token` in `VERSE_LOCAL_RUNNER_DIR` |
 | its credentials | `runnerSecretKey`, `codexSecretKey`, `claudeSecretKey` | `env` in `VERSE_LOCAL_RUNNER_DIR` |
+| its [secret store](../reference/runnerd.md#the-secret-store) | a projected volume at `/secrets` in each runner: the Slack and Linear iods' tokens as the files `slack-bot` and `linear`, and `verse-runner-secrets` (`runnerStoreKey`) whole; a system acts with it where the runner's config names its secret (`secrets.systems`) | none: the runner reads its `env` |
 | registered | by hand, `verse runner add` | by setup, as `VERSE_LOCAL_RUNNER_NAME` |
 | its sandbox | bubblewrap, in the pod | bubblewrap on Linux, none on macOS; `VERSE_SANDBOX` in its `env` |
 | **The iods** | | |
