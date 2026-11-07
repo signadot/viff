@@ -1,7 +1,10 @@
 # mcp: a system for the tools of remote MCP servers, called by the runner
 
-**Status:** a plan, reviewed once. Nothing is built. It blocks 1f5art3x. It waits on 1k5art3x
-(the channel's table of ops and its general request) and on 1q5art3x (the secret store).
+**Status:** a plan, reviewed once, and edited since: a call's arguments are a field of its step
+("At the second edit", below). Nothing is built. It blocks 1f5art3x. It waits on 1k5art3x (the
+channel's table of ops and its general request), on 1q5art3x (the secret store), and on 275art3x
+(an answer performs only the act it was given about), which is what binds an approval to the
+arguments.
 
 ## What it is
 
@@ -12,7 +15,9 @@ reaches the server and never holds the credential. It is the same kind of thing 
 
 - **Remote servers only,** over streamable HTTP.
 - **The servers are the operator's.** A spawn gives a server by name and the tools of it.
-- **One step,** `mcp.call`, with the fields `server` and `tool`.
+- **One step,** `mcp.call`, with the fields `server`, `tool` and `arguments`. A row can decide
+  a call by its arguments, and an answer performs only the call it was given about, arguments and
+  all.
 
 ## What is there today
 
@@ -68,12 +73,15 @@ mcp:
 agents:
   claude:
     systems:
-      mcp: {ceiling: [{server: linear, call: {tool: !glob "get_*"}}]}
+      mcp: {ceiling: [{server: linear, call: [{tool: !glob "get_*"}, {tool: create_issue, arguments: {team: ENG}}]}]}
 
 # a spawn's environment
 environment:
   systems:
-    mcp: [{server: linear, call: {tool: !or [get_issue, list_issues]}}]
+    mcp: [{server: linear, call: [{tool: !or [get_issue, list_issues]}, {tool: create_issue, arguments: {team: ENG}}]}]
+autonomy:
+- {match: {system: mcp, tool: create_issue}, then: ask}   # the person is asked about these arguments
+- {then: allow}
 ```
 
 - **A tool's name** is `mcp-<server>-<tool>`. A server's name is lowercase letters, digits and
@@ -93,9 +101,17 @@ environment:
 Each step builds and passes on its own.
 
 1. **The document and the step.** `pkg/systems/documents/mcp.tony`: the attribute `server`
-   (unique, required, form `lower`), and the verb `call` with the field `tool` (form `text`).
-   `task.StepMCPCall = systems.Step("mcp", "call", "server", "tool")` in `pkg/task/step.go`.
-   `docs/systems/mcp.md`. `TestTheRunnerImplementsTheDocumentedSystems` holds it.
+   (unique, required, form `lower`), and the verb `call` with the fields `tool` (form `text`)
+   and `arguments` (form `doc`, structure held as given, as an ask's `on`; default `{}`).
+   `task.StepMCPCall = systems.Step("mcp", "call", "server", "tool", "arguments")` in
+   `pkg/task/step.go`. `docs/systems/mcp.md`. `TestTheRunnerImplementsTheDocumentedSystems`
+   holds it.
+   - **A shape matches `arguments` open,** as tony matches an object: `{team: ENG}` admits a
+     call whose `team` is `ENG`, whatever else it gives. Unlike `secret.exec`'s `env`, which
+     matches closed: there a variable the shape does not name changes what the command does,
+     and here an argument is the tool's own input, which the server validates, and a shape that
+     had to name every one would be rewritten with each version of the server's schema. A
+     ceiling or a spawn that must pin an argument names it.
 2. **A tool is filtered by its step.** `offered`, `given` and `toolsBrief` read the tool's
    `Step` where it has one, and its name as today where it has none. Nothing changes for the
    tools there are. A test gives a tool whose name does not split, and sees it dropped.
@@ -144,8 +160,9 @@ Each step builds and passes on its own.
      environment admits, so a call of it is no more than the spawn gave.
 6. **The tools, in the task's process.** `mcpTools` in `stock`, beside `slackTools`.
    `Runner.Build` asks `mcp.list` for each server and makes one `verse.Tool` for each tool: its
-   `Step` is `task.StepMCPCall`, its `Fields` are the server and the tool, whatever the input,
-   and its `Do` sends `mcp.call`. `Params` and `Required` are the schema's `properties` and
+   `Step` is `task.StepMCPCall`, its `Build` makes the step whole from the call (`ReadCall`:
+   the server, the tool, and the input as `arguments`), and its `Do` sends `mcp.call` with
+   `Request.Decision`. `Params` and `Required` are the schema's `properties` and
    `required`. A tool whose schema needs more than that (a `$ref` anywhere in it, `oneOf` at
    the top) is left out and logged, until `verse.Tool` carries a whole schema.
    - **A server that does not answer.** Its tools are left out, the task starts, and the task
@@ -161,9 +178,11 @@ Each step builds and passes on its own.
 9. **The words.** `docs/reference/runnerd.md`, `docs/reference/mcp.md` (which is about verse's
    own server today, and has to say which is which), `docs/systems/mcp.md`, and the example in
    a runner's manifest. They say:
-   - a row that asks about a call asks about the server and the tool. The arguments the runner
-     then sends are the task's process's to give, and are not held to what was answered, until
-     an answer is bound to the body (item 3 of the list in 1f5art3x);
+   - a row that asks about a call asks about the server, the tool and the arguments, and the
+     answer performs that call and no other (275art3x). What the person is shown of the
+     arguments is the question's to say (q3k89kva): until it shows a step's fields, the person
+     answers knowing the tool and not the arguments, and the binding still holds;
+   - a shape and a row match `arguments` open: a ceiling that must pin an argument names it;
    - a url holds no key;
    - a server's own word for which tools read and which write is not trusted. The ceiling
      names tools.
@@ -176,6 +195,12 @@ under `httptest`).
 - **The check, at the runner.** A call is refused outside the environment, by a `deny` row, by
   an `ask` row with no answer the runner relayed, and beyond the ceiling. None of them reaches
   the server.
+- **The arguments.** A shape and a row decide a call by them (`{team: ENG}` admits a call with
+  `team: ENG` and another argument beside it, and refuses `team: OPS`). A call answered with
+  one set of arguments and sent with another, under the same decision, is refused and does not
+  reach the server (275art3x). What the server is sent is the step's arguments, byte for byte
+  as JSON of that structure. A call past the bound is refused. The tool's step and the
+  runner's are `Same` for a call with nested objects, arrays, numbers and booleans.
 - **The table's tests.** `TestEveryOpAsksAboutADocumentedStep` names the two ops that ask
   about no step. `TestNoOpActsUnderAnEmptyEnvironment` has a request for each, and `mcp.list`
   refuses there.
@@ -216,8 +241,9 @@ under `httptest`).
 
 - **stdio servers.** The runner would start code outside any sandbox.
 - **A task's own identity at a server** (hfh7km3t).
-- **An answer bound to the arguments** (item 3 of the list in 1f5art3x, and q3k89kva). Step 9
-  says what that leaves.
+- **What a person is shown of the arguments** (q3k89kva). The arguments are in the step and
+  bound to the answer here; showing them is the question's.
+- **A digest in the step,** for arguments past the bound. Open below.
 - **OAuth.** A server that takes only an interactive sign-in is not reached. The secret is a
   token the operator has.
 - **Resources and prompts.** Tools only.
@@ -243,3 +269,16 @@ under `httptest`).
 - A server's hints on reading and writing are not trusted. The ceiling names tools.
 - `auth` is optional, a `$ref` anywhere leaves a tool out, and the secret is read at each
   request.
+
+## At the second edit (after 275art3x was found)
+
+- **The arguments are a field of the step,** `arguments`, form `doc`, so a row decides a call by
+  them and an answer is bound to them: an approval for one set does not perform another. This
+  was "not in this issue" at the first review; it is in it now, since 275art3x makes it cheap
+  and the gap was the plan's largest caveat.
+- **A shape matches them open,** and `env`'s closed match is not carried over (step 1 says why).
+- **What is sent is the step's,** written back as JSON, never the body's bytes.
+- **Open, for the next review:** the bound on the arguments (64 KiB proposed), and whether a call
+  past it is refused or carried with a digest of its long values in the step. Refused is the
+  first version; a digest needs the question to show what it digests (q3k89kva) to be worth
+  approving.
