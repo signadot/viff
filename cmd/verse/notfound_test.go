@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -99,5 +101,21 @@ func TestAWatchCanAskToWait(t *testing.T) {
 	}
 	if !strings.Contains(out, "stage: open") {
 		t.Fatalf("waited but did not report the arrival: %q", out)
+	}
+}
+
+// A FRAME TOO LONG TO READ IS SAID, not taken for a quiet stream: a node's opening state is one
+// frame, and `verse watch verse task instance` on a verse with a few hundred tasks printed
+// nothing and exited 0 (git-issue cmk9g2t4h12ksz7zxsn0).
+func TestAWatchSaysWhenAFrameIsTooLong(t *testing.T) {
+	defer func(n int) { watchFrameMax = n }(watchFrameMax)
+	watchFrameMax = 64 << 10 // no lower than the scan's first buffer, which also bounds a frame
+	fakeVerse(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "data: {at: big, op: set, rev: 1, to: %q}\n\n", strings.Repeat("x", 128<<10))
+	})
+	out, err := runCLI(t, "watch", "big")
+	if err == nil || !strings.Contains(err.Error(), "longer than") {
+		t.Fatalf("a frame over the limit ended the watch as a quiet one: err=%v out=%q", err, out)
 	}
 }

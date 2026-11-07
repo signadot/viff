@@ -524,7 +524,7 @@ func streamChanges(cc *cli.Context, what string, q url.Values, s stream) error {
 		return err
 	}
 	sc := bufio.NewScanner(resp.Body)
-	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	sc.Buffer(make([]byte, 0, 64*1024), watchFrameMax)
 	for sc.Scan() {
 		data, ok := strings.CutPrefix(sc.Text(), "data: ")
 		if !ok {
@@ -549,8 +549,23 @@ func streamChanges(cc *cli.Context, what string, q url.Values, s stream) error {
 			return nil
 		}
 	}
+	// A STREAM THAT STOPS SHORT SAYS SO. Only the server closing it is the quiet end above; a
+	// frame the scan cannot hold, or a read that breaks, is an error, or it would print and exit
+	// exactly as a verse with nothing to report does.
+	if errors.Is(sc.Err(), bufio.ErrTooLong) {
+		return fmt.Errorf("%s: a frame is longer than the %d bytes this reads. A node's opening "+
+			"state is one frame; '*' after its steps watches its children, a frame each",
+			what, watchFrameMax)
+	}
+	if err := sc.Err(); err != nil {
+		return fmt.Errorf("%s: the stream broke: %w", what, err)
+	}
 	return nil
 }
+
+// watchFrameMax is the longest frame streamChanges reads. A frame is what the person asked to
+// watch — a node's opening state is the whole node — so this bounds a runaway, not a slice.
+var watchFrameMax = 64 << 20
 
 // renderFrame renders one streamed event the way every other command renders a document:
 // in the requested format, with the server's layout stripped when it is not the one asked
