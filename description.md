@@ -1,10 +1,11 @@
 # runner: a secret store, one file per name, beside the credentials in the environment
 
-**Status:** steps 1 to 6 are written, and the runner's part of step 8, and committed as
-b3f323d7 on `verse/secret-store` (worktree `.worktrees/secret-store`), one commit over 81250f61,
-the commit of 1k5art3x. Reviewed once after it was written; what that changed is in the commit.
-Not merged, not pushed. Step 7 and the deployment's part of step 8 are not begun, so the issue
-stays open. It blocks 1f5art3x, and the `mcp` system waits on it.
+**Status:** steps 1 to 6 and the runner's part of step 8 are committed as b3f323d7 on
+`verse/secret-store` (worktree `.worktrees/secret-store`), one commit over 81250f61, the commit
+of 1k5art3x; reviewed once after it was written, and what that changed is in the commit. Step 7
+and the deployment's part of step 8 are written on top, uncommitted (2026-11-07), and not yet
+run on a cluster: see "What is left". Not merged, not pushed. It blocks 1f5art3x, and the `mcp`
+system waits on it.
 
 ## Built so far
 
@@ -59,10 +60,31 @@ stays open. It blocks 1f5art3x, and the `mcp` system waits on it.
     once, and passed the five runs after, alone and with the others. Which test it was is not
     known: the output was cut.
 
-**What is left.** Step 7, the deployment: the projected volume in the three runner manifests,
-`verse-runner-secrets` in `deploy/secrets/` and its knob in `deploy/build.tony`. And the
-credentials table in `deploy/README.md`. Nothing here applies a manifest, so that step wants a
-cluster to try it on.
+- **Step 7, the deployment.** The three runner manifests mount a projected volume at
+  `/secrets`, read only, no `subPath`, with three optional sources: `verse-slack`'s
+  `SLACK_BOT_TOKEN` as `slack-bot`, `verse-linear`'s `LINEAR_API_KEY` as `linear`, and the new
+  Secret `verse-runner-secrets` whole. Their configuration says `secrets: {dir: /secrets}` and
+  names no system. `deploy/secrets/runner-secrets.yaml` is the ExternalSecret, and its knob is
+  `runnerStoreKey` (not `runnerSecretsKey`, which is one letter from `runnerSecretKey`, the push
+  token's). The deployment's part of step 8: the credentials table in `deploy/README.md` gains
+  the row and the Slack and Linear rows say the file, and a section "The runners' secret store"
+  says how a deployment moves a system to it.
+- **Staging** (`verse-staging`, `deploy/runners/*.tony`, uncommitted): `secrets: {dir: /secrets,
+  systems: {slack: slack-bot, linear-issue: linear}}` in all three, so staging's runners act with
+  the store.
+
+**Checked without a cluster.** `o build deploy` renders with the knob set (the ExternalSecret and
+the volume) and unset (no ExternalSecret); staging's render, from the worktree, passes
+`kubectl apply --dry-run=server` for the runners tier (the three Deployments and ConfigMaps
+`configured`); `runnerd -config` parses each manifest's configuration and each of staging's, and
+with staging's says at start, where no `/secrets` is, "the secret slack-bot: it is not in the
+store, in /secrets: slack is closed to every doer". `make check` passes.
+
+**What is left.** To run it: ship the runners tier to staging from the worktree (`make
+ship-runners VERSE=…` in `verse-staging`, after both are committed), then read the runner's log
+for "SLACK_BOT_TOKEN is set and is not read: slack acts with the secret slack-bot", `ls /secrets`
+in the pod, and let the deploy tag's announcement (`deploy-announce.tony`, a script on
+verse-runner posting to #verse-dev) be the act that reads the store. Then merge.
 
 ## What it is
 
