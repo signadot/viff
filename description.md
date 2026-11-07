@@ -36,6 +36,9 @@ bounds both.
   step `network.tcp-client`, by the environment, the autonomy and the ceiling
   (`connectionRefused`, `network.go`). A second process bound to the same socket is decided the
   same way.
+- **The channel is a unix socket pair** (`delivery/protocol.go`, `syscall.Socketpair(AF_UNIX,
+  SOCK_STREAM)`, `net.FileConn` on each end), so a frame can carry a descriptor (`SCM_RIGHTS`).
+  Nothing does yet.
 - **The table of ops** (`delivery/ops.go`): an op's `ask` reads a request into the steps it asks
   about and the act; `perform` checks every step with `refused` before the act. `Request.Fields`
   are text; a body is a tony document. `apart` is on no op yet; `Task.apart` hands such an op a
@@ -126,10 +129,17 @@ autonomy:
   that process's environment and nowhere else: the task's processes are in another pid namespace
   and see no `/proc` of it. The value is in the runner's memory while the command runs, and in no
   log, no reply and no file.
-- **The output goes to the workspace.** stdout and stderr, interleaved, to
-  `<root>/.verse/exec/<request id>.out`, with the secret's value replaced by `[secret <name>]`
-  wherever it appears whole (a second line: an encoding defeats it). The reply is the exit
-  status, the file's path and the last 16 KiB. The file is cut at 16 MiB and says so.
+- **The output is a stream the task's process serves.** The command's stdin, stdout and stderr
+  are a socket pair the runner makes. The runner pumps its end: what the command writes goes on
+  with the secret's value replaced by `[secret <name>]` wherever it appears whole (a second
+  line: an encoding defeats it), and, later, what comes back goes to the command's stdin. The
+  task's end it hands to the task's process over the channel, as a descriptor on the first frame
+  of the answer. So the runner opens no path under the task's root: that tree is the task's to
+  write, and a link in it is resolved by whoever opens it, with that side's reach. The task's
+  process serves the descriptor as a unix socket at `<root>/.verse/exec/<id>.sock`, where a
+  shell of the task's connects to read along, and to start writes what comes out to
+  `<root>/.verse/exec/<id>.out`, cut at 16 MiB and said. The final frame is the exit status;
+  the tool answers the model with it, the file's path and the last 16 KiB.
 - **The run is bounded.** `timeout` on the call, seconds, 10 minutes where none, an hour at
   most (the op's deadline). Past it the command is killed and the reply says so. When the
   task's process goes, the command is killed with it (the `gone` context an op apart runs
@@ -167,24 +177,33 @@ Each step builds and passes on its own.
    (`secretstore.CheckName`), and an `as` pattern no variable name matches. `Held` drops a block
    whose secret is absent at start, saying which and where, and closes the system where none is
    left. `Standalone` closes it whole under `-sandbox none`, since the sandbox is its to know.
-3. **The task apart.** `delivery.Task` gains `Root` (the workspace root) and `Network`, set at
-   the launch and kept by `Task.apart`: what an op apart may read, since nothing in turn writes
-   them. `Services` gains the store (`*secretstore.Store`) and the sandbox. This is the fix
-   1v5art3x's note asks for, and the first op apart's test.
+3. **The task apart, and a descriptor on a frame.** `delivery.Task` gains `Root` (the
+   workspace root) and `Network`, set at the launch and kept by `Task.apart`: what an op apart
+   may read, since nothing in turn writes them. `Services` gains the store
+   (`*secretstore.Store`) and the sandbox. This is the fix 1v5art3x's note asks for, and the
+   first op apart's test. `Reply` gains `Stream bool`: a frame that says it carries one
+   descriptor (`WriteMsgUnix` and `ReadMsgUnix` on the channel's `*net.UnixConn`), which
+   `Client.hear` takes and hands to the asker with the reply; an answer may now be two frames, the
+   stream's and the final one, by the one id. Nothing else of the protocol changes.
 4. **The op.** `OpSecretExec = "secret.exec"` on the table: takes `name`, `as`, `dir`, numbers
    `timeout`, body (`{argv: [...], env: {...}}`, tony), apart, deadline one hour. `ask` reads the
    body, checks `name`, `as` and `dir` as above and that each name of `env` is a variable's name
    and none is `as`, and asks about the one step: `argv` spelled from the body's list, `env` as
    given (`Step.With`). The act: read the secret (absent: a refusal naming it), build the
-   environment, resolve `argv[0]` on its `PATH`, build the second sandbox, start it in its own
-   process group with `WaitDelay` set, run with the timeout, write the output through the
-   redacting writer, answer; past the timeout or once the task is gone, signal the group.
+   environment, resolve `argv[0]` on its `PATH`, make the socket pair, build the second sandbox
+   with the command's stdio on the pair's one end, start it in its own process group with
+   `WaitDelay` set, send the first frame with the pair's other end, pump the command's output
+   through the redacting writer to it, run with the timeout, answer the final frame with the
+   exit status; past the timeout or once the task is gone, signal the group.
 5. **The tool.** `secret-exec` in `stock`, beside `slackTools`, offered to every doer where the
    runner performs `secret`: params `name`, `argv` (an array of strings), `env` (an object of
    strings), `as`, `dir`, `timeout`. `Build` makes the step whole, as the verse tools' do for a
-   field with structure; `Do` sends the op with `Request.Decision`. The description says the
-   task never reads the secret, the output is a file in its workspace, the program must be on
-   the command's `PATH`, and the variables are part of what is asked about.
+   field with structure; `Do` sends the op with `Request.Decision`, takes the descriptor the
+   first frame brings, serves it at `<root>/.verse/exec/<id>.sock` and copies it to
+   `<root>/.verse/exec/<id>.out`, and answers the model the exit status, the path and the tail
+   when the final frame comes. The description says the task never reads the secret, the output
+   is a socket and a file in its workspace, the program must be on the command's `PATH`, and
+   the variables are part of what is asked about.
 6. **The words.** `docs/systems/secret.md`, the row in `docs/systems/README.md`,
    `docs/reference/runnerd.md` (the performed system, what a `secret` ceiling says, and that it
    is closed under `-sandbox none`), the example ceiling in `deploy/verse-runner`'s comments.
@@ -207,10 +226,13 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   over the task's shell's; the task's process's environment, the reply, the output file and the
   log hold no value. A changed file between two calls is the next
   call's. An absent secret refuses the call naming it, with no value.
-- **The output.** The file is written, the reply carries the exit status and the tail, the
-  value is redacted, a long output is cut and says so, a slow command is killed at `timeout`,
-  its children with it, and the op answers within `WaitDelay` of that though a child holds the
-  pipe.
+- **The output.** The task's process gets the descriptor on the first frame and the exit status
+  on the final one by the same id; what the command wrote comes through it, the value redacted;
+  the task's process writes the file and serves the socket, and a client on the socket reads
+  along; a long output is cut by the task's side and says so; a slow command is killed at
+  `timeout`, its children with it, and the op answers within `WaitDelay` of that though a child
+  holds the pair. The runner opens no path under the root: a `.verse/exec` the task made a link
+  changes nothing on the runner's side.
 - **Apart.** A run that is held does not hold a push; a run in flight when the task's process
   goes is killed; the op is handed a task with `Root` and `Network` and no workspace.
 - **The network.** Under `allow`, the command's connection to a host the environment gives
@@ -243,7 +265,8 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
 - **Redaction of encodings.** The whole value, as it is, only.
 - **A program from the nix store** (`pkg-nix`): `UnderSystem` and `readOnly` until then.
 - **`-sandbox none`.** Closed, not worked around.
-- **Streaming output** over the channel: the file and the tail.
+- **Input to the command.** The pair is duplex and the task's process holds its end, so a
+  client on the socket can write once the runner pumps that way too; it does not yet.
 
 ## Decided at review
 
@@ -253,6 +276,11 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   ceiling has not granted by construction, since a ceiling that admits a command admits what it
   does with the secret; it is the offer's and the spawn's to limit the names.
 
+- **The output is a stream, and the runner writes nothing under the task's root.** The
+  command's stdio is a socket pair; the runner pumps its end, redacting, and hands the task's
+  end to the task's process on a frame of the channel, which is a unix socket pair already. The
+  task's process serves it as a unix socket in its workspace and, to start, writes the file.
+  Input comes later over the same pair.
 - **The argv is on the wire once,** as the body's list; the step's field is spelled from it on
   each side. A kill signals bwrap's process group, with `WaitDelay`. `-sandbox none` is closed
   in `Standalone`. The command's `/tmp` is its own, and its proxy the task's.
@@ -263,7 +291,5 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
    refuse a shape that is not anchored. Text is proposed; the docs say to anchor.
 2. **Whether `as` is a field.** Proposed yes: a ceiling pins the variable's name, and an
    approver sees where the secret goes. It costs one more name in each shape.
-3. **The output's place.** `<root>/.verse/exec/`, under the root and outside every checkout, or
-   under the task's `/tmp`, which the runner cannot write into (a tmpfs of the task's sandbox).
-4. **Whether a `dir` under a checkout is enough,** or the command needs to run with the
+3. **Whether a `dir` under a checkout is enough,** or the command needs to run with the
    checkout's own branch state (it runs over the live tree, whatever the task has done to it).
