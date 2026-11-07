@@ -202,9 +202,10 @@ Each step builds and passes on its own.
    own server today, and has to say which is which), `docs/systems/mcp.md`, and the example in
    a runner's manifest. They say:
    - a row that asks about a call asks about the server, the tool and the arguments, and the
-     answer performs that call and no other (275art3x). What the person is shown of the
-     arguments is the question's to say (q3k89kva): until it shows a step's fields, the person
-     answers knowing the tool and not the arguments, and the binding still holds;
+     answer performs that call and no other (275art3x). The question's record carries the
+     step's fields, arguments and all, and `verse question <id>` shows them; the Slack ask shows
+     them once 2f5art3x is built, and until then a person answering there knows the tool and not
+     the arguments, and the binding still holds;
    - a shape and a row match `arguments` open: a ceiling that must pin an argument names it;
    - a url holds no key;
    - a server's own word for which tools read and which write is not trusted. The ceiling
@@ -270,8 +271,9 @@ under `httptest`).
 
 - **stdio servers.** The runner would start code outside any sandbox.
 - **A task's own identity at a server** (hfh7km3t).
-- **What a person is shown of the arguments** (q3k89kva). The arguments are in the step and
-  bound to the answer here; showing them is the question's.
+- **What a person is shown of the arguments in Slack** (2f5art3x). The arguments are in the
+  step, bound to the answer, and on the question's record (`fields`, since q3k89kva and the
+  systems work); the Slack ask showing them is 2f5art3x's.
 - **A digest in the step,** for arguments past the bound. Open below.
 - **OAuth.** A server that takes only an interactive sign-in is not reached. The secret is a
   token the operator has.
@@ -309,7 +311,7 @@ under `httptest`).
 - **What is sent is the step's,** written back as JSON, never the body's bytes.
 - **Open, for the next review:** the bound on the arguments (64 KiB proposed), and whether a call
   past it is refused or carried with a digest of its long values in the step. Refused is the
-  first version; a digest needs the question to show what it digests (q3k89kva) to be worth
+  first version; a digest needs the question to show what it digests (2f5art3x) to be worth
   approving.
 
 ## At the third edit (against mcp.signadot.com)
@@ -329,7 +331,7 @@ takes no key). It runs on configuration alone:
   `initialize`, and the plan read only the tools.
 - **Noted, unchanged:** it asks a person to confirm a create or an update only of a client that
   declares elicitation; the runner declares none, so the person is asked by an `ask` row, about
-  the arguments (275art3x), seeing them once q3k89kva shows a step's fields. Its key is the
+  the arguments (275art3x), seeing them with `verse question <id>`, and in Slack once 2f5art3x is built. Its key is the
   org's, and reaches what the org's does (`list_devboxes` lists every devbox for a key): the
   ceiling is the bound for each task, and a task's own identity there is hfh7km3t's. The runner
   pod reaches mcp.signadot.com.
