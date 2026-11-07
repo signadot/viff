@@ -6,7 +6,7 @@ below), being built in the worktree `.worktrees/secret-exec` (branch `verse/secr
 committed (28b7f392) on the third pass's design (stderr its own socket, a kill the task's
 closing of its stream: "At the third pass", below): `delivery/secret.go` (the op, the redaction, the program found on
 the command's PATH on the runner's side), `Task.Env`/`Channel.SetEnv`, `systems.IsVarName`, and tests in delivery
-and an end-to-end one in runnerd under a fake bwrap. Step 5, the tool, is built and tested, uncommitted, in the
+and an end-to-end one in runnerd under a fake bwrap. Step 5, the tool, is committed (6aa29d76, with the review of steps 3 to 5 folded in), in the
 blocking shape (decided: the sub-bullet of step 5): `stock/secrettools.go`, `secret-exec` and `secret-exec-kill`,
 the step read once for both sides by `delivery.ReadExec`/`Exec.Step`, and the task's received descriptors made
 non-blocking (`rights.take`), so closing one lets go at once. Step 6, the words, is next. As built, the frame's field is `Streams int`, the count,
