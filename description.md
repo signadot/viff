@@ -50,6 +50,11 @@ reaches the server and never holds the credential. It is the same kind of thing 
   without its checkout, and it is given up when the task's process goes. One op asks about no
   step, `state`, and two tests hold that: only `state` may, and such an op refuses under an
   empty environment.
+- **No op of the table is apart yet.** `apart` is used by the channel's tests alone, so
+  `mcp.call` is the first. The task an op apart is handed has no workspace (`Task.apart` sets
+  it nil), and `Workspace.Tree` on nil panics; `Server.perform` recovers a misreading and
+  nothing else, in a goroutine of `Serve`'s own, so that panic takes the runner down. An op
+  apart reads nothing of the checkout, then, and the test of `mcp.call` runs it apart to show it.
 
 ## The shape
 
@@ -175,7 +180,8 @@ under `httptest`).
   about no step. `TestNoOpActsUnderAnEmptyEnvironment` has a request for each, and `mcp.list`
   refuses there.
 - **Apart.** A call that is held does not hold a request in turn. A call in flight when the
-  task's end goes is given up. Two calls at once on one session both answer.
+  task's end goes is given up. Two calls at once on one session both answer. A call is performed
+  on the task as `Task.apart` hands it, with no workspace, and reads none.
 - **The deadline.** A server slower than its `timeout` fails the call at the timeout. A
   `timeout` over the table's is refused in the configuration.
 - **The credential.** The header is the secret's value, as `Bearer` or under the header named.
