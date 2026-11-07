@@ -147,7 +147,15 @@ Each step builds and passes on its own.
      refuses a server the environment gives no block for, so under an empty environment it
      refuses. It answers the server's tools, less those the environment's shapes and the
      ceiling do not admit. It is performed in turn.
-   - **`mcp.call`** is the step. It reads `server` and `tool`, and its body is the arguments.
+   - **`mcp.call`** is the step. It reads `server` and `tool`, and its body is the arguments,
+     a JSON object, read into the step's `arguments` as tony structure, so the step the
+     autonomy, the ceiling and an answer see is the call that is sent. What the runner sends the
+     server is that structure, written back as JSON, and not the body's bytes: nothing is sent
+     that the step did not say. Both sides read a call with one function in `delivery`
+     (`ReadCall`, as `ReadExec` is for `secret.exec`), so the tool's step and the runner's are
+     the same (275art3x's conformance test holds it). A call whose arguments are larger than a
+     bound well under the frame (64 KiB, to be settled at review) is refused, and says the
+     bound: the step is what a person is asked about, and is carried whole (open, below).
      The table checks it with `refused` before the act. It is performed **apart**: a server
      that takes a minute does not hold a push, and it reads nothing of the checkout. When the
      task's process goes, a call in flight is given up, and whether the server did it is then
