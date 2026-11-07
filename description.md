@@ -9,7 +9,7 @@ the command's PATH on the runner's side), `Task.Env`/`Channel.SetEnv`, `systems.
 and an end-to-end one in runnerd under a fake bwrap. Step 5, the tool, is committed (6aa29d76, with the review of steps 3 to 5 folded in), in the
 blocking shape (decided: the sub-bullet of step 5): `stock/secrettools.go`, `secret-exec` and `secret-exec-kill`,
 the step read once for both sides by `delivery.ReadExec`/`Exec.Step`, and the task's received descriptors made
-non-blocking (`rights.take`), so closing one lets go at once. Step 6, the words, is next. As built, the frame's field is `Streams int`, the count,
+non-blocking (`rights.take`), so closing one lets go at once. Step 6, the words, is written, uncommitted: `docs/systems/secret.md` (two streams, the kill, what the program check bounds and what the shapes must, the network as the bound on where a secret goes, variables closed in a ceiling), the runnerd example's network, and the deploy manifest's comment. As built, the frame's field is `Streams int`, the count,
 rather than `Stream bool`: the frame says how many it carries, and the client takes that many. It blocks 1f5art3x. It waits on
 1q5art3x (the secret store, which it reads) and on 1k5art3x (the table of ops, built). It shares
 the first op performed apart with 1v5art3x, whichever lands first.
