@@ -164,10 +164,15 @@ func TestThePerformedSystemsAreOneTable(t *testing.T) {
 		}
 	}
 	// What the table says is what the runner said before there was one.
-	everything := Config{Repos: &Repos{Mirrors: "/m"}, reachesVerse: true, Script: &Script{Systems: map[string]System{
-		"slack": {Ceiling: systems.Open()}, "linear-issue": {Ceiling: systems.Open()}}}}
-	if got := everything.performs(); !slices.Equal(got, []string{"git", "git-issue", "github", "github-issue", "linear-issue", "slack", "verse"}) {
+	everything := Config{Repos: &Repos{Mirrors: "/m"}, reachesVerse: true, SecretStore: &SecretStore{Dir: "/secrets"}, Script: &Script{Systems: map[string]System{
+		"slack": {Ceiling: systems.Open()}, "linear-issue": {Ceiling: systems.Open()}, "secret": {Ceiling: ceiling(t, `{name: npm-token}`)}}}}
+	if got := everything.performs(); !slices.Equal(got, []string{"git", "git-issue", "github", "github-issue", "linear-issue", "slack", "secret", "verse"}) {
 		t.Errorf("a runner that performs everything performs %v", got)
+	}
+	// A secret ceiling with no store to read from performs nothing.
+	everything.SecretStore = nil
+	if got := everything.performs(); slices.Contains(got, "secret") {
+		t.Errorf("a runner with no store performs secret: %v", got)
 	}
 	if got := (Config{Script: &Script{}}).performs(); len(got) != 0 {
 		t.Errorf("a runner with scripts alone performs %v", got)
@@ -180,6 +185,7 @@ func TestThePerformedSystemsAreOneTable(t *testing.T) {
 		"git": "checks out repos", "git-issue": "checks out repos",
 		"github": "whose forge is github.com", "github-issue": "whose forge is github.com",
 		"slack": "performs none of its verbs", "network": "performs none of its verbs",
+		"secret": "a secret store (`secrets.dir`) and a sandbox",
 	} {
 		if got := needsFor(system); !strings.Contains(got, want) {
 			t.Errorf("needsFor(%s) = %q, want it to say %q", system, got, want)

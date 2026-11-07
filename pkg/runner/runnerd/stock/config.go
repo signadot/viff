@@ -90,11 +90,18 @@ var (
 		return func(c Config) bool { return len(c.naming(system)) > 0 }
 	}
 	gitToken = func(t *Tokens) *string { return &t.Git }
+	// hasStore is a system performed where the runner has a secret store and a doer's ceiling
+	// names the system. The sandbox it needs too is not the file's to say: Standalone closes
+	// the system where the tasks run unconfined.
+	hasStore = func(system string) func(Config) bool {
+		return func(c Config) bool { return c.secretsDir() != "" && len(c.naming(system)) > 0 }
+	}
 )
 
 const (
 	needsRepos  = "a `repos` section is what checks out repos"
 	needsGitHub = "a `repos` section whose forge is github.com, or `repos.api` naming the forge's GitHub API"
+	needsSecret = "a secret store (`secrets.dir`) and a sandbox are what runs a command with a secret"
 )
 
 // performedSystems is the table, in the order an offer lists them.
@@ -107,6 +114,9 @@ var performedSystems = []performed{
 		token: func(t *Tokens) *string { return &t.Linear }},
 	{system: "slack", when: ceilingNames("slack"), env: EnvSlackBotToken, own: true,
 		token: func(t *Tokens) *string { return &t.Slack }},
+	// The secret system acts with no credential of the runner's: each ceiling block names the
+	// secret of the store it is for, and the runner reads that at the act.
+	{system: "secret", when: hasStore("secret"), needs: needsSecret},
 	// The verse system is carried to verse over the channel too, where the runner reaches its
 	// verse with a token of its own (Standalone's toVerse); `question`'s ask stays inside the run.
 	{system: "verse", when: reachesVerse, atStart: true},
@@ -428,7 +438,74 @@ func (c Config) Held(getenv func(string) string) (Config, []string) {
 		warnings = append(warnings, fmt.Sprintf("%s is not set: %s is closed to every doer, though %s names it; a spawn that needs it is refused at install",
 			s.env, s.system, strings.Join(naming, ", ")))
 	}
+	// A `secret` ceiling block names one secret of the store. One whose secret is not there at
+	// the start is left out of the ceiling, as a system is closed without its credential, and a
+	// doer whose blocks are all left out has the system closed. Here too what is closed stays
+	// closed until a restart.
+	if dir := c.secretsDir(); dir != "" {
+		store := secretstore.Open(dir)
+		for _, doer := range c.doers() {
+			sys, ok := c.systemsOf(doer)["secret"]
+			if !ok {
+				continue
+			}
+			at := sectionOf(doer) + ".systems.secret"
+			var kept systems.Ceiling
+			for i, b := range sys.Ceiling {
+				name, _ := secretNamed(b)
+				if _, err := store.Get(name); err != nil {
+					warnings = append(warnings, fmt.Sprintf("%v, in %s: %s.ceiling%s is left out; a spawn that names it is refused at install",
+						err, dir, at, blockAt(sys.Ceiling, i)))
+					continue
+				}
+				kept = append(kept, b)
+			}
+			switch {
+			case len(kept) == len(sys.Ceiling):
+			case len(kept) == 0:
+				c = c.withSection(doer, "secret", nil)
+				warnings = append(warnings, fmt.Sprintf("secret is closed to %s: no secret %s names is in the store", doer, at))
+			default:
+				c = c.withSection(doer, "secret", &System{Ceiling: kept})
+			}
+		}
+	}
 	return c, warnings
+}
+
+// withSection is c with doer's section for system set to s, or left out where s is nil. c's maps
+// are not changed.
+func (c Config) withSection(doer, system string, s *System) Config {
+	put := func(m map[string]System) map[string]System {
+		m = maps.Clone(m)
+		if m == nil {
+			m = map[string]System{}
+		}
+		if s == nil {
+			delete(m, system)
+		} else {
+			m[system] = *s
+		}
+		return m
+	}
+	if doer == ScriptDoer {
+		if c.Script == nil {
+			return c
+		}
+		script := *c.Script
+		script.Systems = put(script.Systems)
+		c.Script = &script
+		return c
+	}
+	a, ok := c.Agents[doer]
+	if !ok {
+		return c
+	}
+	agents := maps.Clone(c.Agents)
+	a.Systems = put(a.Systems)
+	agents[doer] = a
+	c.Agents = agents
+	return c
 }
 
 // without is c with no doer's section naming system. c's maps are not changed.
@@ -781,6 +858,9 @@ func (c *Config) Check() error {
 			switch p, ok := performedNamed(system); {
 			case !ok:
 				return fmt.Errorf("%s: the runner performs no system called that (those that may name a secret: %s)", at, strings.Join(may, ", "))
+			case system == "secret":
+				return fmt.Errorf("%s: secret names its secret in each block of a doer's ceiling (`name`), not here (those that may name a secret: %s)",
+					at, strings.Join(may, ", "))
 			case !p.own && p.env != "":
 				return fmt.Errorf("%s: %s acts with the forge's token (%s), which is not the store's (those that may name a secret: %s)",
 					at, system, p.env, strings.Join(may, ", "))
@@ -928,8 +1008,54 @@ func (c *Config) checkSystems(doer string, sections map[string]System) error {
 		if err := sys.Ceiling.Check(name); err != nil {
 			return fmt.Errorf("%s.%s.ceiling%w", at, name, err)
 		}
+		if name == "secret" {
+			if err := checkSecretCeiling(at, sys.Ceiling); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+// checkSecretCeiling refuses a `secret` ceiling block that does not name one secret of the store
+// as a literal: a name is what a doer is trusted with, and the empty block would be every secret
+// the store comes to hold. The variable (`as`) may be a pattern or left out; its document's form
+// refuses what is no variable's name (Ceiling.Check).
+func checkSecretCeiling(at string, ceiling systems.Ceiling) error {
+	for i, b := range ceiling {
+		at := at + ".secret.ceiling" + blockAt(ceiling, i)
+		name, ok := secretNamed(b)
+		switch {
+		case b.Attributes["name"] == nil:
+			return fmt.Errorf("%s: names no secret; a secret ceiling block names the one secret of the store it is for (`name`)", at)
+		case !ok:
+			return fmt.Errorf("%s.name: %s is a pattern, and a secret's name is a literal, one to a block: a name is what a doer is trusted with",
+				at, systems.Words(b.Attributes["name"]))
+		}
+		if err := secretstore.CheckName(name); err != nil {
+			return fmt.Errorf("%s.name: %w", at, err)
+		}
+	}
+	return nil
+}
+
+// blockAt is how a message places block i of a ceiling, as Ceiling.Check places it: by its index
+// where there are several, bare where the ceiling is one block.
+func blockAt(ceiling systems.Ceiling, i int) string {
+	if len(ceiling) > 1 {
+		return fmt.Sprintf("[%d]", i)
+	}
+	return ""
+}
+
+// secretNamed is the one secret a `secret` ceiling block names, false where it names none, a
+// pattern, or several.
+func secretNamed(b systems.CeilingBlock) (string, bool) {
+	names, ok := systems.Literals(b.Attributes["name"])
+	if !ok || len(names) != 1 {
+		return "", false
+	}
+	return names[0], true
 }
 
 // innerFor is the inner systems doer is stopped on, by name.

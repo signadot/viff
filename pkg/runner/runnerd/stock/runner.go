@@ -111,6 +111,14 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 		if sb.Name() == (runnerd.Unconfined{}).Name() {
 			fmt.Fprintf(log, "runnerd: secrets.dir %s: this runner runs its tasks unconfined (-sandbox none), so a task "+
 				"sees the whole machine, the secret store with it\n", secrets)
+			// And a command run with a secret, unconfined, would run as the runner's user on the
+			// whole machine, the secret in its environment: the system is closed, before the
+			// task's configuration is marshalled, so the task's process offers nothing of it either.
+			if naming := c.naming("secret"); len(naming) > 0 {
+				fmt.Fprintf(log, "runnerd: -sandbox none: secret is closed to every doer, though %s names it, since a command "+
+					"run with a secret runs in a sandbox of its own; a spawn that names it is refused at install\n", strings.Join(naming, ", "))
+				c = c.without("secret")
+			}
 		}
 	}
 	if err := runnerd.CheckReadOnly(c.ReadOnly, runnerd.KeptDirs(work, control, mirrors, secrets)); err != nil {
