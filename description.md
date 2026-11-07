@@ -15,9 +15,9 @@ bounds both.
 
 - **For a command that needs a secret,** and nothing else. A command that needs none is
   `commands.run`, or a script.
-- **Two verbs.** `exec`, with the fields `argv`, `dir` and `as`, is the command; `env`, with
-  the fields `name` and `value`, is one plain variable the command is given beside the secret.
-  One secret a call; a call with two variables is three steps and one act.
+- **One verb,** `exec`, with the fields `argv`, `dir`, `as` and `env`: the command, where it
+  runs, the variable the secret is given in, and the plain variables it is given beside it. One
+  secret a call, one step a call.
 - **The leak is the environment's.** The runner runs what the environment admits and does not
   judge a command. An environment that admits `sh -c 'echo $S'` has leaked `S` itself.
 
@@ -68,22 +68,22 @@ agents:
       secret:
         ceiling:
         - name: npm-token
-          exec: {argv: !regexp "^npm publish --ignore-scripts( --tag [a-z]+)?$", dir: !glob "packages/*", as: NPM_TOKEN}
-          # the plain variables a command may be given, by name, each a shape; a block naming no
-          # `env` gives none
-          env: [{name: NPM_CONFIG_REGISTRY, value: !regexp "^https://registry\\.npmjs\\.org/"}, {name: !glob "NODE_*"}]
+          exec:
+            argv: !regexp "^npm publish --ignore-scripts( --tag [a-z]+)?$"
+            dir: !glob "packages/*"
+            as: NPM_TOKEN
+            # the plain variables a command may be given, each by name with a pattern on its
+            # value, null for any; a shape that says no `env` gives none
+            env: {NPM_CONFIG_REGISTRY: !regexp "^https://registry\\.npmjs\\.org/", NODE_OPTIONS: null}
 
 # a spawn's environment
 environment:
   systems:
-    secret:
-    - name: npm-token
-      exec: {argv: "npm publish --ignore-scripts", as: NPM_TOKEN}
-      env: [{name: NODE_OPTIONS}]
+    secret: [{name: npm-token, exec: {argv: "npm publish --ignore-scripts", as: NPM_TOKEN, env: {NODE_OPTIONS: null}}}]
 
 # a spawn's autonomy
 autonomy:
-- {match: {system: secret, verb: env, name: LD_PRELOAD}, then: deny}
+- {match: {system: secret, env: {LD_PRELOAD: null}}, then: deny}
 - {match: {system: secret, name: npm-token}, then: ask}
 ```
 
@@ -105,11 +105,15 @@ autonomy:
   task's would read the secret for it.
 - **The command's environment** is the task's shell's, then the call's, then the secret. The
   task's shell's: the doer's `shellEnv` values, the launch's `vars`, `HOME` as the task's root
-  and `TMPDIR=/tmp`. The call's: its `env`, each variable one step `secret.env {name, value}`,
-  which the block's `env` shapes admit by name and, where a shape says, by value; a block that
-  names no `env` gives none, so plain variables are closed by default, and the empty block
-  gives any, as it gives every verb. Last the secret, under `as`, which no plain variable may
-  name. `PATH` given this way is the `PATH` the program is found on, under the rule below.
+  and `TMPDIR=/tmp`. The call's: `env`, an object of variables by name, which is a field of the
+  step with a form of its own, `env`. A pattern on it is an object: each key a variable the
+  command may be given, its value a pattern on the variable's (`null` for any). It matches
+  CLOSED: a variable the pattern does not name puts the call outside the shape, where tony's
+  own object match lets a key it does not name by. A shape that says no `env` is read as
+  `env: {}` (the field's default), so plain variables are closed by default, and `env: null` is
+  any. A row matches it as tony matches, by what it names: `env: {LD_PRELOAD: null}` is every
+  call that gives `LD_PRELOAD`. Last the secret, under `as`, which no plain variable may name.
+  `PATH` given this way is the `PATH` the program is found on, under the rule below.
   `LD_PRELOAD` and its family are admitted as any name is: a ceiling that admits a command
   admits what that command does with the secret, by construction, so a variable that changes
   what the command does adds nothing the ceiling has not granted. It is the offer's and the
@@ -138,11 +142,16 @@ autonomy:
 
 Each step builds and passes on its own.
 
-1. **The document and the steps.** `pkg/systems/documents/secret.tony`: the attribute `name`
-   (unique, required, form `lower`); the verb `exec` with the fields `argv` (text, the spelling
-   above), `dir` (file) and `as` (text); and the verb `env` with the fields `name` (text, a
-   variable's name, `varName`) and `value` (text). `task.StepSecretExec` and
-   `task.StepSecretEnv` in `pkg/task/step.go`.
+1. **The document and the step.** `pkg/systems/documents/secret.tony`: the attribute `name`
+   (unique, required, form `lower`), and the verb `exec` with the fields `argv` (text, the
+   spelling above), `dir` (file), `as` (text) and `env` (form `env`, default `{}`).
+   `task.StepSecretExec` in `pkg/task/step.go`.
+   - **The form `env`** in `pkg/systems`: `Accepts` takes `null`, the combinators, and an object
+     whose keys are variable names (`varName`) and whose values are text patterns; `MatchFieldAs`
+     reads it closed, as `FormPath` has its reading; `FieldContains` holds an inner object within
+     an outer where every key of the inner is the outer's and its pattern within the outer's, so
+     a ceiling bounds an environment by name. `Field` gains `Default`, as `Attribute` has it,
+     read where a shape omits the field; the generated schema follows.
    `docs/systems/secret.md`. `systems.Argv(list) string` and `systems.ArgvList(line)` in one
    place, with the quoting rule, and a test that every list round-trips and that two lists
    never spell the same.
@@ -156,22 +165,20 @@ Each step builds and passes on its own.
    the launch and kept by `Task.apart`: what an op apart may read, since nothing in turn writes
    them. `Services` gains the store (`*secretstore.Store`) and the sandbox. This is the fix
    1v5art3x's note asks for, and the first op apart's test.
-4. **The op.** `OpSecretExec = "secret.exec"` on the table, with the steps `secret.exec` and
-   `secret.env`: takes `name`, `as`, `dir`, numbers `timeout`, body (`{argv: [...], env: {...}}`,
-   tony), apart, deadline one hour. `ask` reads the body, spells the argv, refuses a request
-   whose `argv` field differs, checks `name`, `as` and `dir` as above and that `as` is not among
-   `env`, and asks about the `exec` step and one `env` step for each variable; `perform` checks
-   them all before the act, as it does. The act: read the secret (absent: a refusal naming it),
-   build the environment, resolve `argv[0]` on its `PATH`, build the second sandbox, run with
-   the timeout, write the output through the redacting writer, answer.
+4. **The op.** `OpSecretExec = "secret.exec"` on the table: takes `name`, `as`, `dir`, numbers
+   `timeout`, body (`{argv: [...], env: {...}}`, tony), apart, deadline one hour. `ask` reads the
+   body, spells the argv, refuses a request whose `argv` field differs, checks `name`, `as` and
+   `dir` as above, that each name of `env` is a variable's name and none is `as`, and asks about
+   the one step with `argv` spelled and `env` as given (`Step.With`). The act: read the secret
+   (absent: a refusal naming it), build the environment, resolve `argv[0]` on its `PATH`, build
+   the second sandbox, run with the timeout, write the output through the redacting writer,
+   answer.
 5. **The tool.** `secret-exec` in `stock`, beside `slackTools`, offered to every doer where the
    runner performs `secret`: params `name`, `argv` (an array of strings), `env` (an object of
-   strings), `as`, `dir`, `timeout`. `verse.Tool` gains `Steps func(input) ([]task.Step, bool)`
-   beside `Build`, for a use that is several steps, and `stepOf` (`verse/build.go`) becomes the
-   list the supervisor's `SetStepsOf` already takes; `Build` and `Fields` stay as the one-step
-   cases. `Do` sends the op with `Request.Decision`. The description says the task never reads
-   the secret, the output is a file in its workspace, the program must be on the command's
-   `PATH`, and each variable is asked about on its own.
+   strings), `as`, `dir`, `timeout`. `Build` makes the step whole, as the verse tools' do for a
+   field with structure; `Do` sends the op with `Request.Decision`. The description says the
+   task never reads the secret, the output is a file in its workspace, the program must be on
+   the command's `PATH`, and the variables are part of what is asked about.
 6. **The words.** `docs/systems/secret.md`, the row in `docs/systems/README.md`,
    `docs/reference/runnerd.md` (the performed system, what a `secret` ceiling says, and that it
    is closed under `-sandbox none`), the example ceiling in `deploy/verse-runner`'s comments.
@@ -182,12 +189,15 @@ A sandbox for the tests: `BwrapAt` with a script that runs its command, since th
 tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pattern on Linux.
 
 - **The check, at the runner.** A run is refused outside the environment (another name, another
-  argv, another dir, a variable the block does not give, a value its shape does not admit), by a
-  `deny` row on `exec` or on one `env` step, by an `ask` row with no answer relayed, beyond the
-  ceiling, for an `argv[0]` with a `/`, for one that resolves under the workspace, for a `dir`
-  that leaves the root, for `as` among `env`, and for a field that is not its body's spelling.
-  No command runs. A block with no `env` admits a call with none and refuses one with any; the
-  empty block admits any.
+  argv, another dir, a variable the shape does not name, a value its pattern does not admit), by
+  a `deny` row, by a row on `env` naming one of its variables, by an `ask` row with no answer
+  relayed, beyond the ceiling, for an `argv[0]` with a `/`, for one that resolves under the
+  workspace, for a `dir` that leaves the root, for `as` among `env`, and for a field that is not
+  its body's spelling. No command runs. A shape with no `env` admits a call with none and refuses
+  one with any; `env: null` admits any.
+- **The form.** `Accepts` refuses a key that is no variable's name and a value that is no text
+  pattern; the closed match and `FieldContains` on nested objects; an environment whose `env`
+  names a variable its ceiling's does not is refused at install.
 - **The secret, and the plain variables.** The command reads its variable and each plain one,
   over the task's shell's; the task's process's environment, the reply, the output file and the
   log hold no value. A changed file between two calls is the next
@@ -202,8 +212,8 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
   none` are each refused or closed as said; the description shows `secret` under the doer with
   the ceiling and nothing under `builds`.
 - **Each doer.** The patterns of `claude_test.go`, `codex_test.go` and `scripted_test.go`: the
-  tool is offered, a use with one variable is the two steps `secret.exec` and `secret.env`, an
-  `ask` row on either asks, the result comes back.
+  tool is offered, a use is the step `secret.exec` with the spelled argv and the `env` object,
+  the question shows them, the result comes back.
 - **The spelling.** Round trip, uniqueness, and that `!regexp "^npm publish"` does not admit
   `npm "publish --registry evil"`.
 
@@ -229,10 +239,11 @@ tests do not run here; the real one in `TestATaskCannotReadTheSecretStore`'s pat
 
 ## Decided at review
 
-- **Plain variables are in,** as the verb `env`, one step a variable, closed by default and
-  named one by one in the ceiling and the environment. `LD_PRELOAD` and its family add no risk
-  the ceiling has not granted by construction, since a ceiling that admits a command admits
-  what it does with the secret; it is the offer's and the spawn's to limit the names.
+- **Plain variables are in,** as the field `env` of `exec`, not a step of their own: a form of
+  its own that matches closed, `{}` where a shape says nothing, so the ceiling and the
+  environment name the variables one by one. `LD_PRELOAD` and its family add no risk the
+  ceiling has not granted by construction, since a ceiling that admits a command admits what it
+  does with the secret; it is the offer's and the spawn's to limit the names.
 
 ## Open questions
 
