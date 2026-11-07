@@ -1,9 +1,10 @@
 # runner: a secret store, one file per name, beside the credentials in the environment
 
-**Status:** steps 1 to 6 are written, and the runner's part of step 8, in the worktree
-`.worktrees/secret-store` (branch `verse/secret-store`, on 81250f61, the commit of 1k5art3x).
-Not committed. Step 7 and the deployment's part of step 8 are not begun. It blocks 1f5art3x,
-and the `mcp` system waits on it.
+**Status:** steps 1 to 6 are written, and the runner's part of step 8, and committed as
+b3f323d7 on `verse/secret-store` (worktree `.worktrees/secret-store`), one commit over 81250f61,
+the commit of 1k5art3x. Reviewed once after it was written; what that changed is in the commit.
+Not merged, not pushed. Step 7 and the deployment's part of step 8 are not begun, so the issue
+stays open. It blocks 1f5art3x, and the `mcp` system waits on it.
 
 ## Built so far
 
