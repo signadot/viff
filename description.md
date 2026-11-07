@@ -6,6 +6,13 @@ is done** (2026-11-07, a pod on staging, the third comment; report, scripts and 
 runner's start, ahead of any launch (step 5; the fourth comment). Nothing else is built. It
 blocks 1f5art3x.
 
+**Where it is built:** on `verse/secret-exec`, as a pull request on top of it, stacked on mcp's
+(1v5art3x). The team is shown secret-exec (pa35grmz) as one pull request and what it enables,
+mcp and this as far as each is done cleanly, as one or two on top; so secret-exec does not merge
+to main first. mcp's steps 1 to 3 settle the shape this one's step 2 follows (`stock.Config`,
+`performs` and `held`, `Describe`, the offer), so this goes second. The review rounds are below
+("Review rounds").
+
 ## What it is
 
 The `pkg-nix` system, as 1f5art3x describes it, at its first version: **packages the runner's
@@ -222,7 +229,7 @@ Each step builds and passes on its own.
      launch, saying how many paths and the bound.
 
    `PATH` as above.
-8. **`secret-exec`.** Needs pa35grmz merged. The `Confiner` counts a program under the **base's**
+8. **`secret-exec`.** pa35grmz's, on the branch this is built on. The `Confiner` counts a program under the **base's**
    closure as one the runner keeps: the operator chose the base, as it chose the image. A program
    of the spawn's flake counts only where the doer's `kept` is `base-and-flake`. A row admitting
    `git push` otherwise means whatever the flake calls `git`, which the flake's author chose
@@ -276,6 +283,43 @@ Each step builds and passes on its own.
 - **End to end, where nix and bwrap 0.13 are there** (skipped otherwise, and said): a flake
   realised from a cache, its program run in a task, the store unwritable from inside, a flake's
   `nixConfig` substituter ignored, an input outside `sources` refused.
+
+## Review rounds
+
+A round is a review and the fixes it calls for. **Review** is one round. **Iterate** is a
+second round where the first finds the approach wrong rather than a corner case, before the
+next step builds on it. **None** is a step verified by building and running instead.
+
+- **Step 0:** done.
+- **Step 1, the document. R1, iterate.** It changes the systems model: the first system with no
+  verb, the provided kind through `Gives`, `Ceiling.Check`, `Describe` and `held`. Findings
+  that the model does not take a system with no verb (rows, charters or the description reading
+  it wrongly) are reworked before anything is built on it.
+- **Step 2, the configuration. R2, iterate.** The reference parser is the boundary: a local
+  reference, `git+file:`, an indirect one and `?host=` refused, and a spawn's reference held to
+  `sources` at the launch. Corner cases are worth hunting here; a second round where the
+  parser's approach is wrong.
+- **Step 3, the image. None.** The image built, and step 0's p2 and p5 run against it on
+  staging. The `Bwrap()` probe is a few lines, read in R6.
+- **Step 4, the runner's nix. R3, review.** Each setting was measured in step 0, so the round
+  reads the code against what was measured: every setting written, no other configuration
+  read, the evaluation's sandbox without the secret store and the runner's state.
+- **Steps 5 and 6, resolve, realise, root, and collection. R4, together, iterate.** Step 6
+  orders step 5's work at the start, so they are not read apart. The round: a launch waiting on
+  its base, a base prepared once, roots across a crash, a task's end and a base no doer names,
+  the answer kept by the locked reference and the system. A race between preparing and
+  collecting, or roots that leak, is a second round.
+- **Steps 7 and 8, the sandbox and `secret-exec`. R5, together, review.** Both decide what a
+  task, and a command run with a secret, sees and runs: step 8's command's sandbox takes step
+  7's binds, never its own. The round: which `git` a row admits under `kept: base`, and the ask
+  showing the resolved path.
+- **Step 9, the words. R6, the last round, every step and the words.** The chain from the
+  configuration (2) through the start (5, 6) and the launch (5) to the sandbox (7) and
+  `secret-exec` (8), and the roots across 5, 6 and a task's end, are where one step's error
+  shows in another; the words are read against what was built. Then the end-to-end test on
+  staging, with real nix and bwrap 0.13, on step 3's image.
+- **Across the stack:** before the team is shown it, one short round of secret-exec and the pull
+  requests on top, for the seams between them; short, since each plan's R6 read its own.
 
 ## Not in this issue
 
