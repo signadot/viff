@@ -328,6 +328,42 @@ under `httptest`).
   completed, and nothing more is sent.
 - **The description.** `TestDescribePublishesBuildsAndSettings` gains the servers.
 
+## Review rounds
+
+A round is a review and the fixes it calls for. **Light** is one round that reads the code
+against the plan's claims. **Review** is one round. **Iterate** is a second round where the
+first finds the approach wrong rather than a corner case, before the next step builds on it.
+
+- **Steps 1 and 2, the document and the step, and a tool filtered by its step. R1, together,
+  light.** Both are small, and step 2 is near mechanical. The round: `arguments` matched open
+  beside `env`'s closed match, `Differs` into a field of form `doc` saying no value (275art3x),
+  and nothing changed for the tools there are.
+- **Step 3, the servers in the configuration. R2, light.** It follows `secret`'s and
+  `linear-issue`'s pattern. The round: a url never carries a key into `taskConfig`, `Held` and
+  `performs` agree with the offer, a `timeout` held to the table's deadline. This round also
+  settles the configuration's shape pkg-nix (2b5art3x) follows.
+- **Step 4, the client. R3, iterate.** The riskiest code of the plan: concurrent, and against
+  the SDK's own model. The round: a call never sent twice, across a session opened again and a
+  response resumed; one session opened under the lock; the credential reaching no second host;
+  nothing left open once `Serve` returns. Where the SDK's model of a session is not the plan's,
+  the client is reworked and read again before step 5.
+- **Step 5, the two ops. R4, iterate.** Where 275art3x's binding meets mcp, the plan's security
+  core. The round: what is sent is the step and nothing else, an absent argument and a `null`
+  never confused, `refused` before the act, the table's tests taking the second op that asks
+  about no step, an op apart never touching the workspace.
+- **Steps 6, 7 and 8, the tools, the result, and what a server says. R5, together, review.** 7
+  and 8 are small and run through 6's `Do` and descriptions. The round: the approval tested the
+  whole way through a stock runner, on the arguments the tests name; each doer's limit on a
+  tool's name; the brief when a server does not answer.
+- **Step 9, the words. R6, the last round, every step and the words.** Where one step's error
+  shows in another: the op (5) and the tool (6) reading the same bytes, the sessions (4) and the
+  task an op apart is handed (5), the `timeout` (3) and the table's deadline (5), `Held` (3) and
+  the offer (6). The words are read against what was built. Then a run on staging against
+  mcp.signadot.com and Linear's `/mcp/readonly`.
+- **Across the stack:** pkg-nix is stacked on this. Before the team is shown it, one short round
+  of secret-exec and the pull requests on top, for the seams between them; short, since each
+  plan's R6 read its own.
+
 ## What does not change
 
 - **`runner.DescriptionVersion`.** The description's shape is the same: `mcp` is one more name
