@@ -4,6 +4,7 @@ blocks:
 - pa35grmzh12krvwdxsn0
 - 1v5art3xh12ksddyxnn0
 branches: []
+closed_by: c6bcf047e1ef10d0c3ec4fd291e151071a032db3
 commits: []
 created: "2026-11-07T13:53:39.835332+01:00"
 duplicates: []
@@ -16,5 +17,5 @@ related_issues:
 - q3k89kvah12ks0p2s1n0
 - 1z5art3xh12ksdydxnn0
 - 1f5art3xh12ksxdcxnn0
-status: open
-updated: "2026-11-07T21:43:28.101406+01:00"
+status: closed
+updated: "2026-11-07T22:38:57.613123+01:00"
