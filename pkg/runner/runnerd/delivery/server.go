@@ -132,9 +132,10 @@ type Task struct {
 	Policy func() task.Autonomy
 	// Answered is who answered proceed to the question a row asked about this call, by the
 	// decision the act names or by the call, taking that answer (Channel.answered): what an act
-	// a row asks about is performed on. nil is a side that relayed no answers, where such an
-	// act is refused.
-	Answered func(task.Step, string) (string, bool)
+	// a row asks about is performed on. differ is the fields in which the act is not the call
+	// the named decision's answer was about, an answer it is then not performed on. nil is a
+	// side that relayed no answers, where such an act is refused.
+	Answered func(st task.Step, decision string) (by string, differ []string, ok bool)
 	// Credential is the secret a push to one of the task's repositories is made with, or why
 	// there is none. The runner decides; its own forge token is the usual answer.
 	Credential func(repo workspace.Repo) (string, error)
@@ -589,7 +590,8 @@ func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) (asked, 
 // refused is why the task's environment, its autonomy or the runner's ceiling refuses a step, or ""
 // where none does: a step outside the environment, saying what it gives (on the fields the runner
 // filled, `exists` and `own` among them, as the task's own check saw them), the `deny` row that
-// matches it, by name, or an `ask` row whose question this runner saw no answer to. An `allow` needs nobody. An `ask` is decided
+// matches it, by name, or an `ask` row whose question this runner saw no answer to, or saw
+// answered about another call, naming the fields it differs in. An `allow` needs nobody. An `ask` is decided
 // in the task's process, which holds the model and says what it likes, so the answer is taken
 // from what the runner itself relayed to that process (Task.Answered), once per act, and never
 // from the process's word. The ceiling is read after the autonomy, and is the operator's: a task's
@@ -605,10 +607,17 @@ func (s *Server) refused(tk Task, decision string, st task.Step) string {
 		case task.ThenDeny:
 			return fmt.Sprintf("refused by the autonomy's row %s: %s", p.NameOf(i), st)
 		case task.ThenAsk:
-			by := ""
-			answered := false
+			by, answered := "", false
+			var differ []string
 			if tk.Answered != nil {
-				by, answered = tk.Answered(st, decision)
+				by, differ, answered = tk.Answered(st, decision)
+			}
+			if differ != nil {
+				fmt.Fprintf(s.Log, "delivery: %s: %s names %s, whose answer is about another call (it differs in %s): refused, the answer kept\n",
+					tk.ID, st.Name, decision, strings.Join(differ, ", "))
+				return fmt.Sprintf("refused: the autonomy's row %s asks about %s, and the answer to %s is about another call: "+
+					"this one differs in %s. Nothing was done; ask about this call, or perform the one that was answered",
+					p.NameOf(i), st.Name, decision, strings.Join(differ, ", "))
 			}
 			if !answered {
 				return fmt.Sprintf("refused: the autonomy's row %s asks about %s, and this runner relayed no answer to "+

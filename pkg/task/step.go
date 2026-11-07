@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -51,6 +52,40 @@ func (s Step) With(name string, v *ir.Node) Step {
 // spelled on the way (a flow object read back is tagged `!bracket`), no fields being `{}`.
 func (s Step) Same(o Step) bool {
 	return s.Name == o.Name && plainFields(s.Fields).DeepEqual(plainFields(o.Fields))
+}
+
+// Differs is what o says otherwise than s, by name and never by value: `name` where the steps
+// are of different verbs, else each field one carries and the other does not or says otherwise,
+// in order. Nil where o is the same step (Same). A refusal names these and not the values: it
+// is logged, and a value (a command's variables) is not the runner's to repeat.
+func (s Step) Differs(o Step) []string {
+	if s.Same(o) {
+		return nil
+	}
+	if s.Name != o.Name {
+		return []string{"name"}
+	}
+	a, b := plainFields(s.Fields), plainFields(o.Fields)
+	var names []string
+	for _, k := range a.Fields {
+		names = append(names, k.String)
+	}
+	for _, k := range b.Fields {
+		if !slices.Contains(names, k.String) {
+			names = append(names, k.String)
+		}
+	}
+	var differ []string
+	for _, n := range names {
+		x, y := ir.Get(a, n), ir.Get(b, n)
+		if x == nil || y == nil || !x.DeepEqual(y) {
+			differ = append(differ, n)
+		}
+	}
+	if differ == nil { // fields that are not an object, saying otherwise
+		return []string{"fields"}
+	}
+	return differ
 }
 
 // plainFields is fields without their layout, `{}` for none.

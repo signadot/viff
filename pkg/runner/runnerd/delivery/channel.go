@@ -116,7 +116,13 @@ func (c *Channel) Answers() int {
 // again. The act names its decision (Request.Decision) and that is matched first; an act that
 // names none is matched to an answer about the same call, by step and fields. False where the
 // runner relayed no such answer, whatever the task's process says.
-func (c *Channel) answered(st task.Step, decision string) (string, bool) {
+//
+// An answer is to the call its question showed, and to no other: an act naming the decision of
+// an answer about another call (another command, another branch, another channel) is not
+// performed on it, and differ is what the act says otherwise, by field. The answer is kept for
+// the act it is about, which the task's process may still ask for. An answer about no call the
+// runner read (gateAbout) is matched by its decision alone.
+func (c *Channel) answered(st task.Step, decision string) (by string, differ []string, ok bool) {
 	c.answersMu.Lock()
 	defer c.answersMu.Unlock()
 	for c.relaying > 0 {
@@ -126,25 +132,31 @@ func (c *Channel) answered(st task.Step, decision string) (string, bool) {
 		<-landed
 		c.answersMu.Lock()
 	}
-	take := func(i int) (string, bool) {
+	take := func(i int) (string, []string, bool) {
 		by := c.answers[i].by
 		c.answers = append(c.answers[:i], c.answers[i+1:]...)
-		return by, true
+		return by, nil, true
 	}
 	if decision != "" {
 		for i, a := range c.answers {
-			if a.decision == decision && a.choice == task.Proceed {
-				return take(i)
+			if a.decision != decision || a.choice != task.Proceed {
+				continue
 			}
+			if a.step.Name != "" {
+				if differ := a.step.Differs(st); differ != nil {
+					return "", differ, false
+				}
+			}
+			return take(i)
 		}
-		return "", false
+		return "", nil, false
 	}
 	for i, a := range c.answers {
 		if a.step.Same(st) && a.choice == task.Proceed {
 			return take(i)
 		}
 	}
-	return "", false
+	return "", nil, false
 }
 
 // SetAutonomy is the task's autonomy from the next act on, as PUT /tasks/{id}/autonomy replaced it.

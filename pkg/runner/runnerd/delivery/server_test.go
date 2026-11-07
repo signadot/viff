@@ -441,6 +441,17 @@ func TestAnAskedPushIsPerformedOnTheAnswerTheRunnerRelayed(t *testing.T) {
 	if n := ch.Answers(); n != 1 {
 		t.Errorf("%d answer(s) left, want the deny alone", n)
 	}
+	// An answer is to the call it was about: one about a push to main does not push the task's
+	// branch, whatever decision the act names, and is kept.
+	commit(t, filepath.Join(ws.Root, "svc"), "last\n\nVerse-Task: t1\n")
+	ch.Answer("t1~d6", about.With("ref", ir.FromString("refs/heads/main")), task.Proceed, "user:di")
+	named.Decision = "t1~d6"
+	if rep, err := cl.Ask(named); err != nil || !strings.Contains(rep.Refused, "about another call: this one differs in ref") {
+		t.Fatalf("a push on the answer about another branch: %+v %v, want it refused naming the ref", rep, err)
+	}
+	if n := ch.Answers(); n != 2 {
+		t.Errorf("%d answer(s) left, want the deny and the unspent answer", n)
+	}
 }
 
 // openTask is a task's workspace on forge's acme/svc with repo's permissions, and its end of the
