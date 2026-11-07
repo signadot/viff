@@ -323,7 +323,8 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 		Cover(g.root, id, "head"),
 	}}
 
-	// Refs: refs/heads, refs/tags, refs/remotes — git.<repo>.ref.<short> {repo, name, sha, type}.
+	// Refs: refs/heads, refs/tags, refs/remotes — git.<repo>.ref.<short> {repo, name, sha, type},
+	// and an annotated tag's trailers.
 	// That list is enforced in gitForEachRef rather than assumed; a mirror holds far more.
 	refs, err := gitForEachRef(ctx, dir)
 	if err != nil {
@@ -340,6 +341,9 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 		p := entity.Obj{"repo": id, "name": name, "sha": r.sha, "type": r.typ}
 		if t := trees[r.sha]; len(t) > 0 {
 			p["tree"] = t
+		}
+		if len(r.trailers) > 0 {
+			p["trailers"] = r.trailers
 		}
 		rn.Add(entity.RefAt(g.root, id, "ref", name), p)
 	}
@@ -391,7 +395,15 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 
 // ── git plumbing (all shape-agnostic; run with the repo dir as cwd) ──────────
 
-type refInfo struct{ sha, typ string }
+// refInfo is one ref: its object, that object's type, and, for an annotated tag, the trailers
+// of the tag's message. A tag is where a release or a deploy says what it is (a deploy tag names
+// the commit of another repository it deployed), and the ref is the only place the verse sees a
+// tag. A branch's trailers are its tip commit's, at `git.<repo>.commit.<sha>`, so a branch carries
+// none here.
+type refInfo struct {
+	sha, typ string
+	trailers map[string]string
+}
 
 // reflectedRefs is the ref space this source reflects as refs: branches, tags, and remote-tracking
 // branches. Its own records, under refs/verse/, it reflects as records (gitRecords). Everything
@@ -410,17 +422,29 @@ type refInfo struct{ sha, typ string }
 var reflectedRefs = []string{"refs/heads", "refs/tags", "refs/remotes"}
 
 func gitForEachRef(ctx context.Context, dir string) (map[string]refInfo, error) {
-	args := append([]string{"for-each-ref",
-		"--format=%(refname:short) %(objectname) %(objecttype)"}, reflectedRefs...)
+	// Unit-separated fields and NUL-terminated records, as gitRecentCommits reads a log: a tag's
+	// message is multi-line. The message is asked for only when the object IS a tag, and
+	// without its signature, whose armour would otherwise be the last paragraph.
+	args := append([]string{"for-each-ref", "--format=%(refname:short)%1f%(objectname)%1f%(objecttype)%1f" +
+		"%(if:equals=tag)%(objecttype)%(then)%(contents:subject)%0a%0a%(contents:body)%(end)%00"},
+		reflectedRefs...)
 	out, err := gitCmd(ctx, dir, args...)
 	if err != nil {
 		return nil, err
 	}
 	refs := map[string]refInfo{}
-	for _, line := range nonEmptyLines(out) {
-		if f := strings.Fields(line); len(f) >= 3 {
-			refs[f[0]] = refInfo{sha: f[1], typ: f[2]}
+	for _, rec := range strings.Split(out, "\x00") {
+		// for-each-ref ends every record with a newline of its own, after the NUL.
+		rec = strings.TrimLeft(rec, "\n")
+		f := strings.SplitN(rec, "\x1f", 4)
+		if len(f) != 4 || f[0] == "" {
+			continue
 		}
+		r := refInfo{sha: f[1], typ: f[2]}
+		if r.typ == "tag" {
+			r.trailers = parseTrailers(f[3])
+		}
+		refs[f[0]] = r
 	}
 	return refs, nil
 }

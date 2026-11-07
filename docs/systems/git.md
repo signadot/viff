@@ -10,7 +10,7 @@ on the remote. The runner performs them with its credential, and the task never 
 
 | Address | What it is |
 |---|---|
-| `git.<repo>.ref.<name>` | a branch or a tag: its sha, and the tree of each directory the iod names |
+| `git.<repo>.ref.<name>` | a branch or a tag: its sha, the tree of each directory the iod names, and an annotated tag's trailers |
 | `git.<repo>.head` | where the repository's checkout stands, and whether it is dirty |
 | `git.<repo>.commit.<sha>` | a commit: its message, author, parents and trailers |
 

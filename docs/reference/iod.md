@@ -155,7 +155,7 @@ converges at the full reflection of every minute.
 
 | Address | Payload |
 |---|---|
-| `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` for each directory `-tree` names: `tree: {<name>: <object sha>}`, the empty tree where the directory is not there. These are branches, tags and remote-tracking branches, and nothing else. |
+| `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` for each directory `-tree` names: `tree: {<name>: <object sha>}`, the empty tree where the directory is not there, and `trailers` when the ref is an annotated tag whose message has any. These are branches, tags and remote-tracking branches, and nothing else. |
 | `git.<repo>.record.<name>` | `repo, name, sha, tree, from`: a [record](#a-record) the out half keeps, `refs/verse/<name>`, with `tree` its last entry's whole tree and `from` its `From:` trailer, empty where it has none |
 | `git.<repo>.head` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
 | `git.<repo>.commit.<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any. `parents` is a list of shas: empty for a root commit, two for a merge, first parent first. No [cover](../glossary.md#cover-of-a-reflection) reaches a commit, so history stays. |
@@ -184,6 +184,9 @@ not reflect the body.
 
 **`trailers`** is the block of `Key: value` lines at the end of a message, as an object. With
 it, a charter tests what a commit *declared*, and does not search the text of the message.
+An annotated tag's trailers are on its ref, so a tag can say what it marks: a deploy tag's
+`commit:` names the commit it deployed, which may be another repository's. A branch carries
+none on its ref; its tip's are on the commit.
 
 ```tony
 condition:
