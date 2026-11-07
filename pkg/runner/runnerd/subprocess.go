@@ -77,6 +77,9 @@ type SubprocessConfig struct {
 	// Mirrors is the directory the runner keeps its mirrors in, which no ReadOnly path may reach,
 	// as it may not reach Work or Control.
 	Mirrors string
+	// Secrets is the directory of the runner's secret store, where it has one: what no ReadOnly
+	// path may reach either, at the start or at a launch.
+	Secrets string
 	// Repos checks out the repos a launch names, and performs what a task asks over its channel:
 	// a push, a proposal, a tracker's act. Nil refuses a launch that names repos, and opens no
 	// channel.
@@ -480,7 +483,7 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	out := tagged(h.Log, p.id)
 	cmd.Stdout, cmd.Stderr = out, out
 	cmd.ExtraFiles = append([]*os.File{lf, lifeR}, extra...) // fd 3, fd 4, and fd 5
-	if err := h.Sandbox.Wrap(cmd, root, network, withReadOnly(h.Programs, h.ReadOnly, KeptDirs(h.Work, h.Control, h.Mirrors), out)); err != nil {
+	if err := h.Sandbox.Wrap(cmd, root, network, withReadOnly(h.Programs, h.ReadOnly, KeptDirs(h.Work, h.Control, h.Mirrors, h.Secrets), out)); err != nil {
 		return err
 	}
 	if err := cmd.Start(); err != nil {
@@ -1062,11 +1065,11 @@ func withReadOnly(programs, readOnly []string, kept map[string]string, log io.Wr
 
 // KeptDirs names the runner's own directories, which no readOnly path may reach: its work, where
 // each task's is the task's alone to write; its mirrors, every repository it holds whoever's launch
-// named it; and its control directory, the tasks' sockets, which no sandbox binds. An empty one is
-// left out.
-func KeptDirs(work, control, mirrors string) map[string]string {
+// named it; its control directory, the tasks' sockets, which no sandbox binds; and its secret
+// store, what it acts with and no task holds. An empty one is left out.
+func KeptDirs(work, control, mirrors, secrets string) map[string]string {
 	kept := map[string]string{}
-	for name, dir := range map[string]string{"work": work, "control": control, "mirrors": mirrors} {
+	for name, dir := range map[string]string{"work": work, "control": control, "mirrors": mirrors, "secrets": secrets} {
 		if dir != "" {
 			kept[name] = dir
 		}
@@ -1087,6 +1090,36 @@ func CheckReadOnly(paths []string, kept map[string]string) error {
 			if within(rp, rk) || within(rk, rp) {
 				return fmt.Errorf("readOnly: %s overlaps the runner's %s directory (%s), which no task may be given", p, name, kept[name])
 			}
+		}
+	}
+	return nil
+}
+
+// CheckSecretStore refuses a secret store a task's sandbox would have. NO SANDBOX BINDS THE
+// STORE, and that is by where it is: a sandbox binds the system directories, the task's own
+// directory under the runner's work, and what `readOnly` names, so a store under a system
+// directory (`/etc/verse/secrets`) is every task's to read, and one that holds or lies in the
+// runner's work is some task's. kept is the runner's other directories (KeptDirs, without the
+// store). Both sides are compared as the filesystem resolves them, so a link into /etc is /etc.
+func CheckSecretStore(dir string, kept map[string]string) error {
+	rd := resolved(dir)
+	if rd == string(filepath.Separator) {
+		return fmt.Errorf("secrets.dir: %s is the whole machine", dir)
+	}
+	// A system directory is itself a link on some machines (/bin into /usr, /etc into /private
+	// on macOS), so each is compared as it is spelled and as it resolves.
+	under := UnderSystem(filepath.Clean(dir))
+	for _, sys := range systemDirs {
+		under = under || within(rd, resolved(sys))
+	}
+	if under {
+		return fmt.Errorf("secrets.dir: %s is under a directory every task's sandbox has (%s), so every task would read every secret",
+			dir, strings.Join(systemDirs, ", "))
+	}
+	for _, name := range slices.Sorted(maps.Keys(kept)) {
+		rk := resolved(kept[name])
+		if within(rd, rk) || within(rk, rd) {
+			return fmt.Errorf("secrets.dir: %s overlaps the runner's %s directory (%s)", dir, name, kept[name])
 		}
 	}
 	return nil

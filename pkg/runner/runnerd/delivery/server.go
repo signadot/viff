@@ -49,16 +49,39 @@ type Server struct {
 // bot token (`xoxb-…`), and where the APIs are when something other than the real ones answers
 // (a test).
 type Services struct {
-	LinearAuth string
+	LinearAuth Credential
 	LinearAPI  string // "" is Linear's own
 	// GitHubAPI is the API of the forge the runner's repos are on: github.com's (GitHubAPI),
 	// an Enterprise Server's, or a test's.
 	GitHubAPI  string
-	SlackToken string
+	SlackToken Credential
 	SlackAPI   string // "" is Slack's own
 	// Verse carries a task's request to the verse the runner serves, a verb of the verse system
 	// (verse.go); nil for a runner with no verse to reach, or no token of its own to reach it with.
 	Verse Verse
+}
+
+// A Credential is what the runner acts with at a service, READ WHEN IT IS ASKED FOR: one the
+// runner keeps in its secret store is the value there at that act, so a secret that is rotated
+// is the next act's with no restart. nil is no credential. Its error names the secret and never
+// any of a value, and is the task's to read.
+type Credential func() (string, error)
+
+// Holds is a credential that is one value for as long as the runner runs, as one read from its
+// environment when it started is. An empty value is no credential.
+func Holds(value string) Credential {
+	if value == "" {
+		return nil
+	}
+	return func() (string, error) { return value, nil }
+}
+
+// read is the credential's value now, and empty with no error where there is none.
+func (c Credential) read() (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	return c()
 }
 
 // Task is one task as the server knows it: its id, the workspace it works in, the launch whose

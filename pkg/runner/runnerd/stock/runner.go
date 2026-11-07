@@ -98,7 +98,22 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	if c.Repos != nil {
 		mirrors = c.Repos.Mirrors
 	}
-	if err := runnerd.CheckReadOnly(c.ReadOnly, runnerd.KeptDirs(work, control, mirrors)); err != nil {
+	// The secret store is the runner's own too, and is where no sandbox binds it: apart from
+	// the directories above, and reached by no readOnly path.
+	secrets := c.secretsDir()
+	if secrets != "" {
+		if err := runnerd.CheckSecretStore(secrets, runnerd.KeptDirs(work, control, mirrors, "")); err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(secrets); err != nil {
+			fmt.Fprintf(log, "runnerd: secrets.dir %s: %v; no secret is there while it is not\n", secrets, err)
+		}
+		if sb.Name() == (runnerd.Unconfined{}).Name() {
+			fmt.Fprintf(log, "runnerd: secrets.dir %s: this runner runs its tasks unconfined (-sandbox none), so a task "+
+				"sees the whole machine, the secret store with it\n", secrets)
+		}
+	}
+	if err := runnerd.CheckReadOnly(c.ReadOnly, runnerd.KeptDirs(work, control, mirrors, secrets)); err != nil {
 		return nil, err
 	}
 	for _, p := range c.ReadOnly {
@@ -129,7 +144,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{
 		Command: command, Env: func(l *runner.Launch) []string { return task.ShellEnv(c.shellEnv(c.doer(l))) }, Config: blob,
-		Sandbox: sb, Programs: programs, ReadOnly: c.ReadOnly, Mirrors: mirrors, Repos: repos, AgentHosts: hosts,
+		Sandbox: sb, Programs: programs, ReadOnly: c.ReadOnly, Mirrors: mirrors, Secrets: secrets, Repos: repos, AgentHosts: hosts,
 		Work: work, Control: control, Log: log,
 	})
 	h.Describe(c.Describe(nets))

@@ -99,7 +99,7 @@ func opsTask(t *testing.T, l *runner.Launch) (*Server, Task) {
 		names = append(names, d.Name)
 	}
 	s := &Server{Mirrors: mirrors, Log: io.Discard, HTTP: &http.Client{Transport: unreached{t}}, Ceilings: performs(names...),
-		Services: Services{LinearAuth: "a-key", SlackToken: "xoxb-a-token", GitHubAPI: "https://api.github.invalid",
+		Services: Services{LinearAuth: Holds("a-key"), SlackToken: Holds("xoxb-a-token"), GitHubAPI: "https://api.github.invalid",
 			Verse: func(_ context.Context, _, method, path string, _ []byte) (int, string, error) {
 				t.Errorf("a request reached verse: %s %s", method, path)
 				return http.StatusInternalServerError, "", nil
@@ -179,7 +179,7 @@ func TestEveryOpAsksAboutADocumentedStep(t *testing.T) {
 // is no name, and a document of several lines crosses whole.
 func TestARequestNamesOnlyWhatItsOpReads(t *testing.T) {
 	l := within(nil, "slack", "verse")
-	s := &Server{Log: io.Discard, Ceilings: performs("slack", "verse"), Services: Services{SlackToken: "xoxb-a-token",
+	s := &Server{Log: io.Discard, Ceilings: performs("slack", "verse"), Services: Services{SlackToken: Holds("xoxb-a-token"),
 		Verse: func(_ context.Context, _, _, _ string, body []byte) (int, string, error) {
 			return http.StatusCreated, "{id: land-1a2b}", nil
 		}}}

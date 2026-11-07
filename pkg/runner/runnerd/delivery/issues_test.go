@@ -149,7 +149,7 @@ func TestALinearIssueIsCreatedWithTheRunnersCredential(t *testing.T) {
 		}
 	}))
 	defer api.Close()
-	s := &Server{Log: io.Discard, Services: Services{LinearAuth: "lin_api_x", LinearAPI: api.URL}, Ceilings: performs("linear-issue")}
+	s := &Server{Log: io.Discard, Services: Services{LinearAuth: Holds("lin_api_x"), LinearAPI: api.URL}, Ceilings: performs("linear-issue")}
 	tk := Task{ID: "i4", Workspace: &workspace.Workspace{}, Launch: within(nil, "linear-issue")}
 	rep := s.answer(tk, frame(t, Request{Op: OpLinearIssueCreate, Body: "when it rains", Fields: map[string]string{"team": "ENG", "title": "the roof leaks"}}))
 	if !rep.OK || rep.Out != "created ENG-42: https://linear.app/acme/issue/ENG-42" {
@@ -207,7 +207,7 @@ func TestCommentAndCloseAtTheRemoteTrackers(t *testing.T) {
 	}))
 	defer api.Close()
 	ws := githubTree("acme/app", "https://github.com/acme/app.git")
-	s := &Server{Log: io.Discard, Services: Services{GitHubAPI: forge.URL, LinearAuth: "k", LinearAPI: api.URL}, Ceilings: performs("github-issue", "linear-issue")}
+	s := &Server{Log: io.Discard, Services: Services{GitHubAPI: forge.URL, LinearAuth: Holds("k"), LinearAPI: api.URL}, Ceilings: performs("github-issue", "linear-issue")}
 	tk := Task{ID: "v1", Workspace: ws, Launch: within([]string{"acme/app"}, "github-issue", "linear-issue"), Credential: func(workspace.Repo) (string, error) { return "tok", nil }}
 
 	if rep := s.answer(tk, frame(t, Request{Op: OpGitHubIssueComment, Body: "on it", Fields: map[string]string{"repo": "app", "issue": "7"}})); !rep.OK || !strings.Contains(rep.Out, "commented on issue #7 at acme/app") {

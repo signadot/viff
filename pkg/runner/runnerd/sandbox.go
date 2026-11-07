@@ -154,14 +154,14 @@ func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []s
 		args = append(args, "--ro-bind-try", d, d)
 	}
 	// /etc/resolv.conf is a link out of /etc on a systemd host.
-	if conf, err := filepath.EvalSymlinks("/etc/resolv.conf"); err == nil && !underSystem(conf) {
+	if conf, err := filepath.EvalSymlinks("/etc/resolv.conf"); err == nil && !UnderSystem(conf) {
 		args = append(args, "--ro-bind-try", conf, conf)
 	}
 	// The programs have to exist inside: the runner's own binary is a task's process, and it and
 	// the others may be installed outside the system directories. Bound read only at their own
 	// paths, so nothing the task may write shares their inode.
 	for _, p := range append([]string{cmd.Path}, programs...) {
-		if prog, err := filepath.Abs(p); err == nil && !underSystem(prog) {
+		if prog, err := filepath.Abs(p); err == nil && !UnderSystem(prog) {
 			args = append(args, "--ro-bind", prog, prog)
 		}
 	}
@@ -185,7 +185,10 @@ func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []s
 	return nil
 }
 
-func underSystem(path string) bool {
+// UnderSystem reports whether path is, or lies under, one of the system directories: what
+// every task's sandbox has, read only, whatever else it is given. So nothing the runner keeps
+// from its tasks may be there (CheckSecretStore).
+func UnderSystem(path string) bool {
 	for _, d := range systemDirs {
 		if path == d || strings.HasPrefix(path, d+"/") {
 			return true

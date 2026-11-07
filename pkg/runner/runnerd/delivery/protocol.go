@@ -24,7 +24,8 @@ import (
 // op.numbers), so a system the channel
 // comes to carry adds its ops to the table and nothing here. A name an op does not read is
 // refused rather than dropped, and so is a body the op does not read: what the task sent and the
-// runner ignored is something the task believes was done.
+// runner ignored is something the task believes was done. The one exception is a name given
+// nothing (`""`), which asks for nothing and is let by (misread).
 type Request struct {
 	// ID names the request among those the task has sent and not yet heard about, and the
 	// answer to it carries the same (Reply.ID). The task's end gives it (Client.Ask). Requests
@@ -80,8 +81,13 @@ func (r Request) Int(name string) int {
 // at all reads as nothing, which is what it is: several ops share one func, and no request
 // that gives the name reaches an op that does not list it.
 func (r Request) reading(name, as string, declared func(*op) []string) {
-	if r.op != nil && slices.Contains(r.op.reads(), name) && !slices.Contains(declared(r.op), name) {
-		panic(misreading{name, as})
+	if r.op == nil || slices.Contains(declared(r.op), name) {
+		return
+	}
+	for _, kind := range [][]string{r.op.takes, r.op.flags, r.op.numbers} {
+		if slices.Contains(kind, name) {
+			panic(misreading{name, as})
+		}
 	}
 }
 

@@ -40,7 +40,12 @@ func SlackFooter(taskID string) string { return "_verse task " + taskID + "_" }
 // slack answers a `slack.*` op with the runner's bot token: the channel by its name, decided by
 // the launch's autonomy and the runner's ceiling on the name, then the call.
 func (s *Server) slack(ctx context.Context, tk Task, req Request) (asked, Reply) {
-	if s.Services.SlackToken == "" {
+	// The token is read here, as the request is, and the act is performed with what was read.
+	token, err := s.Services.SlackToken.read()
+	switch {
+	case err != nil:
+		return before(Reply{Error: "this runner cannot act in Slack: " + err.Error()})
+	case token == "":
 		return before(Reply{Error: "this runner has no Slack bot token (SLACK_BOT_TOKEN), so it cannot act in Slack"})
 	}
 	channel, ok := slack.ChannelName(req.Field("channel"))
@@ -73,7 +78,7 @@ func (s *Server) slack(ctx context.Context, tk Task, req Request) (asked, Reply)
 		fields["emoji"] = emoji
 	}
 	return asking(task.NewStep(req.Op, fields), func() Reply {
-		token, base, hc := s.Services.SlackToken, s.Services.SlackAPI, s.http()
+		base, hc := s.Services.SlackAPI, s.http()
 		var out string
 		switch req.Op {
 		case OpSlackPost, OpSlackReply:

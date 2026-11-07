@@ -143,7 +143,8 @@ func (o op) reads() []string { return slices.Concat(o.takes, o.flags, o.numbers)
 // misread is why a request does not read for its op, "" where it does: a name the op does not
 // read, a body where it reads none, a flag or a number that is not one. A flag that is neither
 // `true` nor `false` is refused rather than read as false: `delete: yes` read as no delete is
-// a push where a removal was asked for.
+// a push where a removal was asked for. A name given nothing (`""`) is let by whatever the op
+// reads: it asks for nothing, as a tool's unset parameter does (stock's untaken).
 func misread(o op, req Request) string {
 	for _, name := range slices.Sorted(maps.Keys(req.Fields)) {
 		v := req.Fields[name]

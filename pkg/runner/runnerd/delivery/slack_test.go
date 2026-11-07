@@ -2,6 +2,7 @@ package delivery
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -51,7 +52,7 @@ func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 	// The runner's ceiling gives #deploys alone.
 	deploys := []systems.Shape{{"channel": ir.FromString("deploys")}}
 	ceiling := systems.Ceiling{{Verbs: map[string][]systems.Shape{"post": deploys, "reply": deploys, "read": deploys, "react": deploys}}}
-	s := &Server{Log: io.Discard, Services: Services{SlackToken: "xoxb-own", SlackAPI: slackAPI(t, &saw)}, Ceilings: map[string]systems.Ceiling{"slack": ceiling}}
+	s := &Server{Log: io.Discard, Services: Services{SlackToken: Holds("xoxb-own"), SlackAPI: slackAPI(t, &saw)}, Ceilings: map[string]systems.Ceiling{"slack": ceiling}}
 	l := within(nil, "slack")
 	l.Autonomy = task.Autonomy{
 		{Name: "quiet", Match: &task.Match{System: "slack", Verb: "react"}, Then: task.Then{Mode: task.ThenDeny}},
@@ -95,5 +96,50 @@ func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 	none := &Server{Log: io.Discard}
 	if rep := none.answer(tk, frame(t, Request{Op: OpSlackPost, Body: "x", Fields: map[string]string{"channel": "deploys"}})); !strings.Contains(rep.Error, "SLACK_BOT_TOKEN") {
 		t.Errorf("a runner with no bot token: %+v", rep)
+	}
+}
+
+// A CREDENTIAL IS READ AT THE ACT. One the runner keeps where it can change is the value there
+// when the task asks, so a token rotated between two posts is the second post's, with no
+// restart. One that does not read fails the act with its own word, which names the secret and
+// no value, and nothing reaches Slack.
+func TestACredentialIsReadAtTheAct(t *testing.T) {
+	var saw []string
+	token, gone := "xoxb-1", error(nil)
+	s := &Server{Log: io.Discard, Ceilings: performs("slack"), Services: Services{SlackAPI: slackAPI(t, &saw),
+		SlackToken: func() (string, error) { return token, gone }}}
+	tk := Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: within(nil, "slack")}
+	post := func() Reply {
+		return s.answer(tk, frame(t, Request{Op: OpSlackPost, Body: "v1.3 is out", Fields: map[string]string{"channel": "deploys"}}))
+	}
+	if rep := post(); !rep.OK {
+		t.Fatalf("the first post: %+v", rep)
+	}
+	token = "xoxb-2"
+	if rep := post(); !rep.OK {
+		t.Fatalf("the second post: %+v", rep)
+	}
+	if len(saw) != 2 || !strings.HasPrefix(saw[0], "Bearer xoxb-1 post") || !strings.HasPrefix(saw[1], "Bearer xoxb-2 post") {
+		t.Errorf("Slack saw %q, want each post with the token of its moment", saw)
+	}
+	token, gone = "", errors.New("the secret slack-bot: it is not in the store")
+	rep := post()
+	if rep.OK || rep.Error != "this runner cannot act in Slack: the secret slack-bot: it is not in the store" || len(saw) != 2 {
+		t.Errorf("a credential that does not read: %+v (Slack saw %d)", rep, len(saw))
+	}
+	// No credential at all, and one that is empty, are the runner with none.
+	for _, none := range []Credential{nil, Holds(""), func() (string, error) { return "", nil }} {
+		s.Services.SlackToken = none
+		if rep := post(); !strings.Contains(rep.Error, "this runner has no Slack bot token") || len(saw) != 2 {
+			t.Errorf("no credential: %+v", rep)
+		}
+	}
+	// Linear's is read the same way.
+	s.Services.LinearAuth = func() (string, error) { return "", errors.New("the secret linear: its file is empty") }
+	s.Ceilings = performs("linear-issue")
+	tk.Launch = within(nil, "linear-issue")
+	rep = s.answer(tk, frame(t, Request{Op: OpLinearIssueClose, Fields: map[string]string{"issue": "ENG-42"}}))
+	if rep.Error != "this runner cannot act on a Linear issue: the secret linear: its file is empty" {
+		t.Errorf("Linear's credential that does not read: %+v", rep)
 	}
 }

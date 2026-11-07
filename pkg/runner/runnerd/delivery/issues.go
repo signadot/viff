@@ -187,7 +187,12 @@ func (s *Server) githubIssue(ctx context.Context, tk Task, req Request) (asked, 
 // linearIssue answers a `linear-issue.create`, `.comment` or `.close` with the runner's Linear
 // credential. A runner without one answers so, naming how it gets one.
 func (s *Server) linearIssue(ctx context.Context, tk Task, req Request) (asked, Reply) {
-	if s.Services.LinearAuth == "" {
+	// The credential is read here, as the request is, and the act is performed with what was read.
+	auth, err := s.Services.LinearAuth.read()
+	switch {
+	case err != nil:
+		return before(Reply{Error: "this runner cannot act on a Linear issue: " + err.Error()})
+	case auth == "":
 		return before(Reply{Error: "this runner has no Linear credential (LINEAR_API_KEY), so it cannot act on a Linear issue"})
 	}
 	fields := map[string]string{}
@@ -197,7 +202,7 @@ func (s *Server) linearIssue(ctx context.Context, tk Task, req Request) (asked, 
 		fields["issue"] = strings.ToUpper(req.Field("issue"))
 	}
 	return asking(task.NewStep(req.Op, fields), func() Reply {
-		auth, base, hc := s.Services.LinearAuth, s.Services.LinearAPI, s.http()
+		base, hc := s.Services.LinearAPI, s.http()
 		var out string
 		switch req.Op {
 		case OpLinearIssueCreate:

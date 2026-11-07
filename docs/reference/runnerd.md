@@ -68,6 +68,7 @@ maps the caller to itself, and in the same pid namespace, so it can see that pro
 | `/proc/<pid>/mem`, `/proc/<pid>/environ`, and ptrace | the task's process makes itself non-dumpable (`PR_SET_DUMPABLE`) before it serves, so a same-uid process without `CAP_SYS_PTRACE` is refused them. Without it, only the node's `kernel.yama.ptrace_scope` would decide, and its default, 0, allows reading another process's memory. bwrap also drops every capability (`--cap-drop ALL`), which it would otherwise leave to a runner run as root. With `-sandbox none`, a task of a runner run as root keeps its capabilities: its memory is still refused, its `environ`, which holds no secret, is not. |
 | a separate uid for the task | **not done**: the task runs as the runner's uid. A uid boundary would not depend on dumpability. |
 | the codex and claude agents' model keys | **not covered**: each agent reads its key where the commands it runs can too, codex from a login file and Claude from its environment, so the key is the task's ([Codex](#codex-gated-inside-the-run), [Claude](#claude-gated-inside-the-run)). |
+| the runner's [secret store](#the-secret-store) | no sandbox binds its directory, and the runner refuses to start with a store where one would (`secrets.dir`). The runner reads a secret in its own process, which a task's sandbox cannot see (`--unshare-pid`). |
 
 On a platform without procfs (macOS, with `-sandbox none`), nothing makes the process
 non-dumpable.
@@ -163,6 +164,8 @@ script:                                    # scripts are offered only with this 
 | `repos.forge` | where the host's `owner/name` is fetched from. A directory holding `owner/name` repositories serves a runner with no network. | `https://<host>` |
 | `repos.api` | where the forge's GitHub API is. A GitHub Enterprise Server is this one line: `https://<host>/api/v3`, with `repos.host` naming the host. | `https://api.github.com` where the forge is github.com |
 | `readOnly` | host paths every task's sandbox has read only, at the same path: what the operator fills ahead of time for tasks to read and none to change, as a Go module cache or a pnpm store, so a task builds and tests private dependencies with no network and no credential. For Go, give the doer's `shellEnv` `GOMODCACHE` naming the path and `GOPROXY=off`, and leave `GOFLAGS` alone: the default `-mod=readonly` reads a filled cache, where `-mod=mod` would let `go` rewrite the checkout's `go.mod` and `go.sum`. The build cache needs no setting, since `GOCACHE` defaults under the task's `HOME`, which the task may write. Absolute and below `/`. The runner refuses to start with one that holds or lies in its work, mirrors or control directory: the control directory holds every task's socket, and a read-only mount still lets a task connect to a socket on it. Never list a path holding the runner's own secrets, or its home. Each path is looked for, and checked again, at every launch: one not there, or one that has since come to reach those directories (a cache turned into a link to `$TMPDIR`, where runnerd makes its work and control directories), is said in that task's log and left out of it. Under `-sandbox none` the task sees the whole machine anyway. | none |
+| `secrets.dir` | the directory of the runner's [secret store](#the-secret-store): one file to a secret, the file's name the secret's. Absolute and below `/`. No task's sandbox has it, and the runner holds it to that: it refuses to start with a store under a directory every sandbox has (`/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/etc`, `/opt`), with one that holds or lies in its work, mirrors or control directory, and with a `readOnly` path that reaches it. A `readOnly` path that comes to reach it after the start is left out of the launch. | none: the runner has no store, and reads each credential from its environment |
+| `secrets.systems.<system>` | the secret a system acts with, by name: `secrets: {dir: /secrets, systems: {slack: slack-bot}}`. `linear-issue` and `slack` may name one. A system that does acts with the store, and its variable is not read. | none: the system reads its variable |
 | `agents.<name>` | one agent the process runs: `verse`, `codex` or `claude`; another name is refused. Its value holds the program's own keys, which are the agent's: codex `bin`, `sandbox` and `config` ([Codex](#codex-gated-inside-the-run)); claude `bin` ([Claude](#claude-gated-inside-the-run)); verse none. A key the agent's program does not take is refused, naming the ones it does; a `bin` that is not there is refused when the runner starts. Beside them, the four keys every agent takes, below. | none |
 | `agents.<name>.settings.<setting>` | the operator's say over one setting the agent takes: `values`, what a launch may set, as patterns (`model: {values: ["gpt-6*"]}`), which is what the offer publishes for the setting; and `default`, what the runner uses where a launch sets none, which then goes on the task's record. A setting not named takes any value the agent takes, and the agent's own default. Where the agent lists its own values (Claude's efforts), the ones named are among them; a default is within both. A setting the agent does not take, or an empty `values`, is refused. | any value, the agent's own default |
 | `agents.verse.annotations.<name>` | an annotation a launch may set, with the `type` of its value and the `default` used where a launch sets none. The verse agent knows one, `verse.portkey/virtual-key`, a Portkey virtual key: a routing label, not a secret. Only the verse agent takes annotations. | none |
@@ -184,7 +187,8 @@ claude each on its own.
 #### The variables it reads
 
 Secrets are never in the file. The runner reads them from its environment, where a deployment
-puts a Kubernetes Secret, under fixed names: no configuration names a variable.
+puts a Kubernetes Secret, under fixed names: no configuration names a variable. A system may
+read its credential from the [secret store](#the-secret-store) instead.
 
 | Variable | What it holds | Absent |
 |---|---|---|
@@ -194,8 +198,8 @@ puts a Kubernetes Secret, under fixed names: no configuration names a variable.
 | `PORTKEY_BASE_URL` | the Portkey endpoint | Portkey's own |
 | `PORTKEY_VIRTUAL_KEY` | the Portkey virtual key, where neither a launch nor the annotation's `default` names one | Portkey's routing for the account key |
 | `GITHUB_TOKEN` | the runner's token for its forge: what it fetches and pushes with, and acts at GitHub with. It stays in the runner; a task's process never has it. | logged; a forge on this filesystem needs none, and a fetch or push over the network is refused |
-| `LINEAR_API_KEY` | the Linear credential, the `Authorization` header verbatim: a personal key bare, an OAuth token as `Bearer …`. It stays in the runner. | logged; `linear-issue` is closed to every doer, and a spawn naming it is refused where it is written |
-| `SLACK_BOT_TOKEN` | the Slack bot token, with the scopes `chat:write`, `channels:read`, `groups:read`, `channels:history`, `groups:history` and `reactions:write` ([slack](../systems/slack.md#where-the-credential-lives)). It stays in the runner. | logged; `slack` is closed to every doer, and a spawn naming it is refused where it is written |
+| `LINEAR_API_KEY` | the Linear credential, the `Authorization` header verbatim: a personal key bare, an OAuth token as `Bearer …`. It stays in the runner. Not read where `secrets.systems.linear-issue` names a secret. | logged; `linear-issue` is closed to every doer, and a spawn naming it is refused where it is written |
+| `SLACK_BOT_TOKEN` | the Slack bot token, with the scopes `chat:write`, `channels:read`, `groups:read`, `channels:history`, `groups:history` and `reactions:write` ([slack](../systems/slack.md#where-the-credential-lives)). It stays in the runner. Not read where `secrets.systems.slack` names a secret. | logged; `slack` is closed to every doer, and a spawn naming it is refused where it is written |
 | `OPENAI_API_KEY` | the OpenAI API key the codex agent runs under, handed to the codex process as a login file | logged; codex's own login under the task's `HOME` |
 | `CLAUDE_CODE_OAUTH_TOKEN`, else `ANTHROPIC_API_KEY` | the credential the claude agent runs under, put in the claude process's environment under the name it was read from: a subscription's token (`claude setup-token`), which is a person's, or an API key, which is what a shared runner holds. Where both are set, the token is used, and that is logged at start. | logged; Claude's own login under the task's `HOME` |
 
@@ -207,6 +211,38 @@ The flags: `-config <file>` (default `runner.tony`), `-sandbox bwrap|none`,
 port plus one; `off` disables it). `-task` is how the runner starts each task's process, with the
 configuration on stdin, and is not for a person to run. `runnerd` takes no arguments beyond its
 flags.
+
+#### The secret store
+
+The store is a directory the deployment mounts, as a Kubernetes Secret volume is. Each file is
+one secret, and the file's name is the secret's name: lower case letters, digits, `-`, `_` and
+`.`, not starting with a `.`.
+
+```
+secrets:
+  dir: /secrets
+  systems: {slack: slack-bot, linear-issue: linear}
+```
+
+- **It holds what a task never holds.** The runner acts with a secret for a task. The task's
+  process has neither the value nor the directory. The model keys are not in the store: the
+  task's process holds those, and they come on its stdin.
+- **A value is read at each act.** A secret that is rotated is the next act's, with no restart.
+  The newline a file ends with is not part of the value.
+- **A secret is there where its file reads and is not empty.** An empty file is an absent
+  secret, and so is one the runner cannot read.
+- **A system that names a secret acts with the store alone.** Its variable is not read. Where
+  the variable is set as well, the runner says so when it starts.
+- **A system whose secret is absent at the start is closed** to every doer, and the runner says
+  which secret and where. It stays closed until a restart, since what a runner offers is fixed
+  when it starts. A secret that goes missing later fails the act, with an error that names the
+  secret and never a value.
+- **With `-sandbox none` a task sees the whole machine,** the store with it. A runner started
+  so with a store says so, and starts.
+
+Mount a Secret volume without `subPath`: a `subPath` mount does not follow a Secret that
+changes. A Secret's keys are the files' names, so a key in upper case (`SLACK_BOT_TOKEN`) needs
+an `items` entry that gives it its name in the store.
 
 ### What it offers
 
