@@ -19,6 +19,8 @@ spawn:
   agent: {name: claude}
   environment:
     systems:
+      commands: {}   # claude's own shell and editor, which its runner requires of every spawn
+      files: {}
       mcp:
       - server: linear
         call:
@@ -81,7 +83,9 @@ and no agent. A script's calls go through `verse-call-tool`, which checks a call
 tool's parameters and nothing else, so a tool whose schema says more than its properties (one
 taking any object, one taking arguments beside its properties, one requiring a name its
 properties lack, or one with a parameter named `input`) is not offered to a script, where an
-agent is offered it and the server judges the call. A tool whose schema has a `$ref`, or a
+agent is offered it and the server judges the call. A tool taking nothing (`{type: object,
+additionalProperties: false}`, as a server's `list_*` tools are written) names no properties
+and is offered to a script: a call with no arguments passes the check. A tool whose schema has a `$ref`, or a
 `oneOf`, `anyOf` or `allOf` at the top, is offered to no one.
 
 ## The call

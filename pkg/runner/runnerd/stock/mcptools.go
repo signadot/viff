@@ -157,9 +157,12 @@ func mcpTools(cl *delivery.Client, lists []serverList, takes func(verse.Tool, ma
 // and nothing else (calltool.Check): it refuses a parameter named what the binary reserves for
 // the whole input (calltool.Reserved), which would keep the socket from starting with the tool on
 // it, and a schema the parameters do not carry whole, since a call the schema admits would be
-// refused at the binary: one with no `properties` (a tool taking any object, or one whose schema
-// the list cut), one taking arguments beside them (`additionalProperties`), and one requiring a
-// name its properties lack.
+// refused at the binary: one taking arguments beside its properties (`additionalProperties`
+// other than false), one with no `properties` and no `additionalProperties: false` (a tool
+// taking any object, or one whose schema the list cut), and one requiring a name its properties
+// lack. A tool taking nothing (`{type: object, additionalProperties: false}`, as a server's
+// list_* tools are) has no properties and is taken: a call with no arguments passes the check,
+// and one with any is refused where the server would refuse it too.
 func takesTool(doer string) func(verse.Tool, map[string]any) error {
 	switch doer {
 	case ScriptDoer:
@@ -167,11 +170,12 @@ func takesTool(doer string) func(verse.Tool, map[string]any) error {
 			if _, has := t.Params[calltool.Reserved]; has {
 				return fmt.Errorf("it has a parameter named %q, which verse-call-tool reserves for the whole input", calltool.Reserved)
 			}
-			if _, has := schema["properties"]; !has {
-				return fmt.Errorf("its schema names no properties, and verse-call-tool checks a call against a tool's parameters")
-			}
-			if more, has := schema["additionalProperties"]; has && more != false {
+			more, bounded := schema["additionalProperties"]
+			if bounded && more != false {
 				return fmt.Errorf("its schema takes arguments beside its properties (`additionalProperties`), which verse-call-tool refuses")
+			}
+			if _, has := schema["properties"]; !has && !bounded {
+				return fmt.Errorf("its schema names no properties and bounds none out, so it takes any object, and verse-call-tool checks a call against a tool's parameters")
 			}
 			for _, name := range t.Required {
 				if _, has := t.Params[name]; !has {

@@ -61,6 +61,7 @@ var stepInputs = map[string]map[string]any{
 	"mcp-linear-with_input":   {"input": "x"},
 	"mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once": {},
 	"mcp-linear-any_args":   {"k": "v"},
+	"mcp-linear-no_args":    {},
 	"mcp-linear-set_fields": {"id": "ENG-7", "k": "v"},
 	"mcp-linear-needs_more": {"id": "ENG-7", "team": "ENG"},
 

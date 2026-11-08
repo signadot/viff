@@ -67,8 +67,10 @@ var mcpTestTools = map[string]map[string]any{
 	"with_input": {"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string"}}},
 	"a_tool_whose_name_is_longer_than_claude_takes_once": {"type": "object", "properties": map[string]any{}},
 	// Schemas verse-call-tool's check cannot carry: any object, arguments beside the properties,
-	// a required name the properties lack.
+	// a required name the properties lack. And one it can: a tool taking nothing, as a server's
+	// list_* tools are written.
 	"any_args":   {"type": "object"},
+	"no_args":    {"type": "object", "additionalProperties": false},
 	"set_fields": {"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}}, "additionalProperties": map[string]any{"type": "string"}},
 	"needs_more": {"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string"}}, "required": []any{"id", "team"}},
 	"a tool":     {"type": "object", "properties": map[string]any{}},
@@ -169,7 +171,7 @@ func TestTheMCPToolsAreTheServersListAsTheDoerTakesIt(t *testing.T) {
 	var log bytes.Buffer
 	forClaude := mcpTools(cl, lists, takesTool(claude.Agent), &log)
 	if got, want := names(forClaude), []string{"mcp-linear-any_args", "mcp-linear-create_issue", "mcp-linear-delete_issue", "mcp-linear-get_issue",
-		"mcp-linear-needs_more", "mcp-linear-set_fields", "mcp-linear-with_input"}; !slices.Equal(got, want) {
+		"mcp-linear-needs_more", "mcp-linear-no_args", "mcp-linear-set_fields", "mcp-linear-with_input"}; !slices.Equal(got, want) {
 		t.Errorf("claude's tools: %v, want %v", got, want)
 	}
 	for _, want := range []string{
@@ -184,12 +186,12 @@ func TestTheMCPToolsAreTheServersListAsTheDoerTakesIt(t *testing.T) {
 	}
 	log.Reset()
 	if got, want := names(mcpTools(cl, lists, takesTool(ScriptDoer), &log)), []string{"mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once",
-		"mcp-linear-create_issue", "mcp-linear-delete_issue", "mcp-linear-get_issue"}; !slices.Equal(got, want) {
-		t.Errorf("a script's tools: %v, want %v: the long name in, and out what verse-call-tool's check cannot carry", got, want)
+		"mcp-linear-create_issue", "mcp-linear-delete_issue", "mcp-linear-get_issue", "mcp-linear-no_args"}; !slices.Equal(got, want) {
+		t.Errorf("a script's tools: %v, want %v: the long name and the tool taking nothing in, and out what verse-call-tool's check cannot carry", got, want)
 	}
 	for _, want := range []string{
 		`the tool with_input is left out: it has a parameter named "input", which verse-call-tool reserves`,
-		"the tool any_args is left out: its schema names no properties",
+		"the tool any_args is left out: its schema names no properties and bounds none out, so it takes any object",
 		"the tool set_fields is left out: its schema takes arguments beside its properties (`additionalProperties`)",
 		`the tool needs_more is left out: its schema requires "team", which is none of its properties`,
 	} {
@@ -198,7 +200,7 @@ func TestTheMCPToolsAreTheServersListAsTheDoerTakesIt(t *testing.T) {
 		}
 	}
 	for _, doer := range []string{codex.Agent, AgentName} {
-		if got := names(mcpTools(cl, lists, takesTool(doer), io.Discard)); len(got) != 8 || !slices.Contains(got, "mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once") {
+		if got := names(mcpTools(cl, lists, takesTool(doer), io.Discard)); len(got) != 9 || !slices.Contains(got, "mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once") {
 			t.Errorf("%s's tools: %v, want claude's and the long name (61 letters, which each takes)", doer, got)
 		}
 	}
