@@ -7,9 +7,10 @@ call's arguments are a field of its step ("At the second edit"), a session the s
 opened again and a server's instructions reach the brief ("At the third edit", against
 mcp.signadot.com), and a `null` argument stays a `null` ("At the fourth edit", against
 mcp.linear.app). Being built in `.worktrees/mcp` (branch `verse/mcp`, over `verse/secret-exec`),
-step by step: steps 1 and 2 are committed (81173906, with R1); step 3, the configuration, and
-step 4, the client, are built, with R2 and R3 ("At the third review"), and wait to be
-committed. It blocks 1f5art3x.
+step by step: steps 1 and 2 are committed (81173906, with R1); step 4, the client, with R3 ("At
+the third review"), as dc121a3d; step 3, the configuration, with R2, as 4ab09df0 (and b066d330,
+the json check's allowlist); step 5, the two ops, is built with R4 ("At the fourth review") and
+waits to be committed. Steps 6 to 9 remain. It blocks 1f5art3x.
 
 **Where it is built:** on `verse/secret-exec`, as a pull request on top of it. The team is shown
 secret-exec as one pull request and what it enables, this and pkg-nix (2b5art3x) as far as each
@@ -360,7 +361,8 @@ first finds the approach wrong rather than a corner case, before the next step b
 - **Step 5, the two ops. R4, iterate.** Where 275art3x's binding meets mcp, the plan's security
   core. The round: what is sent is the step and nothing else, an absent argument and a `null`
   never confused, `refused` before the act, the table's tests taking the second op that asks
-  about no step, an op apart never touching the workspace.
+  about no step, an op apart never touching the workspace. **Done:** two holes between the
+  parser and the wire, and the list's bounds ("At the fourth review").
 - **Steps 6, 7 and 8, the tools, the result, and what a server says. R5, together, review.** 7
   and 8 are small and run through 6's `Do` and descriptions. The round: the approval tested the
   whole way through a stock runner, on the arguments the tests name; each doer's limit on a
@@ -548,3 +550,42 @@ mcp:
 - **No capability is declared** (`ClientCapabilities{}`): a server's elicitation is answered
   "client does not support elicitation" by the SDK and the call goes on; roots are answered
   empty; sampling is refused as unsupported.
+
+## At the fourth review (R4, the two ops built, `delivery/mcp.go`)
+
+- **What is sent is the step, through a writer of the runner's own.** Two holes lay between
+  tony's parser and tony's JSON writer. The parser records a number's notation as a tag (`1e5`
+  carries `!exp`, `0x1f` `!hex`), which `systems.Plain` did not strip, so `ReadCall` refused
+  valid JSON as "a tag"; `Plain` now strips every presentation tag (`ir.StripPresentation`), in
+  patterns too. And tony's JSON writer spells a key holding a `"` as tony does (single quotes),
+  so a call the environment and the autonomy had admitted would have failed as "not known";
+  `mcpclient.Arguments` writes the JSON itself, from the structure: an integer an integer, a
+  float a float (`1.0` as `1.0`, `1e5` as `100000.0`, the same number), strings as
+  encoding/json escapes them, and a tag or a key that is no string refused. The IR keeps no
+  literal text of a number, only `Int64` or `Float64` and the notation tag, so "spelled the
+  same on both sides" is: both sides read one body with one parser (`ReadCall`), and `1` and
+  `1.0` are two steps.
+- **A server that asks for input is a refusal in the server's words, not a result.** The SDK
+  never hands a client an `input_required` result: the server, seeing a client with no
+  elicitation, asks it anyway (the multi-round-trip middleware), the client refuses, and the
+  call comes back as a JSON-RPC error ("multi-round-trip: fulfilling input request: client does
+  not support elicitation"). So `Result.NeedsInput` is gone; `mcpclient.ServerError` is the
+  server's JSON-RPC error to a call (a tool it has not, arguments its schema refuses, input the
+  runner does not give), and `mcp.call` answers it as `Refused`, which the task re-plans on.
+  The SDK's own errors share the Go type (`rejected by transport`, `client is closing`), in the
+  range the specification leaves to implementations (-32000 to -32099), and stay "not known".
+- **The list fits a frame.** A tool's schema over `SchemaMost` (16 KiB) is replaced by
+  `{type: object}` with the cut said in the description, the tools past `ListMost` (512 KiB)
+  are left out with a `cut` field saying how many, and a tool whose schema does not read is left
+  out alone, logged, rather than failing the list. Descriptions (1 KiB) and instructions (4 KiB)
+  are cut as planned; a result at 256 KiB, at a rune's boundary.
+- **Smaller:** an error of the server's with no text says so; an embedded resource's text is
+  passed through and a link named with its URI, not followed; the refusal of a list for a server
+  the environment has no block for has words whatever `Refuses` says; a `{1: x}` body is tony's
+  sparse array, refused as a tag. A JSON integer past int64 does not parse, and is refused as
+  "the arguments do not read", before the act.
+- **Tests added for the round:** a non-string key, an exponent and a quoted key through to the
+  server; `Task.apart` keeping the sessions and no workspace; a tool outside both the
+  environment and the ceiling, and no ceiling for mcp listing nothing; the list's three bounds
+  through the SDK's server (60 tools of 14 KiB, one of 16 KiB+); a result cut on a multibyte
+  text; a call to a server that is gone.
