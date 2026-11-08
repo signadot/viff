@@ -20,6 +20,7 @@ import (
 
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
 	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
 	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
 	"github.com/signadot/verse/pkg/systems"
@@ -68,6 +69,9 @@ type Services struct {
 	// Confine confines a command the runner runs for a task apart from the task's own process
 	// (`secret.exec`); nil, the runner runs none.
 	Confine Confine
+	// MCP is the remote MCP servers the runner calls for its tasks, by name, each credential a
+	// secret of Secrets; none, the runner calls none.
+	MCP mcpclient.Servers
 }
 
 // Confine confines a command the runner runs for a task, apart from the task's own process and
@@ -148,6 +152,11 @@ type Task struct {
 	// there is none. The runner decides; its own forge token is the usual answer.
 	Credential func(repo workspace.Repo) (string, error)
 
+	// mcp is the task's sessions with the MCP servers the runner calls, made as Serve begins and
+	// closed as it returns, nil where the runner calls none. An op apart keeps it (apart):
+	// nothing in turn writes it, and the calls are apart.
+	mcp *mcpclient.Sessions
+
 	// created is the branches this task set out to create, by repo and ref: recorded when it
 	// stages the push that makes one, so it holds though that push failed and the sweep landed
 	// it. With the task's own commit at the forge (state), they are its own: to push
@@ -188,6 +197,12 @@ func (tk Task) apart() Task {
 func (s *Server) Serve(tk Task, conn net.Conn) {
 	defer conn.Close()
 	tk.created, tk.pushed = map[string]bool{}, map[string]bool{}
+	// The task's sessions with the MCP servers: closed once what was begun is done (after
+	// inflight), so a call in flight is given up first, and nothing is left open.
+	if len(s.Services.MCP) > 0 {
+		tk.mcp = mcpclient.New(s.Services.MCP, s.Services.Secrets, s.Log)
+		defer tk.mcp.Close()
+	}
 	gone, leave := context.WithCancel(context.Background())
 	var (
 		writing  sync.Mutex // one frame onto the connection at a time

@@ -102,6 +102,7 @@ const (
 	needsRepos  = "a `repos` section is what checks out repos"
 	needsGitHub = "a `repos` section whose forge is github.com, or `repos.api` naming the forge's GitHub API"
 	needsSecret = "a secret store (`secrets.dir`) and a sandbox are what runs a command with a secret"
+	needsMCP    = "an `mcp.servers` section names the servers the runner calls"
 )
 
 // performedSystems is the table, in the order an offer lists them.
@@ -117,6 +118,9 @@ var performedSystems = []performed{
 	// The secret system acts with no credential of the runner's: each ceiling block names the
 	// secret of the store it is for, and the runner reads that at the act.
 	{system: "secret", when: hasStore("secret"), needs: needsSecret},
+	// The mcp system acts with each server's own credential, which the server's entry names
+	// (`mcp.servers.<name>.auth`), read from the store at each request.
+	{system: "mcp", when: hasServers, needs: needsMCP},
 	// The verse system is carried to verse over the channel too, where the runner reaches its
 	// verse with a token of its own (Standalone's toVerse); `question`'s ask stays inside the run.
 	{system: "verse", when: reachesVerse, atStart: true},
@@ -171,6 +175,8 @@ type Config struct {
 	// deployment mounts, one file to a secret. Absent, the runner has none, and reads each
 	// credential from its environment.
 	SecretStore *SecretStore `tony:"field=secrets,omitzero"`
+	// MCP is the remote MCP servers the runner calls for its tasks (`mcp:`), where it calls any.
+	MCP *MCP `tony:"field=mcp,omitzero"`
 
 	// reachesVerse is whether the runner carries the verse system's verbs to the verse it serves
 	// (Standalone's toVerse): not the file's to say, since it follows from the runner's `verse:`
@@ -378,7 +384,8 @@ func (c Config) services(t Tokens) delivery.Services {
 	// The store is the channel's too, for the secret a `secret.exec` runs a command with: one
 	// over no directory where the runner has none, which has no secret.
 	return delivery.Services{LinearAuth: c.credential("linear-issue", t.Linear), LinearAPI: t.LinearAPI, GitHubAPI: api,
-		SlackToken: c.credential("slack", t.Slack), SlackAPI: t.SlackAPI, Secrets: secretstore.Open(c.secretsDir())}
+		SlackToken: c.credential("slack", t.Slack), SlackAPI: t.SlackAPI, Secrets: secretstore.Open(c.secretsDir()),
+		MCP: c.mcpClientServers()}
 }
 
 // TokensFromEnv reads the runner's tokens from its environment, each where the runner performs
@@ -472,7 +479,10 @@ func (c Config) Held(getenv func(string) string) (Config, []string) {
 			}
 		}
 	}
-	return c, warnings
+	// An MCP server's credential is a secret of the store too, named with the server: one whose
+	// secret is not there is left out, with every ceiling block naming it.
+	c, held := c.heldMCP()
+	return c, append(warnings, held...)
 }
 
 // withSection is c with doer's section for system set to s, or left out where s is nil. c's maps
@@ -863,6 +873,9 @@ func (c *Config) Check() error {
 			case system == "secret":
 				return fmt.Errorf("%s: secret names its secret in each block of a doer's ceiling (`name`), not here (those that may name a secret: %s)",
 					at, strings.Join(may, ", "))
+			case system == "mcp":
+				return fmt.Errorf("%s: mcp names each server's secret with the server (`mcp.servers.<name>.auth.secret`), not here (those that may name a secret: %s)",
+					at, strings.Join(may, ", "))
 			case !p.own && p.env != "":
 				return fmt.Errorf("%s: %s acts with the forge's token (%s), which is not the store's (those that may name a secret: %s)",
 					at, system, p.env, strings.Join(may, ", "))
@@ -873,6 +886,9 @@ func (c *Config) Check() error {
 				return fmt.Errorf("%s: %w", at, err)
 			}
 		}
+	}
+	if err := c.checkMCP(); err != nil {
+		return err
 	}
 	if c.Script != nil {
 		if err := checkShellEnv("script", c.Script.ShellEnv); err != nil {
@@ -1012,6 +1028,11 @@ func (c *Config) checkSystems(doer string, sections map[string]System) error {
 		}
 		if name == "secret" {
 			if err := checkSecretCeiling(at, sys.Ceiling); err != nil {
+				return err
+			}
+		}
+		if name == "mcp" {
+			if err := c.checkMCPCeiling(at, sys.Ceiling); err != nil {
 				return err
 			}
 		}
