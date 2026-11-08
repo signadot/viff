@@ -1,0 +1,18 @@
+[toolchain] dpkg-deb (amd64)., xz 5.8.4, patchelf 0.19.2
+[catalog] fetching the bookworm Packages index
+[catalog] jq resolves to version 1.6-2.1+deb12u2
+[install] jq 1.6-2.1+deb12u2: bin [jq ] lib [libjq.so.1 libjq.so.1.0.4 libonig.so.5 libonig.so.5.3.0 ]
+[runner] run the cellar binary directly, NO LD_LIBRARY_PATH (RUNPATH makes it self-contained):
+   /state/cellar/jq/1.6-2.1+deb12u2/bin/jq --version -> jq-1.6
+   its RUNPATH: $ORIGIN/../lib; needs: 	libjq.so.1 => /state/cellar/jq/1.6-2.1+deb12u2/bin/../lib/libjq.so.1 (0x00007fc18721c000) 	libonig.so.5 => /state/cellar/jq/1.6-2.1+deb12u2/bin/../lib/libonig.so.5 (0x00007fc186ebd000) 
+[runner] the task root: bin [jq jq-v2 ] -> jq=>../opt/jq-1.6-2.1+deb12u2/bin/jq jq-v2=>../opt/jq-1.6-2.1+deb12u2/bin/jq 
+[runner] --- run them inside a bwrap task, $I bound read-only at /opt, PATH=/opt/bin
+[task] uid 65532 CapEff 0000000000000000; PATH=/opt/bin:/usr/bin:/bin
+[task] which jq: /opt/bin/jq; which jq-v2: /opt/bin/jq-v2
+[task] jq --version:    jq-1.6
+[task] jq-v2 --version: jq-1.6
+[task] a real run: echo {"a":1} | jq .a -> 1
+[task] no LD_LIBRARY_PATH set: [unset]
+[task] write into /opt: touch: cannot touch '/opt/bin/evil': Read-only file system
+[task] can it see the cellar or other tasks? /state: ls: cannot access '/state': No such file or directory
+[runner] done; cellar holds versions: jq/1.6-2.1+deb12u2 

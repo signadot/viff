@@ -1,0 +1,40 @@
+[runner] uid 65532 CapEff 0000000000000000 in userns user:[4026533864]
+bash: line 73: pgrep: command not found
+bash: line 74: pgrep: command not found
+[runner] owner holder pid 3493 (userns user:[4026533992], mntns mnt:[4026533996]); task pid 
+  [owner] created: uid 65532 CapEff 0000000000000000 userns user:[4026533992] mntns mnt:[4026533996]
+  mount: /state/0c/work: must be superuser to use mount.
+         dmesg(1) may have more information after failed mount system call.
+  mount: /state/0c/work: must be superuser to use mount.
+         dmesg(1) may have more information after failed mount system call.
+  [task] uid 65532 CapEff 0000000000000000 userns user:[4026533992]
+  [task] phase 0: /work/nix-store has []
+[runner] --- does the runner get capabilities entering the owner's userns?
+[runner] nsenter -U (userns only), preserve-credentials: CapEff: 0000000000000000
+[runner] nsenter -U -m (user+mount): / under it shows [nix-store ]
+[runner] --- the runner binds a store path into the task's view, from inside the owner's namespaces
+[runner/in] uid 65532 CapEff 0000000000000000
+mount: /state/0c/work/nix-store/pkg: must be superuser to use mount.
+       dmesg(1) may have more information after failed mount system call.
+[runner/in] bind failed rc=32
+mount: /state/0c/work/nix-store/pkg: must be superuser to use mount.
+       dmesg(1) may have more information after failed mount system call.
+[runner/in] remount ro failed
+[runner/in] the pkg mount is now in the ns, count: 0
+[runner] --- now unbind it
+umount: /state/0c/work/nix-store/pkg: not mounted.
+[runner] unbind failed
+[runner] --- the task's log:
+  [owner] created: uid 65532 CapEff 0000000000000000 userns user:[4026533992] mntns mnt:[4026533996]
+  mount: /state/0c/work: must be superuser to use mount.
+         dmesg(1) may have more information after failed mount system call.
+  mount: /state/0c/work: must be superuser to use mount.
+         dmesg(1) may have more information after failed mount system call.
+  [task] uid 65532 CapEff 0000000000000000 userns user:[4026533992]
+  [task] phase 0: /work/nix-store has []
+  [task] phase 1: /work/nix-store has [pkg ]; read: cat: /state/0c/work/nix-store/pkg/hello: No such file or directory
+  [task]    write it: 
+  [task]    a path to the source? /state/0c/src: hello (the runner-side dir; the task has the same /state only if /state is in its mounts)
+  [task]    the task mounts naming the source dir: 0
+  [task] phase 2, after unbind: /work/nix-store has [pkg ]
+[runner] --- does the runner's bind leak to the pod? /state/0c/work/nix-store here shows [pkg ]

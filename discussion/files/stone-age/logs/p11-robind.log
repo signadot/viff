@@ -1,0 +1,16 @@
+[runner] bwrap bubblewrap 0.13.1; binding /state/tasks/i1 read-only at /inst, once
+[task] uid 65532 CapEff 0000000000000000; PATH=/inst/bin:/usr/bin:/bin
+[task] phase 0: /inst/bin holds [jq ]
+[task]    jq at start: jq-v1 says hi
+[task]    go present?  go
+[task]    task writes /inst/bin: touch: cannot touch '/inst/bin/evil': Read-only file system
+[runner] --- task is running; now installing into /state/tasks/i1 from the runner's side (plain writes, no mount)
+[runner] wrote go, jq-v2, lib/libx.txt into /state/tasks/i1
+[task] phase 1, after the runner installed go and a newer jq, no new mount:
+[task]    /inst/bin holds [go jq ]
+[task]    go now: 
+[task]    jq now: jq-v2 says hi
+[task]    a lib appeared: libx from the runner
+[task]    task writes the new file: touch: cannot touch '/inst/bin/go.evil': Read-only file system
+[task]    the task mounts naming /inst: 1 (one bind, made at start)
+[runner] --- task exited; /inst on the runner side still holds [go jq ], task's evil writes present? [none]

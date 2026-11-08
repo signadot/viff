@@ -1,0 +1,8 @@
+[runner] uid 65532, CapEff 0000000000000000; bwrap bubblewrap 0.13.1
+[task] uid 65532, CapEff 0000000000000000, NoNewPrivs 1, 28 mounts
+[runner] bwrap pid 3435, its child 3437; the child's uid_map:  65532 65532 1
+[runner] after joining the child's user namespace alone: CapEff: 0000000000000000
+[runner] nsenter -U -m -t 3437: / shows [nsenter: reassociate to namespace 'ns/mnt' failed: Operation not permitted ]
+[runner] nsenter -U -m -t 3435: / shows [nsenter: reassociate to namespace 'ns/user' failed: Invalid argument ]
+[runner] no pid enters the sandbox; giving up
+command terminated with exit code 1
