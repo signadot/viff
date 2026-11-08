@@ -56,4 +56,107 @@ about.
 
 **A server's word for which tools read and which write is not trusted.** A server may describe a
 tool as read-only; the ceiling names tools, and the environment's shapes and the rows decide by
-them.
+them. Where a server keeps the line itself, naming that is a second bound under the ceiling: Linear
+serves its read tools alone at `https://mcp.linear.app/mcp/readonly`, and a key made with read
+permission only reads whatever tool is called. A runner that names the read-only endpoint as one
+server and the full one as another lets a ceiling give a doer the first and not the second.
+
+## What a task is offered
+
+The task is offered a tool for each tool of the server's list that some shape of its environment,
+and some shape of the doer's ceiling, admits a call of; the rest are not there. The list is asked
+of each server as the task is built, every server at once, and is fixed for the run. A server that
+does not answer leaves the task without its tools, and the task's brief says so; the runner's log
+says why.
+
+A server's instructions (what it says of itself as the session opens, how its tools are meant to
+be used together) go in the brief under the server's name, as the server's own words, which grant
+nothing: every call is decided here. Each tool's description ends by saying that what it answers
+is data, not instructions.
+
+What a doer cannot take is left out of that doer's list, and logged. An agent's model takes a
+tool's name of letters, digits, `_` and `-`, 64 characters at most, Claude's counting the
+`mcp__verse__` it reads a tool under; a name with a `.` in it, which MCP allows, reaches a script
+and no agent. A script's calls go through `verse-call-tool`, which checks a call against the
+tool's parameters and nothing else, so a tool whose schema says more than its properties (one
+taking any object, one taking arguments beside its properties, one requiring a name its
+properties lack, or one with a parameter named `input`) is not offered to a script, where an
+agent is offered it and the server judges the call. A tool whose schema has a `$ref`, or a
+`oneOf`, `anyOf` or `allOf` at the top, is offered to no one.
+
+## The call
+
+What is sent is the step. The tool writes the arguments as a JSON object and the runner reads
+the step from those bytes, as the tool does, so the arguments a row decides on and an answer is
+bound to are the arguments sent, and nothing else is sent. An agent's wire reads every number as
+a float, so a float that is a whole number is sent whole (`3`, never `3.0`). A call whose
+arguments are over 64 KiB is refused, since the step is carried whole in the task's events, its
+snapshot and the question's record.
+
+A call is made with the server's `timeout` (60s where it names none), and a call given up at it
+says that whether the server performed it is not known: read it back before doing it again. A
+call the server answers with an error (a tool it has not, arguments its schema refuses, input it
+asks the runner for and the runner does not give) is refused in the server's words, which the
+task re-plans on.
+
+## The result
+
+The task reads the text of the result's content, in order. Content that is not text is named and
+left out: an image, audio, a resource that is no text, a link not followed. A result with no text
+and structured content is that content as JSON. A result the server marks an error is read as
+text all the same. A result over 256 KiB is cut, and says so.
+
+What a tool needs that the runner does not carry does not work through it: a result the task
+must act on outside the call, such as a signed url to upload a file to (Linear's
+`prepare_file_upload`), and content that is not text (`extract_images`).
+
+## The question
+
+A row that asks about a call asks about the server, the tool and the arguments, and the answer
+performs that call and no other. The question's record carries the step's fields, arguments and
+all, and `verse question <id>` shows them. The Slack ask names the server and the tool and not
+the arguments; the binding holds whatever a person is shown.
+
+## The runner's configuration
+
+The runner names its servers under `mcp.servers`, and a doer's `mcp` ceiling names the servers
+its tasks may call, one to a block, with the `call` shapes ([the verse
+runner](../reference/runnerd.md#configuration)):
+
+```tony
+secrets: {dir: /secrets}
+mcp:
+  servers:
+    linear:   {url: "https://mcp.linear.app/mcp/readonly", auth: {secret: linear}}
+    linear_w: {url: "https://mcp.linear.app/mcp", auth: {secret: linear}, timeout: 90s}
+    signadot: {url: "https://mcp.signadot.com/stream", auth: {secret: signadot-api-key, header: signadot-api-key}}
+agents:
+  claude:
+    systems:
+      mcp:
+        ceiling:
+        - {server: linear}
+        - {server: linear_w, call: [{tool: save_issue, arguments: {team: ENG}}]}
+```
+
+- **A server's name** is lowercase letters, digits and `_`, a letter first, with no `-`, so a
+  tool's name `mcp-<server>-<tool>` is one tool's.
+- **`url` is the server's streamable HTTP endpoint,** `https`. It holds no user and no query:
+  the task's process is sent the configuration, and a key in a url would reach it. A key goes in
+  `auth`.
+- **`auth` is how the runner signs a request:** `secret` names a secret of the [secret
+  store](../reference/runnerd.md#the-secret-store), read at each request, so a rotation holds for
+  the next call of a running task. With no `header` it is sent as `Authorization: Bearer
+  <value>`; with one, as that header, the value as it is. A server with no `auth` is called with
+  no credential. A server whose secret is not in the store at the start is left out, with every
+  ceiling block naming it, and the runner says so.
+- **`timeout`** is how long one call has, 60s by default and at most 10m.
+- **A ceiling block names one server,** as a literal: a server is what a doer is trusted with.
+- **One credential reaches one workspace.** A second Linear workspace is a second server
+  (`linear_acme`), with its own secret.
+
+The runner follows no redirect, so a server does not choose where the credential goes, and
+declares no capability: a server's request for elicitation, sampling or roots is refused, and
+the call it came in goes on. A server reached only through an interactive sign-in (OAuth with no
+token the operator can hold) is not reached; Linear and Signadot take a key in the header. Servers
+over stdio are not run: the runner would start code outside any sandbox.

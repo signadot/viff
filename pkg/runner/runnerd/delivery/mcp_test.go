@@ -361,6 +361,11 @@ func TestTheListIsTheToolsTheEnvironmentAndTheCeilingAdmit(t *testing.T) {
 	if rep.OK || !strings.Contains(rep.Error, "calls no server github") {
 		t.Errorf("a server the runner does not call: %+v", rep)
 	}
+	// A call to it was not made, and says so, rather than that it is not known.
+	rep = s.answer(tk, frame(t, Request{Op: OpMCPCall, Body: `{}`, Fields: map[string]string{"server": "github", "tool": "get_issue"}}))
+	if rep.OK || rep.Error != "this runner calls no server github, so the call of get_issue was not made" {
+		t.Errorf("a call to a server the runner does not call: %+v", rep)
+	}
 }
 
 // THE LIST FITS A FRAME: a tool's schema past its bound is replaced by the least one, said in the

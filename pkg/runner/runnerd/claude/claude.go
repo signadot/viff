@@ -98,10 +98,9 @@ var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
 const mcpServer = "verse"
 
 // toolNameMost is the longest name of a tool Claude is offered, prefix and all, and toolName the
-// letters it takes in one. The Messages API takes 128 today and took 64 before; what Claude Code
-// itself takes of an MCP tool's name is not documented, and a name it refuses fails the whole
-// run, where one left out here is logged and the rest are offered. So the bound every version
-// takes, until Claude Code says otherwise.
+// letters it takes in one. The Messages API takes 128; what Claude Code itself takes of an MCP
+// tool's name is not documented, and a name it refuses fails the whole run, where one left out
+// here is logged and the rest are offered. So 64, which every version of both takes.
 const toolNameMost = 64
 
 var toolName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)

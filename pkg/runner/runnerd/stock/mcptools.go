@@ -190,8 +190,7 @@ func takesTool(doer string) func(verse.Tool, map[string]any) error {
 
 // paramsOf is a tool's parameters as verse.Tool carries them, from its schema: the properties, and
 // the names required. The third is why they cannot be, "" where they can: a `$ref` anywhere, or a
-// `oneOf`, `anyOf` or `allOf` at the top, which the properties alone would misread, until a tool
-// carries a whole schema.
+// `oneOf`, `anyOf` or `allOf` at the top, which the properties alone would misread.
 func paramsOf(schema map[string]any) (map[string]any, []string, string) {
 	for _, k := range []string{"oneOf", "anyOf", "allOf"} {
 		if _, has := schema[k]; has {

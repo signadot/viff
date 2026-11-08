@@ -145,6 +145,10 @@ func (s *Server) mcpCall(ctx context.Context, tk Task, req Request) (asked, Repl
 		if tk.mcp == nil {
 			return Reply{Error: noMCP}
 		}
+		if _, calls := s.Services.MCP[c.Server]; !calls {
+			// An environment naming a server the configuration does not: nothing was sent.
+			return Reply{Error: fmt.Sprintf("this runner calls no server %s, so the call of %s was not made", c.Server, c.Tool)}
+		}
 		args, err := mcpclient.Arguments(c.Arguments)
 		if err != nil {
 			return s.bug(tk, "%s read arguments it cannot send: %v", req.Op, err)

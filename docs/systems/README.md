@@ -60,5 +60,5 @@ of any branch; a charter that ships writes its git push shapes instead.
 | [`network`](inside.md#the-network) | `tcp-client` | none: the connections a run opens through its runner's proxy |
 
 The runner performs the verbs of `git`, `git-issue`, `github`, `github-issue`, `linear-issue`,
-`slack`, `secret` and `verse`. It uses its own credential, and stays within the ceiling its
+`slack`, `secret`, `mcp` and `verse`. It uses its own credential, and stays within the ceiling its
 configuration puts over each system ([the verse runner](../reference/runnerd.md#configuration)).

@@ -30,8 +30,8 @@ import (
 
 const (
 	// Timeout is how long a call of a server's tool has where the server names no `timeout`,
-	// and TimeoutMost the longest one may name: the table's deadline for `mcp.call` is that,
-	// and a call applies the server's own within it.
+	// and TimeoutMost the longest one may name: the table's deadline for `mcp.call` is this and
+	// a grace past it (delivery's mcpGrace), so a call's own timeout fires first and says why.
 	Timeout     = time.Minute
 	TimeoutMost = 10 * time.Minute
 	// ListTimeout is how long a server has to answer its list of tools, at a task's start: a
@@ -111,10 +111,12 @@ func New(servers Servers, store *secretstore.Store, log io.Writer) *Sessions {
 // that asked the client for input the client does not give): the server answered, and the call
 // was not performed as asked. It is the server's word, carried as it is.
 type ServerError struct {
+	// Code is the error's JSON-RPC code, and Message its text, as the server sent them.
 	Code    int64
 	Message string
 }
 
+// Error is the server's message, said to be the server's.
 func (e *ServerError) Error() string { return "the server answered an error to the call: " + e.Message }
 
 // Call calls tool of server with arguments, a JSON object, within the server's timeout. What is
@@ -299,9 +301,10 @@ func writeJSONString(b *bytes.Buffer, s string) error {
 
 // Result is a tool's result as the task reads it: the text of its content, in order, an embedded
 // resource's text among it, and content that is not text named in its place (a link is named and
-// not followed); a result with no text and structured content is that, as JSON text. IsError is the server's mark on the result, which the task reads as the server's
-// word: the tool was called, and this is what it said. A tool that asks the client for input is
-// no result: the client gives none, and the server answers an error to the call (ServerError).
+// not followed); a result with no text and structured content is that, as JSON text. IsError is
+// the server's mark on the result, which the task reads as the server's word: the tool was
+// called, and this is what it said. A tool that asks the client for input is no result: the
+// client gives none, and the server answers an error to the call (ServerError).
 type Result struct {
 	Text    string
 	IsError bool
