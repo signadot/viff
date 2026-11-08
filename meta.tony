@@ -8,9 +8,10 @@ created: "2026-11-07T14:56:12.243483+01:00"
 duplicates: []
 id: 2b5art3xh12ksz1dxxn0
 labels:
+- dead-end
 - design
 - runners
 related_issues:
 - pa35grmzh12krvwdxsn0
 status: open
-updated: "2026-11-07T23:00:00.272071+01:00"
+updated: "2026-11-08T17:10:24.518318+01:00"
