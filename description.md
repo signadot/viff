@@ -1,10 +1,15 @@
 # mcp: a system for the tools of remote MCP servers, called by the runner
 
+# mcp: a system for the tools of remote MCP servers, called by the runner
+
 **Status:** a plan, reviewed twice ("At the second review", below), and edited between: a
 call's arguments are a field of its step ("At the second edit"), a session the server ended is
 opened again and a server's instructions reach the brief ("At the third edit", against
 mcp.signadot.com), and a `null` argument stays a `null` ("At the fourth edit", against
-mcp.linear.app). Nothing is built. It blocks 1f5art3x.
+mcp.linear.app). Being built in `.worktrees/mcp` (branch `verse/mcp`, over `verse/secret-exec`),
+step by step: steps 1 and 2 are committed (81173906, with R1); step 3, the configuration, and
+step 4, the client, are built, with R2 and R3 ("At the third review"), and wait to be
+committed. It blocks 1f5art3x.
 
 **Where it is built:** on `verse/secret-exec`, as a pull request on top of it. The team is shown
 secret-exec as one pull request and what it enables, this and pkg-nix (2b5art3x) as far as each
@@ -155,8 +160,12 @@ Each step builds and passes on its own.
      that between calls. Where the server answers that it does not know the session (404 on the
      session's id, as streamable HTTP says, which the SDK answers as `mcp.ErrSessionMissing`),
      the client opens a new one, initializes it, and sends the call on it, once. That answer
-     means the server took nothing of the call. Several calls finding the session gone at once
-     open one new session between them, under the sessions' lock.
+     means the server took nothing of the call, where it was the answer to the call's own POST:
+     the SDK fails the whole connection on it, and a call in flight on that connection hears the
+     same error, so each call marks its own request through its context, and one not so marked
+     fails saying whether it was performed is not known (the third review). Several calls
+     finding the session gone at once open one new session between them, under the sessions'
+     lock.
    - **A call is never sent twice.** A response cut after the call was sent is resumed where
      the server gives event ids: the SDK's transport asks again for the rest with
      `Last-Event-ID` (`MaxRetries`, set explicitly), a GET that does not send the call again.
@@ -346,7 +355,8 @@ first finds the approach wrong rather than a corner case, before the next step b
   the SDK's own model. The round: a call never sent twice, across a session opened again and a
   response resumed; one session opened under the lock; the credential reaching no second host;
   nothing left open once `Serve` returns. Where the SDK's model of a session is not the plan's,
-  the client is reworked and read again before step 5.
+  the client is reworked and read again before step 5. **Done:** one rework, the mark on a
+  call's own request ("At the third review").
 - **Step 5, the two ops. R4, iterate.** Where 275art3x's binding meets mcp, the plan's security
   core. The round: what is sent is the step and nothing else, an absent argument and a `null`
   never confused, `refused` before the act, the table's tests taking the second op that asks
@@ -504,3 +514,37 @@ mcp:
   `doc`.
 - **The bound:** refused at 64 KiB. The step is carried whole in the task's events, its
   snapshot and the question's record; nothing on verse's side bounds it smaller.
+
+## At the third review (R3, the client built, `pkg/runner/runnerd/mcpclient`)
+
+- **The SDK fails the whole connection on a 404,** wrapping `mcp.ErrSessionMissing`, and every
+  call in flight on it is retired with that error; so was the plan's reading of it ("the server
+  took nothing of the call") wrong for all but the call whose POST was refused. A test ended the
+  session under two calls in flight and counted the server's calls; the client was reworked: each
+  call carries a mark in its context, the round tripper under the SDK sets it where the call's
+  own POST is answered 404 as of a known session, and `with` sends a call again only so marked.
+  A call retired otherwise fails, says whether it was performed is not known, and lets the
+  session go, so the next call opens one.
+- **A response cut before its headers came is "rejected by transport"** to the SDK, not a
+  session missing: the call fails and is not sent again, though the server may have taken it.
+  The same bound holds.
+- **Resumption is the old protocol's.** The protocol of 2026-07-28 (SEP-2575) drops
+  `Last-Event-ID` resumable streams; the SDK's server gives event ids only to a client that
+  negotiated an earlier version. The client takes the SDK's default and the server negotiates:
+  against one that speaks 2025-11-25 a cut response is resumed and the server saw the call once;
+  against one on the new protocol it fails, and the server saw the call once. Both are tested,
+  through a TCP proxy that drops the connection at the first result it sees.
+- **Close is bounded by the SDK's 5s on the DELETE** that tells a server the session is over,
+  which the SDK's own server holds while a call runs. The sessions are closed at once, not in
+  turn, so a task's end waits that at most, not once per server. `Serve` closes them after
+  `inflight`, so a call in flight is given up first and nothing is left open.
+- **The bound on a response is read by the SDK as the response's end:** the call fails with
+  "request terminated without response", so the client's log says why, with the bound.
+- **The timeouts live in `mcpclient`** (`Timeout`, `TimeoutMost`, `ListTimeout`, `ReadMost`),
+  since delivery imports it; the `delivery/mcp.go` of step 3 is dropped, and `stock` reads them
+  there. `delivery.Services` gains `MCP mcpclient.Servers`, built by `stock` from the held
+  configuration, and `delivery.Task` the task's sessions, made as `Serve` begins where the
+  runner calls any server, and kept by `Task.apart`.
+- **No capability is declared** (`ClientCapabilities{}`): a server's elicitation is answered
+  "client does not support elicitation" by the SDK and the call goes on; roots are answered
+  empty; sampling is refused as unsupported.
