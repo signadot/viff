@@ -13,4 +13,4 @@ Open questions:
 2. **Redaction on the way in?** Output is redacted; input is the task's own words going to a process that already holds the secret, so there is nothing to redact — but worth saying explicitly in the words.
 3. **Shapes**: does a row get to say "no stdin" (a command admitted for its argv alone, refused an interactive channel)? A `stdin: false` knob on the exec shape would keep today's behaviour the default.
 
-Where it goes: on the secret-exec code (`pkg/runner/runnerd/delivery`, the exec op and its channel), after the pkg stack ([2k5art3xh12ksjcyy1n0]) ships, so the stack is not rebased under the staging run.
+Where it goes: on `verse/secret-exec`, the branch that owns the exec op and its channel (`pkg/runner/runnerd/delivery`) — the stack the team reads is pkg on mcp on secret-exec, and this is secret-exec's feature. After the pkg stack ([2k5art3xh12ksjcyy1n0]) ships, so the stack is not rebased under the staging run; `verse/mcp` and `verse/pkg` rebase onto the new tip then.
