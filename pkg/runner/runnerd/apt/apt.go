@@ -37,8 +37,9 @@ type Exec func(ctx context.Context, name string, args ...string) ([]byte, error)
 
 // Apt is the wrapper over one set of repositories.
 type Apt struct {
-	// State is the wrapper's own writable directory: the sources.list it writes, the lists
-	// `update` fetches, and the archives cache.
+	// State is the wrapper's own writable directory: the sources.list it writes and the lists
+	// `update` fetches, both bounded by the repositories named. Fetched packages live with the
+	// build that fetched them, never here.
 	State string
 	// Repos are the sources.list lines the operator trusts
 	// (`deb http://deb.debian.org/debian bookworm main`).
@@ -55,6 +56,10 @@ type Apt struct {
 
 	mu      sync.Mutex
 	updated time.Time
+	// updating single-flights the index refresh: two resolves finding the index stale at once
+	// would both run `apt-get update` into one state directory, and the loser would fail on
+	// apt's lists lock.
+	updating sync.Mutex
 }
 
 // Pkg is one package of a closure: what to fetch, from where, and the hash the verified index
@@ -121,7 +126,7 @@ func (a *Apt) opts() []string {
 // Update fetches the repositories' indices, signatures verified by apt against the image's
 // keyrings, into the wrapper's own state.
 func (a *Apt) Update(ctx context.Context) error {
-	for _, dir := range []string{"lists/partial", "cache", "archives/partial"} {
+	for _, dir := range []string{"lists/partial", "cache"} {
 		if err := os.MkdirAll(filepath.Join(a.State, dir), 0o755); err != nil {
 			return err
 		}
@@ -139,8 +144,12 @@ func (a *Apt) Update(ctx context.Context) error {
 }
 
 // ensureIndex updates where the index was never fetched by this process or has grown older than
-// MaxIndexAge — the `brew update` of the system, implicit.
+// MaxIndexAge — the `brew update` of the system, implicit. One update runs at a time: a second
+// caller finding the index stale waits on the first and reads the clock again, so concurrent
+// resolves never race `apt-get update` against itself.
 func (a *Apt) ensureIndex(ctx context.Context) error {
+	a.updating.Lock()
+	defer a.updating.Unlock()
 	a.mu.Lock()
 	fresh := !a.updated.IsZero() && time.Since(a.updated) < a.maxAge()
 	a.mu.Unlock()
@@ -232,10 +241,28 @@ func (a *Apt) indexEntry(ctx context.Context, name, version string) (file, sha s
 			}
 		}
 		if fields["Package"] == name && fields["Version"] == version && fields["SHA256"] != "" && fields["Filename"] != "" {
+			if !hexSHA256(fields["SHA256"]) {
+				return "", "", fmt.Errorf("the index's SHA256 for %s %s is no sha256: %q", name, version, fields["SHA256"])
+			}
 			return fields["Filename"], fields["SHA256"], nil
 		}
 	}
 	return "", "", fmt.Errorf("the index carries no SHA256 for %s %s", name, version)
+}
+
+// hexSHA256 is whether s is a sha256 as the index spells one, 64 hex digits: everything the
+// wrapper does with a hash — slicing a cache name from it, comparing a fetch against it — holds
+// only for one, and a malformed entry is refused by name rather than trusted.
+func hexSHA256(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // installedVersion is the version the image provides (`apt-cache policy`'s Installed line).
@@ -260,9 +287,10 @@ func (a *Apt) installedVersion(ctx context.Context, name string) (string, error)
 func (a *Apt) Build(ctx context.Context, r Resolution) func(stage string) error {
 	return func(stage string) error {
 		trees := filepath.Join(stage, ".x")
+		debs := filepath.Join(stage, ".debs")
 		var named string
 		for _, p := range r.Closure {
-			deb, err := a.fetch(ctx, p)
+			deb, err := a.fetch(ctx, debs, p)
 			if err != nil {
 				return err
 			}
@@ -286,14 +314,18 @@ func (a *Apt) Build(ctx context.Context, r Resolution) func(stage string) error 
 		if err := a.assemble(ctx, stage, named, trees); err != nil {
 			return err
 		}
-		return os.RemoveAll(trees)
+		if err := os.RemoveAll(trees); err != nil {
+			return err
+		}
+		return os.RemoveAll(debs)
 	}
 }
 
-// fetch brings one package into the archives cache and answers its path: by the url the plan
-// gave, held to the SHA256 the index gave, a cached file reverified before it is reused.
-func (a *Apt) fetch(ctx context.Context, p Pkg) (string, error) {
-	dir := filepath.Join(a.State, "archives")
+// fetch brings one package into dir, a directory of the build's own, and answers its path: by
+// the url the plan gave, held to the SHA256 the index gave, a file already there reverified
+// before it is reused. The fetched files live and die with the build — the cellar's prefixes are
+// the cache, so nothing accumulates where no bound governs it.
+func (a *Apt) fetch(ctx context.Context, dir string, p Pkg) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -426,7 +458,11 @@ func (a *Apt) assemble(ctx context.Context, stage, named, trees string) error {
 			if err != nil || !info.Mode().IsRegular() {
 				continue
 			}
-			if err := copyFile(src, filepath.Join(stage, "bin", e.Name()), info.Mode().Perm()); err != nil {
+			to := filepath.Join(stage, "bin", e.Name())
+			if _, err := os.Lstat(to); err == nil {
+				continue // usr/bin landed it: a pre-usrmerge /bin carries the same command as a symlink
+			}
+			if err := copyFile(src, to, info.Mode().Perm()); err != nil {
 				return err
 			}
 		}

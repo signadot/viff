@@ -142,3 +142,54 @@ func TestEvictionDropsTheLeastRecentlyUsedAndSparesAHolder(t *testing.T) {
 		t.Fatalf("the holder lost its tool: %d bytes, %v", len(b), err)
 	}
 }
+
+// A HOLD SPANS INSTALL, COMMANDS AND MATERIALISE: Holding takes the prefix's one lock across all
+// three, so nothing comes between the build and the links a task takes from it — a concurrent
+// install of the same prefix waits out the hold and finds it built, its own build never run, and
+// an eviction (which takes the same lock) cannot rename the prefix away in the gap.
+func TestHoldingSpansInstallAndMaterialise(t *testing.T) {
+	c, err := New(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := t.TempDir()
+	installed := make(chan struct{})
+	release := make(chan struct{})
+	held := make(chan error, 1)
+	go func() {
+		held <- c.Holding("jq", "1.6", func(h Held) error {
+			if err := h.Install(fill("jq", "j")); err != nil {
+				return err
+			}
+			close(installed)
+			<-release
+			cmds, err := h.Commands()
+			if err != nil {
+				return err
+			}
+			if len(cmds) != 1 || cmds[0] != "jq" {
+				t.Errorf("commands %v", cmds)
+			}
+			return h.Materialise(inst, "jq", "jq-v1")
+		})
+	}()
+	<-installed
+	rebuilt := false
+	second := make(chan error, 1)
+	go func() {
+		second <- c.Install("jq", "1.6", func(string) error { rebuilt = true; return nil })
+	}()
+	close(release)
+	if err := <-held; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	if rebuilt {
+		t.Fatal("the second install rebuilt a prefix the hold had installed")
+	}
+	if _, err := os.Stat(filepath.Join(inst, "bin", "jq-v1")); err != nil {
+		t.Fatalf("the held materialise: %v", err)
+	}
+}

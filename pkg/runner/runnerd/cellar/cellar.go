@@ -77,46 +77,71 @@ func (c *Cellar) Has(name, version string) bool {
 	return err == nil
 }
 
-// Install writes the prefix for a package's version where the cellar does not hold it: build
-// fills a staging directory, which becomes the prefix whole, by rename — a prefix is never seen
-// half-written, and once written it is immutable, so an install of what is held is a touch and
-// no build. After an install the cellar collects.
-func (c *Cellar) Install(name, version string, build func(stage string) error) error {
+// Held is one prefix while its lock is held: what Holding's function works with. Everything a
+// Held does happens under the one lock of its package and version, so nothing comes between an
+// install and the links a task takes from it — in the gap, an eviction could rename the prefix
+// away and the materialise would find the cellar empty-handed.
+type Held struct {
+	c             *Cellar
+	name, version string
+	installed     *bool
+}
+
+// Holding runs f with the prefix's lock held. Where f installed, the cellar collects after the
+// lock is released — eviction takes each prefix's lock, so collecting under one would deadlock.
+func (c *Cellar) Holding(name, version string, f func(Held) error) error {
 	if err := checkName("package", name); err != nil {
 		return err
 	}
 	if err := checkName("version", version); err != nil {
 		return err
 	}
-	key := name + "/" + version
-	lock := c.lockFor(key)
+	lock := c.lockFor(name + "/" + version)
 	lock.Lock()
-	prefix := c.Prefix(name, version)
+	installed := false
 	err := func() error {
 		defer lock.Unlock()
-		if _, err := os.Stat(prefix); err == nil {
-			return touch(prefix)
-		}
-		stage, err := os.MkdirTemp(c.root, ".stage-")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(stage)
-		if err := build(stage); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Dir(prefix), 0o755); err != nil {
-			return err
-		}
-		if err := os.Rename(stage, prefix); err != nil {
-			return err
-		}
-		return touch(prefix)
+		return f(Held{c: c, name: name, version: version, installed: &installed})
 	}()
 	if err != nil {
 		return err
 	}
-	return c.collect()
+	if installed {
+		return c.collect()
+	}
+	return nil
+}
+
+// Install writes the prefix for a package's version where the cellar does not hold it: build
+// fills a staging directory, which becomes the prefix whole, by rename — a prefix is never seen
+// half-written, and once written it is immutable, so an install of what is held is a touch and
+// no build. After an install the cellar collects.
+func (c *Cellar) Install(name, version string, build func(stage string) error) error {
+	return c.Holding(name, version, func(h Held) error { return h.Install(build) })
+}
+
+// Install is Cellar.Install under the held lock.
+func (h Held) Install(build func(stage string) error) error {
+	prefix := h.c.Prefix(h.name, h.version)
+	if _, err := os.Stat(prefix); err == nil {
+		return touch(prefix)
+	}
+	stage, err := os.MkdirTemp(h.c.root, ".stage-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
+	if err := build(stage); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(prefix), 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(stage, prefix); err != nil {
+		return err
+	}
+	*h.installed = true
+	return touch(prefix)
 }
 
 // Commands are the commands a prefix ships, its bin directory's entries, sorted.
@@ -124,7 +149,20 @@ func (c *Cellar) Commands(name, version string) ([]string, error) {
 	if !c.Has(name, version) {
 		return nil, fmt.Errorf("the cellar has no %s %s", name, version)
 	}
-	entries, err := os.ReadDir(filepath.Join(c.Prefix(name, version), "bin"))
+	return commands(c.Prefix(name, version))
+}
+
+// Commands is Cellar.Commands under the held lock.
+func (h Held) Commands() ([]string, error) {
+	prefix := h.c.Prefix(h.name, h.version)
+	if _, err := os.Stat(prefix); err != nil {
+		return nil, fmt.Errorf("the cellar has no %s %s", h.name, h.version)
+	}
+	return commands(prefix)
+}
+
+func commands(prefix string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(prefix, "bin"))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
@@ -143,20 +181,17 @@ func (c *Cellar) Commands(name, version string) ([]string, error) {
 // `inst/bin/<as>` a relative symlink to the command, replaced where it points elsewhere — so two
 // versions sit side by side, each under its own name. The command must be one the prefix ships.
 func (c *Cellar) Materialise(inst, name, version, cmd, as string) error {
+	return c.Holding(name, version, func(h Held) error { return h.Materialise(inst, cmd, as) })
+}
+
+// Materialise is Cellar.Materialise under the held lock.
+func (h Held) Materialise(inst, cmd, as string) error {
 	for what, v := range map[string]string{"command": cmd, "name": as} {
 		if err := checkName(what, v); err != nil {
 			return err
 		}
 	}
-	if err := checkName("package", name); err != nil {
-		return err
-	}
-	if err := checkName("version", version); err != nil {
-		return err
-	}
-	lock := c.lockFor(name + "/" + version)
-	lock.Lock()
-	defer lock.Unlock()
+	c, name, version := h.c, h.name, h.version
 	prefix := c.Prefix(name, version)
 	if _, err := os.Stat(prefix); err != nil {
 		return fmt.Errorf("the cellar has no %s %s", name, version)

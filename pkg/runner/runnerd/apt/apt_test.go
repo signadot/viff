@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // stripOpts drops the -o redirections and -q, which point apt away from the system and say the
@@ -57,6 +59,12 @@ const urisJq = `'http://deb.example/debian/pool/main/o/onig/libonig5_6.9.8-1_amd
 'http://deb.example/debian/pool/main/j/jq/jq_1.6-2.1+deb12u2_amd64.deb' jq_1.6-2.1+deb12u2_amd64.deb 64432 MD5Sum:cc
 `
 
+// shaOf is a deterministic sha256 for a fixture, spelled as the index spells one.
+func shaOf(name string) string {
+	sum := sha256.Sum256([]byte(name))
+	return hex.EncodeToString(sum[:])
+}
+
 func show(name, version, dir string) string {
 	return fmt.Sprintf(`Package: %[1]s
 Version: %[2]s
@@ -64,7 +72,7 @@ Filename: pool/main/%[3]s/%[1]s_%[2]s_amd64.deb
 Size: 1
 SHA256: %[4]s
 
-`, name, version, dir, strings.Repeat(name[:1], 64))
+`, name, version, dir, shaOf(name))
 }
 
 // RESOLVE READS THE CLOSURE AND THE PLAN FROM THE INDEX: the packages `install -s` plans, each
@@ -93,7 +101,7 @@ func TestResolveReadsTheClosureFromTheIndex(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 	jq := r.Closure[2]
-	if jq.Name != "jq" || jq.URL != "http://deb.example/debian/pool/main/j/jq/jq_1.6-2.1+deb12u2_amd64.deb" || jq.SHA256 != strings.Repeat("j", 64) {
+	if jq.Name != "jq" || jq.URL != "http://deb.example/debian/pool/main/j/jq/jq_1.6-2.1+deb12u2_amd64.deb" || jq.SHA256 != shaOf("jq") {
 		t.Fatalf("jq: %+v", jq)
 	}
 	if calls[0] != "apt-get update" {
@@ -197,7 +205,15 @@ func TestBuildFetchesByHashAndAssemblesThePrefix(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(dir, "usr/share/doc/jq/README"), []byte("docs"), 0o644); err != nil {
 					return nil, err
 				}
-				return nil, os.WriteFile(filepath.Join(dir, "usr/bin/jq"), elfFile("jq"), 0o755)
+				if err := os.WriteFile(filepath.Join(dir, "usr/bin/jq"), elfFile("jq"), 0o755); err != nil {
+					return nil, err
+				}
+				// A pre-usrmerge /bin carrying the same command as a packaging symlink: one
+				// name lands once, not a "file exists" refusal.
+				if err := os.MkdirAll(filepath.Join(dir, "bin"), 0o755); err != nil {
+					return nil, err
+				}
+				return nil, os.Symlink("../usr/bin/jq", filepath.Join(dir, "bin/jq"))
 			case "libjq1":
 				lib := filepath.Join(dir, "usr/lib/x86_64-linux-gnu")
 				if err := os.MkdirAll(lib, 0o755); err != nil {
@@ -237,6 +253,12 @@ func TestBuildFetchesByHashAndAssemblesThePrefix(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(stage, ".x")); !os.IsNotExist(err) {
 		t.Fatal("the extracted trees linger")
 	}
+	if _, err := os.Stat(filepath.Join(stage, ".debs")); !os.IsNotExist(err) {
+		t.Fatal("the fetched packages linger")
+	}
+	if _, err := os.Stat(filepath.Join(a.State, "archives")); !os.IsNotExist(err) {
+		t.Fatal("an archives cache grows in the state directory, where no bound governs it")
+	}
 
 	// A fetched package is held to the index's hash.
 	bad := r
@@ -275,5 +297,71 @@ func TestOnlyTheStockLdconfigStanzaIsWavedThrough(t *testing.T) {
 		if got := ldconfigOnly(body); got != ok {
 			t.Errorf("%q: %v, want %v", body, got, ok)
 		}
+	}
+}
+
+// A MALFORMED INDEX HASH REFUSES THE RESOLVE, BY NAME: everything the wrapper does with a hash —
+// naming a fetched file by it, holding the fetch to it — holds only for 64 hex digits, so an
+// entry carrying anything else is refused where it is read, never trusted and never sliced.
+func TestAMalformedIndexHashRefusesTheResolve(t *testing.T) {
+	var calls []string
+	a := &Apt{
+		State: t.TempDir(),
+		Repos: []string{"deb http://deb.example/debian bookworm main"},
+		Exec: fakeApt(t, &calls, map[string]string{
+			"apt-get update": "",
+			"apt-get install -s --no-install-recommends jq":              simJq,
+			"apt-get install -y --no-install-recommends --print-uris jq": urisJq,
+			"apt-cache show libonig5=6.9.8-1":                            "Package: libonig5\nVersion: 6.9.8-1\nFilename: pool/main/o/onig/libonig5_6.9.8-1_amd64.deb\nSHA256: abc123\n\n",
+		}),
+	}
+	_, err := a.Resolve(t.Context(), "jq", "")
+	if err == nil || !strings.Contains(err.Error(), "is no sha256") || !strings.Contains(err.Error(), "libonig5") {
+		t.Fatalf("a malformed hash: %v", err)
+	}
+}
+
+// THE INDEX REFRESH IS SINGLE-FLIGHTED: two resolves finding the lists stale at once would both
+// run `apt-get update` into one state directory, and the loser would fail on apt's lists lock —
+// so one updates while the other waits and reads the fresh clock.
+func TestConcurrentResolvesUpdateTheIndexOnce(t *testing.T) {
+	outs := map[string]string{
+		"apt-get install -s --no-install-recommends jq":              simJq,
+		"apt-get install -y --no-install-recommends --print-uris jq": urisJq,
+		"apt-cache show libonig5=6.9.8-1":                            show("libonig5", "6.9.8-1", "o/onig"),
+		"apt-cache show libjq1=1.6-2.1+deb12u2":                      show("libjq1", "1.6-2.1+deb12u2", "j/jq"),
+		"apt-cache show jq=1.6-2.1+deb12u2":                          show("jq", "1.6-2.1+deb12u2", "j/jq"),
+	}
+	var mu sync.Mutex
+	updates := 0
+	exec := func(_ context.Context, name string, args ...string) ([]byte, error) {
+		key := name + " " + strings.Join(stripOpts(args), " ")
+		if key == "apt-get update" {
+			mu.Lock()
+			updates++
+			mu.Unlock()
+			time.Sleep(20 * time.Millisecond) // long enough for the second resolve to find it stale too
+			return nil, nil
+		}
+		out, ok := outs[key]
+		if !ok {
+			return nil, fmt.Errorf("no script for %q", key)
+		}
+		return []byte(out), nil
+	}
+	a := &Apt{State: t.TempDir(), Repos: []string{"deb http://deb.example/debian bookworm main"}, Exec: exec}
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := a.Resolve(t.Context(), "jq", ""); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if updates != 1 {
+		t.Fatalf("updates %d, want one for both resolves", updates)
 	}
 }

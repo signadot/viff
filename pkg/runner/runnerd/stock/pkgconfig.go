@@ -144,38 +144,49 @@ func (i *installer) Install(ctx context.Context, inst, pkg, version, as string) 
 		}
 		return delivery.Installed{Version: r.Version, Provided: true}, nil
 	}
-	if err := i.cellar.Install(pkg, r.Version, i.wrap.Build(ctx, r)); err != nil {
-		return delivery.Installed{}, err
-	}
-	cmds, err := i.cellar.Commands(pkg, r.Version)
+	// One hold spans the build and the links the task takes from it: released between the two,
+	// a collect could evict the just-built prefix before it is materialised.
+	var landed string
+	err = i.cellar.Holding(pkg, r.Version, func(h cellar.Held) error {
+		if err := h.Install(i.wrap.Build(ctx, r)); err != nil {
+			return err
+		}
+		cmds, err := h.Commands()
+		if err != nil {
+			return err
+		}
+		if len(cmds) == 0 {
+			return fmt.Errorf("%s %s ships no command", pkg, r.Version)
+		}
+		if as == "" {
+			for _, cmd := range cmds {
+				if err := h.Materialise(inst, cmd, cmd); err != nil {
+					return err
+				}
+			}
+			landed = strings.Join(cmds, ", ")
+			return nil
+		}
+		var cmd string
+		switch {
+		case slices.Contains(cmds, pkg):
+			cmd = pkg
+		case len(cmds) == 1:
+			cmd = cmds[0]
+		default:
+			return fmt.Errorf("%s %s ships %s: `as` renames one command, so leave it out and call them by their own names",
+				pkg, r.Version, strings.Join(cmds, ", "))
+		}
+		if err := h.Materialise(inst, cmd, as); err != nil {
+			return err
+		}
+		landed = as
+		return nil
+	})
 	if err != nil {
 		return delivery.Installed{}, err
 	}
-	if len(cmds) == 0 {
-		return delivery.Installed{}, fmt.Errorf("%s %s ships no command", pkg, r.Version)
-	}
-	if as == "" {
-		for _, cmd := range cmds {
-			if err := i.cellar.Materialise(inst, pkg, r.Version, cmd, cmd); err != nil {
-				return delivery.Installed{}, err
-			}
-		}
-		return delivery.Installed{Version: r.Version, As: strings.Join(cmds, ", ")}, nil
-	}
-	var cmd string
-	switch {
-	case slices.Contains(cmds, pkg):
-		cmd = pkg
-	case len(cmds) == 1:
-		cmd = cmds[0]
-	default:
-		return delivery.Installed{}, fmt.Errorf("%s %s ships %s: `as` renames one command, so leave it out and call them by their own names",
-			pkg, r.Version, strings.Join(cmds, ", "))
-	}
-	if err := i.cellar.Materialise(inst, pkg, r.Version, cmd, as); err != nil {
-		return delivery.Installed{}, err
-	}
-	return delivery.Installed{Version: r.Version, As: as}, nil
+	return delivery.Installed{Version: r.Version, As: landed}, nil
 }
 
 // startingInstalls is what the runner installs into a task's root before its process starts:
