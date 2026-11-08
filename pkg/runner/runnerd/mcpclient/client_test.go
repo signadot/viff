@@ -19,8 +19,11 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/signadot/tony-format/go-tony/ir"
 
+	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
+	"github.com/signadot/verse/pkg/systems"
 )
 
 // seen is one request a test server saw: the JSON-RPC method of its body ("" for a GET or a
@@ -598,6 +601,10 @@ func TestTheListIsEveryPageAndTheInstructions(t *testing.T) {
 	if strings.Join(names, ",") != "a,b,c,d,e" || instructions != "call get_me first" {
 		t.Errorf("listed %v, instructions %q", names, instructions)
 	}
+	// Each tool's schema is structure, as the server spelled it.
+	if in := tools[0].Input; in == nil || ir.Get(in, "type") == nil || ir.Get(in, "type").String != "object" {
+		t.Errorf("the first tool's schema: %v", tools[0].Input)
+	}
 	if _, instructions, err = s.List(context.Background(), "quiet"); err != nil || instructions != "" {
 		t.Errorf("a server with no instructions: %q, %v", instructions, err)
 	}
@@ -673,5 +680,91 @@ func TestCloseEndsEverySession(t *testing.T) {
 	}
 	if s.Close() != nil {
 		t.Error("a second Close errs")
+	}
+}
+
+// A CALL'S ARGUMENTS ARE THE STRUCTURE AS JSON: what the server reads is the structure the step
+// holds, a `null` a `null`, a number spelled as it was (`1.0`), text as it was; anything but an
+// object is refused before any call.
+func TestTheArgumentsAreTheStructureAsJSON(t *testing.T) {
+	body := `{"n": 1.0, "m": 1, "s": null, "e": {}, "l": [1, "x"], "u": "héllo ☃", "b": "x\ny", "q": "a \"quote\"", "x": 1e5, "q\"k": 2}`
+	n, err := codec.ParseNode([]byte(body), codec.JSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := Arguments(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := sessions(t, Servers{"s": {URL: serve(t, echo(t, nil, nil), nil)}}, nil, io.Discard)
+	got := text(t)(s.Call(context.Background(), "s", "echo", args))
+	back, err := codec.ParseNode([]byte(got), codec.JSON)
+	if err != nil {
+		t.Fatalf("%s: %v", got, err)
+	}
+	// The same structure, less how each side spelled it (`1e5` against `100000.0`).
+	if !systems.Plain(back).DeepEqual(systems.Plain(n)) {
+		t.Errorf("the server read %s, want the structure of %s", got, body)
+	}
+	// A float written with an exponent is a float, sent as one; a key holding a quote is a
+	// JSON string, which tony's own JSON writer does not make it.
+	for _, piece := range []string{`"n":1.0`, `"m":1`, `"s":null`, `"u":"héllo ☃"`, `"b":"x\ny"`, `"q":"a \"quote\""`, `"x":100000.0`, `"q\"k":2`} {
+		if !strings.Contains(got, piece) {
+			t.Errorf("the server read %s, want %s in it", got, piece)
+		}
+	}
+	for bad, says := range map[string]string{`[1]`: "an object", `"x"`: "an object", `null`: "an object", `7`: "an object",
+		`{a: !glob x}`: "a tag (!glob)", `{1: x}`: "a tag (!sparsearray)"} { // integer keys are tony's sparse array
+		n, err := codec.ParseNode([]byte(bad), codec.JSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Arguments(n); err == nil || !strings.Contains(err.Error(), says) {
+			t.Errorf("%s: %v, want %q", bad, err, says)
+		}
+	}
+}
+
+// A RESULT IS READ AS THE TASK READS IT: the text of its content in order, content that is not
+// text named in its place, structured content as JSON where there is no text, and the server's
+// error mark kept. A server's answer that the call is refused (a tool it has not; a tool that
+// asked the client for input, which this client does not give, so the server fails the call) is
+// a ServerError, the server's words in it.
+func TestAResultIsReadAsTheTaskReadsIt(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		res  *mcp.CallToolResult
+		want Result
+	}{
+		{"text in order", &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "one"}, &mcp.TextContent{Text: "two"}}}, Result{Text: "one\ntwo"}},
+		{"content that is not text", &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "see:"},
+			&mcp.ImageContent{Data: []byte{1}, MIMEType: "image/png"}, &mcp.AudioContent{Data: []byte{1}, MIMEType: "audio/wav"},
+			&mcp.ResourceLink{URI: "file:///x", Name: "x"}, &mcp.EmbeddedResource{Resource: &mcp.ResourceContents{URI: "file:///y", Text: "y"}}}},
+			Result{Text: "see:\n[an image, image/png, left out]\n[audio, audio/wav, left out]\n[a resource link, file:///x, not followed]\ny"}},
+		{"an embedded resource that is no text", &mcp.CallToolResult{Content: []mcp.Content{&mcp.EmbeddedResource{Resource: &mcp.ResourceContents{URI: "file:///z", Blob: []byte{1}}}}},
+			Result{Text: "[an embedded resource that is no text, left out]"}},
+		{"structured content alone", &mcp.CallToolResult{StructuredContent: map[string]any{"n": 1, "s": "x"}}, Result{Text: `{"n":1,"s":"x"}`}},
+		{"structured content beside text", &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "said"}}, StructuredContent: map[string]any{"n": 1}}, Result{Text: "said"}},
+		{"the server's error", &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "no such issue"}}}, Result{Text: "no such issue", IsError: true}},
+		{"nothing", &mcp.CallToolResult{}, Result{}},
+	} {
+		if got := Read(c.res); got != c.want {
+			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
+		}
+	}
+	// The server's answer that the call is refused, through the SDK's own server: a tool that
+	// asks for input the client does not give, and a tool the server has not.
+	srv := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0"}, nil)
+	srv.AddTool(&mcp.Tool{Name: "ask", InputSchema: map[string]any{"type": "object"}},
+		func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{InputRequests: mcp.InputRequestMap{"q": &mcp.ElicitParams{Mode: "form", Message: "which team?"}}}, nil
+		})
+	s := sessions(t, Servers{"s": {URL: serve(t, srv, nil)}}, nil, io.Discard)
+	for tool, says := range map[string]string{"ask": "does not support elicitation", "nothing": "nothing"} {
+		var refused *ServerError
+		_, err := s.Call(context.Background(), "s", tool, json.RawMessage(`{}`))
+		if !errors.As(err, &refused) || !strings.Contains(refused.Message, says) || !strings.Contains(err.Error(), "the server answered an error to the call") {
+			t.Errorf("a call of %s: %v, want the server's refusal saying %q", tool, err, says)
+		}
 	}
 }

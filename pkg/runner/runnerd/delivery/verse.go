@@ -95,12 +95,19 @@ func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) (aske
 	})
 }
 
-// StepOf is the step a request to verse is, and why it is refused before any row decides it, ""
-// where it is not. The runner decides it (Server's verse verbs), and so does the task before it
-// sends the request (stock's verse tools), so a row decides one step on both sides: the ask a
-// raise carries, the address a data verb names, the address an install acts at.
+// StepOf is the step a request to verse is, or an `mcp.call`, and why it is refused before any
+// row decides it, "" where it is not. The runner decides it (Server's verse verbs, mcpCall), and
+// so does the task before it sends the request (stock's verse tools, its MCP tools), so a row
+// decides one step on both sides: the ask a raise carries, the address a data verb names, the
+// address an install acts at, the arguments a call sends.
 func StepOf(req Request) (task.Step, string) {
 	switch req.Op {
+	case OpMCPCall:
+		c, why := ReadCall(req.Field("server"), req.Field("tool"), req.Body)
+		if why != "" {
+			return task.Step{}, why
+		}
+		return c.Step(), ""
 	case OpVerseAskCreate:
 		if strings.TrimSpace(req.Field("ask")) == "" {
 			return task.Step{}, "a raise carries the ask"

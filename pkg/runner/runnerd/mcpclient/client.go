@@ -5,19 +5,26 @@
 package mcpclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/pkg/api"
+	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
 )
 
@@ -99,9 +106,21 @@ func New(servers Servers, store *secretstore.Store, log io.Writer) *Sessions {
 	return &Sessions{servers: servers, store: store, log: log, transport: t, readMost: ReadMost, open: map[string]*session{}}
 }
 
+// ServerError is a server's answer that the call is refused or failed, as the protocol says it
+// (a JSON-RPC error to the call: a tool the server has not, arguments its schema refuses, a tool
+// that asked the client for input the client does not give): the server answered, and the call
+// was not performed as asked. It is the server's word, carried as it is.
+type ServerError struct {
+	Code    int64
+	Message string
+}
+
+func (e *ServerError) Error() string { return "the server answered an error to the call: " + e.Message }
+
 // Call calls tool of server with arguments, a JSON object, within the server's timeout. What is
 // sent is arguments as they are. The result is the server's, an error of the server's included
-// (CallToolResult.IsError); an error is the call not made, or made and its answer not read.
+// (CallToolResult.IsError); an error is the server's answer that the call is refused
+// (ServerError), or the call not made, or made and its answer not read.
 func (s *Sessions) Call(ctx context.Context, server, tool string, arguments json.RawMessage) (*mcp.CallToolResult, error) {
 	srv, ok := s.servers[server]
 	if !ok {
@@ -119,7 +138,14 @@ func (s *Sessions) Call(ctx context.Context, server, tool string, arguments json
 		result, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: arguments})
 		return err
 	})
-	if err != nil {
+	// A JSON-RPC error is the server's answer, except in the range the specification leaves to
+	// implementations (-32000 to -32099), where the SDK puts its own (a request rejected by the
+	// transport, a client closing): those are the call not made, or not known to be.
+	var rpc *jsonrpc.Error
+	switch {
+	case errors.As(err, &rpc) && (rpc.Code > -32000 || rpc.Code < -32099):
+		return nil, &ServerError{Code: rpc.Code, Message: rpc.Message}
+	case err != nil:
 		return nil, err
 	}
 	return result, nil
@@ -127,7 +153,7 @@ func (s *Sessions) Call(ctx context.Context, server, tool string, arguments json
 
 // List is the tools server offers, every page, and the server's instructions (what it said at
 // `initialize`), within ListTimeout.
-func (s *Sessions) List(ctx context.Context, server string) (tools []*mcp.Tool, instructions string, err error) {
+func (s *Sessions) List(ctx context.Context, server string) (tools []Tool, instructions string, err error) {
 	if _, ok := s.servers[server]; !ok {
 		return nil, "", fmt.Errorf("this runner calls no server %s", server)
 	}
@@ -139,7 +165,13 @@ func (s *Sessions) List(ctx context.Context, server string) (tools []*mcp.Tool, 
 			if err != nil {
 				return err
 			}
-			tools = append(tools, t)
+			tl, err := tool(t)
+			if err != nil {
+				// One tool the server describes badly does not take the rest with it.
+				fmt.Fprintf(s.log, "mcp: %s: the tool %s is left out of the list: %v\n", server, t.Name, err)
+				continue
+			}
+			tools = append(tools, tl)
 		}
 		if r := cs.InitializeResult(); r != nil {
 			instructions = r.Instructions
@@ -150,6 +182,162 @@ func (s *Sessions) List(ctx context.Context, server string) (tools []*mcp.Tool, 
 		return nil, "", err
 	}
 	return tools, instructions, nil
+}
+
+// Tool is one tool of a server's list, as the runner reads it: its name, its description as the
+// server wrote it, and its input schema as tony structure (the JSON Schema the server gave, held
+// as given: a number is spelled as the server spelled it).
+type Tool struct {
+	Name, Description string
+	Input             *ir.Node
+}
+
+// tool is t as a Tool, its schema read into structure.
+func tool(t *mcp.Tool) (Tool, error) {
+	raw, err := json.Marshal(t.InputSchema)
+	if err != nil {
+		return Tool{}, err
+	}
+	in, err := codec.ParseNode(raw, codec.JSON)
+	if err != nil {
+		return Tool{}, fmt.Errorf("its schema does not read: %w", err)
+	}
+	return Tool{Name: t.Name, Description: t.Description, Input: in}, nil
+}
+
+// Arguments is a call's arguments, tony structure, as the JSON the server is sent: the same
+// structure, a `null` a `null`, an integer an integer and a float a float (`1.0` is sent as
+// `1.0`, not `1`). n is an object; anything else is refused here, before the call, and so is
+// anything JSON cannot say (a tag, a key that is no string, a float that is no number). Written
+// here rather than by tony's own JSON writer, which spells a key holding a `"` as tony does.
+func Arguments(n *ir.Node) (json.RawMessage, error) {
+	if n = ir.Uncomment(n); n == nil || n.Type != ir.ObjectType {
+		return nil, errors.New("a call's arguments are an object")
+	}
+	var b bytes.Buffer
+	if err := writeJSON(&b, n); err != nil {
+		return nil, err
+	}
+	return json.RawMessage(b.Bytes()), nil
+}
+
+// writeJSON writes n as JSON, compact: what the arguments say and nothing else.
+func writeJSON(b *bytes.Buffer, n *ir.Node) error {
+	if n == nil {
+		b.WriteString("null")
+		return nil
+	}
+	// A tag that records how a value was spelled (`!bracket`, `!exp`) says nothing of it; any
+	// other is an operator, which a pattern has and a value does not.
+	if tag := ir.StripPresentation(n.Tag); tag != "" {
+		return fmt.Errorf("a tag (%s) is nothing JSON says", tag)
+	}
+	switch n.Type {
+	case ir.NullType:
+		b.WriteString("null")
+	case ir.BoolType:
+		b.WriteString(strconv.FormatBool(n.Bool))
+	case ir.StringType:
+		return writeJSONString(b, n.String)
+	case ir.NumberType:
+		switch {
+		case n.Int64 != nil:
+			b.WriteString(strconv.FormatInt(*n.Int64, 10))
+		case n.Float64 != nil && !math.IsInf(*n.Float64, 0) && !math.IsNaN(*n.Float64):
+			s := strconv.FormatFloat(*n.Float64, 'g', -1, 64)
+			if !strings.ContainsAny(s, ".e") {
+				s += ".0" // a float, as the step holds it
+			}
+			b.WriteString(s)
+		default:
+			return errors.New("a number that is none")
+		}
+	case ir.ArrayType:
+		b.WriteByte('[')
+		for i, v := range n.Values {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			if err := writeJSON(b, v); err != nil {
+				return err
+			}
+		}
+		b.WriteByte(']')
+	case ir.ObjectType:
+		b.WriteByte('{')
+		for i, k := range n.Fields {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			if k == nil || k.Type != ir.StringType || ir.StripPresentation(k.Tag) != "" {
+				return errors.New("a key that is no string")
+			}
+			if err := writeJSONString(b, k.String); err != nil {
+				return err
+			}
+			b.WriteByte(':')
+			if err := writeJSON(b, n.Values[i]); err != nil {
+				return err
+			}
+		}
+		b.WriteByte('}')
+	default:
+		return fmt.Errorf("a %v is nothing JSON says", n.Type)
+	}
+	return nil
+}
+
+// writeJSONString writes s as a JSON string, escaped as encoding/json escapes one.
+func writeJSONString(b *bytes.Buffer, s string) error {
+	raw, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	b.Write(raw)
+	return nil
+}
+
+// Result is a tool's result as the task reads it: the text of its content, in order, an embedded
+// resource's text among it, and content that is not text named in its place (a link is named and
+// not followed); a result with no text and structured content is that, as JSON text. IsError is the server's mark on the result, which the task reads as the server's
+// word: the tool was called, and this is what it said. A tool that asks the client for input is
+// no result: the client gives none, and the server answers an error to the call (ServerError).
+type Result struct {
+	Text    string
+	IsError bool
+}
+
+// Read is r as the task reads it (Result).
+func Read(r *mcp.CallToolResult) Result {
+	out := Result{IsError: r.IsError}
+	var parts []string
+	for _, c := range r.Content {
+		switch c := c.(type) {
+		case *mcp.TextContent:
+			parts = append(parts, c.Text)
+		case *mcp.ImageContent:
+			parts = append(parts, "[an image, "+c.MIMEType+", left out]")
+		case *mcp.AudioContent:
+			parts = append(parts, "[audio, "+c.MIMEType+", left out]")
+		case *mcp.EmbeddedResource:
+			if c.Resource != nil && c.Resource.Text != "" {
+				parts = append(parts, c.Resource.Text)
+			} else {
+				parts = append(parts, "[an embedded resource that is no text, left out]")
+			}
+		case *mcp.ResourceLink:
+			parts = append(parts, "[a resource link, "+c.URI+", not followed]")
+		default:
+			parts = append(parts, fmt.Sprintf("[content of type %T, left out]", c))
+		}
+	}
+	out.Text = strings.Join(parts, "\n")
+	if strings.TrimSpace(out.Text) == "" && r.StructuredContent != nil {
+		if raw, err := json.Marshal(r.StructuredContent); err == nil {
+			out.Text = string(raw)
+		}
+	}
+	return out
 }
 
 // mark is one call's, carried in its context to the requests the SDK makes for it: whether
