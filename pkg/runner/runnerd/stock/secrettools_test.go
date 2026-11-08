@@ -230,3 +230,112 @@ func dialSoon(path string) (net.Conn, error) {
 	}
 	return nil, err
 }
+
+// withStdinSecret is withSecret with shapes that also admit an interactive run.
+func withStdinSecret(t *testing.T) systems.Environment {
+	t.Helper()
+	n, err := parse.Parse([]byte("null"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	shapes := []systems.Shape{{"env": systems.Plain(n), "stdin": systems.Plain(n)}}
+	return systems.Environment{Systems: systems.Systems{
+		"secret": {{Attributes: map[string]string{"name": "npm-token", "as": "NPM_TOKEN"}, Verbs: map[string][]systems.Shape{"exec": shapes}}},
+	}}
+}
+
+// THE INPUT SOCKET: with `stdin: true` the run serves `<id>.in.sock` beside the outputs. The
+// first connection is the input, whole, mirrored to `<id>.in`; a later one is closed at once;
+// and closing the first is the command's EOF while its output still flows. The answer says the
+// input's file and size.
+func TestSecretExecServesTheCommandsStdin(t *testing.T) {
+	root, err := os.MkdirTemp("", "vx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(root)
+	store := t.TempDir()
+	if err := os.WriteFile(filepath.Join(store, "npm-token"), []byte("npm_s3cr3t"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := withStdinSecret(t)
+	l := &runner.Launch{ID: "t1", Prompt: "p", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Environment: env}
+	s := &delivery.Server{Log: io.Discard,
+		Ceilings: map[string]systems.Ceiling{"secret": {{Verbs: env.Systems["secret"][0].Verbs}}},
+		Services: delivery.Services{Secrets: secretstore.Open(store), Confine: runsHere{}}}
+	near, far, err := delivery.SocketPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan struct{})
+	go func() {
+		s.Serve(delivery.Task{ID: "t1", Root: root, Launch: l, Env: []string{"PATH=/usr/bin:/bin", "HOME=" + root}}, near)
+		close(served)
+	}()
+	conn, err := net.FileConn(far)
+	far.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl := delivery.NewClient(conn)
+	tools := secretTools(cl, &workspace.Workspace{Root: root}, env)
+	run := tools[0]
+	type answer struct {
+		out string
+		err error
+	}
+	answered := make(chan answer, 1)
+	go func() {
+		out, _, err := run.Do(t.Context(), task.ToolUse{Name: run.Name,
+			Input: map[string]any{"name": "npm-token", "argv": []any{"sh", "-c", "cat; echo done"}, "timeout": 20, "stdin": true}})
+		answered <- answer{out, err}
+	}()
+	c, err := dialSoon(filepath.Join(root, ".verse", "exec", "e1.in.sock"))
+	if err != nil {
+		select {
+		case a := <-answered:
+			t.Fatalf("no input socket (%v); the call answered %q, %v", err, a.out, a.err)
+		default:
+			t.Fatal(err)
+		}
+	}
+	// A second connection is closed at once: one input, whole.
+	c2, err := net.Dial("unix", filepath.Join(root, ".verse", "exec", "e1.in.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c2.Read(make([]byte, 1)); err != io.EOF {
+		t.Errorf("the second connection read: %v, want EOF", err)
+	}
+	c2.Close()
+	if _, err := c.Write([]byte("hello\n")); err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	a := <-answered
+	if a.err != nil {
+		t.Fatal(a.err)
+	}
+	for _, want := range []string{"e1: exited 0", "stdout: .verse/exec/e1.out, 11 bytes:\nhello\ndone\n", "stdin: .verse/exec/e1.in, 6 bytes"} {
+		if !strings.Contains(a.out, want) {
+			t.Errorf("the answer lacks %q:\n%s", want, a.out)
+		}
+	}
+	if got, err := os.ReadFile(filepath.Join(root, ".verse", "exec", "e1.in")); err != nil || string(got) != "hello\n" {
+		t.Errorf("e1.in: %q, %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".verse", "exec", "e1.in.sock")); err == nil {
+		t.Error("the input socket is still there after the run")
+	}
+	// Without `stdin: true` nothing serves: a plain run leaves no in.sock behind it.
+	go func() {
+		out, _, err := run.Do(t.Context(), task.ToolUse{Name: run.Name,
+			Input: map[string]any{"name": "npm-token", "argv": []any{"sh", "-c", "true"}, "timeout": 20}})
+		answered <- answer{out, err}
+	}()
+	if a := <-answered; a.err != nil || !strings.Contains(a.out, "e2: exited 0") || strings.Contains(a.out, "stdin:") {
+		t.Errorf("the plain run: %q, %v", a.out, a.err)
+	}
+	cl.Close()
+	<-served
+}

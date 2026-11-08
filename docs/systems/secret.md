@@ -37,7 +37,7 @@ spawn:
 
 | Tool | What it does | Step |
 |---|---|---|
-| `secret-exec` | runs one command with the block's secret in its environment under `as`, and blocks until it ends; the task reads back the run's id, the exit status, and each stream's file in its workspace, size and tail | `secret.exec`, with `name`, `as`, `argv`, `dir` and `env` |
+| `secret-exec` | runs one command with the block's secret in its environment under `as`, and blocks until it ends; the task reads back the run's id, the exit status, and each stream's file in its workspace, size and tail | `secret.exec`, with `name`, `as`, `argv`, `dir`, `stdin` and `env` |
 | `secret-exec-kill` | kills a run `secret-exec` is waiting on, by its id (`e1`) | none: it acts on a run already decided, and is offered with `secret-exec` |
 
 **The command is a list, and the step is one line.** The tool takes `argv` as a list of arguments,
@@ -91,6 +91,16 @@ task's can connect and read along from then on. A reader that stops reading is d
 seconds, and the run goes on. The tool answers the model with the run's id and its end (`exited
 3`, `killed after 30s, the timeout`), then each stream's file, size and last 16 KiB. A file that
 cannot be written, or a socket whose path is too long, is said in the answer, and the run goes on.
+
+**`stdin: true` opens the command's input.** The default is a command with no input: a shape that
+says nothing of `stdin` means `stdin: false`, in the environment and in the ceiling both, so an
+interactive run is admitted shape by shape — and the step always says which kind it is, since a
+person who approves one approves a session, not one command line. With it, the task's process
+serves a third unix socket beside the outputs, `<id>.in.sock`: the first connection is the input,
+whole, written along to `.verse/exec/<id>.in` and cut as the outputs are, and closing it is the
+command's EOF, its output still flowing. A later connection is closed at once. Nothing is redacted
+on the way in — the input goes to the process that already holds the secret — and nothing
+connected leaves the command waiting on its stdin, with the timeout as the bound.
 
 **The run lives while the task holds its output.** `timeout` on the call is in seconds, 10 minutes
 where none, an hour at most, and refused where it is no whole number. Past it the command is

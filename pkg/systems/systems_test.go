@@ -48,7 +48,7 @@ func TestTheDocumentsDescribeTheSystems(t *testing.T) {
 		"slack.read":            "channel,thread",
 		"slack.react":           "channel,emoji",
 		"network.tcp-client":    "mode,host,port",
-		"secret.exec":           "name,as,argv,dir,env",
+		"secret.exec":           "name,as,argv,dir,stdin,env",
 	} {
 		fields, ok := Fields(step)
 		if !ok || strings.Join(fields, ",") != want {

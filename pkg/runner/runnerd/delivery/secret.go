@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,17 +31,20 @@ import (
 // the autonomy decides each run; the ceiling bounds both; and the runner holds the run to each.
 //
 // The request: `name` is the secret's, `dir` where the command runs, a path under the task's
-// root (empty is the root), `timeout` seconds, and the body `{argv: [...], env: {...}}`, the
-// command as a list and the plain variables it is given beside the secret. The step the autonomy
-// and the ceiling see spells the list as one line (systems.Argv), and carries `as` from the
-// environment's block, never from the call: what the secret is called is the block's to say.
+// root (empty is the root), `timeout` seconds, `stdin` whether the command's stdin is open to
+// the task, and the body `{argv: [...], env: {...}}`, the command as a list and the plain
+// variables it is given beside the secret. The step the autonomy and the ceiling see spells the
+// list as one line (systems.Argv), and carries `as` from the environment's block, never from
+// the call: what the secret is called is the block's to say.
 //
 // THE OUTPUT IS TWO STREAMS THE TASK'S PROCESS SERVES, and the runner is in the middle of them:
 // stdout on the I/O pair, stderr on its own, each redacted here, the task's ends sent on the
-// stream frame ahead of the answer. The command lives while the task holds its ends: the task
-// letting go of both (its process dying, or closing them) kills the run, read as EOF on the
-// stderr pair, which the task never writes. Past `timeout` it is killed too. A kill is the
-// sandbox's pid namespace's, whole.
+// stream frame ahead of the answer. With `stdin`, the I/O pair carries the other direction too:
+// what the task writes on its end is the command's stdin, unredacted — the input goes to the
+// process that already holds the secret — and the task's half-close is the command's EOF.
+// The command lives while the task holds its ends: the task letting go of both (its process
+// dying, or closing them) kills the run, read as EOF on the stderr pair, which the task never
+// writes. Past `timeout` it is killed too. A kill is the sandbox's pid namespace's, whole.
 const OpSecretExec = "secret.exec"
 
 // How long a command may run when the call does not say, and at most; and what the op has past
@@ -62,12 +66,14 @@ type execBody struct {
 
 // Exec is a `secret.exec` as read from a call (ReadExec): the secret's name and the variable the
 // environment's block gives it in ("" where the environment has no block for it), the command as
-// a list, the plain variables, and the directory as a clean path under the root ("" for the root).
+// a list, the plain variables, the directory as a clean path under the root ("" for the root),
+// and whether the command's stdin is open to the task over the run's I/O socket.
 type Exec struct {
 	Name, As string
 	Argv     []string
 	Env      map[string]string
 	Dir      string
+	Stdin    bool
 }
 
 // ReadExec reads a `secret.exec` from what a call gives, and says why it is refused before any
@@ -75,7 +81,7 @@ type Exec struct {
 // program first, each variable by a name, the directory under the root, and no variable where
 // the secret goes. The runner reads it as the request arrives (secretExec), and the task's tool
 // before it sends the call, so a row decides one step (Exec.Step) on both sides.
-func ReadExec(env systems.Environment, name string, argv []string, vars map[string]string, dir string) (Exec, string) {
+func ReadExec(env systems.Environment, name string, argv []string, vars map[string]string, dir string, stdin bool) (Exec, string) {
 	if err := secretstore.CheckName(name); err != nil {
 		return Exec{}, err.Error()
 	}
@@ -106,14 +112,16 @@ func ReadExec(env systems.Environment, name string, argv []string, vars map[stri
 	if _, taken := vars[as]; as != "" && taken {
 		return Exec{}, fmt.Sprintf("env names %s, which is the secret's", as)
 	}
-	return Exec{Name: name, As: as, Argv: argv, Env: vars, Dir: rel}, ""
+	return Exec{Name: name, As: as, Argv: argv, Env: vars, Dir: rel, Stdin: stdin}, ""
 }
 
 // Step is the step the run is, as the autonomy and the ceiling see it: the list spelled as one
-// line (systems.Argv), `as` where the environment gives it, and the variables an object the form
-// env matches closed.
+// line (systems.Argv), `as` where the environment gives it, `stdin` always said, and the
+// variables an object the form env matches closed. The step carries `stdin` even false, so a
+// shape, read with the field's default where it says nothing, holds every call to what it means.
 func (e Exec) Step() task.Step {
-	fields := map[string]string{"name": e.Name, "argv": systems.Argv(e.Argv), "dir": e.Dir}
+	fields := map[string]string{"name": e.Name, "argv": systems.Argv(e.Argv), "dir": e.Dir,
+		"stdin": strconv.FormatBool(e.Stdin)}
 	if e.As != "" {
 		fields["as"] = e.As
 	}
@@ -127,7 +135,7 @@ func (s *Server) secretExec(ctx context.Context, tk Task, req Request) (asked, R
 	if err := codec.UnmarshalStrict([]byte(req.Body), &body, codec.Tony); err != nil {
 		return before(Reply{Refused: "the body does not read as {argv: [...], env: {...}}: " + err.Error()})
 	}
-	e, why := ReadExec(tk.environment(), req.Field("name"), body.Argv, body.Env, req.Field("dir"))
+	e, why := ReadExec(tk.environment(), req.Field("name"), body.Argv, body.Env, req.Field("dir"), req.Flag("stdin"))
 	if why != "" {
 		return before(Reply{Refused: why})
 	}
@@ -222,6 +230,27 @@ func (s *Server) runSecret(ctx context.Context, tk Task, id int, e Exec, timeout
 	defer errNear.Close()
 	out, errs := newRedactor(ioNear, name, value), newRedactor(errNear, name, value)
 	cmd.Stdout, cmd.Stderr = out, errs
+	// The command's stdin, where the call asks for it: the task's writes on the I/O pair, pumped
+	// through a pipe of this side's own — never cmd.Stdin, whose copy Wait would wait on until
+	// WaitDelay with the socket still open. The task's half-close ends the copy, which closes
+	// the pipe, which is the command's EOF; a run the task feeds nothing waits on its stdin
+	// until the timeout. Nothing is redacted on the way in: the input goes to the process that
+	// already holds the secret.
+	var feeding sync.WaitGroup
+	if e.Stdin {
+		pw, err := cmd.StdinPipe()
+		if err != nil {
+			ioFar.Close()
+			errFar.Close()
+			return Reply{Error: "the command's stdin: " + err.Error()}
+		}
+		feeding.Add(1)
+		go func() {
+			defer feeding.Done()
+			_, _ = io.Copy(pw, ioNear)
+			pw.Close()
+		}()
+	}
 	// Started before the stream is handed over, so a command that does not start is answered
 	// with why, and nothing is sent that the task would wait on.
 	if err := cmd.Start(); err != nil {
@@ -255,6 +284,7 @@ func (s *Server) runSecret(ctx context.Context, tk Task, id int, e Exec, timeout
 	ioNear.Close()
 	errNear.Close()
 	letting.Wait()
+	feeding.Wait() // reaped by ioNear's close, and exec closed its pipe after the exit
 	rep := Reply{OK: true}
 	switch {
 	case errors.Is(cause, letGo):

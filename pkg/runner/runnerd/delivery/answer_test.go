@@ -29,7 +29,7 @@ func TestAnAnswerPerformsTheCallItWasAbout(t *testing.T) {
 		return s.answer(tk, frame(t, Request{Op: OpSecretExec, Decision: decision, Body: body, Fields: map[string]string{"name": "npm-token", "dir": dir}}))
 	}
 	answered := Request{Op: OpSecretExec, Body: "{argv: [npm, publish], env: {NODE_ENV: production}}", Fields: map[string]string{"name": "npm-token", "dir": "packages/a"}}
-	about, why := ReadExec(tk.environment(), "npm-token", []string{"npm", "publish"}, map[string]string{"NODE_ENV": "production"}, "packages/a")
+	about, why := ReadExec(tk.environment(), "npm-token", []string{"npm", "publish"}, map[string]string{"NODE_ENV": "production"}, "packages/a", false)
 	if why != "" {
 		t.Fatal(why)
 	}

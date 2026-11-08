@@ -168,8 +168,9 @@ var (
 	// the proxy decides it, by the host and the port it sees.
 	StepNetworkTCPClient = systems.Step("network", "tcp-client", "mode", "host", "port")
 	// One command the runner runs for a task with one secret of its store, under the block's `as`:
-	// the command as one line (systems.Argv), where it runs, and the plain variables beside it.
-	StepSecretExec = systems.Step("secret", "exec", "name", "as", "argv", "dir", "env")
+	// the command as one line (systems.Argv), where it runs, the plain variables beside it, and
+	// whether its stdin is open to the task.
+	StepSecretExec = systems.Step("secret", "exec", "name", "as", "argv", "dir", "stdin", "env")
 )
 
 // String is the step in one line: `files.write path=db/x.sql`, its fields in the order the

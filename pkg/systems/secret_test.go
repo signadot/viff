@@ -8,10 +8,17 @@ import (
 )
 
 // exec is a secret.exec step's fields as the runner fills them: the block's secret and
-// variable, the command spelled, where, and the plain variables given, an object.
+// variable, the command spelled, where, stdin always said (false here, as a plain run's), and
+// the plain variables given, an object.
 func exec(t *testing.T, name, as, argv, dir, env string) *ir.Node {
 	t.Helper()
-	fields := FieldsDoc("secret.exec", map[string]string{"name": name, "as": as, "argv": argv, "dir": dir})
+	return execIn(t, name, as, argv, dir, env, "false")
+}
+
+// execIn is exec with stdin as given, "true" for an interactive run.
+func execIn(t *testing.T, name, as, argv, dir, env, stdin string) *ir.Node {
+	t.Helper()
+	fields := FieldsDoc("secret.exec", map[string]string{"name": name, "as": as, "argv": argv, "dir": dir, "stdin": stdin})
 	var kvs []ir.KeyVal
 	for i, k := range fields.Fields {
 		kvs = append(kvs, ir.KeyVal{Key: k, Val: fields.Values[i]})
@@ -213,6 +220,85 @@ func TestAShapeGivesNoVariableUnlessItNamesIt(t *testing.T) {
 		}
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v, want %q", text, err, want)
+		}
+	}
+}
+
+// A SHAPE THAT SAYS NOTHING OF `stdin` GIVES NO INPUT: the field's default, false, is what a
+// shape of the environment and of the ceiling mean by leaving it out, so an interactive run is
+// admitted one shape at a time; `stdin: null` admits either kind, and `stdin: true` only the
+// interactive, since a shape names what it names.
+func TestAShapeGivesNoStdinUnlessItNamesIt(t *testing.T) {
+	f, ok := FieldOf("secret.exec", "stdin")
+	if !ok || f.Form != FormBool || f.Default != "false" {
+		t.Fatalf("stdin: %+v", f)
+	}
+	for text, want := range map[string]string{
+		`true`:         "",
+		`false`:        "",
+		`null`:         "",
+		`"true"`:       "write true, unquoted",
+		`!glob "tru*"`: "!glob matches text, and the field is true or false",
+		`x`:            "the field is true or false",
+	} {
+		err := f.Accepts(pat(t, text))
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("stdin %s: %v, want %q", text, err, want)
+		}
+	}
+	e, err := readEnv(t, `systems: {secret: [
+	  {name: npm-token, as: NPM_TOKEN, exec: [{argv: "npm whoami"}]},
+	  {name: gpg-key, as: G, exec: {argv: !regexp "^gpg ", stdin: true, env: null}}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Check(); err != nil {
+		t.Fatal(err)
+	}
+	step := func(name, as, argv, stdin string) *ir.Node { return execIn(t, name, as, argv, "", `{}`, stdin) }
+	for _, c := range []struct {
+		name, as, argv, stdin string
+		allowed               bool
+	}{
+		{"npm-token", "NPM_TOKEN", "npm whoami", "false", true},
+		{"npm-token", "NPM_TOKEN", "npm whoami", "true", false},
+		{"gpg-key", "G", "gpg --decrypt", "true", true},
+		{"gpg-key", "G", "gpg --decrypt", "false", false},
+	} {
+		if got := e.Allows("secret.exec", step(c.name, c.as, c.argv, c.stdin)); got != c.allowed {
+			why, _ := e.Refuses("secret.exec", step(c.name, c.as, c.argv, c.stdin))
+			t.Errorf("%s %q stdin=%s: allowed %v, want %v (%s)", c.name, c.argv, c.stdin, got, c.allowed, why)
+		}
+	}
+	// A ceiling that says nothing of stdin holds a shape that says nothing, and not one that
+	// opens it; one that says `stdin: null` holds every spelling.
+	closed := readCeiling(t, `{name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm "}}`)
+	if err := closed.Check("secret"); err != nil {
+		t.Fatal(err)
+	}
+	open := readCeiling(t, `{name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm ", stdin: null, env: null}}`)
+	if err := open.Check("secret"); err != nil {
+		t.Fatal(err)
+	}
+	for text, want := range map[string]string{
+		`{name: npm-token, as: NPM_TOKEN, exec: {argv: "npm whoami"}}`:               "",
+		`{name: npm-token, as: NPM_TOKEN, exec: {argv: "npm whoami", stdin: false}}`: "",
+		`{name: npm-token, as: NPM_TOKEN, exec: {argv: "npm whoami", stdin: true}}`:  "within no shape",
+		`{name: npm-token, as: NPM_TOKEN, exec: {argv: "npm whoami", stdin: null}}`:  "within no shape",
+	} {
+		e, err := readEnv(t, `systems: {secret: `+text+`}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.Check(); err != nil {
+			t.Fatalf("%s: %v", text, err)
+		}
+		err = closed.Contains("secret", e.Systems["secret"][0])
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("the closed ceiling, %s: %v, want %q", text, err, want)
+		}
+		if err := open.Contains("secret", e.Systems["secret"][0]); err != nil {
+			t.Errorf("the open ceiling, %s: %v", text, err)
 		}
 	}
 }

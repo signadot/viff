@@ -96,6 +96,7 @@ func TestASecretExecIsReadIntoOneStep(t *testing.T) {
 		{"a dir the shapes do not give", secretLaunch(publish, allow), with(ok.Body, map[string]string{"name": "npm-token", "dir": "scripts"}), "outside the environment"},
 		{"a variable the shapes do not name", secretLaunch(publish, allow), with("{argv: [npm, publish, --ignore-scripts], env: {NPM_CONFIG_REGISTRY: x}}", ok.Fields), "outside the environment"},
 		{"a list spelled to look like one argument", secretLaunch(publish, allow), with("{argv: [npm, \"publish --ignore-scripts\"]}", ok.Fields), "outside the environment"},
+		{"stdin the shapes do not give", secretLaunch(publish, allow), with(ok.Body, map[string]string{"name": "npm-token", "dir": "packages/a", "stdin": "true"}), "outside the environment"},
 		{"a row that denies the command", secretLaunch(publish, deny), with("{argv: [npm, publish, --ignore-scripts, --tag, next]}", ok.Fields), "refused by the autonomy's row no-tag"},
 	} {
 		tk := Task{ID: "t1", Root: "/w", Launch: c.l}
@@ -300,4 +301,87 @@ func TestTheSecretExecHelpers(t *testing.T) {
 	if p, err := findProgram("sh", []string{"PATH=relative:/bin:/usr/bin"}); err != nil || !strings.HasSuffix(p, "/bin/sh") {
 		t.Errorf("sh: %q, %v", p, err)
 	}
+}
+
+// THE INPUT RIDES THE I/O PAIR THE OTHER WAY, where the call says `stdin` and a shape admits it:
+// what the task writes on its end is the command's stdin, unredacted on the way in — the echo
+// coming back redacted is the proof the command read the raw value — and the task's half-close
+// is the command's EOF while stdout still flows. A run the task feeds nothing waits on its stdin
+// until the timeout.
+func TestASecretExecFeedsTheCommandsStdin(t *testing.T) {
+	store := t.TempDir()
+	if err := os.WriteFile(filepath.Join(store, "npm-token"), []byte("npm_s3cr3t"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	interactive := []systems.Shape{{"env": pattern(t, `null`), "stdin": pattern(t, `null`)}}
+	s := &Server{Log: io.Discard,
+		Ceilings: map[string]systems.Ceiling{"secret": {{Verbs: map[string][]systems.Shape{"exec": interactive}}}},
+		Services: Services{Secrets: secretstore.Open(store), Confine: unconfined{}}}
+	near, far, err := SocketPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan struct{})
+	go func() {
+		s.Serve(Task{ID: "t1", Root: root, Env: []string{"PATH=/usr/bin:/bin", "HOME=" + root}, Launch: secretLaunch(interactive, allow)}, near)
+		close(served)
+	}()
+	conn, err := net.FileConn(far)
+	far.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cl := NewClient(conn)
+	var out, errs bytes.Buffer
+	read := make(chan struct{})
+	rep, err := cl.AskStreaming(Request{Op: OpSecretExec, Body: `{argv: [sh, -c, "cat; echo done"]}`,
+		Fields: map[string]string{"name": "npm-token", "stdin": "true", "timeout": "20"}},
+		func(files []*os.File) {
+			go func() {
+				defer close(read)
+				uc, err := net.FileConn(files[0])
+				files[0].Close()
+				if err != nil {
+					t.Error(err)
+					files[1].Close()
+					return
+				}
+				u := uc.(*net.UnixConn)
+				if _, err := u.Write([]byte("token is npm_s3cr3t\n")); err != nil {
+					t.Error(err)
+				}
+				if err := u.CloseWrite(); err != nil {
+					t.Error(err)
+				}
+				done := make(chan struct{})
+				go func() { defer close(done); io.Copy(&errs, files[1]) }()
+				io.Copy(&out, u)
+				<-done
+				u.Close()
+				files[1].Close()
+			}()
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-read
+	if !rep.OK || rep.Out != "exited 0" || out.String() != "token is [secret npm-token]\ndone\n" || errs.String() != "" {
+		t.Errorf("the interactive run: %+v\nstdout %q\nstderr %q", rep, out.String(), errs.String())
+	}
+	if strings.Contains(out.String()+errs.String()+rep.Out+rep.Error, "s3cr3t") {
+		t.Error("the value reached the task")
+	}
+	// Nothing fed — the ends held, neither written nor closed, since closing the I/O end is
+	// stdin's EOF itself — and the command waiting on its stdin is the timeout's to end.
+	var held []*os.File
+	rep, err = cl.AskStreaming(Request{Op: OpSecretExec, Body: `{argv: [cat]}`,
+		Fields: map[string]string{"name": "npm-token", "stdin": "true", "timeout": "1"}},
+		func(files []*os.File) { held = files })
+	if err != nil || !rep.OK || rep.Out != "killed after 1s, the timeout" {
+		t.Errorf("the unfed run: %+v, %v", rep, err)
+	}
+	closeAll(held)
+	cl.Close()
+	<-served
 }

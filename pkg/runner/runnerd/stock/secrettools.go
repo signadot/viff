@@ -90,13 +90,14 @@ func (r *execRuns) kill(id string) bool {
 }
 
 // execParams are `secret-exec`'s arguments: the secret, the command as a list, the plain
-// variables, the directory and the timeout.
+// variables, the directory, the timeout, and whether the command's stdin is open to the task.
 var execParams = map[string]any{
 	"name":    map[string]any{"type": "string"},
 	"argv":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 	"env":     map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
 	"dir":     map[string]any{"type": "string"},
 	"timeout": map[string]any{"type": "integer"},
+	"stdin":   map[string]any{"type": "boolean"},
 }
 
 func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems.Environment, runs *execRuns) verse.Tool {
@@ -116,7 +117,11 @@ func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems
 		if timeout < 0 || timeout > int(delivery.ExecTimeoutMost.Seconds()) {
 			return delivery.Exec{}, 0, fmt.Sprintf("timeout: %d seconds; a run is up to %s", timeout, delivery.ExecTimeoutMost)
 		}
-		e, why := delivery.ReadExec(env, str(in, "name"), argv, vars, str(in, "dir"))
+		stdin, err := boolOf(in, "stdin")
+		if err != nil {
+			return delivery.Exec{}, 0, err.Error()
+		}
+		e, why := delivery.ReadExec(env, str(in, "name"), argv, vars, str(in, "dir"), stdin)
 		if why != "" {
 			return delivery.Exec{}, 0, why
 		}
@@ -139,7 +144,11 @@ func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems
 			fmt.Sprintf("%d by default and at most %d. ", int(delivery.ExecTimeoutDefault.Seconds()), int(delivery.ExecTimeoutMost.Seconds())) +
 			"The call blocks until the command ends. Its stdout and stderr are written to `" + execDir + "/<id>.out` and " +
 			"`<id>.err` in your workspace, and served while it runs at `<id>.sock` and `<id>.err.sock` beside them, unix " +
-			"sockets a shell can read along from. You read back the run's id, the exit status, the files and the tail of each.",
+			"sockets a shell can read along from. You read back the run's id, the exit status, the files and the tail of each. " +
+			"`stdin: true` — admitted only where the environment's shape for the secret says `stdin` — opens the command's " +
+			"stdin to you at `<id>.in.sock` beside them: the first connection is the input, whole, written along to `<id>.in`, " +
+			"and closing it is the command's EOF; nothing connects, and the command waits on its stdin until the timeout. " +
+			"Nothing is redacted on the way in. Without `stdin: true` the command gets no input.",
 		Params: execParams, Required: []string{"name", "argv"},
 		Step: task.StepSecretExec,
 		Build: func(in map[string]any) (task.Step, bool) {
@@ -168,9 +177,13 @@ func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems
 			if timeout != 0 {
 				fields["timeout"] = strconv.Itoa(timeout)
 			}
+			if e.Stdin {
+				fields["stdin"] = "true"
+			}
 			id := "e" + strconv.FormatInt(runs.n.Add(1), 10)
 			dir := filepath.Join(ws.Root, filepath.FromSlash(execDir))
 			var out, errs *execOutput
+			var input *execInput
 			var pumping sync.WaitGroup
 			rep, err := cl.AskStreaming(delivery.Request{Op: delivery.OpSecretExec, Body: string(body), Fields: fields, Decision: tu.Decision},
 				func(files []*os.File) {
@@ -180,22 +193,49 @@ func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems
 						}
 						return
 					}
+					// The I/O end is the command's stdout; with stdin it carries the other
+					// direction too, so it becomes a connection whose write side the input's
+					// close half-closes. One that cannot be is said, and the run goes on with
+					// no input, bounded by its timeout.
+					var ioEnd io.ReadCloser = files[0]
+					if e.Stdin {
+						if conn, cerr := net.FileConn(files[0]); cerr == nil {
+							files[0].Close()
+							uc := conn.(*net.UnixConn)
+							input = newExecInput(dir, id+".in", id+".in.sock", uc)
+							ioEnd = uc
+						} else {
+							input = &execInput{file: id + ".in", problems: []string{"not served: " + cerr.Error()}}
+						}
+					}
 					// Letting go of both ends is what kills the run: the kill tool's, and the
 					// loop's when it gives the call up.
 					var once sync.Once
-					letGo := func() { once.Do(func() { files[0].Close(); files[1].Close() }) }
+					letGo := func() {
+						once.Do(func() {
+							ioEnd.Close()
+							files[1].Close()
+							if input != nil {
+								input.Close()
+							}
+						})
+					}
 					runs.add(id, letGo)
 					stop := context.AfterFunc(ctx, letGo)
 					out = newExecOutput(dir, id+".out", id+".sock")
 					errs = newExecOutput(dir, id+".err", id+".err.sock")
 					pumping.Add(2)
-					go func() { defer pumping.Done(); out.pump(files[0]) }()
+					go func() { defer pumping.Done(); out.pump(ioEnd) }()
 					go func() { defer pumping.Done(); errs.pump(files[1]) }()
 					// Once both streams have ended, the ends are closed here too: a run that
 					// ended on its own leaves no descriptor behind.
 					go func() { pumping.Wait(); stop(); runs.remove(id); letGo() }()
 				})
 			pumping.Wait()
+			if input != nil {
+				input.Close()
+				input.serving.Wait()
+			}
 			if err != nil || !rep.OK {
 				if out != nil {
 					out.Close()
@@ -208,7 +248,11 @@ func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems
 			}
 			out.Close()
 			errs.Close()
-			return fmt.Sprintf("%s: %s\n\n%s\n\n%s", id, rep.Out, out.said("stdout"), errs.said("stderr")), false, nil
+			answer := fmt.Sprintf("%s: %s\n\n%s\n\n%s", id, rep.Out, out.said("stdout"), errs.said("stderr"))
+			if input != nil {
+				answer += "\n\n" + input.said()
+			}
+			return answer, false, nil
 		},
 	}
 }
@@ -275,6 +319,18 @@ func stringMap(v any) (map[string]string, error) {
 		return out, nil
 	}
 	return nil, fmt.Errorf("is an object of strings, not %T", v)
+}
+
+// boolOf is the bool at k: true or false as JSON gives one, false for none, and an error for
+// anything else, rather than a guess the model did not make.
+func boolOf(in map[string]any, k string) (bool, error) {
+	switch v := in[k].(type) {
+	case nil:
+		return false, nil
+	case bool:
+		return v, nil
+	}
+	return false, fmt.Errorf("%s: true or false, not %T", k, in[k])
 }
 
 // secondsOf is the whole number of seconds at k, however the model spelled it; 0 for none, and
@@ -450,4 +506,152 @@ func (o *execOutput) said(name string) string {
 		b += ":"
 	}
 	return b + "\n" + string(o.tail)
+}
+
+// execInput is a run's stdin as the task's process serves it: a unix socket beside the outputs',
+// whose FIRST connection is the input, whole. Its bytes go to the run's I/O end, unredacted —
+// the input goes to the process that already holds the secret — and along to a file in the
+// workspace, cut as the outputs are; its close is the half-close the command reads as stdin's
+// EOF. A later connection is closed at once. What could not be done (the file, the socket) is
+// said in the answer rather than failing the run, which then gets no input and has the timeout
+// as its bound.
+type execInput struct {
+	io      *net.UnixConn
+	file    string
+	ln      net.Listener
+	serving sync.WaitGroup
+
+	mu       sync.Mutex
+	f        *os.File
+	conn     net.Conn
+	taken    bool
+	closed   bool
+	written  int64
+	problems []string
+}
+
+func newExecInput(dir, file, sock string, io *net.UnixConn) *execInput {
+	in := &execInput{io: io, file: file}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		in.problems = append(in.problems, "not written: "+err.Error())
+		return in
+	}
+	f, err := os.OpenFile(filepath.Join(dir, file), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		in.problems = append(in.problems, "not written: "+err.Error())
+	} else {
+		in.f = f
+	}
+	path := filepath.Join(dir, sock)
+	if len(path) >= sunPathMax {
+		in.problems = append(in.problems, fmt.Sprintf("not served: the socket's path %s is too long for a unix socket (%d bytes at most)", path, sunPathMax-1))
+		return in
+	}
+	os.Remove(path)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		in.problems = append(in.problems, "not served: "+err.Error())
+		return in
+	}
+	in.ln = ln
+	in.serving.Add(1)
+	go in.serve()
+	return in
+}
+
+// serve takes the first connection as the input and feeds the run until the connection closes,
+// then half-closes the I/O end, which the command reads as stdin's EOF.
+func (in *execInput) serve() {
+	defer in.serving.Done()
+	c, err := in.ln.Accept()
+	if err != nil {
+		return // closed with the run, nothing connected
+	}
+	go func() { // one input, whole: a second connection is closed at once
+		for {
+			c2, err := in.ln.Accept()
+			if err != nil {
+				return
+			}
+			c2.Close()
+		}
+	}()
+	in.mu.Lock()
+	if in.closed {
+		in.mu.Unlock()
+		c.Close()
+		return
+	}
+	in.conn, in.taken = c, true
+	in.mu.Unlock()
+	buf := make([]byte, 32<<10)
+	for {
+		n, rerr := c.Read(buf)
+		if n > 0 {
+			if _, werr := in.io.Write(buf[:n]); werr != nil {
+				break // the run is over, or letting go
+			}
+			in.fed(buf[:n])
+		}
+		if rerr != nil {
+			break
+		}
+	}
+	_ = in.io.CloseWrite()
+	c.Close()
+}
+
+// fed is one piece of the input, counted, and mirrored to the file while it is under the cut.
+func (in *execInput) fed(p []byte) {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	if in.f != nil {
+		if room := min(int64(len(p)), execFileMost-in.written); room > 0 {
+			if _, err := in.f.Write(p[:room]); err != nil {
+				in.problems = append(in.problems, "the file: "+err.Error())
+				in.f.Close()
+				in.f = nil
+			}
+		}
+	}
+	in.written += int64(len(p))
+}
+
+// Close ends the serving: the socket is gone and the connection with it, the file whole. The
+// I/O end is not its to close — that is letting go of the run, which is the caller's.
+func (in *execInput) Close() {
+	if in.ln != nil {
+		in.ln.Close()
+	}
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	in.closed = true
+	if in.conn != nil {
+		in.conn.Close()
+		in.conn = nil
+	}
+	if in.f != nil {
+		in.f.Close()
+		in.f = nil
+	}
+}
+
+// said is the input as the answer tells it: the file and its size, or that nothing connected.
+func (in *execInput) said() string {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	b := "stdin: "
+	if !in.taken {
+		b += "nothing connected at its socket"
+	} else {
+		b += fmt.Sprintf("%s, %d bytes", filepath.ToSlash(filepath.Join(execDir, in.file)), in.written)
+		if in.written > execFileMost {
+			b += fmt.Sprintf(", the file cut at %d", execFileMost)
+		}
+	}
+	sort.Strings(in.problems)
+	for _, p := range in.problems {
+		b += "; " + p
+	}
+	return b
 }

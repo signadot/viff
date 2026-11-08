@@ -120,8 +120,8 @@ var ops = map[string]op{
 
 	// A command run with a secret: apart, since it may take the whole of its hour, and no push
 	// waits on it; the deadline is the longest run and the kill and the wait after it.
-	OpSecretExec: named(OpSecretExec, (*Server).secretExec, "name", "dir").withNumbers("timeout").withBody().
-		performedApart().withDeadline(ExecTimeoutMost + execGrace),
+	OpSecretExec: named(OpSecretExec, (*Server).secretExec, "name", "dir").withFlags("stdin").
+		withNumbers("timeout").withBody().performedApart().withDeadline(ExecTimeoutMost + execGrace),
 }
 
 // named is an op whose word on the wire is its step's name, with the deadline of a call to a
@@ -133,6 +133,12 @@ func named(step string, ask func(*Server, context.Context, Task, Request) (asked
 // withBody is the op, reading the request's body.
 func (o op) withBody() op {
 	o.body = true
+	return o
+}
+
+// withFlags is the op, reading names as flags.
+func (o op) withFlags(names ...string) op {
+	o.flags = names
 	return o
 }
 
