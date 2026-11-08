@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/signadot/tony-format/go-tony/ir"
+
 	"github.com/signadot/verse/pkg/runner/runnerd"
 	"github.com/signadot/verse/pkg/runner/runnerd/apt"
 	"github.com/signadot/verse/pkg/runner/runnerd/cellar"
@@ -234,9 +236,11 @@ func pinned(shape systems.Shape) (delivery.Install, bool) {
 
 // pkgBuilds is what the runner builds of pkg, by its nature: an install from the repositories it
 // trusts, any package of their index, as an offer's `builds` says it. The ceiling, not the
-// index, is the operator's bound.
+// index, is the operator's bound. The shape names `pkg`, null, since every shape of install
+// says it; a shape without it fails the description's own check, and verse would refuse the
+// runner's announcement.
 func (c Config) pkgBuilds() systems.Ceiling {
-	return systems.Ceiling{{Verbs: map[string][]systems.Shape{"install": {{}}}}}
+	return systems.Ceiling{{Verbs: map[string][]systems.Shape{"install": {{"pkg": ir.Null()}}}}}
 }
 
 // withInstPath is env with the install root's bin first on PATH, so the task's shell finds what

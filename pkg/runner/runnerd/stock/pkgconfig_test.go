@@ -94,6 +94,28 @@ func (f fakeWrap) Build(context.Context, apt.Resolution) func(string) error {
 	}
 }
 
+// THE OFFERED PKG BUILDS PASS THE DESCRIPTION'S OWN CHECK. Every shape of install names `pkg`
+// (null: any of the index), so the builds' shape says it too — an offer without it fails
+// Description.Check, and verse refuses the runner's announcement, which keeps whatever the
+// runner said before and closes pkg to every spawn.
+func TestTheOfferedPkgBuildsPassTheDescriptionsCheck(t *testing.T) {
+	c := Config{Script: &Script{Systems: map[string]System{"pkg": {Ceiling: systems.Open()}}}, Pkg: pkgSection()}
+	d := c.Describe(nil)
+	if err := d.Check(); err != nil {
+		t.Fatalf("the description does not check: %v", err)
+	}
+	if len(d.Offers) != 1 {
+		t.Fatalf("offers %d, want the script's alone", len(d.Offers))
+	}
+	builds := d.Offers[0].Systems["pkg"].Builds
+	if len(builds) != 1 || len(builds[0].Verbs["install"]) != 1 {
+		t.Fatalf("pkg builds %+v, want one install shape", builds)
+	}
+	if _, named := builds[0].Verbs["install"][0]["pkg"]; !named {
+		t.Fatal("the install shape does not name `pkg`")
+	}
+}
+
 // THE INSTALLER LANDS EVERY COMMAND UNDER ITS OWN NAME, AND `as` RENAMES EXACTLY ONE: the one
 // named as the package, or the only one; a package of several commands refuses an `as`, naming
 // them, and a package the image provides is answered as provided, which an `as` also refuses.

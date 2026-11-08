@@ -112,8 +112,9 @@ agents:
 ```
 
 - **The index is the catalog.** The operator names a manager and repositories, never a list of
-  installable tools: the ceiling is a pattern over the index's names, and `{install: {}}` over a
-  signed repository is every tool in it, bounded by the autonomy asking. A wide ceiling is
+  installable tools: the ceiling is a pattern over the index's names, and `{install: {pkg: !glob
+  "*"}}` over a signed repository is every tool in it, bounded by the autonomy asking. (Every
+  shape of `install` names `pkg`.) A wide ceiling is
   defensible because an install runs non-root, extract-only, and lands only in the asking task's
   own read-only prefix.
 - **`base` is the operator's installs,** laid into every task's root before its process starts,

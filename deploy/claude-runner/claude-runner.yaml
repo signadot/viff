@@ -45,7 +45,7 @@ data:
     # a deployment names its own, as
     #   pkg: {cellar: /state/cellar, manager: apt, repos: ["deb http://deb.debian.org/debian bookworm main"], collect-above: 50Gi}
     # and under the doer's systems
-    #   pkg: {ceiling: {install: {}}, base: [jq]}
+    #   pkg: {ceiling: {install: {pkg: !glob "*"}}, base: [jq]}
     # The operator's line over every system a doer holds for its tasks, a doer at a time: what a
     # spawn's environment may give, held at install, at launch and again at each act. A ceiling
     # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer
