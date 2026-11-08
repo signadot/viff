@@ -12,7 +12,9 @@ the third review"), as dc121a3d; step 3, the configuration, with R2, as 4ab09df0
 the json check's allowlist); step 5, the two ops, with R4 ("At the fourth review"), as 8d4fbbd3;
 steps 6, 7 and 8, the tools, the result and what a server says, with R5 ("At the fifth review"),
 as 38771f74; step 9, the words, with R6 ("At the sixth review"), as 5d80bccc. Every step is
-committed; the run on staging is next. It blocks 1f5art3x.
+committed, and the run on staging is done ("At the staging run"): a script and a Claude task each
+read a Linear issue through the runner, asked about with the arguments, answered, performed once.
+It blocks 1f5art3x.
 
 **Where it is built:** on `verse/secret-exec`, as a pull request on top of it. The team is shown
 secret-exec as one pull request and what it enables, this and pkg-nix (2b5art3x) as far as each
@@ -375,7 +377,7 @@ first finds the approach wrong rather than a corner case, before the next step b
   task an op apart is handed (5), the `timeout` (3) and the table's deadline (5), `Held` (3) and
   the offer (6). The words are read against what was built. Then a run on staging against
   mcp.signadot.com and Linear's `/mcp/readonly`. **Done:** no seam gives; the words corrected
-  ("At the sixth review"), as 5d80bccc. The staging run remains.
+  ("At the sixth review"), as 5d80bccc; the staging run ("At the staging run").
 - **Across the stack:** pkg-nix is stacked on this. Before the team is shown it, one short round
   of secret-exec and the pull requests on top, for the seams between them; short, since each
   plan's R6 read its own.
@@ -657,3 +659,32 @@ call's own timeout fires first; a server `Held` leaves out is out of the service
 - **Noted, unchanged:** a JSON integer past int64 is refused with the parser's words, which an
   agent's wire never writes and a script's body rarely does; `ServerError.Code` is carried and
   read by nothing yet but a log.
+
+## At the staging run (versed and the runners at 5d80bccc, Linear's `/mcp/readonly`)
+
+Shipped to staging as `make ship-versed && make ship-runners` from a verse-staging worktree whose
+runner configs name `mcp.servers` (`linear`, the read-only endpoint with the store's `linear`;
+`signadot`, mcp.signadot.com with `signadot-api-key`) and a ceiling over them on claude and on
+scripts; docd and the iods stay at main's 0cc21d35, since no module changed. The AWS session was
+expired, so `signadot-api-key` was not put in the store: the runner started saying
+`the secret signadot-api-key: it is not in the store, in /secrets: mcp.servers.signadot is left
+out, and every ceiling block naming it`, and versed's descriptions show `mcp: {builds: {server:
+linear}}` on both runners. Linear's key is read from the store, and the runner says the variable
+is set and not read.
+
+- **A script** (`run-884c45555ef5`, verse-runner), environment `[{server: linear, call: [{tool:
+  get_issue}, {tool: list_issues}]}]`, a row asking about `get_issue`: `verse-call-tool` listed
+  the two tools, each with the server's description, the schema as flags and the data line;
+  `mcp-linear-get_issue -id ENG-1001` raised `run-884c45555ef5~d1` with `step: mcp.call`,
+  `fields: {server: linear, tool: get_issue, arguments: {id: ENG-1001}}` and the reason
+  `mcp.call server=linear tool=get_issue arguments={id: ENG-1001}`; answered `proceed`, the call
+  was made once and the issue's record came back as the script's output. `done` in 34s.
+- **Claude** (`run-54f01457c985`, claude-runner), offered `get_issue` alone: it called it with
+  `{fields: [id, title, status, assignee], id: ENG-1001}`, the question carried those arguments
+  whole, and after `proceed` it answered the one paragraph asked for. `done`.
+- **Found:** a claude spawn needs `commands: {}` and `files: {}` beside its `mcp` block, since the
+  claude doer requires `commands.run` and `files.write` of every spawn (`launch.go`, `Requires`);
+  the example in `docs/systems/mcp.md` was refused as written, and gains the two lines.
+- **Open:** the signadot server, once its key is in the store (`runnerStoreKey`,
+  `staging/verse/runner-secrets`); the staging configs on verse-staging's `mcp` branch, and the
+  deploy tag.
