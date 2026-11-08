@@ -9,8 +9,10 @@ mcp.signadot.com), and a `null` argument stays a `null` ("At the fourth edit", a
 mcp.linear.app). Being built in `.worktrees/mcp` (branch `verse/mcp`, over `verse/secret-exec`),
 step by step: steps 1 and 2 are committed (81173906, with R1); step 4, the client, with R3 ("At
 the third review"), as dc121a3d; step 3, the configuration, with R2, as 4ab09df0 (and b066d330,
-the json check's allowlist); step 5, the two ops, is built with R4 ("At the fourth review") and
-waits to be committed. Steps 6 to 9 remain. It blocks 1f5art3x.
+the json check's allowlist); step 5, the two ops, with R4 ("At the fourth review"), as 8d4fbbd3;
+steps 6, 7 and 8, the tools, the result and what a server says, with R5 ("At the fifth review"),
+as 38771f74; step 9, the words, with R6 ("At the sixth review"), is written and waits to be
+committed. Then the run on staging. It blocks 1f5art3x.
 
 **Where it is built:** on `verse/secret-exec`, as a pull request on top of it. The team is shown
 secret-exec as one pull request and what it enables, this and pkg-nix (2b5art3x) as far as each
@@ -366,12 +368,14 @@ first finds the approach wrong rather than a corner case, before the next step b
 - **Steps 6, 7 and 8, the tools, the result, and what a server says. R5, together, review.** 7
   and 8 are small and run through 6's `Do` and descriptions. The round: the approval tested the
   whole way through a stock runner, on the arguments the tests name; each doer's limit on a
-  tool's name; the brief when a server does not answer.
+  tool's name; the brief when a server does not answer. **Done:** what a script's check cannot
+  carry, and the words ("At the fifth review").
 - **Step 9, the words. R6, the last round, every step and the words.** Where one step's error
   shows in another: the op (5) and the tool (6) reading the same bytes, the sessions (4) and the
   task an op apart is handed (5), the `timeout` (3) and the table's deadline (5), `Held` (3) and
   the offer (6). The words are read against what was built. Then a run on staging against
-  mcp.signadot.com and Linear's `/mcp/readonly`.
+  mcp.signadot.com and Linear's `/mcp/readonly`. **Done:** no seam gives; the words corrected
+  ("At the sixth review"). The staging run remains.
 - **Across the stack:** pkg-nix is stacked on this. Before the team is shown it, one short round
   of secret-exec and the pull requests on top, for the seams between them; short, since each
   plan's R6 read its own.
@@ -589,3 +593,67 @@ mcp:
   environment and the ceiling, and no ceiling for mcp listing nothing; the list's three bounds
   through the SDK's server (60 tools of 14 KiB, one of 16 KiB+); a result cut on a multibyte
   text; a call to a server that is gone.
+
+## At the fifth review (R5, the tools built, `stock/mcptools.go`)
+
+- **The tool and the runner read one body.** The tool writes the arguments from the doer's input
+  through the codec, whose map's keys come out sorted, and `mcpclient.Arguments` writes the JSON;
+  `ReadCall` reads those bytes on both sides, in the body's order, which is what `Step.Same`
+  compares by. An agent's wire reads every number as a float, so a float that is a whole number is
+  written whole, from every doer (a script's `3.0` is sent as `3` too); a float that is no number
+  reads to no step, and the tool refuses the use before the runner hears of it. Held by
+  `TestEachToolsStepIsTheRunners`, which gains the test server's tools, and the whole way through a
+  stock runner by `TestAnApprovalOfTheArgumentsPerformsThem`: a script's call is asked about with
+  the arguments whole, the answer performs it once, the server sees `"assignee":null` and
+  `"estimate":3`, and a tool no shape gives is not there to call.
+- **What a script's check cannot carry is not offered to a script.** `verse-call-tool` checks a
+  call against the tool's parameters and nothing else (`calltool.Check`), so a schema with no
+  `properties` (a tool taking any object, or one the list cut past 16 KiB), one with
+  `additionalProperties`, or one requiring a name its properties lack would have every call, or
+  every call with an argument, refused at the binary while the server's own schema admits it. Each
+  is left out of a script's list and logged; an agent is offered it, since its wire passes the
+  arguments through and the server judges them. A parameter named `input`, which the binary
+  reserves, leaves a tool out of a script's list as planned. A tool whose name no call carries (a
+  space, a control character) is left out of every list.
+- **Each doer says what name it takes** (`claude.TakesTool`, `codex.TakesTool`,
+  `verse.TakesTool`): letters, digits, `_` and `-`, so a `.` the MCP specification allows is
+  refused for every agent and taken by a script; 64 characters, with Claude's counting the
+  `mcp__verse__` prefix. Claude's API takes 128 today; what Claude Code takes of an MCP tool's name
+  is not documented, and a name it refuses fails the run where one left out is logged, so the
+  bound stays at 64 until Claude Code says otherwise. Linear's longest fits (52).
+- **The words.** The brief carries a server's instructions as the server's own words, which say
+  how the tools are used together and grant nothing, and says of a server that did not answer that
+  none of its tools is there, with the runner's reason (which names the url, no credential). Each
+  description says whose tool it is, what the server says of it, and that what it answers is
+  data, not instructions. The description no longer claims a credential, since a server may have
+  none.
+- **Noted, unchanged:** a schema's `$ref` is one whose value is a string, so a property named
+  `$ref` does not drop the tool; the three `TakesTool`s are near copies, one for each API; the
+  tests assert the lists' order and not that the servers are asked at once (the op is apart, and
+  `Client.Ask` is safe to use so).
+
+## At the sixth review (R6, every step and the words)
+
+The seams were read against the code and a throwaway: `ReadCall` → step → the question's record as
+tony → back → `Same`/`Differs`, over some forty bodies (notations, `-0.0`, `2^53+1`, strings that
+look like tony, keys that look like operators, nested unsorted keys), each `Same` both ways; the
+runnerd reference's configuration example through `Load` and `Check`. No seam gives: the tool
+writes one body and both sides read it with `ReadCall`; the sessions outlive every op apart and
+are closed after them; a server's `timeout` is under the table's deadline by the grace, so the
+call's own timeout fires first; a server `Held` leaves out is out of the services, the ceilings,
+`builds`, and the task's lists alike. What the round changed is words:
+
+- **A maximum the code did not have.** The docs said a `timeout` is at most 5m; the code takes
+  10m (`mcpclient.TimeoutMost`). The docs say 10m.
+- **Plans out of the reference.** "Once that work is done" of the Slack ask, "offered to no one
+  yet", "until a tool carries a whole schema": the pages and the comments say what is, and the
+  issue (2f5art3x, "a whole schema on a tool") holds what may come.
+- **A server the runner does not call** was answered "whether the server performed it is not
+  known", though nothing was sent: `mcp.call` now says the call was not made. Reachable only by
+  an environment naming a server the configuration does not, after a restart that held one out.
+- **Smaller:** the client's comment on the table's deadline (it is `TimeoutMost` and the grace,
+  not `TimeoutMost`); Claude's bound said as a fact and not against a date; a comment on
+  `ServerError.Error`, and a long line wrapped.
+- **Noted, unchanged:** a JSON integer past int64 is refused with the parser's words, which an
+  agent's wire never writes and a script's body rarely does; `ServerError.Code` is carried and
+  read by nothing yet but a log.
