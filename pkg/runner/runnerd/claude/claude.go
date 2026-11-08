@@ -67,7 +67,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -97,25 +96,12 @@ var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
 // `mcp__<server>__`.
 const mcpServer = "verse"
 
-// toolNameMost is the longest name of a tool Claude is offered, prefix and all, and toolName the
-// letters it takes in one. The Messages API takes 128; what Claude Code itself takes of an MCP
-// tool's name is not documented, and a name it refuses fails the whole run, where one left out
-// here is logged and the rest are offered. So 64, which every version of both takes.
-const toolNameMost = 64
-
-var toolName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
-
 // TakesTool is why Claude cannot be offered a tool of this name, nil where it can: the name
-// Claude reads is `mcp__verse__<name>`, and its API bounds a tool's name in length and in letters.
-// A runtime offering tools it did not write (an MCP server's) asks before offering one.
+// Claude reads is `mcp__verse__<name>`, and its API bounds a tool's name in length and in
+// letters — the one bound every doer takes (verse.TakesToolNamed). A runtime offering tools it
+// did not write (an MCP server's) asks before offering one.
 func TakesTool(name string) error {
-	if !toolName.MatchString(name) {
-		return fmt.Errorf("claude takes a tool's name of letters, digits, `_` and `-`, and %q is not", name)
-	}
-	if n := len(mcpServer) + len("mcp____") + len(name); n > toolNameMost {
-		return fmt.Errorf("claude reads the tool as mcp__%s__%s, %d characters, and takes a name of %d at most", mcpServer, name, n, toolNameMost)
-	}
-	return nil
+	return verse.TakesToolNamed("claude", name, "mcp__"+mcpServer+"__"+name)
 }
 
 // The variables the runner reads Claude's credential from, the first set taken: a

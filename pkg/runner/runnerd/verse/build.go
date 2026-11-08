@@ -436,21 +436,36 @@ func truncate(s string, n int) string {
 
 func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }
 
-// toolNameMost is the longest name of a tool the agent's model API takes, and toolName the
-// letters it takes in one.
+// toolNameMost is the longest name of a tool a doer is offered, as its model reads it, and
+// toolName the letters it takes in one. The Messages API takes 128; what Claude Code itself
+// takes of an MCP tool's name is not documented, and a name it refuses fails the whole run,
+// where one left out here is logged and the rest are offered. So 64, which every doer's model
+// and runtime takes.
 const toolNameMost = 64
 
 var toolName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
-// TakesTool is why the verse agent cannot be offered a tool of this name, nil where it can: an
-// extra tool's name goes to the model as a function's, bounded in length and in letters. A
-// runtime offering tools it did not write (an MCP server's) asks before offering one.
-func TakesTool(name string) error {
+// TakesToolNamed is why a doer cannot be offered a tool of this name, nil where it can: the one
+// bound every doer's TakesTool is, so none drifts and a tool offered to one agent is not
+// silently dropped from another. A tool's name goes to the model as a function's: these letters,
+// and toolNameMost characters at most as the doer reads it (reads: the name itself, or Claude's
+// `mcp__verse__<name>`).
+func TakesToolNamed(doer, name, reads string) error {
 	if !toolName.MatchString(name) {
-		return fmt.Errorf("the verse agent takes a tool's name of letters, digits, `_` and `-`, and %q is not", name)
+		return fmt.Errorf("%s takes a tool's name of letters, digits, `_` and `-`, and %q is not", doer, name)
 	}
-	if len(name) > toolNameMost {
-		return fmt.Errorf("the verse agent takes a tool's name of %d characters at most, and %q is %d", toolNameMost, name, len(name))
+	switch {
+	case len(reads) <= toolNameMost:
+		return nil
+	case reads == name:
+		return fmt.Errorf("%s takes a tool's name of %d characters at most, and %q is %d", doer, toolNameMost, name, len(name))
+	default:
+		return fmt.Errorf("%s reads the tool as %s, %d characters, and takes a name of %d at most", doer, reads, len(reads), toolNameMost)
 	}
-	return nil
 }
+
+// TakesTool is why the verse agent cannot be offered a tool of this name, nil where it can: an
+// extra tool's name goes to the model as a function's, bounded in length and in letters
+// (TakesToolNamed). A runtime offering tools it did not write (an MCP server's) asks before
+// offering one.
+func TakesTool(name string) error { return TakesToolNamed("the verse agent", name, name) }
