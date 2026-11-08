@@ -15,7 +15,9 @@ import (
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/runnerd"
+	"github.com/signadot/verse/pkg/runner/runnerd/apt"
 	"github.com/signadot/verse/pkg/runner/runnerd/calltool"
+	"github.com/signadot/verse/pkg/runner/runnerd/cellar"
 	"github.com/signadot/verse/pkg/runner/runnerd/claude"
 	"github.com/signadot/verse/pkg/runner/runnerd/codex"
 	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
@@ -102,11 +104,17 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	if c.Repos != nil {
 		mirrors = c.Repos.Mirrors
 	}
+	// The cellar is the runner's own too: the installed prefixes and the tasks' install roots,
+	// of which a task sees its own root alone, through its sandbox's one bind.
+	var cellarDir string
+	if c.Pkg != nil {
+		cellarDir = c.Pkg.Cellar
+	}
 	// The secret store is the runner's own too, and is where no sandbox binds it: apart from
 	// the directories above, and reached by no readOnly path.
 	secrets := c.secretsDir()
 	if secrets != "" {
-		if err := runnerd.CheckSecretStore(secrets, runnerd.KeptDirs(work, control, mirrors, "", "")); err != nil {
+		if err := runnerd.CheckSecretStore(secrets, runnerd.KeptDirs(work, control, mirrors, "", cellarDir)); err != nil {
 			return nil, err
 		}
 		if _, err := os.Stat(secrets); err != nil {
@@ -125,12 +133,34 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 			}
 		}
 	}
-	if err := runnerd.CheckReadOnly(c.ReadOnly, runnerd.KeptDirs(work, control, mirrors, secrets, "")); err != nil {
+	if err := runnerd.CheckReadOnly(c.ReadOnly, runnerd.KeptDirs(work, control, mirrors, secrets, cellarDir)); err != nil {
 		return nil, err
 	}
 	for _, p := range c.ReadOnly {
 		if _, err := os.Stat(p); err != nil {
 			fmt.Fprintf(log, "runnerd: readOnly %s: %v; the tasks will not have it while it is not there\n", p, err)
+		}
+	}
+	// The pkg system needs the sandbox's bind and the wrapper's toolchain: without either it is
+	// closed, as secret is under -sandbox none, before the task's configuration is marshalled.
+	var pkgInstaller *installer
+	if hasPkg(c) {
+		naming := strings.Join(c.naming("pkg"), ", ")
+		if sb.Name() == (runnerd.Unconfined{}).Name() {
+			fmt.Fprintf(log, "runnerd: -sandbox none: pkg is closed to every doer, though %s names it, since an install "+
+				"root is read-only only through a sandbox's bind; a spawn that names it is refused at install\n", naming)
+			c = c.without("pkg")
+		} else if missing := missingToolchain(exec.LookPath); missing != "" {
+			fmt.Fprintf(log, "runnerd: no %s on PATH: pkg is closed to every doer, though %s names it; a spawn that "+
+				"names it is refused at install\n", missing, naming)
+			c = c.without("pkg")
+		} else {
+			store, err := cellar.New(cellarDir, c.Pkg.collectAbove())
+			if err != nil {
+				return nil, fmt.Errorf("pkg.cellar: %w", err)
+			}
+			pkgInstaller = &installer{cellar: store,
+				wrap: &apt.Apt{State: filepath.Join(cellarDir, ".apt"), Repos: c.Pkg.Repos}}
 		}
 	}
 	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets, ReachesVerse: c.reachesVerse}, codec.Tony)
@@ -155,12 +185,45 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 		// A command run with a secret is confined as the task's process is, over the task's
 		// root and under its network, with what the operator keeps read only.
 		repos.Services.Confine = runnerd.Confiner{Sandbox: sb, ReadOnly: c.ReadOnly,
-			Kept: runnerd.KeptDirs(work, control, mirrors, secrets, "")}
+			Kept: runnerd.KeptDirs(work, control, mirrors, secrets, cellarDir)}
+		if pkgInstaller != nil {
+			repos.Services.Installer = pkgInstaller
+		}
 		repos.Ceilings = func(l *runner.Launch) map[string]systems.Ceiling { return c.ceilings(c.doer(l)) }
 	}
+	// A task of a doer whose ceilings name pkg gets an install root, made under the cellar and
+	// removed with the task, and that root's bin first on its PATH; any other doer's tasks get
+	// neither, and the pkg section stays the runner's.
+	withPkg := func(l *runner.Launch) bool {
+		if pkgInstaller == nil {
+			return false
+		}
+		_, ok := c.systemsOf(c.doer(l))["pkg"]
+		return ok
+	}
+	var instFor func(*runner.Launch) (string, error)
+	if pkgInstaller != nil {
+		tasks := filepath.Join(cellarDir, ".tasks")
+		instFor = func(l *runner.Launch) (string, error) {
+			if !withPkg(l) {
+				return "", nil
+			}
+			if err := os.MkdirAll(tasks, 0o755); err != nil {
+				return "", err
+			}
+			return os.MkdirTemp(tasks, "task-")
+		}
+	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{
-		Command: command, Env: func(l *runner.Launch) []string { return task.ShellEnv(c.shellEnv(c.doer(l))) }, Config: blob,
+		Command: command, Env: func(l *runner.Launch) []string {
+			env := task.ShellEnv(c.shellEnv(c.doer(l)))
+			if withPkg(l) {
+				env = withInstPath(env)
+			}
+			return env
+		}, Config: blob,
 		Sandbox: sb, Programs: programs, ReadOnly: c.ReadOnly, Mirrors: mirrors, Secrets: secrets, Repos: repos, AgentHosts: hosts,
+		Inst: instFor, Cellar: cellarDir,
 		Work: work, Control: control, Log: log,
 	})
 	h.Describe(c.Describe(nets))
@@ -280,6 +343,9 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 			secret, letGo := secretTools(cl, ws, l.Environment)
 			tools = append(tools, secret...)
 			cleanup = append(cleanup, letGo)
+		}
+		if slices.Contains(performs, "pkg") {
+			tools = append(tools, pkgTools(cl)...)
 		}
 		if r.cfg.reachesVerse {
 			tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)

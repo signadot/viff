@@ -165,10 +165,12 @@ func TestThePerformedSystemsAreOneTable(t *testing.T) {
 	}
 	// What the table says is what the runner said before there was one.
 	everything := Config{Repos: &Repos{Mirrors: "/m"}, reachesVerse: true, SecretStore: &SecretStore{Dir: "/secrets"},
-		MCP: &MCP{Servers: map[string]MCPServer{"linear": {URL: "https://mcp.linear.app/mcp"}}}, Script: &Script{Systems: map[string]System{
+		MCP: &MCP{Servers: map[string]MCPServer{"linear": {URL: "https://mcp.linear.app/mcp"}}},
+		Pkg: &Pkg{Cellar: "/state/cellar", Manager: "apt", Repos: []string{"deb http://deb.debian.org/debian bookworm main"}},
+		Script: &Script{Systems: map[string]System{
 			"slack": {Ceiling: systems.Open()}, "linear-issue": {Ceiling: systems.Open()}, "secret": {Ceiling: ceiling(t, `{name: npm-token}`)},
-			"mcp": {Ceiling: ceiling(t, `{server: linear}`)}}}}
-	if got := everything.performs(); !slices.Equal(got, []string{"git", "git-issue", "github", "github-issue", "linear-issue", "slack", "secret", "mcp", "verse"}) {
+			"mcp": {Ceiling: ceiling(t, `{server: linear}`)}, "pkg": {Ceiling: systems.Open()}}}}
+	if got := everything.performs(); !slices.Equal(got, []string{"git", "git-issue", "github", "github-issue", "linear-issue", "slack", "secret", "mcp", "pkg", "verse"}) {
 		t.Errorf("a runner that performs everything performs %v", got)
 	}
 	// A secret ceiling with no store to read from performs nothing.
@@ -189,6 +191,7 @@ func TestThePerformedSystemsAreOneTable(t *testing.T) {
 		"slack": "performs none of its verbs", "network": "performs none of its verbs",
 		"secret": "a secret store (`secrets.dir`) and a sandbox",
 		"mcp":    "an `mcp.servers` section names the servers",
+		"pkg":    "a `pkg` section (cellar, manager, repos) and a sandbox",
 	} {
 		if got := needsFor(system); !strings.Contains(got, want) {
 			t.Errorf("needsFor(%s) = %q, want it to say %q", system, got, want)

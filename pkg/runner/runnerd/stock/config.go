@@ -103,6 +103,7 @@ const (
 	needsGitHub = "a `repos` section whose forge is github.com, or `repos.api` naming the forge's GitHub API"
 	needsSecret = "a secret store (`secrets.dir`) and a sandbox are what runs a command with a secret"
 	needsMCP    = "an `mcp.servers` section names the servers the runner calls"
+	needsPkg    = "a `pkg` section (cellar, manager, repos) and a sandbox are what installs packages"
 )
 
 // performedSystems is the table, in the order an offer lists them.
@@ -121,6 +122,9 @@ var performedSystems = []performed{
 	// The mcp system acts with each server's own credential, which the server's entry names
 	// (`mcp.servers.<name>.auth`), read from the store at each request.
 	{system: "mcp", when: hasServers, needs: needsMCP},
+	// The pkg system acts with no credential: the trust an install rides is the repositories'
+	// signed index, which the `pkg:` section names.
+	{system: "pkg", when: hasPkg, needs: needsPkg},
 	// The verse system is carried to verse over the channel too, where the runner reaches its
 	// verse with a token of its own (Standalone's toVerse); `question`'s ask stays inside the run.
 	{system: "verse", when: reachesVerse, atStart: true},
@@ -177,6 +181,9 @@ type Config struct {
 	SecretStore *SecretStore `tony:"field=secrets,omitzero"`
 	// MCP is the remote MCP servers the runner calls for its tasks (`mcp:`), where it calls any.
 	MCP *MCP `tony:"field=mcp,omitzero"`
+	// Pkg is the packages the runner installs into its tasks' read-only prefixes (`pkg:`), where
+	// it installs any.
+	Pkg *Pkg `tony:"field=pkg,omitzero"`
 
 	// reachesVerse is whether the runner carries the verse system's verbs to the verse it serves
 	// (Standalone's toVerse): not the file's to say, since it follows from the runner's `verse:`
@@ -888,6 +895,9 @@ func (c *Config) Check() error {
 		}
 	}
 	if err := c.checkMCP(); err != nil {
+		return err
+	}
+	if err := c.checkPkg(); err != nil {
 		return err
 	}
 	if c.Script != nil {

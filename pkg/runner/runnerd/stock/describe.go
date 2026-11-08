@@ -49,6 +49,11 @@ func (c Config) Describe(networks []string) runner.Description {
 			sys.Builds = c.mcpBuilds()
 			d.Offers[i].Systems["mcp"] = sys
 		}
+		// And the repositories' index is pkg's: any install of it, the ceiling the bound.
+		if sys, ok := d.Offers[i].Systems["pkg"]; ok {
+			sys.Builds = c.pkgBuilds()
+			d.Offers[i].Systems["pkg"] = sys
+		}
 	}
 	return d
 }
