@@ -1,0 +1,9 @@
+name: pkg
+description: "Tools the runner installs into the task's prefix, a directory of the runner's bound read-only into the task at its start: the runner resolves a package's name against the signed index of the repositories its operator trusts, fetches by the index's hash, extracts it with none of the package's own scripts run, and writes the tool into the prefix, where the task sees it through the bind. The task only asks; every install is decided at the runner by the environment, the autonomy and the ceiling. A shape that pins the package is installed before the process starts; a pattern admits installs the task asks for as it runs."
+verbs:
+- name: install
+  description: "Install one package into the task's prefix, onto its PATH. The version is the index's: a step that names none takes the index's candidate, and what was installed is answered exactly. Nothing outside the task's own prefix changes, and an install runs no code of the package's."
+  fields:
+  - {name: pkg, form: lower, required: true, description: "the package's name as the index spells it (jq): lowercase. A name is public, as the index is"}
+  - {name: version, form: text, description: "the version to install, as the index spells it (1.6-2.1+deb12u2); absent is the index's candidate"}
+  - {name: as, form: lower, description: "the command's name on the task's PATH (jq-v1), so two versions sit side by side; absent is the package's own command. A name, never a path"}
