@@ -11,8 +11,8 @@ step by step: steps 1 and 2 are committed (81173906, with R1); step 4, the clien
 the third review"), as dc121a3d; step 3, the configuration, with R2, as 4ab09df0 (and b066d330,
 the json check's allowlist); step 5, the two ops, with R4 ("At the fourth review"), as 8d4fbbd3;
 steps 6, 7 and 8, the tools, the result and what a server says, with R5 ("At the fifth review"),
-as 38771f74; step 9, the words, with R6 ("At the sixth review"), is written and waits to be
-committed. Then the run on staging. It blocks 1f5art3x.
+as 38771f74; step 9, the words, with R6 ("At the sixth review"), as 5d80bccc. Every step is
+committed; the run on staging is next. It blocks 1f5art3x.
 
 **Where it is built:** on `verse/secret-exec`, as a pull request on top of it. The team is shown
 secret-exec as one pull request and what it enables, this and pkg-nix (2b5art3x) as far as each
@@ -375,7 +375,7 @@ first finds the approach wrong rather than a corner case, before the next step b
   task an op apart is handed (5), the `timeout` (3) and the table's deadline (5), `Held` (3) and
   the offer (6). The words are read against what was built. Then a run on staging against
   mcp.signadot.com and Linear's `/mcp/readonly`. **Done:** no seam gives; the words corrected
-  ("At the sixth review"). The staging run remains.
+  ("At the sixth review"), as 5d80bccc. The staging run remains.
 - **Across the stack:** pkg-nix is stacked on this. Before the team is shown it, one short round
   of secret-exec and the pull requests on top, for the seams between them; short, since each
   plan's R6 read its own.
