@@ -1,0 +1,32 @@
+=== who, and what is here ===
+uid=65532 gid=65532 groups=65532
+apt-get: /usr/bin/apt-get
+dpkg: /usr/bin/dpkg
+gpgv: /usr/bin/gpgv
+keyrings: debian-archive-bookworm-automatic.asc debian-archive-bookworm-security-automatic.asc debian-archive-bookworm-stable.asc debian-archive-bullseye-automatic.asc debian-archive-bullseye-security-automatic.asc debian-archive-bullseye-stable.asc debian-archive-trixie-automatic.asc debian-archive-trixie-security-automatic.asc debian-archive-trixie-stable.asc debian-archive-bookworm-automatic.gpg debian-archive-bookworm-security-automatic.gpg debian-archive-bookworm-stable.gpg debian-archive-bullseye-automatic.gpg debian-archive-bullseye-security-automatic.gpg debian-archive-bullseye-stable.gpg debian-archive-keyring.gpg debian-archive-removed-keys.gpg debian-archive-trixie-automatic.gpg debian-archive-trixie-security-automatic.gpg debian-archive-trixie-stable.gpg 
+the image's installed base (the provides set): 117 packages, e.g. libc-bin libc6 
+=== apt-get update, non-root, signatures checked ===
+Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+Get:2 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]
+rm: cannot remove '/var/cache/apt/archives/partial/*.deb': Permission denied
+Fetched 8941 kB in 1s (6299 kB/s)
+Reading package lists...
+update exit: 0
+=== resolve jq's closure (simulate), minus the installed base ===
+Inst libonig5 (6.9.8-1 Debian:12.15/oldstable [amd64])
+Inst libjq1 (1.6-2.1+deb12u2 Debian:12.15/oldstable [amd64])
+Inst jq (1.6-2.1+deb12u2 Debian:12.15/oldstable [amd64])
+Conf libonig5 (6.9.8-1 Debian:12.15/oldstable [amd64])
+Conf libjq1 (1.6-2.1+deb12u2 Debian:12.15/oldstable [amd64])
+Conf jq (1.6-2.1+deb12u2 Debian:12.15/oldstable [amd64])
+=== does it correctly SUBTRACT the base (no libc6/libc-bin/libm in the closure)? ===
+  -> base subtracted (libc etc. not in the closure)
+=== the fetch plan: urls + hashes for the closure (--print-uris) ===
+'http://deb.debian.org/debian/pool/main/libo/libonig/libonig5_6.9.8-1_amd64.deb' libonig5_6.9.8-1_amd64.deb 187828 MD5Sum:7e359432d638eee2be29dfd20ddcd493
+'http://deb.debian.org/debian/pool/main/j/jq/libjq1_1.6-2.1%2bdeb12u2_amd64.deb' libjq1_1.6-2.1+deb12u2_amd64.deb 135656 MD5Sum:60ea2d4f3dc5c0f760769ecc3ff0a999
+'http://deb.debian.org/debian/pool/main/j/jq/jq_1.6-2.1%2bdeb12u2_amd64.deb' jq_1.6-2.1+deb12u2_amd64.deb 63984 MD5Sum:b9aca00e056b5365d65597df4b338cee
+=== a bigger tool, to see real resolution: ripgrep, and git ===
+-- ripgrep closure:
+ripgrep 
+-- git closure:
+
