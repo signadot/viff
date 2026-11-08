@@ -78,6 +78,13 @@ type SubprocessConfig struct {
 	// Mirrors is the directory the runner keeps its mirrors in, which no ReadOnly path may reach,
 	// as it may not reach Work or Control.
 	Mirrors string
+	// Inst makes a launch's task an install root and answers it, where the runner installs
+	// packages for its tasks (the pkg system): bound read only at InstPath inside the sandbox,
+	// removed with the task. Nil, or an empty root with no error, binds none.
+	Inst func(l *runner.Launch) (string, error)
+	// Cellar is the directory the runner keeps installed packages and the tasks' install roots
+	// in, which no ReadOnly path may reach, as it may not reach Work or Control.
+	Cellar string
 	// Secrets is the directory of the runner's secret store, where it has one: what no ReadOnly
 	// path may reach either, at the start or at a launch.
 	Secrets string
@@ -167,13 +174,16 @@ type proc struct {
 	// (replacePolicy): what its proxy decides each connection by (connections).
 	autonomy atomic.Pointer[task.Autonomy]
 	dir      string
-	sock     string
-	cmd      *exec.Cmd
-	life     *os.File // the lifeline's write end
-	rt       task.Runner
-	prox     *httputil.ReverseProxy
-	co       *checkout     // the task's repos, when its launch names some
-	eg       *EgressServer // the task's way out, when its network allows hosts
+	// inst is the task's install root, outside the sandbox (the pkg system), empty where it has
+	// none: removed with the task, which keeps nothing it was given.
+	inst string
+	sock string
+	cmd  *exec.Cmd
+	life *os.File // the lifeline's write end
+	rt   task.Runner
+	prox *httputil.ReverseProxy
+	co   *checkout     // the task's repos, when its launch names some
+	eg   *EgressServer // the task's way out, when its network allows hosts
 	// egress is eg's proxy, for what it refused, read without p.mu by whatever reports the task.
 	egress atomic.Pointer[Egress]
 	// abort ends the task before its process hosts it: a cancel, or the runner shutting down.
@@ -409,6 +419,7 @@ func (h *SubprocessHandler) run(ctx context.Context, p *proc, l *runner.Launch, 
 		p.co.abandon()
 	}
 	os.RemoveAll(p.dir)
+	p.removeInst()
 	if ctx.Err() != nil {
 		p.remember(p.as(task.Cancelled, context.Cause(ctx).Error()))
 	} else {
@@ -479,6 +490,14 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	defer lifeR.Close()
 	p.life = lifeW
 
+	var inst string
+	if h.Inst != nil {
+		if inst, err = h.Inst(l); err != nil {
+			return fmt.Errorf("the task's install root: %w", err)
+		}
+		p.inst = inst
+	}
+
 	cmd := exec.Command(h.Command[0], h.Command[1:]...)
 	cmd.Stdin = bytes.NewReader(h.Config)
 	var env []string
@@ -492,7 +511,7 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	out := tagged(h.Log, p.id)
 	cmd.Stdout, cmd.Stderr = out, out
 	cmd.ExtraFiles = append([]*os.File{lf, lifeR}, extra...) // fd 3, fd 4, and fd 5
-	if err := h.Sandbox.Wrap(cmd, root, network, withReadOnly(h.Programs, h.ReadOnly, KeptDirs(h.Work, h.Control, h.Mirrors, h.Secrets), out)); err != nil {
+	if err := h.Sandbox.Wrap(cmd, root, network, withReadOnly(h.Programs, h.ReadOnly, KeptDirs(h.Work, h.Control, h.Mirrors, h.Secrets, h.Cellar), out), inst); err != nil {
 		return err
 	}
 	if err := cmd.Start(); err != nil {
@@ -602,10 +621,20 @@ func (h *SubprocessHandler) supervise(p *proc) {
 	p.remember(p.as(task.Failed, fmt.Sprintf(
 		"the task's process exited (%s) before the task ended", p.exitStatus())))
 	p.eg.Stop() // a way out outliving its task would be a route into the runner's network
+	p.removeInst()
 	if p.co != nil && h.Repos.settle(p.co, h.Log) {
 		return // the workspace is the only copy of work that could not be staged: kept
 	}
 	os.RemoveAll(p.dir)
+}
+
+// removeInst removes the task's install root, where it has one: installed tools are the cellar's
+// to keep, never a task's, so nothing of the root survives the task — not even where its
+// workspace is kept for salvage.
+func (p *proc) removeInst() {
+	if p.inst != "" {
+		os.RemoveAll(p.inst)
+	}
 }
 
 // follow reads the task's events from since until a terminal status, and returns it with the
@@ -1074,11 +1103,13 @@ func withReadOnly(programs, readOnly []string, kept map[string]string, log io.Wr
 
 // KeptDirs names the runner's own directories, which no readOnly path may reach: its work, where
 // each task's is the task's alone to write; its mirrors, every repository it holds whoever's launch
-// named it; its control directory, the tasks' sockets, which no sandbox binds; and its secret
-// store, what it acts with and no task holds. An empty one is left out.
-func KeptDirs(work, control, mirrors, secrets string) map[string]string {
+// named it; its control directory, the tasks' sockets, which no sandbox binds; its secret
+// store, what it acts with and no task holds; and its cellar, the installed packages and the
+// tasks' install roots, of which a task sees its own root alone, through its bind. An empty one
+// is left out.
+func KeptDirs(work, control, mirrors, secrets, cellar string) map[string]string {
 	kept := map[string]string{}
-	for name, dir := range map[string]string{"work": work, "control": control, "mirrors": mirrors, "secrets": secrets} {
+	for name, dir := range map[string]string{"work": work, "control": control, "mirrors": mirrors, "secrets": secrets, "cellar": cellar} {
 		if dir != "" {
 			kept[name] = dir
 		}

@@ -57,7 +57,7 @@ func TestAReadOnlyPathMayNotReachTheRunnersOwn(t *testing.T) {
 	if err := os.Symlink(run, link); err != nil {
 		t.Fatal(err)
 	}
-	kept := KeptDirs(work, control, mirrors, "")
+	kept := KeptDirs(work, control, mirrors, "", "")
 	for p, want := range map[string]string{
 		run:                                     "control", // the parent of control and work
 		control:                                 "control", // the directory itself
@@ -89,7 +89,7 @@ func TestALaunchLeavesOutAPathThatNowReachesTheRunnersOwn(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	kept := KeptDirs("", control, "", "")
+	kept := KeptDirs("", control, "", "", "")
 	var log bytes.Buffer
 	if got := withReadOnly(nil, []string{cache}, kept, &log); !slices.Equal(got, []string{cache}) {
 		t.Fatalf("a plain cache: bound %q (%s)", got, log.String())
@@ -119,7 +119,7 @@ func TestAReadOnlyPathMayNotReachTheSecretStore(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	kept := KeptDirs("", "", "", store)
+	kept := KeptDirs("", "", "", store, "")
 	for _, p := range []string{store, base, filepath.Join(store, "slack-bot")} {
 		if err := CheckReadOnly([]string{p}, kept); err == nil || !strings.Contains(err.Error(), "the runner's secrets directory") {
 			t.Errorf("readOnly %s: %v, want refused for the store", p, err)
@@ -160,7 +160,7 @@ func TestTheSecretStoreIsWhereNoSandboxBindsIt(t *testing.T) {
 	if err := os.Symlink("/etc", intoEtc); err != nil {
 		t.Fatal(err)
 	}
-	kept := KeptDirs(work, control, mirrors, "")
+	kept := KeptDirs(work, control, mirrors, "", "")
 	for dir, want := range map[string]string{
 		"/etc/verse/secrets":             "every task's sandbox has",
 		"/opt/secrets":                   "every task's sandbox has",

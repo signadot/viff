@@ -48,7 +48,7 @@ func TestBwrapWrapsTheNetworkAsAsked(t *testing.T) {
 	}
 
 	open := exec.Command("runner", "-task")
-	if err := b.Wrap(open, "/w", runnerd.Network{}, nil); err != nil {
+	if err := b.Wrap(open, "/w", runnerd.Network{}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	if open.Path != "/usr/bin/bwrap" {
@@ -68,13 +68,13 @@ func TestBwrapWrapsTheNetworkAsAsked(t *testing.T) {
 	}
 
 	none := exec.Command("x")
-	_ = b.Wrap(none, "/w", runnerd.Network{Mode: runnerd.NetworkNone}, nil)
+	_ = b.Wrap(none, "/w", runnerd.Network{Mode: runnerd.NetworkNone}, nil, "")
 	if !strings.Contains(strings.Join(none.Args, " "), "--unshare-net") {
 		t.Error("a network of none did not unshare the network")
 	}
 
 	allow := exec.Command("x")
-	if err := b.Wrap(allow, "/w", runnerd.Network{Mode: runnerd.NetworkAllow, Egress: "/ctl/e1.sock"}, nil); err != nil {
+	if err := b.Wrap(allow, "/w", runnerd.Network{Mode: runnerd.NetworkAllow, Egress: "/ctl/e1.sock"}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	joined = strings.Join(allow.Args, " ")
@@ -86,8 +86,29 @@ func TestBwrapWrapsTheNetworkAsAsked(t *testing.T) {
 	}
 	// Allow with no socket to bind is a refusal rather than a sandbox with no way out that
 	// nobody asked for.
-	if err := b.Wrap(exec.Command("x"), "/w", runnerd.Network{Mode: runnerd.NetworkAllow}, nil); err == nil {
+	if err := b.Wrap(exec.Command("x"), "/w", runnerd.Network{Mode: runnerd.NetworkAllow}, nil, ""); err == nil {
 		t.Error("an allow network with no egress proxy was wrapped anyway")
+	}
+}
+
+// THE INSTALL ROOT IS ONE READ-ONLY BIND AT A FIXED PATH, made when the task starts and never
+// again: a wrap given one binds it read only at InstPath, where the runner's relative links and
+// the task's PATH agree to look, and a wrap given none binds nothing there.
+func TestTheInstallRootIsBoundReadOnlyAtItsPath(t *testing.T) {
+	b := runnerd.BwrapAt("/usr/bin/bwrap")
+	with := exec.Command("runner", "-task")
+	if err := b.Wrap(with, "/w", runnerd.Network{}, nil, "/state/cellar/.tasks/task-1"); err != nil {
+		t.Fatal(err)
+	}
+	if joined := strings.Join(with.Args, " "); !strings.Contains(joined, "--ro-bind /state/cellar/.tasks/task-1 "+runnerd.InstPath) {
+		t.Errorf("the install root is not bound read only:\n%s", joined)
+	}
+	without := exec.Command("runner", "-task")
+	if err := b.Wrap(without, "/w", runnerd.Network{}, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(without.Args, " "), runnerd.InstPath) {
+		t.Errorf("a task with no install root was given a bind at %s", runnerd.InstPath)
 	}
 }
 
@@ -103,7 +124,7 @@ func TestWrappingKeepsTheInheritedDescriptors(t *testing.T) {
 	for _, sb := range []runnerd.Sandbox{runnerd.Unconfined{}, runnerd.BwrapAt("/usr/bin/bwrap")} {
 		cmd := exec.Command("runner", "-task")
 		cmd.ExtraFiles = []*os.File{f, f}
-		if err := sb.Wrap(cmd, t.TempDir(), runnerd.Network{}, nil); err != nil {
+		if err := sb.Wrap(cmd, t.TempDir(), runnerd.Network{}, nil, ""); err != nil {
 			t.Fatalf("%s: %v", sb.Name(), err)
 		}
 		if len(cmd.ExtraFiles) != 2 {
@@ -186,7 +207,7 @@ func TestTheDirectoryIsUnderTheRootAndTheSandboxChangesToIt(t *testing.T) {
 		t.Errorf("Dir %q, args %v", cmd.Dir, cmd.Args)
 	}
 	own := exec.Command("runner", "-task")
-	if err := runnerd.BwrapAt("/usr/bin/bwrap").Wrap(own, "/w", runnerd.Network{}, nil); err != nil {
+	if err := runnerd.BwrapAt("/usr/bin/bwrap").Wrap(own, "/w", runnerd.Network{}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	if own.Dir != "" || !strings.Contains(strings.Join(own.Args, " "), "--chdir /w") {

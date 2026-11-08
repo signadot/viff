@@ -40,7 +40,7 @@ func TestAReadOnlyPathIsReadableAndNotWritableInTheSandbox(t *testing.T) {
 	}
 	work := t.TempDir()
 	cmd := exec.Command("/bin/sh", "-c", "cat "+keep+"/mod.txt && ! touch "+keep+"/new 2>/dev/null")
-	if err := sb.Wrap(cmd, work, runnerd.Network{Mode: runnerd.NetworkNone}, []string{keep}); err != nil {
+	if err := sb.Wrap(cmd, work, runnerd.Network{Mode: runnerd.NetworkNone}, []string{keep}, ""); err != nil {
 		t.Fatal(err)
 	}
 	out, err := cmd.CombinedOutput()

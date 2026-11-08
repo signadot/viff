@@ -28,9 +28,11 @@ type Sandbox interface {
 	// Wrap rewrites cmd to run confined, with dir the only path it may write and its working
 	// directory, unless cmd.Dir names one under it, and net what it may reach. programs are
 	// the other programs it runs (a script's verse-call-tool), which it finds where they are,
-	// read only. The descriptors on cmd.ExtraFiles are passed through. Called only after
-	// Provides said yes.
-	Wrap(cmd *exec.Cmd, dir string, net Network, programs []string) error
+	// read only. inst, where it is given, is the task's install root, bound read only at
+	// InstPath: the runner writes tools into it from its own side (the pkg system), and the
+	// task sees them through the bind. The descriptors on cmd.ExtraFiles are passed through.
+	// Called only after Provides said yes.
+	Wrap(cmd *exec.Cmd, dir string, net Network, programs []string, inst string) error
 }
 
 // Confiner confines a command the runner runs for a task apart from the task's own process
@@ -73,8 +75,9 @@ func (c Confiner) Confine(cmd *exec.Cmd, root, dir string, net delivery.Network)
 	}
 	cmd.Dir = dir
 	// The readOnly paths this host lacks were said when the task's own process started
-	// (SubprocessHandler), and are not said again for each command.
-	return c.Sandbox.Wrap(cmd, root, Network{Mode: net.Mode, Egress: net.Egress}, withReadOnly(nil, c.ReadOnly, c.Kept, io.Discard))
+	// (SubprocessHandler), and are not said again for each command. No install root either: a
+	// command run with a secret starts from the runner's own programs, never an installed one.
+	return c.Sandbox.Wrap(cmd, root, Network{Mode: net.Mode, Egress: net.Egress}, withReadOnly(nil, c.ReadOnly, c.Kept, io.Discard), "")
 }
 
 // underAny is whether path is, or lies under, one of dirs.
@@ -111,6 +114,12 @@ var NetworkModes = []string{NetworkOpen, NetworkNone, NetworkAllow}
 // EgressPath is where the egress socket appears inside a sandbox: a fixed path, because the
 // sandbox binds it and the task's process dials it (UseEgress), two programs agreeing on a name.
 const EgressPath = "/run/verse-egress"
+
+// InstPath is where a task's install root appears inside its sandbox, read only: a fixed path,
+// so the links the runner lays in it (cellar.Materialise, relative) and the PATH the task's
+// shell is given agree on a name. One bind, made at the task's start; installing afterwards is
+// the runner writing into the root from its own side, seen through the bind, never a new mount.
+const InstPath = "/inst"
 
 func (n Network) mode() string {
 	if n.Mode == "" {
@@ -158,7 +167,9 @@ func (Unconfined) Provides(net Network) error {
 	return nil
 }
 
-func (Unconfined) Wrap(cmd *exec.Cmd, dir string, _ Network, _ []string) error {
+func (Unconfined) Wrap(cmd *exec.Cmd, dir string, _ Network, _ []string, _ string) error {
+	// No install root either: there is no bind to make it read only through, so the pkg system
+	// is closed where tasks run unconfined (stock.Standalone), as secret is.
 	cmd.Dir = cmp.Or(cmd.Dir, dir)
 	return nil
 }
@@ -179,7 +190,7 @@ func Bwrap() (*BwrapSandbox, error) {
 	}
 	b := BwrapAt(bin)
 	probe := exec.Command("true")
-	if err := b.Wrap(probe, os.TempDir(), Network{Mode: NetworkNone}, nil); err != nil {
+	if err := b.Wrap(probe, os.TempDir(), Network{Mode: NetworkNone}, nil, ""); err != nil {
 		return nil, err
 	}
 	if out, err := probe.CombinedOutput(); err != nil {
@@ -200,7 +211,7 @@ func (*BwrapSandbox) Provides(net Network) error { return checkMode(net) }
 // that exposes whatever wasn't thought of.
 var systemDirs = []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/opt"}
 
-func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []string) error {
+func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []string, inst string) error {
 	args := []string{
 		"--die-with-parent", "--new-session",
 		// No capabilities, even for a runner run as root, which bwrap would otherwise let keep
@@ -223,6 +234,11 @@ func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []s
 		if prog, err := filepath.Abs(p); err == nil && !UnderSystem(prog) {
 			args = append(args, "--ro-bind", prog, prog)
 		}
+	}
+	// The task's install root, read only, at its fixed path: the one mount the pkg system ever
+	// makes, at the start.
+	if inst != "" {
+		args = append(args, "--ro-bind", inst, InstPath)
 	}
 	// The working directory is dir, or what cmd.Dir names under it: a command run for the task
 	// in one directory of its tree (Confiner). It is bwrap's to change to, inside, and not the

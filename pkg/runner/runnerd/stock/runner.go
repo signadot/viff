@@ -102,7 +102,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	// the directories above, and reached by no readOnly path.
 	secrets := c.secretsDir()
 	if secrets != "" {
-		if err := runnerd.CheckSecretStore(secrets, runnerd.KeptDirs(work, control, mirrors, "")); err != nil {
+		if err := runnerd.CheckSecretStore(secrets, runnerd.KeptDirs(work, control, mirrors, "", "")); err != nil {
 			return nil, err
 		}
 		if _, err := os.Stat(secrets); err != nil {
@@ -121,7 +121,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 			}
 		}
 	}
-	if err := runnerd.CheckReadOnly(c.ReadOnly, runnerd.KeptDirs(work, control, mirrors, secrets)); err != nil {
+	if err := runnerd.CheckReadOnly(c.ReadOnly, runnerd.KeptDirs(work, control, mirrors, secrets, "")); err != nil {
 		return nil, err
 	}
 	for _, p := range c.ReadOnly {
@@ -151,7 +151,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 		// A command run with a secret is confined as the task's process is, over the task's
 		// root and under its network, with what the operator keeps read only.
 		repos.Services.Confine = runnerd.Confiner{Sandbox: sb, ReadOnly: c.ReadOnly,
-			Kept: runnerd.KeptDirs(work, control, mirrors, secrets)}
+			Kept: runnerd.KeptDirs(work, control, mirrors, secrets, "")}
 		repos.Ceilings = func(l *runner.Launch) map[string]systems.Ceiling { return c.ceilings(c.doer(l)) }
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{

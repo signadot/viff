@@ -120,11 +120,11 @@ func TestATaskCannotReadTheSecretStore(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(store, "slack-bot"), []byte("xoxb-a-secret"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := runnerd.CheckSecretStore(store, runnerd.KeptDirs(work, "", "", "")); err != nil {
+	if err := runnerd.CheckSecretStore(store, runnerd.KeptDirs(work, "", "", "", "")); err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.Command("/bin/sh", "-c", "cat "+store+"/slack-bot; ls "+store+"; ls "+cache+" && echo the cache is here")
-	if err := sb.Wrap(cmd, work, runnerd.Network{Mode: runnerd.NetworkNone}, []string{cache}); err != nil {
+	if err := sb.Wrap(cmd, work, runnerd.Network{Mode: runnerd.NetworkNone}, []string{cache}, ""); err != nil {
 		t.Fatal(err)
 	}
 	out, _ := cmd.CombinedOutput()
