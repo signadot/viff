@@ -31,10 +31,12 @@ type Channel struct {
 
 	near net.Conn
 	far  *os.File
-	// network is the task's network as the sandbox built it (SetNetwork), and env the
-	// environment its process was started with (SetEnv), each set before Serve.
+	// network is the task's network as the sandbox built it (SetNetwork), env the environment
+	// its process was started with (SetEnv), and inst its install root (SetInst), each set
+	// before Serve.
 	network Network
 	env     []string
+	inst    string
 
 	// autonomy is the task's CURRENT autonomy: the launch's until a replacement is set (SetPolicy),
 	// and what the server decides each act by and settle reads. The launch's own copy (l) never
@@ -209,6 +211,10 @@ func (c *Channel) SetNetwork(n Network) { c.network = n }
 // for the task is given, under the call's own variables and the secret. Set it before Serve.
 func (c *Channel) SetEnv(env []string) { c.env = slices.Clone(env) }
 
+// SetInst is the task's install root on the runner's side (Task.Inst), which its sandbox binds
+// read only at InstPath: where an install materialises a package. Set it before Serve.
+func (c *Channel) SetInst(inst string) { c.inst = inst }
+
 // Serve answers the task's requests for as long as its process lives.
 func (c *Channel) Serve() {
 	c.serving.Store(true)
@@ -217,7 +223,7 @@ func (c *Channel) Serve() {
 	if c.ws != nil {
 		root = c.ws.Root
 	}
-	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Root: root, Network: c.network, Env: c.env, Launch: c.l, Policy: c.Autonomy,
+	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Root: root, Network: c.network, Env: c.env, Inst: c.inst, Launch: c.l, Policy: c.Autonomy,
 		Answered: c.answered, Credential: c.cred}, c.near)
 }
 

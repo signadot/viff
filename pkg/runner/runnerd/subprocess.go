@@ -496,6 +496,9 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 			return fmt.Errorf("the task's install root: %w", err)
 		}
 		p.inst = inst
+		if p.co != nil {
+			p.co.ch.SetInst(inst) // where an install the task asks for is materialised
+		}
 	}
 
 	cmd := exec.Command(h.Command[0], h.Command[1:]...)

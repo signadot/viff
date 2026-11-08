@@ -133,6 +133,11 @@ var ops = map[string]op{
 	OpMCPList: {unasked: "it lists what an `mcp.call` would be decided on: one server's tools, less those no shape of the " +
 		"environment's or the ceiling's admits a call of, for a task whose environment gives the server",
 		takes: []string{"server"}, apart: true, deadline: mcpclient.ListTimeout + mcpGrace, ask: (*Server).mcpList},
+
+	// A package installed into the task's read-only prefix: apart, since it fetches from the
+	// repositories and reads no checkout; the deadline is the resolve, the fetches and the layout.
+	OpPkgInstall: named(OpPkgInstall, (*Server).pkgInstall, "pkg", "version", "as").
+		performedApart().withDeadline(InstallTimeout + installGrace),
 }
 
 // named is an op whose word on the wire is its step's name, with the deadline of a call to a
