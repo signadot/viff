@@ -176,6 +176,62 @@ func (i *installer) Install(ctx context.Context, inst, pkg, version, as string) 
 	return delivery.Installed{Version: r.Version, As: as}, nil
 }
 
+// startingInstalls is what the runner installs into a task's root before its process starts:
+// the doer's base, each at the index's candidate under its own commands' names, then the
+// environment's pinned installs. An install that fails refuses the launch, naming the package.
+func startingInstalls(base []string, env systems.Environment) []delivery.Install {
+	var out []delivery.Install
+	for _, b := range base {
+		out = append(out, delivery.Install{Pkg: b})
+	}
+	return append(out, pinnedInstalls(env)...)
+}
+
+// pinnedInstalls is the installs a spawn's environment pins: each `install` shape whose fields
+// are single literals, the package named, as the system's document says — a shape that pins the
+// package is installed before the process starts, and one with a pattern anywhere admits
+// installs the task asks for, pinning none.
+func pinnedInstalls(env systems.Environment) []delivery.Install {
+	var out []delivery.Install
+	for _, b := range env.Systems["pkg"] {
+		for _, shape := range b.Verbs["install"] {
+			if ins, ok := pinned(shape); ok {
+				out = append(out, ins)
+			}
+		}
+	}
+	return out
+}
+
+// pinned is the one install a shape pins, false where it names no package or holds a pattern.
+func pinned(shape systems.Shape) (delivery.Install, bool) {
+	one := func(name string) (string, bool) {
+		n, has := shape[name]
+		if !has {
+			return "", true
+		}
+		lits, ok := systems.Literals(n)
+		if !ok || len(lits) != 1 {
+			return "", false
+		}
+		return lits[0], true
+	}
+	pkg, ok := one("pkg")
+	if !ok || pkg == "" {
+		return delivery.Install{}, false
+	}
+	version, ok := one("version")
+	if !ok {
+		return delivery.Install{}, false
+	}
+	as, ok := one("as")
+	if !ok {
+		return delivery.Install{}, false
+	}
+	ins, why := delivery.ReadInstall(pkg, version, as)
+	return ins, why == ""
+}
+
 // pkgBuilds is what the runner builds of pkg, by its nature: an install from the repositories it
 // trusts, any package of their index, as an offer's `builds` says it. The ceiling, not the
 // index, is the operator's bound.

@@ -1,8 +1,11 @@
 package stock
 
 import (
+	"slices"
+
 	"context"
 	"errors"
+	"github.com/signadot/tony-format/go-tony/ir"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +13,7 @@ import (
 
 	"github.com/signadot/verse/pkg/runner/runnerd/apt"
 	"github.com/signadot/verse/pkg/runner/runnerd/cellar"
+	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
 	"github.com/signadot/verse/pkg/systems"
 )
 
@@ -159,5 +163,46 @@ func TestTheInstallRootsBinComesFirstOnPATH(t *testing.T) {
 	}
 	if got := withInstPath([]string{"HOME=/w"}); got[1] != "PATH=/inst/bin:"+defaultPath {
 		t.Fatalf("%v", got)
+	}
+}
+
+// A PINNED SHAPE IS INSTALLED BEFORE THE START, AND A PATTERN GRANTS: the doer's base first,
+// each at the candidate, then each environment shape whose fields are single literals with the
+// package named; a shape with a pattern anywhere, or naming no package, pins nothing.
+func TestPinnedShapesAreInstalledBeforeTheStart(t *testing.T) {
+	env := systems.Environment{Systems: systems.Systems{"pkg": {{Verbs: map[string][]systems.Shape{"install": {
+		{}, // any install: a grant
+		{"pkg": ir.FromString("jq"), "version": ir.FromString("1.6-2.1"), "as": ir.FromString("jq-v1")},
+		{"pkg": ir.FromString("ripgrep")},
+		{"pkg": systems.Glob("lib*")},                                // a pattern: a grant
+		{"pkg": ir.FromString("jq"), "version": systems.Glob("1.*")}, // a patterned version: a grant
+	}}}}}}
+	got := startingInstalls([]string{"git", "curl"}, env)
+	want := []delivery.Install{{Pkg: "git"}, {Pkg: "curl"}, {Pkg: "jq", Version: "1.6-2.1", As: "jq-v1"}, {Pkg: "ripgrep"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("%v, want %v", got, want)
+	}
+	if got := startingInstalls(nil, systems.Environment{}); len(got) != 0 {
+		t.Fatalf("an empty environment pins %v", got)
+	}
+}
+
+// `base` IS PKG'S ALONE, AND ITS NAMES ARE NAMES: another system's section may not carry one,
+// and a base entry that is a path is refused at load.
+func TestBaseIsPkgsAloneAndItsNamesAreNames(t *testing.T) {
+	good := Config{Pkg: pkgSection(), Script: &Script{Systems: map[string]System{
+		"pkg": {Ceiling: systems.Open(), Base: []string{"ripgrep", "jq"}}}}}
+	if err := good.checkSystems(ScriptDoer, good.Script.Systems); err != nil {
+		t.Fatal(err)
+	}
+	bad := Config{Pkg: pkgSection(), Script: &Script{Systems: map[string]System{
+		"pkg": {Ceiling: systems.Open(), Base: []string{"bin/evil"}}}}}
+	if err := bad.checkSystems(ScriptDoer, bad.Script.Systems); err == nil || !strings.Contains(err.Error(), "never a path") {
+		t.Fatalf("a base that is a path: %v", err)
+	}
+	elsewhere := Config{Script: &Script{Systems: map[string]System{
+		"question": {Ceiling: systems.Open(), Base: []string{"jq"}}}}}
+	if err := elsewhere.checkSystems(ScriptDoer, elsewhere.Script.Systems); err == nil || !strings.Contains(err.Error(), "pkg's alone") {
+		t.Fatalf("a base on another system: %v", err)
 	}
 }

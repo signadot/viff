@@ -247,6 +247,10 @@ type System struct {
 	// published with the doer's offer, holds a launch's environment at install and at launch
 	// (every block within it), and is read again at each act.
 	Ceiling systems.Ceiling `tony:"field=ceiling,omitzero"`
+	// Base is pkg's alone: packages installed into every task's root before its process starts,
+	// each at the index's candidate under its own commands' names. The operator's installs, so
+	// the ceiling does not bound them, and no row is asked.
+	Base []string `tony:"field=base,omitzero"`
 }
 
 // SecretStore is the runner's secret store (secretstore.Store), as the file names it. The model
@@ -1044,6 +1048,16 @@ func (c *Config) checkSystems(doer string, sections map[string]System) error {
 		if name == "mcp" {
 			if err := c.checkMCPCeiling(at, sys.Ceiling); err != nil {
 				return err
+			}
+		}
+		if len(sys.Base) > 0 && name != "pkg" {
+			return fmt.Errorf("%s.%s: `base` is pkg's alone, the packages installed into every task's root at start", at, name)
+		}
+		if name == "pkg" {
+			for i, b := range sys.Base {
+				if _, why := delivery.ReadInstall(b, "", ""); why != "" {
+					return fmt.Errorf("%s.pkg.base[%d]: %s", at, i, why)
+				}
 			}
 		}
 	}

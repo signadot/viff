@@ -194,24 +194,46 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	// A task of a doer whose ceilings name pkg gets an install root, made under the cellar and
 	// removed with the task, and that root's bin first on its PATH; any other doer's tasks get
 	// neither, and the pkg section stays the runner's.
+	pkgDoer := func(l *runner.Launch) string {
+		if l.Script != "" {
+			return ScriptDoer
+		}
+		return c.doer(l)
+	}
 	withPkg := func(l *runner.Launch) bool {
 		if pkgInstaller == nil {
 			return false
 		}
-		_, ok := c.systemsOf(c.doer(l))["pkg"]
+		_, ok := c.systemsOf(pkgDoer(l))["pkg"]
 		return ok
 	}
-	var instFor func(*runner.Launch) (string, error)
+	var instFor func(context.Context, *runner.Launch) (string, error)
 	if pkgInstaller != nil {
 		tasks := filepath.Join(cellarDir, ".tasks")
-		instFor = func(l *runner.Launch) (string, error) {
+		instFor = func(ctx context.Context, l *runner.Launch) (string, error) {
 			if !withPkg(l) {
 				return "", nil
 			}
 			if err := os.MkdirAll(tasks, 0o755); err != nil {
 				return "", err
 			}
-			return os.MkdirTemp(tasks, "task-")
+			dir, err := os.MkdirTemp(tasks, "task-")
+			if err != nil {
+				return "", err
+			}
+			// What starts installed: the doer's base, then what the spawn's environment pins —
+			// the operator's and the spawner's own word, so no row is asked; a failure refuses
+			// the launch, naming the package.
+			for _, ins := range startingInstalls(c.systemsOf(pkgDoer(l))["pkg"].Base, l.Environment) {
+				timed, cancel := context.WithTimeout(ctx, delivery.InstallTimeout)
+				_, err := pkgInstaller.Install(timed, dir, ins.Pkg, ins.Version, ins.As)
+				cancel()
+				if err != nil {
+					os.RemoveAll(dir)
+					return "", fmt.Errorf("installing %s before the start: %w", ins.Pkg, err)
+				}
+			}
+			return dir, nil
 		}
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{
