@@ -13,8 +13,10 @@ the json check's allowlist); step 5, the two ops, with R4 ("At the fourth review
 steps 6, 7 and 8, the tools, the result and what a server says, with R5 ("At the fifth review"),
 as 38771f74; step 9, the words, with R6 ("At the sixth review"), as 5d80bccc. Every step is
 committed, and the run on staging is done ("At the staging run"): a script and a Claude task each
-read a Linear issue through the runner, asked about with the arguments, answered, performed once.
-It blocks 1f5art3x.
+read a Linear issue through the runner, and a script listed the Signadot org's clusters through
+its production server, each call asked about with the arguments, answered, performed once. The run
+found a tool taking nothing kept from scripts, fixed as f7c18935. Signadot's staging server waits
+on ENG-1368. It blocks 1f5art3x.
 
 **Where it is built:** on `verse/secret-exec`, as a pull request on top of it. The team is shown
 secret-exec as one pull request and what it enables, this and pkg-nix (2b5art3x) as far as each
@@ -660,7 +662,7 @@ call's own timeout fires first; a server `Held` leaves out is out of the service
   agent's wire never writes and a script's body rarely does; `ServerError.Code` is carried and
   read by nothing yet but a log.
 
-## At the staging run (versed and the runners at 5d80bccc, Linear's `/mcp/readonly`)
+## At the staging run (versed at 5d80bccc, the runners at 5d80bccc and then f7c18935; Linear's `/mcp/readonly` and mcp.signadot.com)
 
 Shipped to staging as `make ship-versed && make ship-runners` from a verse-staging worktree whose
 runner configs name `mcp.servers` (`linear`, the read-only endpoint with the store's `linear`;
@@ -685,6 +687,31 @@ is set and not read.
 - **Found:** a claude spawn needs `commands: {}` and `files: {}` beside its `mcp` block, since the
   claude doer requires `commands.run` and `files.write` of every spawn (`launch.go`, `Requires`);
   the example in `docs/systems/mcp.md` was refused as written, and gains the two lines.
-- **Open:** the signadot server, once its key is in the store (`runnerStoreKey`,
-  `staging/verse/runner-secrets`); the staging configs on verse-staging's `mcp` branch, and the
-  deploy tag.
+- **The signadot server, after:** its key went into the store (`runnerStoreKey`,
+  `staging/verse/runner-secrets`, synced; the runners restarted and describe `builds: {server: !or
+  [linear, signadot]}`), and the url is `mcp.staging.signadot.com/stream`. The list fails at
+  `initialize` with 403 `Forbidden: invalid Host header "mcp.staging.signadot.com"`: the MCP Go
+  SDK's loopback DNS-rebinding protection, on a server pod handed its requests over loopback by a
+  proxy, after Signadot's auth passed (no key is 401; the key against production is 401, so it is
+  staging's). Verse behaved as written: the task started with no tools and the runner's log says
+  why (`run-84fcb3b5ef5c`). Filed as Linear ENG-1368 against the staging MCP server
+  (`DisableLocalhostProtection`, or no loopback hop); the same spawn
+  (`staging-mcp-signadot.tony`, `list_*` admitted, `list_clusters` asked about) runs once it is
+  fixed.
+- **The production server, as a second server** (`signadot_prod`, `mcp.signadot.com/stream`,
+  the store's `signadot-prod-api-key`, the same `list_*`/`get_*` ceiling): the list comes back
+  (18 tools), and the first script run (`run-fedfc152d986`) failed with no tool to call: `the tool
+  list_clusters is left out: its schema names no properties`. The server's `list_*` tools are
+  written `{type: object, additionalProperties: false}`, a tool taking nothing, and R5's script
+  rule read every schema without `properties` as taking any object. Narrowed at f7c18935: a
+  tool with no properties is left out only where it bounds none out (no `additionalProperties:
+  false`), and `additionalProperties` other than false is refused on its own; a tool taking
+  nothing is offered, since a call with no arguments passes verse-call-tool's check. With the
+  runners at f7c18935 the same spawn (`run-5cad97514a29`) listed the five `list_*` tools the
+  shapes admit, each with the server's `<usecase>`/`<instructions>` text and the data line
+  (`list_devboxes` with its one flag, `-all`), raised `run-5cad97514a29~d1` with `fields:
+  {server: signadot_prod, tool: list_clusters, arguments: {}}`, and after `proceed` made the
+  call once: the org's clusters came back as the script's output, with the server's
+  `requiresConfirmation: true`, which is data to the task. `done` in 16s.
+- **Open:** the staging signadot run, on ENG-1368; the staging configs on verse-staging's `mcp`
+  branch, and the deploy tag.
