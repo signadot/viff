@@ -210,16 +210,18 @@ autonomy:
 2. **The step/verb.** `install`, and whether a task may also *list* what is installed or available.
 3. **Runtime vs frozen** as the default, and whether a deployment offers both.
 4. **musl vs glibc.** One base image is one libc family; whether a second base (Alpine/apk) is
-   worth it, or glibc-only. **Leaning glibc-only.** The Nov 2026 "sshole" disclosure (openwall
-   oss-security 2026/11/05; sshd worked around it in OpenSSH 10.6p2) is the genre of surprise to
-   weigh: a ~decade-old musl `crypt(3)` behaviour — return the sentinel `"*"` rather than NULL on
-   failure, plus a 256-byte key cap — let an over-long password log an attacker into a `"*"`-locked
-   account on PAM-less musl `sshd` builds, reaching root on some default Alpine cloud images. It is
-   a specific sshd↔musl interaction, since patched in sshd, not "musl is broken", and it does not
-   touch us (no sshd in a task). But it is the kind of edge musl's thinner, differently-behaving
-   libc surface invites, on top of musl's weaker binary/package compatibility with glibc-built
-   tools — which is the real cost here. That is the case against a second base; the case *for* apk
-   would have to be concrete (a tool only Alpine packages), not default.
+   worth it, or glibc-only. **Leaning glibc-only.** The Nov 2026 "sshole" disclosure
+   (CVE-2026-109518; the openwall oss-security advisory of 2026/11/05 itself carries no id, and
+   some vendor posts circulate CVE-2026-123158; sshd worked around it in OpenSSH 10.6p2) is the
+   genre of surprise to weigh: a ~decade-old musl `crypt(3)` behaviour — return the sentinel `"*"`
+   rather than NULL on failure, plus a 256-byte key cap — let an over-long password log an attacker
+   into a `"*"`-locked account on PAM-less musl `sshd` builds, reaching root on some default Alpine
+   cloud images. It is a specific sshd↔musl interaction, since patched in sshd, not "musl is
+   broken", and it does not touch us (no sshd in a task). But it is the kind of edge musl's
+   thinner, differently-behaving libc surface invites, on top of musl's weaker binary/package
+   compatibility with glibc-built tools — which is the real cost here. That is the case against a
+   second base; the case *for* apk would have to be concrete (a tool only Alpine packages), not
+   default.
 5. **Interpreted tools.** python-with-site-packages, node-with-modules: a single prebuilt
    interpreter fits the prefix model; an environment of language packages (pip/npm) is its own
    layout and resolver question, a separate issue.
