@@ -65,6 +65,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -1087,4 +1088,23 @@ func (d *driver) askPerson(ctx context.Context, tu task.ToolUse, question, heade
 	default:
 		return res.Choice, nil
 	}
+}
+
+// toolNameMost is the longest name of a tool codex's model API takes, and toolName the letters it
+// takes in one.
+const toolNameMost = 64
+
+var toolName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// TakesTool is why codex cannot be offered a tool of this name, nil where it can: a dynamic
+// tool's name goes to the model as a function's, bounded in length and in letters. A runtime
+// offering tools it did not write (an MCP server's) asks before offering one.
+func TakesTool(name string) error {
+	if !toolName.MatchString(name) {
+		return fmt.Errorf("codex takes a tool's name of letters, digits, `_` and `-`, and %q is not", name)
+	}
+	if len(name) > toolNameMost {
+		return fmt.Errorf("codex takes a tool's name of %d characters at most, and %q is %d", toolNameMost, name, len(name))
+	}
+	return nil
 }

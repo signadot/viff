@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -434,3 +435,22 @@ func truncate(s string, n int) string {
 }
 
 func str(m map[string]any, k string) string { s, _ := m[k].(string); return s }
+
+// toolNameMost is the longest name of a tool the agent's model API takes, and toolName the
+// letters it takes in one.
+const toolNameMost = 64
+
+var toolName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// TakesTool is why the verse agent cannot be offered a tool of this name, nil where it can: an
+// extra tool's name goes to the model as a function's, bounded in length and in letters. A
+// runtime offering tools it did not write (an MCP server's) asks before offering one.
+func TakesTool(name string) error {
+	if !toolName.MatchString(name) {
+		return fmt.Errorf("the verse agent takes a tool's name of letters, digits, `_` and `-`, and %q is not", name)
+	}
+	if len(name) > toolNameMost {
+		return fmt.Errorf("the verse agent takes a tool's name of %d characters at most, and %q is %d", toolNameMost, name, len(name))
+	}
+	return nil
+}
