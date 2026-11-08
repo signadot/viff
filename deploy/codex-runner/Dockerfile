@@ -12,9 +12,11 @@ ARG TARGETARCH
 # ripgrep is what Codex reaches for when it searches a tree, and a search that falls back to
 # grep is a slower agent rather than a broken one, so this is a convenience and not a
 # requirement.
+# patchelf is the pkg system's install toolchain: the runner sets an installed prefix's runpaths
+# with it; apt-get, apt-cache, dpkg-deb, gpgv and the archive keyrings ride the Debian base.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      bubblewrap ca-certificates git curl ripgrep \
+      bubblewrap ca-certificates git curl ripgrep patchelf \
  && rm -rf /var/lib/apt/lists/*
 
 ARG GO_VERSION=1.27.1

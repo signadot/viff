@@ -40,6 +40,12 @@ data:
     #   mcp: {servers: {linear: {url: "https://mcp.linear.app/mcp/readonly", auth: {secret: linear}}}}
     # and under the doer's systems
     #   mcp: {ceiling: {server: linear}}
+    # Packages the runner installs into a task's read-only prefix (the pkg system): the manager
+    # it wraps and the signed repositories it trusts, the cellar on the state volume. None here:
+    # a deployment names its own, as
+    #   pkg: {cellar: /state/cellar, manager: apt, repos: ["deb http://deb.debian.org/debian bookworm main"], collect-above: 50Gi}
+    # and under the doer's systems
+    #   pkg: {ceiling: {install: {}}, base: [jq]}
     # The operator's line over every system a doer holds for its tasks, a doer at a time: what a
     # spawn's environment may give, held at install, at launch and again at each act. A ceiling
     # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer

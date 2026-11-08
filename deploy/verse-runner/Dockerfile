@@ -24,9 +24,11 @@ ARG TARGETARCH
 #
 # git is here for the task's shell: an agent commits what it means to deliver and the runner
 # pushes it from its own mirror, so the shell the model drives has git and no credential.
+# patchelf is the pkg system's install toolchain: the runner sets an installed prefix's runpaths
+# with it; apt-get, apt-cache, dpkg-deb, gpgv and the archive keyrings ride the Debian base.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      bubblewrap ca-certificates git curl \
+      bubblewrap ca-certificates git curl patchelf \
  && rm -rf /var/lib/apt/lists/*
 
 # The toolchain a task's shell finds on its PATH. What the charters spawned here run is a claim
