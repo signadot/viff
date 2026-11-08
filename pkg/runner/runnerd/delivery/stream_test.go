@@ -328,7 +328,8 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 	}
 	w.Close()
 
-	// A stream frame that says more than came does not read either.
+	// A stream frame that says more than came does not read either, and the error says the
+	// count that did.
 	runner, asked, cl = feed(t)
 	r, w = pipe()
 	defer w.Close()
@@ -341,8 +342,42 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Close()
-	if err := <-answer; err == nil || !strings.Contains(err.Error(), "the channel read fewer") {
+	if err := <-answer; err == nil || !strings.Contains(err.Error(), "the channel read 1 with it") {
 		t.Errorf("a frame saying more than came: %v", err)
+	}
+
+	// One that says fewer than came: the count read is named either way, not called "fewer".
+	runner, asked, cl = feed(t)
+	r, w = pipe()
+	defer w.Close()
+	r2, w2 := pipe()
+	defer w2.Close()
+	go func() {
+		_, err := cl.Ask(Request{Op: "x"})
+		answer <- err
+	}()
+	asked()
+	if err := writeFrameWith(runner, frame(Reply{ID: 1, Streams: 1}), []*os.File{r, r2}); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	r2.Close()
+	if err := <-answer; err == nil || !strings.Contains(err.Error(), "the channel read 2 with it") {
+		t.Errorf("a frame saying fewer than came: %v", err)
+	}
+
+	// And one that says it carries some where none came at all.
+	runner, asked, cl = feed(t)
+	go func() {
+		_, err := cl.Ask(Request{Op: "x"})
+		answer <- err
+	}()
+	asked()
+	if err := writeFrame(runner, frame(Reply{ID: 1, Streams: 1})); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-answer; err == nil || !strings.Contains(err.Error(), "the channel read none with it") {
+		t.Errorf("a frame saying descriptors where none came: %v", err)
 	}
 
 	// The descriptor handed over reads as the sender's does, and its reader can be closed
@@ -380,5 +415,73 @@ func TestAFrameCarriesWhatItSaysAndOneStreamFrameIsAll(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Error("closing the descriptor did not end the read on it: it is in blocking mode")
+	}
+}
+
+// AN ANSWER LETS ITS REQUEST'S STREAM MARK GO: the marks do not pile up for the life of a task
+// that loops a streaming op, and an id the task uses again — the answer to its first use heard —
+// streams again.
+func TestAnAnsweredIdStreamsAgain(t *testing.T) {
+	table := map[string]op{
+		"a-test.s": (op{unasked: "a test's", deadline: time.Minute,
+			ask: func(_ *Server, _ context.Context, tk Task, req Request) (asked, Reply) {
+				r, w, err := os.Pipe()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer r.Close()
+				defer w.Close()
+				if err := tk.stream(req.ID, r); err != nil {
+					return before(Reply{Error: err.Error()})
+				}
+				return before(Reply{OK: true})
+			}}).performedApart(),
+	}
+	s := &Server{Log: io.Discard, table: table}
+	near, far, err := SocketPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	go s.Serve(Task{ID: "s9", Workspace: &workspace.Workspace{}}, near)
+	conn, err := net.FileConn(far)
+	far.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	// By hand rather than through a Client, which numbers its own requests: both carry id 7.
+	uc := conn.(*net.UnixConn)
+	rr := newRights(uc)
+	br := bufio.NewReader(rr)
+	for range 2 {
+		body, err := codec.Marshal(Request{ID: 7, Op: "a-test.s"}, codec.Tony)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writeFrame(uc, body); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			raw, err := readFrame(br)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rep Reply
+			if err := codec.Unmarshal(raw, &rep, codec.Tony); err != nil {
+				t.Fatal(err)
+			}
+			if rep.Streams > 0 { // the stream frame: its descriptors are taken and closed
+				files, err := rr.take(rep.Streams)
+				if err != nil {
+					t.Fatal(err)
+				}
+				closeAll(files)
+				continue
+			}
+			if !rep.OK || rep.Error != "" {
+				t.Fatalf("the answer under the reused id: %+v", rep)
+			}
+			break
+		}
 	}
 }

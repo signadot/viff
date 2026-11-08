@@ -94,6 +94,10 @@ type Field struct {
 	// it, where saying nothing would otherwise be any. A row's match is not read so: it names what
 	// it names. Empty is none, and a required field has none.
 	Default string `tony:"field=default,omitzero"`
+
+	// defaulted is Default as the pattern it is, put in once at load: filled reads it on every
+	// act's check of every system, where parsing Default there would be once per shape per check.
+	defaulted *ir.Node
 }
 
 // The forms a field's value takes: how a step carries it, and what a pattern on it is checked
@@ -453,6 +457,12 @@ func load() {
 			loadErr = fmt.Errorf("%s: %w", e.Name(), err)
 			return
 		}
+		for vi := range d.Verbs {
+			fields := d.Verbs[vi].Fields
+			for fi := range fields {
+				fields[fi].defaulted, _ = fields[fi].defaultPattern() // check held it to parsing
+			}
+		}
 		if strings.TrimSuffix(e.Name(), ".tony") != d.Name {
 			loadErr = fmt.Errorf("%s describes %q: a document is named for its system", e.Name(), d.Name)
 			return
@@ -597,12 +607,11 @@ func filled(step string, s Shape) Shape {
 	}
 	var out Shape
 	for _, f := range v.Fields {
-		if _, named := s[f.Name]; named || f.Default == "" {
+		if f.defaulted == nil {
 			continue
 		}
-		p, err := f.defaultPattern()
-		if err != nil {
-			continue // refused at load
+		if _, named := s[f.Name]; named {
+			continue
 		}
 		if out == nil {
 			out = maps.Clone(s)
@@ -610,7 +619,7 @@ func filled(step string, s Shape) Shape {
 				out = Shape{}
 			}
 		}
-		out[f.Name] = p
+		out[f.Name] = f.defaulted
 	}
 	if out == nil {
 		return s

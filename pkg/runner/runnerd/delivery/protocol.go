@@ -244,8 +244,11 @@ func (r *rights) consumed(br *bufio.Reader) int64 { return r.read - int64(br.Buf
 func (r *rights) take(n int) ([]*os.File, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if len(r.batches) == 0 || len(r.batches[0].fds) != n {
-		return nil, fmt.Errorf("a frame says it carries %d descriptors, and the channel read fewer", n)
+	if len(r.batches) == 0 {
+		return nil, fmt.Errorf("a frame says it carries %d descriptors, and the channel read none with it", n)
+	}
+	if got := len(r.batches[0].fds); got != n {
+		return nil, fmt.Errorf("a frame says it carries %d descriptors, and the channel read %d with it", n, got)
 	}
 	batch := r.batches[0]
 	r.batches = r.batches[1:]

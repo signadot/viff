@@ -190,6 +190,10 @@ func (s *Server) Serve(tk Task, conn net.Conn) {
 	close(turn)
 	defer inflight.Wait()
 	defer leave()
+	// streamed is the requests whose one stream frame is written and not yet answered
+	// (tk.stream), read and written under writing: the answer lets its request's mark go, so
+	// the map does not grow with a long task's life, and an id the task uses again streams again.
+	streamed := map[int]bool{}
 	// send writes one answer. room, where it is given, gives back the request's place among
 	// those the runner holds (slots), and is called with the frame about to be written: A
 	// PLACE IS FREE BEFORE ITS ANSWER CAN BE HEARD, so a task that asks again on hearing an
@@ -222,12 +226,12 @@ func (s *Server) Serve(tk Task, conn net.Conn) {
 		if room != nil {
 			room()
 		}
+		delete(streamed, rep.ID)
 		_ = writeFrame(conn, body) // a task that is gone is found so at the next read
 	}
 	// A stream frame is written as send writes, under the same lock, with the descriptors on
 	// it: a frame of the answer, not the answer, so no place is given back for it. ONE AT MOST
 	// PER ANSWER: the asker has room for one and the answer, and a second is refused here.
-	streamed := map[int]bool{}
 	tk.stream = func(id int, files ...*os.File) error {
 		uc, ok := conn.(*net.UnixConn)
 		if !ok {

@@ -160,7 +160,7 @@ func (c *Client) hear() {
 		}
 		// A STREAM FRAME TAKES THE DESCRIPTORS SENT WITH IT, which are queued by the time it
 		// decodes. A frame does not read where it says it carries some and the channel read
-		// fewer, or carries none at all; where descriptors came with a frame already read whole
+		// another count, or none at all; where descriptors came with a frame already read whole
 		// that took none (unclaimed); or where it is a second stream frame for one request, which
 		// an asker has no room for. In each the descriptors are some other frame's, or nobody's.
 		var files []*os.File

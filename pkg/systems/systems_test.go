@@ -175,3 +175,30 @@ func TestAnAddressSegmentsOperatorIsTried(t *testing.T) {
 		t.Errorf("a refusal names the segment: %v", err)
 	}
 }
+
+// A DEFAULT'S PATTERN IS READ ONCE, AT LOAD: every loaded field with a default carries it, and
+// filled hands out that one pattern rather than parsing the default again — filled runs on every
+// act's check of every system, a default parsed there would be once per shape per check.
+func TestADefaultedFieldCarriesItsPatternFromLoad(t *testing.T) {
+	some := false
+	for _, d := range All() {
+		for _, v := range d.Verbs {
+			for _, f := range v.Fields {
+				if (f.defaulted != nil) != (f.Default != "") {
+					t.Errorf("%s.%s: field %s: default %q and pattern %v do not agree", d.Name, v.Name, f.Name, f.Default, f.defaulted)
+				}
+				some = some || f.Default != ""
+			}
+		}
+	}
+	if !some {
+		t.Fatal("no loaded field has a default, so the test saw nothing")
+	}
+	f, ok := FieldOf("secret.exec", "env")
+	if !ok || f.defaulted == nil {
+		t.Fatal("secret.exec's env field has a default, and carries no pattern")
+	}
+	if got := filled("secret.exec", Shape{})["env"]; got != f.defaulted {
+		t.Errorf("filled parsed the default again: %p, want the loaded %p", got, f.defaulted)
+	}
+}
