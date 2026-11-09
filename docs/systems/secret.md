@@ -59,8 +59,13 @@ evil'`, which no pattern on the bare line admits.
 
 **The program is the runner's; what it runs is the shapes'.** `argv[0]` is a bare name, found on
 the command's `PATH` on the runner's side, and the runner runs it only where it resolves, links
-followed, under a system directory or a `readOnly` path of the runner's: never under the
-workspace, and never through a `PATH` the call set to point there. That bounds `argv[0]` and no
+followed, under a system directory, a `readOnly` path of the runner's, or the task's install
+root: never under the workspace, and never through a `PATH` the call set to point there. The
+install root is the runner's writing and not the task's — the runner lays a tool it installed for
+the task into it from its own side, and the task cannot write it — so such a tool is one a
+command with a secret may start from, which is how a program the image does not carry gets to
+run with a key. `/inst/bin` is first on the task's `PATH`, so where the name is in the install
+root and in a system directory both, the installed one is what runs. That bounds `argv[0]` and no
 more. What the program then runs runs with the secret too, and it may be the workspace's: `npm
 publish` runs the package's lifecycle scripts, `node x.js` and `sh -c` run what they are given,
 and a program reads its configuration from the task's `HOME`, which is the workspace. So the

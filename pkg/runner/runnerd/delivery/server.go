@@ -71,12 +71,15 @@ type Services struct {
 }
 
 // Confine confines a command the runner runs for a task, apart from the task's own process and
-// in a sandbox of its own: over the task's root, in dir under it, under the task's network. The
-// program is cmd.Path, and one the runner does not keep (under no system directory and no path
-// it keeps read only) is refused: a program of the task's would read the secret for it. The
-// runner's sandbox implements it (runnerd.Confiner), which this package cannot name.
+// in a sandbox of its own: over the task's root, in dir under it, under the task's network, with
+// the task's install root (inst, empty where it has none) bound read only at InstPath as the
+// task's own sandbox has it. The program is cmd.Path, and one the runner does not keep is
+// refused: a program of the task's would read the secret for it. What the runner keeps is a
+// system directory, a path it keeps read only, and the install root, which the runner fills from
+// its own side and the task cannot write. The runner's sandbox implements it (runnerd.Confiner),
+// which this package cannot name.
 type Confine interface {
-	Confine(cmd *exec.Cmd, root, dir string, net Network) error
+	Confine(cmd *exec.Cmd, root, dir string, net Network, inst string) error
 }
 
 // Network is a task's network as the sandbox built it, which a command run for the task is held
@@ -125,7 +128,12 @@ type Task struct {
 	// Env is the environment the task's process was started with (Channel.SetEnv), `k=v`
 	// each: what a command run for the task is given, under the call's variables and the
 	// secret. It holds no credential of the runner's, by the runner's own rule (shellEnv).
-	Env    []string
+	Env []string
+	// Inst is the task's install root on the runner's side, which its sandbox binds read only at
+	// InstPath: where the runner lays a tool it installs for the task, empty where the task has
+	// none, which is every task until something fills one. A command run with a secret may start
+	// from a program there (runSecret); nothing here writes it.
+	Inst   string
 	Launch *runner.Launch
 	// Autonomy is the task's current autonomy, where something holds it apart from the launch (a
 	// Channel, after a replacement); nil reads the launch's.

@@ -98,7 +98,7 @@ func TestSecretExecIsTheStepTheRunnerDecides(t *testing.T) {
 // runsHere stands in for the sandbox: the command runs as the test, in its directory.
 type runsHere struct{}
 
-func (runsHere) Confine(cmd *exec.Cmd, root, dir string, _ delivery.Network) error {
+func (runsHere) Confine(cmd *exec.Cmd, root, dir string, _ delivery.Network, _ string) error {
 	cmd.Dir = dir
 	return nil
 }

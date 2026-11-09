@@ -37,10 +37,14 @@ type Sandbox interface {
 
 // Confiner confines a command the runner runs for a task apart from the task's own process
 // (delivery.Confine, for `secret.exec`): in the same kind of sandbox the task's process is in,
-// over the task's root, under the task's network, with the paths the operator keeps read only.
-// The program is one of the runner's, under a system directory or a readOnly path, where it is
-// and where it resolves to: a program of the task's would read the secret for it. A runner that
-// runs its tasks unconfined confines nothing, and says so.
+// over the task's root, under the task's network, with the paths the operator keeps read only
+// and the task's install root bound read only at InstPath, as its own sandbox has it. The
+// program is one of the runner's, under a system directory, a readOnly path or that install
+// root, where it is and where it resolves to: a program of the task's would read the secret for
+// it. The install root is the runner's as those directories are — the runner writes a tool into
+// it from its own side, and the task cannot write it — so a tool it installed for the task is
+// one a command with a secret may start from. A runner that runs its tasks unconfined confines
+// nothing, and says so.
 type Confiner struct {
 	Sandbox  Sandbox
 	ReadOnly []string
@@ -49,7 +53,7 @@ type Confiner struct {
 }
 
 // Confine implements delivery.Confine.
-func (c Confiner) Confine(cmd *exec.Cmd, root, dir string, net delivery.Network) error {
+func (c Confiner) Confine(cmd *exec.Cmd, root, dir string, net delivery.Network, inst string) error {
 	if c.Sandbox == nil || c.Sandbox.Name() == (Unconfined{}).Name() {
 		return errors.New("this runner runs its tasks unconfined (-sandbox none), and runs no command with a secret")
 	}
@@ -66,18 +70,36 @@ func (c Confiner) Confine(cmd *exec.Cmd, root, dir string, net delivery.Network)
 	for _, d := range c.ReadOnly {
 		kept = append(kept, d, resolved(d))
 	}
-	for _, p := range []string{cmd.Path, resolved(cmd.Path)} {
+	// A program in the install root is named by the path INSIDE the sandbox, which is where the
+	// command runs it and where nothing on this side lies: it is checked where that path lands
+	// on this side, under inst, so a link that leaves the root is refused for where it resolves
+	// like any other. A task with no install root has no such program.
+	check := []string{cmd.Path, resolved(cmd.Path)}
+	if within(cmd.Path, InstPath) {
+		if inst == "" {
+			return fmt.Errorf("the program %s is in an install root, and this task has none", cmd.Path)
+		}
+		rel, err := filepath.Rel(InstPath, cmd.Path)
+		if err != nil {
+			return fmt.Errorf("the program %s is no path under %s: %w", cmd.Path, InstPath, err)
+		}
+		side := filepath.Join(inst, rel)
+		check = []string{side, resolved(side)}
+		kept = append(kept, inst, resolved(inst))
+	}
+	for _, p := range check {
 		if !UnderSystem(p) && !underAny(p, kept) {
-			return fmt.Errorf("the program %s is under no system directory and no readOnly path of the runner's; "+
-				"a command run with a secret starts from one of the runner's own, and what that one runs is the "+
-				"environment's shapes' to bound", p)
+			return fmt.Errorf("the program %s is under no system directory, no readOnly path of the runner's and "+
+				"no install root of the task's; a command run with a secret starts from one of the runner's own, "+
+				"and what that one runs is the environment's shapes' to bound", p)
 		}
 	}
 	cmd.Dir = dir
 	// The readOnly paths this host lacks were said when the task's own process started
-	// (SubprocessHandler), and are not said again for each command. No install root either: a
-	// command run with a secret starts from the runner's own programs, never an installed one.
-	return c.Sandbox.Wrap(cmd, root, Network{Mode: net.Mode, Egress: net.Egress}, withReadOnly(nil, c.ReadOnly, c.Kept, io.Discard), "")
+	// (SubprocessHandler), and are not said again for each command. The install root is bound as
+	// the task's own sandbox binds it, read only at InstPath: a command's PATH names it (the
+	// task's shell's, which the command is given), so the bind is what makes that name resolve.
+	return c.Sandbox.Wrap(cmd, root, Network{Mode: net.Mode, Egress: net.Egress}, withReadOnly(nil, c.ReadOnly, c.Kept, io.Discard), inst)
 }
 
 // underAny is whether path is, or lies under, one of dirs.
@@ -115,11 +137,10 @@ var NetworkModes = []string{NetworkOpen, NetworkNone, NetworkAllow}
 // sandbox binds it and the task's process dials it (UseEgress), two programs agreeing on a name.
 const EgressPath = "/run/verse-egress"
 
-// InstPath is where a task's install root appears inside its sandbox, read only: a fixed path,
-// so the links the runner lays in it (cellar.Materialise, relative) and the PATH the task's
-// shell is given agree on a name. One bind, made at the task's start; installing afterwards is
-// the runner writing into the root from its own side, seen through the bind, never a new mount.
-const InstPath = "/inst"
+// InstPath is where a task's install root appears inside its sandbox, read only: delivery's,
+// which resolves a program the task names against it (delivery.InstPath), and the sandboxes
+// here are what make it so — the bind below, and the PATH a task's shell is given.
+const InstPath = delivery.InstPath
 
 func (n Network) mode() string {
 	if n.Mode == "" {
@@ -230,8 +251,10 @@ func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []s
 	// The programs have to exist inside: the runner's own binary is a task's process, and it and
 	// the others may be installed outside the system directories. Bound read only at their own
 	// paths, so nothing the task may write shares their inode.
+	// A program under InstPath is not bound here and is not this side's path at all: the install
+	// root's own bind, below, is what puts it inside.
 	for _, p := range append([]string{cmd.Path}, programs...) {
-		if prog, err := filepath.Abs(p); err == nil && !UnderSystem(prog) {
+		if prog, err := filepath.Abs(p); err == nil && !UnderSystem(prog) && !within(prog, InstPath) {
 			args = append(args, "--ro-bind", prog, prog)
 		}
 	}

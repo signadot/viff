@@ -47,10 +47,17 @@ func pattern(t *testing.T, text string) *ir.Node {
 }
 
 // unconfined stands in for a sandbox in a test that runs its command as the test: the directory
-// and nothing else, as runnerd.Unconfined does.
+// and nothing else, as runnerd.Unconfined does. A program named under InstPath is rewritten to
+// where it is on this side, which is the one thing the install root's bind does and a test with
+// no sandbox cannot have.
 type unconfined struct{}
 
-func (unconfined) Confine(cmd *exec.Cmd, root, dir string, _ Network) error {
+func (unconfined) Confine(cmd *exec.Cmd, root, dir string, _ Network, inst string) error {
+	if inst != "" && under(cmd.Path, InstPath) {
+		if rel, err := filepath.Rel(InstPath, cmd.Path); err == nil {
+			cmd.Path = filepath.Join(inst, rel)
+		}
+	}
 	cmd.Dir = dir
 	return nil
 }
@@ -295,11 +302,38 @@ func TestTheSecretExecHelpers(t *testing.T) {
 	if strings.Join(got, " ") != "PATH=/bin HOME=/w X=2 Y=3" {
 		t.Errorf("mergeEnv: %v", got)
 	}
-	if _, err := findProgram("sh", []string{"HOME=/w"}); err == nil || !strings.Contains(err.Error(), "no PATH") {
+	if _, err := findProgram("sh", []string{"HOME=/w"}, ""); err == nil || !strings.Contains(err.Error(), "no PATH") {
 		t.Errorf("no PATH: %v", err)
 	}
-	if p, err := findProgram("sh", []string{"PATH=relative:/bin:/usr/bin"}); err != nil || !strings.HasSuffix(p, "/bin/sh") {
+	if p, err := findProgram("sh", []string{"PATH=relative:/bin:/usr/bin"}, ""); err != nil || !strings.HasSuffix(p, "/bin/sh") {
 		t.Errorf("sh: %q, %v", p, err)
+	}
+	// A PATH entry under InstPath is the task's install root, which is inst on this side: the
+	// name is looked for there and answered as the path inside, the one the command runs by. A
+	// task with no install root finds nothing there, and neither does a name that is not in it.
+	inst := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(inst, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"jq", "sh"} {
+		if err := os.WriteFile(filepath.Join(inst, "bin", name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	instBin := InstPath + "/bin"
+	if p, err := findProgram("jq", []string{"PATH=" + instBin + ":/bin"}, inst); err != nil || p != instBin+"/jq" {
+		t.Errorf("an installed program: %q, %v", p, err)
+	}
+	if _, err := findProgram("jq", []string{"PATH=" + instBin}, ""); err == nil {
+		t.Error("a task with no install root found a program in one")
+	}
+	if _, err := findProgram("rg", []string{"PATH=" + instBin}, inst); err == nil {
+		t.Error("a name the install root does not hold was found anyway")
+	}
+	// The install root's bin is first on the task's PATH, so an installed program is the one a
+	// command runs where the system directories hold the name too.
+	if p, err := findProgram("sh", []string{"PATH=" + instBin + ":/bin:/usr/bin"}, inst); err != nil || p != instBin+"/sh" {
+		t.Errorf("the install root is not first: %q, %v", p, err)
 	}
 }
 

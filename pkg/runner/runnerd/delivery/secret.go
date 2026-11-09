@@ -47,6 +47,15 @@ import (
 // writes. Past `timeout` it is killed too. A kill is the sandbox's pid namespace's, whole.
 const OpSecretExec = "secret.exec"
 
+// InstPath is where a task's install root appears inside its sandbox, read only: a fixed path, so
+// the links the runner lays in it and the PATH the task's shell is given agree on a name. One
+// bind, made at the task's start; what the runner writes into the root afterwards, from its own
+// side, the task sees through that bind, and never a new mount. It is a path INSIDE a sandbox and
+// names nothing on the runner's side, where the root is the task's Inst: an act that resolves a
+// path the task would name maps the one to the other (findProgram), and the sandbox is what makes
+// the two agree (runnerd.InstPath).
+const InstPath = "/inst"
+
 // How long a command may run when the call does not say, and at most; and what the op has past
 // the longest run, for the kill and the wait after it.
 const (
@@ -201,7 +210,7 @@ func (s *Server) runSecret(ctx context.Context, tk Task, id int, e Exec, timeout
 		return Reply{Error: "this task has no workspace root to run a command over"}
 	}
 	env := mergeEnv(tk.Env, e.Env)
-	prog, err := findProgram(e.Argv[0], env)
+	prog, err := findProgram(e.Argv[0], env, tk.Inst)
 	if err != nil {
 		return Reply{Refused: err.Error()}
 	}
@@ -214,7 +223,7 @@ func (s *Server) runSecret(ctx context.Context, tk Task, id int, e Exec, timeout
 	cmd := exec.CommandContext(timed, prog, e.Argv[1:]...)
 	cmd.Env = append(env, as+"="+value)
 	cmd.WaitDelay = execWaitDelay
-	if err := s.Services.Confine.Confine(cmd, tk.Root, filepath.Join(tk.Root, rel), tk.Network); err != nil {
+	if err := s.Services.Confine.Confine(cmd, tk.Root, filepath.Join(tk.Root, rel), tk.Network, tk.Inst); err != nil {
 		return Reply{Refused: "not run: " + err.Error()}
 	}
 	ioNear, ioFar, err := SocketPair()
@@ -326,8 +335,13 @@ func mergeEnv(base []string, over map[string]string) []string {
 
 // findProgram is where a bare program name resolves on the PATH of env: looked for here, on the
 // runner's side, where the system directories and the readOnly paths are what the command sees
-// them as. That it is the runner's own is Confine's to hold.
-func findProgram(name string, env []string) (string, error) {
+// them as, and answered as the path the command runs by. A PATH entry under InstPath is the
+// task's install root as its sandbox shows it, which on this side is inst: the name is looked
+// for there and answered as the path inside, since that is the one the command's own sandbox
+// binds, so a tool the runner installed for the task is a program a command with a secret may
+// run. A task with no install root has no such entry to find anything on. That the program is
+// one the runner keeps is Confine's to hold.
+func findProgram(name string, env []string, inst string) (string, error) {
 	var path string
 	for _, kv := range env {
 		if v, ok := strings.CutPrefix(kv, "PATH="); ok {
@@ -342,11 +356,28 @@ func findProgram(name string, env []string) (string, error) {
 			continue
 		}
 		p := filepath.Join(dir, name)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+		here := p
+		if under(p, InstPath) {
+			if inst == "" {
+				continue
+			}
+			rel, err := filepath.Rel(InstPath, p)
+			if err != nil {
+				continue
+			}
+			here = filepath.Join(inst, rel)
+		}
+		if fi, err := os.Stat(here); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
 			return p, nil
 		}
 	}
 	return "", fmt.Errorf("no %s on the command's PATH (%s)", name, path)
+}
+
+// under is whether p is, or lies under, dir, both cleaned absolute paths.
+func under(p, dir string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }
 
 // redactor writes through to w with every whole occurrence of the secret's value replaced by

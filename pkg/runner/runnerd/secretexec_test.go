@@ -21,24 +21,34 @@ import (
 
 // fakeBwrap is a stand-in for bwrap where there is none: it changes to the directory --chdir
 // names and runs the command after --, so what reaches the command is what the sandbox would
-// give it, in the directory it would run in.
+// give it, in the directory it would run in. A program named under /inst is in the task's
+// install root, a path only that root's bind makes exist: with no mount namespace to bind in,
+// the fake rewrites it to where the bind's source is, which is the one thing the bind does.
 const fakeBwrap = `#!/bin/sh
+inst=
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--) shift; break ;;
 	--chdir) cd "$2" || exit 97; shift 2 ;;
-	--bind|--ro-bind|--ro-bind-try) shift 3 ;;
+	--ro-bind) if [ "$3" = "/inst" ]; then inst="$2"; fi; shift 3 ;;
+	--bind|--ro-bind-try) shift 3 ;;
 	*) shift ;;
 	esac
 done
-exec "$@"
+prog=$1
+shift
+case "$prog" in
+/inst/*) if [ -n "$inst" ]; then prog="$inst${prog#/inst}"; fi ;;
+esac
+exec "$prog" "$@"
 `
 
 // A COMMAND RUN WITH A SECRET RUNS IN THE RUNNER'S SANDBOX over the task's root, in the
 // directory asked for, with the secret under the block's variable and nowhere the task reads it
 // plain: the output comes to the task on its two streams with the value redacted, and the log
 // holds the command and the exit, never the value. The program is one the runner keeps, under a
-// system directory or a readOnly path; one of the task's own is refused, PATH or no PATH.
+// system directory, a readOnly path or the task's install root, which the runner fills and the
+// task cannot write; one of the task's own is refused, PATH or no PATH.
 func TestASecretCommandRunsInTheSandboxWithTheProgramTheRunnerKeeps(t *testing.T) {
 	bin := t.TempDir()
 	bwrap := filepath.Join(bin, "bwrap")
@@ -48,6 +58,15 @@ func TestASecretCommandRunsInTheSandboxWithTheProgramTheRunnerKeeps(t *testing.T
 	// hello is a program the operator keeps read only; mine is one in the task's tree.
 	ro := t.TempDir()
 	if err := os.WriteFile(filepath.Join(ro, "hello"), []byte("#!/bin/sh\necho \"hi $NPM_TOKEN\" >&2\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// inst is the task's install root, which the runner laid a tool into and which the command's
+	// sandbox binds read only at InstPath, as the task's own sandbox does.
+	inst := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(inst, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inst, "bin", "installed"), []byte("#!/bin/sh\necho \"installed $NPM_TOKEN\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
@@ -83,8 +102,8 @@ func TestASecretCommandRunsInTheSandboxWithTheProgramTheRunnerKeeps(t *testing.T
 	}
 	served := make(chan struct{})
 	go func() {
-		s.Serve(delivery.Task{ID: "t1", Root: root, Launch: l,
-			Env: []string{"PATH=" + ro + ":" + filepath.Join(root, "tools") + ":/usr/bin:/bin", "HOME=" + root}}, near)
+		s.Serve(delivery.Task{ID: "t1", Root: root, Launch: l, Inst: inst,
+			Env: []string{"PATH=" + runnerd.InstPath + "/bin:" + ro + ":" + filepath.Join(root, "tools") + ":/usr/bin:/bin", "HOME=" + root}}, near)
 		close(served)
 	}()
 	conn, err := net.FileConn(far)
@@ -129,7 +148,13 @@ func TestASecretCommandRunsInTheSandboxWithTheProgramTheRunnerKeeps(t *testing.T
 	if rep, out, errs := run(`{argv: [hello]}`, ""); !rep.OK || rep.Out != "exited 0" || out != "" || errs != "hi [secret npm-token]\n" {
 		t.Errorf("a kept program: %+v\nstdout %q\nstderr %q", rep, out, errs)
 	}
-	if rep, _, _ := run(`{argv: [mine]}`, ""); !strings.Contains(rep.Refused, "not run: the program "+filepath.Join(root, "tools", "mine")+" is under no system directory and no readOnly path") {
+	// A tool the runner installed for the task is the runner's own too: the task names it as its
+	// PATH has it, under InstPath, and the sandbox binds the root it is in. The secret is
+	// redacted as ever.
+	if rep, out, errs := run(`{argv: [installed]}`, ""); !rep.OK || rep.Out != "exited 0" || out != "installed [secret npm-token]\n" || errs != "" {
+		t.Errorf("an installed program: %+v\nstdout %q\nstderr %q", rep, out, errs)
+	}
+	if rep, _, _ := run(`{argv: [mine]}`, ""); !strings.Contains(rep.Refused, "not run: the program "+filepath.Join(root, "tools", "mine")+" is under no system directory, no readOnly path of the runner's and no install root") {
 		t.Errorf("a program of the task's: %+v", rep)
 	}
 	cl.Close()
@@ -230,7 +255,7 @@ func TestASecretStaysWithTheRunnerWhereTheRunIsForbidden(t *testing.T) {
 	npm := map[string]string{"name": "npm-token"}
 	for _, c := range []struct{ name, body, says string }{
 		{"a program of the task's, by path", `{argv: ["./tools/mine"]}`, "never a path"},
-		{"a program of the task's, on a PATH the call set", `{argv: [mine], env: {PATH: "` + filepath.Join(root, "tools") + `"}}`, "under no system directory and no readOnly path"},
+		{"a program of the task's, on a PATH the call set", `{argv: [mine], env: {PATH: "` + filepath.Join(root, "tools") + `"}}`, "under no system directory, no readOnly path of the runner's and no install root"},
 		{"a variable the environment does not name", `{argv: [sh, -c, "echo $NPM_TOKEN"], env: {NPM_CONFIG_REGISTRY: x}}`, "outside the environment"},
 		{"the variable the secret is in", `{argv: [sh, -c, "echo"], env: {NPM_TOKEN: x}}`, "env names NPM_TOKEN, which is the secret's"},
 		{"a variable a row denies", `{argv: [sh, -c, "echo"], env: {LD_PRELOAD: x}}`, "outside the environment"},

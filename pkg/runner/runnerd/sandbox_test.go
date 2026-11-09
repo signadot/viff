@@ -138,13 +138,14 @@ func TestWrappingKeepsTheInheritedDescriptors(t *testing.T) {
 
 // A COMMAND RUN FOR A TASK IS CONFINED AS THE TASK'S PROCESS IS, over the task's root and under
 // its network, started in the directory of the tree it is for: the sandbox binds the root and
-// changes to the directory. The program is one of the runner's, under a system directory or a
-// readOnly path; another is refused, and so is every command where the tasks run unconfined.
+// changes to the directory. The program is one of the runner's, under a system directory, a
+// readOnly path or the task's install root, which is bound as the task's own sandbox has it;
+// another is refused, and so is every command where the tasks run unconfined.
 func TestAConfinedCommandRunsOverTheRootInItsDirectory(t *testing.T) {
 	ro := t.TempDir()
 	c := runnerd.Confiner{Sandbox: runnerd.BwrapAt("/usr/bin/bwrap"), ReadOnly: []string{ro}}
 	cmd := exec.Command("/usr/bin/npm", "publish")
-	if err := c.Confine(cmd, "/w", "/w/packages/a", delivery.Network{Mode: runnerd.NetworkAllow, Egress: "/ctl/e1.sock"}); err != nil {
+	if err := c.Confine(cmd, "/w", "/w/packages/a", delivery.Network{Mode: runnerd.NetworkAllow, Egress: "/ctl/e1.sock"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(cmd.Args, " ")
@@ -155,11 +156,11 @@ func TestAConfinedCommandRunsOverTheRootInItsDirectory(t *testing.T) {
 		}
 	}
 	// A program the operator keeps read only is the runner's too; one anywhere else is not.
-	if err := c.Confine(exec.Command(filepath.Join(ro, "bin/node")), "/w", "/w", delivery.Network{}); err != nil {
+	if err := c.Confine(exec.Command(filepath.Join(ro, "bin/node")), "/w", "/w", delivery.Network{}, ""); err != nil {
 		t.Errorf("a program under a readOnly path: %v", err)
 	}
 	own := exec.Command(filepath.Join(t.TempDir(), "node"))
-	if err := c.Confine(own, "/w", "/w", delivery.Network{}); err == nil || !strings.Contains(err.Error(), "under no system directory and no readOnly path") {
+	if err := c.Confine(own, "/w", "/w", delivery.Network{}, ""); err == nil || !strings.Contains(err.Error(), "under no system directory, no readOnly path of the runner's and no install root") {
 		t.Errorf("a program of the task's: %v", err)
 	}
 	// A link under a system directory to a program elsewhere is refused for where it resolves.
@@ -175,12 +176,52 @@ func TestAConfinedCommandRunsOverTheRootInItsDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	linked := runnerd.Confiner{Sandbox: runnerd.BwrapAt("/usr/bin/bwrap"), ReadOnly: []string{link}}
-	if err := linked.Confine(exec.Command(filepath.Join(link, "node")), "/w", "/w", delivery.Network{}); err == nil || !strings.Contains(err.Error(), target) {
+	if err := linked.Confine(exec.Command(filepath.Join(link, "node")), "/w", "/w", delivery.Network{}, ""); err == nil || !strings.Contains(err.Error(), target) {
 		t.Errorf("a link out of a readOnly path: %v", err)
+	}
+	// A PROGRAM IN THE TASK'S INSTALL ROOT is the runner's writing, not the task's, so a command
+	// with a secret may start from it: it is named by the path inside the sandbox, the root is
+	// bound read only at that path, and the check lands on this side, under inst.
+	inst := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(inst, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inst, "bin", "jq"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	installed := exec.Command(runnerd.InstPath+"/bin/jq", ".")
+	if err := c.Confine(installed, "/w", "/w", delivery.Network{}, inst); err != nil {
+		t.Fatalf("an installed program: %v", err)
+	}
+	joined = strings.Join(installed.Args, " ")
+	for _, want := range []string{"--ro-bind " + inst + " " + runnerd.InstPath, "-- " + runnerd.InstPath + "/bin/jq ."} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("argv is missing %q:\n%s", want, joined)
+		}
+	}
+	// The program's own path is not bound: it is no path of this side's, and the root's bind is
+	// what puts it inside.
+	if strings.Contains(joined, "--ro-bind "+runnerd.InstPath) {
+		t.Errorf("the program's inside path was bound as if it were the runner's:\n%s", joined)
+	}
+	// A link that leaves the install root is refused for where it lands, as one out of a
+	// readOnly path is; and a task with no install root has no program in one.
+	out := filepath.Join(t.TempDir(), "evil")
+	if err := os.WriteFile(out, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(out, filepath.Join(inst, "bin", "node")); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Confine(exec.Command(runnerd.InstPath+"/bin/node"), "/w", "/w", delivery.Network{}, inst); err == nil || !strings.Contains(err.Error(), out) {
+		t.Errorf("a link out of the install root: %v", err)
+	}
+	if err := c.Confine(exec.Command(runnerd.InstPath+"/bin/jq"), "/w", "/w", delivery.Network{}, ""); err == nil || !strings.Contains(err.Error(), "this task has none") {
+		t.Errorf("an install root the task does not have: %v", err)
 	}
 	// Unconfined, nothing is run.
 	none := runnerd.Confiner{Sandbox: runnerd.Unconfined{}}
-	if err := none.Confine(exec.Command("/usr/bin/npm"), "/w", "/w", delivery.Network{}); err == nil || !strings.Contains(err.Error(), "unconfined") {
+	if err := none.Confine(exec.Command("/usr/bin/npm"), "/w", "/w", delivery.Network{}, ""); err == nil || !strings.Contains(err.Error(), "unconfined") {
 		t.Errorf("unconfined: %v", err)
 	}
 }
@@ -192,15 +233,15 @@ func TestAConfinedCommandRunsOverTheRootInItsDirectory(t *testing.T) {
 func TestTheDirectoryIsUnderTheRootAndTheSandboxChangesToIt(t *testing.T) {
 	c := runnerd.Confiner{Sandbox: runnerd.BwrapAt("/usr/bin/bwrap")}
 	for _, dir := range []string{"/etc", "/", "/w2", "/w/../etc", "packages"} {
-		if err := c.Confine(exec.Command("/usr/bin/npm"), "/w", dir, delivery.Network{}); err == nil || !strings.Contains(err.Error(), "not under the task's root") {
+		if err := c.Confine(exec.Command("/usr/bin/npm"), "/w", dir, delivery.Network{}, ""); err == nil || !strings.Contains(err.Error(), "not under the task's root") {
 			t.Errorf("dir %s: %v", dir, err)
 		}
 	}
-	if err := c.Confine(exec.Command("no-such-program-here"), "/w", "/w", delivery.Network{}); err == nil || !strings.Contains(err.Error(), "no absolute path") {
+	if err := c.Confine(exec.Command("no-such-program-here"), "/w", "/w", delivery.Network{}, ""); err == nil || !strings.Contains(err.Error(), "no absolute path") {
 		t.Errorf("a bare program: %v", err)
 	}
 	cmd := exec.Command("/usr/bin/npm")
-	if err := c.Confine(cmd, "/w", "/w/a", delivery.Network{}); err != nil {
+	if err := c.Confine(cmd, "/w", "/w/a", delivery.Network{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if cmd.Dir != "" || !strings.Contains(strings.Join(cmd.Args, " "), "--chdir /w/a") {
