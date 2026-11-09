@@ -297,6 +297,9 @@ func (c *Cellar) collect() error {
 			continue
 		}
 		versions, err := os.ReadDir(filepath.Join(c.root, n.Name()))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // another collect evicted it since the root was read: its bytes are freed either way
+		}
 		if err != nil {
 			return err
 		}
@@ -306,10 +309,16 @@ func (c *Cellar) collect() error {
 			}
 			prefix := filepath.Join(c.root, n.Name(), v.Name())
 			info, err := os.Stat(prefix)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
 			if err != nil {
 				return err
 			}
 			size, err := c.size(n.Name(), v.Name())
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
 			if err != nil {
 				return err
 			}
@@ -338,14 +347,16 @@ func (c *Cellar) collect() error {
 				os.RemoveAll(trash)
 				return err
 			}
+			// The size entry goes under the same lock as the rename: past the lock, a
+			// reinstall measures its own prefix, never reads this one's.
+			c.mu.Lock()
+			delete(c.sizes, e.name+"/"+e.version)
+			c.mu.Unlock()
 			return os.RemoveAll(trash)
 		}()
 		if err != nil {
 			return err
 		}
-		c.mu.Lock()
-		delete(c.sizes, e.name+"/"+e.version)
-		c.mu.Unlock()
 		total -= e.size
 	}
 	return nil

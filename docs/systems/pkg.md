@@ -77,8 +77,9 @@ and filled once:
   stock ldconfig stanza is refused by name: it would land half-configured, and nothing of a
   package's runs here. (Runpaths do ldconfig's work in a prefix.) So packages needing postinst,
   alternatives or setuid do not work — CLI tools and libraries do.
-- **A prefix is flat: commands, their libraries and share.** A package whose programs live in a
-  tree of their own (`usr/libexec`, `opt`, loose files under `usr/lib`) does not work laid flat,
+- **A prefix is flat: commands, their libraries and share.** Every package of the closure is
+  held to it: one whose programs live in a tree of their own (`usr/libexec`, `usr/games`, `opt`,
+  or a file that is no shared object under `usr/lib`, `lib` or `lib64`) does not work laid flat,
   and is refused by the path that gives it away rather than installed broken.
 - **Each prefix is self-contained by its runpaths:** `$ORIGIN/../lib` on each executable,
   `$ORIGIN` on each bundled library (a runpath does not reach a transitive dependency, so a

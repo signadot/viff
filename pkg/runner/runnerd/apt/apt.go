@@ -218,18 +218,22 @@ func (a *Apt) Resolve(ctx context.Context, name, version string) (Resolution, er
 		}
 		return Resolution{Name: name, Version: installed, Provided: true}, nil
 	}
-	// A plan line with an old version in it is apt upgrading something the image provides. The
-	// build never touches the image — a newer version of the named package, or of a dependency,
-	// lands in the prefix and shadows through the runpaths, which is the design — but libc and
-	// the loader are the one pair the prefix leans on the image for, and a bundled newer libc
-	// under the image's loader does not run (the pair must match). So a plan that moves libc is
-	// refused naming it, rather than laid broken; everything else of an upgrade bundles as any
-	// dependency does.
+	// The build never touches the image — a newer version of the named package, or of a
+	// dependency, lands in the prefix and shadows through the runpaths, which is the design —
+	// but libc and the loader are the one pair the prefix leans on the image for, and a bundled
+	// libc under the image's loader does not run (the pair must match). So a plan that brings
+	// any libc — upgrading the image's, or laying a fresh one the image lacks, as a foreign
+	// arch's would — is refused naming it, rather than laid broken; everything else bundles as
+	// any dependency does.
 	for _, m := range matches {
-		if bare := strings.SplitN(m[1], ":", 2)[0]; m[2] != "" && (bare == "libc6" || strings.HasPrefix(bare, "libc6-")) {
-			return Resolution{}, fmt.Errorf("installing %s needs a newer libc than the image's (%s %s to %s), and the prefix "+
-				"runs on the image's loader and libc, which move together: a newer image carries it, or a version this "+
-				"image's base satisfies", spec, m[1], m[2], m[3])
+		if bare := strings.SplitN(m[1], ":", 2)[0]; bare == "libc6" || strings.HasPrefix(bare, "libc6-") {
+			if m[2] != "" {
+				return Resolution{}, fmt.Errorf("installing %s needs a newer libc than the image's (%s %s to %s), and the prefix "+
+					"runs on the image's loader and libc, which move together: a newer image carries it, or a version this "+
+					"image's base satisfies", spec, m[1], m[2], m[3])
+			}
+			return Resolution{}, fmt.Errorf("installing %s would bundle %s %s, which the image does not provide, and the "+
+				"prefix runs on the image's loader and libc, which move together: no libc is ever bundled", spec, m[1], m[3])
 		}
 	}
 	uris, err := a.run(ctx, "apt-get", append(a.opts(), "install", "-y", "--no-install-recommends", "--print-uris", spec)...)
@@ -239,6 +243,11 @@ func (a *Apt) Resolve(ctx context.Context, name, version string) (Resolution, er
 	urlOf := map[string]string{} // "name version" -> url, both as the Inst lines spell them
 	for _, m := range uriLine.FindAllStringSubmatch(string(uris), -1) {
 		if n, v, ok := planName(m[2]); ok {
+			// One version from two architectures would collide here and in the flat lib/,
+			// where the second's sonames lose to the first's: refused, not misfiled.
+			if prev, dup := urlOf[n+" "+v]; dup && prev != m[1] {
+				return Resolution{}, fmt.Errorf("the plan fetches %s %s for two architectures, and a flat prefix carries one", n, v)
+			}
 			urlOf[n+" "+v] = m[1]
 		}
 	}
@@ -246,7 +255,7 @@ func (a *Apt) Resolve(ctx context.Context, name, version string) (Resolution, er
 	for _, m := range matches {
 		// The arch qualifier dropped: the index's paragraphs say `Package: libonig5`.
 		p := Pkg{Name: strings.SplitN(m[1], ":", 2)[0], Version: m[3]}
-		sha, err := a.indexEntry(ctx, p.Name, p.Version)
+		sha, err := a.indexEntry(ctx, m[1], p.Name, p.Version)
 		if err != nil {
 			return Resolution{}, err
 		}
@@ -267,11 +276,13 @@ func (a *Apt) Resolve(ctx context.Context, name, version string) (Resolution, er
 }
 
 // indexEntry is a package's SHA256 as the verified index carries it (`apt-cache show`), at the
-// one version the closure names.
-func (a *Apt) indexEntry(ctx context.Context, name, version string) (sha string, err error) {
-	out, err := a.run(ctx, "apt-cache", append(a.opts(), "show", name+"="+version)...)
+// one version the closure names. The query keeps the plan's own spelling (`libonig5:i386`), so a
+// qualified line reads its own architecture's paragraphs; the paragraphs answer with the bare
+// name.
+func (a *Apt) indexEntry(ctx context.Context, spelled, name, version string) (sha string, err error) {
+	out, err := a.run(ctx, "apt-cache", append(a.opts(), "show", spelled+"="+version)...)
 	if err != nil {
-		return "", fmt.Errorf("reading the index for %s=%s: %w", name, version, err)
+		return "", fmt.Errorf("reading the index for %s=%s: %w", spelled, version, err)
 	}
 	for _, paragraph := range strings.Split(string(out), "\n\n") {
 		fields := map[string]string{}
@@ -502,7 +513,12 @@ func (a *Apt) assemble(ctx context.Context, stage, named, trees string) error {
 		for _, e := range entries {
 			src := filepath.Join(named, bins, e.Name())
 			info, err := os.Stat(src) // through a packaging symlink
-			if err != nil || !info.Mode().IsRegular() {
+			if err != nil {
+				// A dangling or unreadable entry fails the build loudly: skipped, the
+				// immutable prefix would be cached missing a command, reported installed.
+				return fmt.Errorf("reading %s to land it in bin: %w", e.Name(), err)
+			}
+			if !info.Mode().IsRegular() {
 				continue
 			}
 			to := filepath.Join(stage, "bin", e.Name())

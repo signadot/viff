@@ -381,7 +381,7 @@ func TestResolveReadsEpochsArchesAndRefusesALibcMove(t *testing.T) {
 			"apt-get update": "",
 			"apt-get install -s --no-install-recommends git-man":              "Inst git-man:amd64 (1:2.39.5-0+deb12u2 Debian:12.5/stable [all])\n",
 			"apt-get install -y --no-install-recommends --print-uris git-man": "'http://deb.example/debian/pool/main/g/git/git-man_1%3a2.39.5-0+deb12u2_all.deb' git-man_1%3a2.39.5-0+deb12u2_all.deb 1 MD5Sum:aa\n",
-			"apt-cache show git-man=1:2.39.5-0+deb12u2":                       show("git-man", "1:2.39.5-0+deb12u2", "g/git"),
+			"apt-cache show git-man:amd64=1:2.39.5-0+deb12u2":                 show("git-man", "1:2.39.5-0+deb12u2", "g/git"),
 		}),
 	}
 	r, err := a.Resolve(t.Context(), "git-man", "")
@@ -402,6 +402,29 @@ func TestResolveReadsEpochsArchesAndRefusesALibcMove(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "needs a newer libc than the image's") || !strings.Contains(err.Error(), "libc6 2.36-9+deb12u4 to 2.36-9+deb12u9") {
 		t.Fatalf("a libc move: %v", err)
 	}
+
+	// A libc the image does not provide at all — a foreign arch's — is no upgrade line, and is
+	// refused the same.
+	fresh := &Apt{State: t.TempDir(), Repos: a.Repos, Exec: fakeApt(t, &calls, map[string]string{
+		"apt-get update": "",
+		"apt-get install -s --no-install-recommends wine32": "Inst libc6:i386 (2.36-9+deb12u9 Debian:12.5/stable [i386])\nInst wine32:i386 (8.0-1 Debian:12.5/stable [i386])\n",
+	})}
+	_, err = fresh.Resolve(t.Context(), "wine32", "")
+	if err == nil || !strings.Contains(err.Error(), "no libc is ever bundled") {
+		t.Fatalf("a fresh libc: %v", err)
+	}
+
+	// One version from two architectures cannot share the flat lib/: refused at the plan.
+	twoArch := &Apt{State: t.TempDir(), Repos: a.Repos, Exec: fakeApt(t, &calls, map[string]string{
+		"apt-get update": "",
+		"apt-get install -s --no-install-recommends libonig5": "Inst libonig5 (6.9.8-1 Debian:12.5/stable [amd64])\nInst libonig5:i386 (6.9.8-1 Debian:12.5/stable [i386])\n",
+		"apt-get install -y --no-install-recommends --print-uris libonig5": "'http://deb.example/debian/pool/main/o/onig/libonig5_6.9.8-1_amd64.deb' libonig5_6.9.8-1_amd64.deb 1 MD5Sum:aa\n" +
+			"'http://deb.example/debian/pool/main/o/onig/libonig5_6.9.8-1_i386.deb' libonig5_6.9.8-1_i386.deb 1 MD5Sum:bb\n",
+	})}
+	_, err = twoArch.Resolve(t.Context(), "libonig5", "")
+	if err == nil || !strings.Contains(err.Error(), "for two architectures") {
+		t.Fatalf("two arches of one version: %v", err)
+	}
 }
 
 // A PACKAGE WHOSE PROGRAMS LIVE IN A TREE OF THEIR OWN IS REFUSED, NOT INSTALLED BROKEN: the
@@ -410,7 +433,7 @@ func TestResolveReadsEpochsArchesAndRefusesALibcMove(t *testing.T) {
 // first path. A binary the assembler cannot read fails the build too, rather than landing an
 // immutable prefix with no runpath.
 func TestAPrivateTreeRefusesTheBuildAndSbinLands(t *testing.T) {
-	_, pkg := debs(t, map[string][]byte{"git": []byte("git deb"), "tool": []byte("tool deb"), "dim": []byte("dim deb")})
+	_, pkg := debs(t, map[string][]byte{"git": []byte("git deb"), "tool": []byte("tool deb"), "dim": []byte("dim deb"), "gone": []byte("gone deb")})
 	lay := func(files map[string]struct {
 		body []byte
 		perm os.FileMode
@@ -481,5 +504,28 @@ func TestAPrivateTreeRefusesTheBuildAndSbinLands(t *testing.T) {
 	err = dim.Build(t.Context(), Resolution{Name: "dim", Version: "1", Closure: []Pkg{pkg("dim", "1")}})(stage)
 	if err == nil || !strings.Contains(err.Error(), "for its runpath") {
 		t.Fatalf("an unreadable binary: %v", err)
+	}
+
+	// A dangling packaging symlink in bin fails the build naming the command, rather than
+	// being skipped: skipped, the immutable prefix would be cached missing it.
+	gone := &Apt{State: t.TempDir(), Exec: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "dpkg-deb":
+			if args[0] == "-e" {
+				return nil, nil
+			}
+			dir := filepath.Join(args[2], "usr/bin")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return nil, err
+			}
+			return nil, os.Symlink("../lib/elsewhere/gone", filepath.Join(dir, "gone"))
+		case "patchelf":
+			return nil, nil
+		}
+		return nil, fmt.Errorf("unexpected %s", name)
+	}}
+	err = gone.Build(t.Context(), Resolution{Name: "gone", Version: "1", Closure: []Pkg{pkg("gone", "1")}})(t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "to land it in bin") {
+		t.Fatalf("a dangling bin symlink: %v", err)
 	}
 }
