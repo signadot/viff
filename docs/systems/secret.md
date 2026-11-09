@@ -8,7 +8,10 @@ secret's value redacted. The environment says which secret and which commands; t
 ceiling bounds both.
 
 It is for a command that needs a secret, and nothing else. A command that needs none is the task's
-own shell ([`commands.run`](inside.md)), or a script.
+own shell ([`commands.run`](inside.md)), or a script. A tool the image does not carry is
+[`pkg`](pkg.md)'s, installed into the task's own prefix rather than run for it; a remote
+service's tools are [`mcp`](mcp.md)'s, called by the runner with the server's credential. The
+three divide what a task lacks ([systems](README.md#what-a-task-lacks)).
 
 ## What a task can do
 
@@ -68,11 +71,12 @@ evil'`, which no pattern on the bare line admits.
 the command's `PATH` on the runner's side, and the runner runs it only where it resolves, links
 followed, under a system directory, a `readOnly` path of the runner's, or the task's install
 root: never under the workspace, and never through a `PATH` the call set to point there. The
-install root is the runner's writing and not the task's — the runner lays a tool it installed for
-the task into it from its own side, and the task cannot write it — so such a tool is one a
-command with a secret may start from, which is how a program the image does not carry gets to
-run with a key. `/inst/bin` is first on the task's `PATH`, so where the name is in the install
-root and in a system directory both, the installed one is what runs. That bounds `argv[0]` and no
+install root is the runner's writing and not the task's — the runner lays a package into it from
+the signed index the image's own system directories are built from ([`pkg`](pkg.md)), and the
+task cannot write it — so a tool `pkg` installed is one a command with a secret may start from,
+which is how a CLI the image does not carry (`signadot`, `gh`) gets to run with a key.
+`/inst/bin` is first on the task's `PATH`, so where the name is in the install root and in a
+system directory both, the installed one is what runs. That bounds `argv[0]` and no
 more. What the program then runs runs with the secret too, and it may be the workspace's: `npm
 publish` runs the package's lifecycle scripts, `node x.js` and `sh -c` run what they are given,
 and a program reads its configuration from the task's `HOME`, which is the workspace. So the

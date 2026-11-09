@@ -132,4 +132,5 @@ It closes whole, and the runner says so, where tasks run unconfined (`-sandbox n
 bind to make the root read-only through) and where the toolchain (`apt-get`, `apt-cache`,
 `dpkg-deb`, `patchelf`) is not in the image. A command run with a secret ([`secret`](secret.md))
 is confined with no install root: it starts from the runner's own programs, never an installed
-one.
+one. An installed tool runs inside the task, as the task's own; a remote service's tools stay
+outside, called by the runner ([`mcp`](mcp.md)).
