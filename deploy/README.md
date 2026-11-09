@@ -318,6 +318,9 @@ should be passed the Service name directly rather than discovering it.
 | `docdPool` | `""` | put docd on the `<docdPoolLabel>=<x>` nodes, tolerating their taint |
 | `docdPoolLabel` | `verse/pool` | the key the pool's nodes are labelled and tainted with |
 | `spotVersed` | `false` | let versed prefer `eks.amazonaws.com/capacityType: SPOT` |
+| `docdMemoryRequest` / `docdMemoryLimit` | `""` | docd's memory. `""` on both is BestEffort — right on a laptop, wrong on a cluster: a catch-up is read into memory before it is emitted, so with no request the store is first in line when the kubelet needs memory back and free to take the node with it. A limit does not prevent the read, it decides who dies of it — the container, attributably, instead of the node |
+| `docdGoMemLimit` | `""` | docd's `GOMEMLIMIT`, the soft Go heap ceiling. A cgroup limit is invisible to the collector, which targets twice the live heap and will aim past it, so the container is killed mid-collection rather than collecting harder. Set it **below** `docdMemoryLimit` with room for what is not heap — two thirds to three quarters of it |
+| `docdCompactionCutoff` | `""` | logd's compaction cutoff, emitted as a ConfigMap passed to `o sys up`. `""` is compaction **off**, which on a long-lived store keeps every root snapshot ever written — snapshots bound what a read replays, not what the volume holds. Inside the cutoff every patch is kept and a read at a commit is exact; past it history thins to logd's snapshot tiers, so the cutoff wants to be longer than any gate, hook or sequence step waits |
 | `tailscaleExpose` | `false` | put the API and docd's two faces on the tailnet |
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | `secretStore` | `aws-secretsmanager` | the `ClusterSecretStore` every entry below comes from |
