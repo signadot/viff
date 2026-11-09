@@ -80,7 +80,10 @@ and filled once:
 - **A prefix is flat: commands, their libraries and share.** Every package of the closure is
   held to it: one whose programs live in a tree of their own (`usr/libexec`, `usr/games`, `opt`,
   or a file that is no shared object under `usr/lib`, `lib` or `lib64`) does not work laid flat,
-  and is refused by the path that gives it away rather than installed broken.
+  and is refused by the path that gives it away rather than installed broken. The rule is
+  deliberately strict — a dependency with such a tree refuses the install too, though only its
+  shared objects would ever land — to be loosened to the named package's tree alone if and when
+  a closure worth carrying hits it.
 - **Each prefix is self-contained by its runpaths:** `$ORIGIN/../lib` on each executable,
   `$ORIGIN` on each bundled library (a runpath does not reach a transitive dependency, so a
   library carries its own). A prefix runs with no `LD_LIBRARY_PATH` and collides with nothing.

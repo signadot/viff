@@ -594,6 +594,12 @@ func (a *Apt) assemble(ctx context.Context, stage, named, trees string) error {
 // the build. Configuration and state (etc, var) are dropped as they always were: a tool reads
 // those where they are optional, and one that requires them is a service, which the system's
 // words already put outside.
+//
+// The rule is deliberately strict: every tree of the closure is held to it, though a
+// dependency's programs were never landed anyway, so a dependency with a private tree (glib's
+// gio helpers, a perl module tree) refuses the whole install. Loosen it to the named package's
+// tree alone if and when a closure worth carrying hits it — a dependency contributes only its
+// shared objects, and what it would drop is the same class as etc and var.
 func carriable(tree string) (string, error) {
 	var offends string
 	err := filepath.WalkDir(tree, func(path string, d fs.DirEntry, err error) error {
