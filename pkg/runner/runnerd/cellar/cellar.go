@@ -29,6 +29,10 @@ type Cellar struct {
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
+	// sizes is each installed prefix's bytes, walked once: a prefix is immutable from the
+	// rename that lands it, so after its first walk a collect is a ReadDir and arithmetic.
+	// An evicted prefix's entry goes with it.
+	sizes map[string]int64
 }
 
 // New opens the cellar at root, making it where it is absent. collectAbove is the size in bytes
@@ -37,7 +41,7 @@ func New(root string, collectAbove int64) (*Cellar, error) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, err
 	}
-	return &Cellar{root: root, collectAbove: collectAbove, locks: map[string]*sync.Mutex{}}, nil
+	return &Cellar{root: root, collectAbove: collectAbove, locks: map[string]*sync.Mutex{}, sizes: map[string]int64{}}, nil
 }
 
 // lockFor is the one lock of a prefix, per package and version: two installs of one prefix wait
@@ -51,9 +55,11 @@ func (c *Cellar) lockFor(key string) *sync.Mutex {
 	return c.locks[key]
 }
 
-// checkName is why a name cannot be a path segment of the cellar's: empty, a dot name, a
+// CheckName is why a name cannot be a path segment of the cellar's: empty, a dot name, a
 // separator in it, or a leading dot (the cellar's own staging and trash names begin with one).
-func checkName(what, v string) error {
+// It is the one copy of the rule: the wire (delivery.ReadInstall) and the configuration check
+// the same names with it, since the layout's safety rests on what this refuses.
+func CheckName(what, v string) error {
 	if v == "" {
 		return errors.New(what + " is empty")
 	}
@@ -70,7 +76,7 @@ func (c *Cellar) Prefix(name, version string) string {
 
 // Has is whether the prefix is installed.
 func (c *Cellar) Has(name, version string) bool {
-	if checkName("package", name) != nil || checkName("version", version) != nil {
+	if CheckName("package", name) != nil || CheckName("version", version) != nil {
 		return false
 	}
 	_, err := os.Stat(c.Prefix(name, version))
@@ -90,10 +96,10 @@ type Held struct {
 // Holding runs f with the prefix's lock held. Where f installed, the cellar collects after the
 // lock is released — eviction takes each prefix's lock, so collecting under one would deadlock.
 func (c *Cellar) Holding(name, version string, f func(Held) error) error {
-	if err := checkName("package", name); err != nil {
+	if err := CheckName("package", name); err != nil {
 		return err
 	}
-	if err := checkName("version", version); err != nil {
+	if err := CheckName("version", version); err != nil {
 		return err
 	}
 	lock := c.lockFor(name + "/" + version)
@@ -187,7 +193,7 @@ func (c *Cellar) Materialise(inst, name, version, cmd, as string) error {
 // Materialise is Cellar.Materialise under the held lock.
 func (h Held) Materialise(inst, cmd, as string) error {
 	for what, v := range map[string]string{"command": cmd, "name": as} {
-		if err := checkName(what, v); err != nil {
+		if err := CheckName(what, v); err != nil {
 			return err
 		}
 	}
@@ -303,7 +309,7 @@ func (c *Cellar) collect() error {
 			if err != nil {
 				return err
 			}
-			size, err := sizeOf(prefix)
+			size, err := c.size(n.Name(), v.Name())
 			if err != nil {
 				return err
 			}
@@ -337,9 +343,31 @@ func (c *Cellar) collect() error {
 		if err != nil {
 			return err
 		}
+		c.mu.Lock()
+		delete(c.sizes, e.name+"/"+e.version)
+		c.mu.Unlock()
 		total -= e.size
 	}
 	return nil
+}
+
+// size is the bytes under an installed prefix, read once and kept: immutable from its rename in.
+func (c *Cellar) size(name, version string) (int64, error) {
+	key := name + "/" + version
+	c.mu.Lock()
+	s, ok := c.sizes[key]
+	c.mu.Unlock()
+	if ok {
+		return s, nil
+	}
+	s, err := sizeOf(c.Prefix(name, version))
+	if err != nil {
+		return 0, err
+	}
+	c.mu.Lock()
+	c.sizes[key] = s
+	c.mu.Unlock()
+	return s, nil
 }
 
 // sizeOf is the bytes under a prefix: each regular file's once, symlinks and directories free.

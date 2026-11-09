@@ -143,6 +143,57 @@ func TestEvictionDropsTheLeastRecentlyUsedAndSparesAHolder(t *testing.T) {
 	}
 }
 
+// A PREFIX'S SIZE IS WALKED ONCE, AND ITS EVICTION DROPS THE ENTRY: a prefix is immutable from
+// its rename in, so collect reads the bytes it measured before rather than walking again, and an
+// evicted prefix leaves no entry behind to shadow a reinstall's own measure.
+func TestAPrefixsSizeIsWalkedOnceAndEvictionDropsIt(t *testing.T) {
+	c, err := New(t.TempDir(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	big := string(make([]byte, 40)) // bin and lib: 80 bytes a prefix
+	if err := c.Install("old", "1", fill("old", big)); err != nil {
+		t.Fatal(err)
+	}
+	c.mu.Lock()
+	got := c.sizes["old/1"]
+	c.mu.Unlock()
+	if got != 80 {
+		t.Fatalf("cached size %d, want 80", got)
+	}
+	// Understate the cached size: a second install then stays under the bound only where
+	// collect reads the cache, since a fresh walk sees 160 and evicts.
+	c.mu.Lock()
+	c.sizes["old/1"] = 1
+	c.mu.Unlock()
+	if err := c.Install("new", "2", fill("new", big)); err != nil {
+		t.Fatal(err)
+	}
+	if !c.Has("old", "1") || !c.Has("new", "2") {
+		t.Fatalf("has old %v new %v: collect walked the prefix it had measured", c.Has("old", "1"), c.Has("new", "2"))
+	}
+	c.mu.Lock()
+	c.sizes["old/1"] = 80
+	c.mu.Unlock()
+	past := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(c.Prefix("old", "1"), past, past); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.collect(); err != nil {
+		t.Fatal(err)
+	}
+	if c.Has("old", "1") {
+		t.Fatal("old survived a collect over the bound")
+	}
+	c.mu.Lock()
+	_, stale := c.sizes["old/1"]
+	_, kept := c.sizes["new/2"]
+	c.mu.Unlock()
+	if stale || !kept {
+		t.Fatalf("sizes after eviction: old present %v, new present %v; want the evicted dropped and the kept held", stale, kept)
+	}
+}
+
 // A HOLD SPANS INSTALL, COMMANDS AND MATERIALISE: Holding takes the prefix's one lock across all
 // three, so nothing comes between the build and the links a task takes from it — a concurrent
 // install of the same prefix waits out the hold and finds it built, its own build never run, and

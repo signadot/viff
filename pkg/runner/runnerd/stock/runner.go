@@ -194,17 +194,11 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	// A task of a doer whose ceilings name pkg gets an install root, made under the cellar and
 	// removed with the task, and that root's bin first on its PATH; any other doer's tasks get
 	// neither, and the pkg section stays the runner's.
-	pkgDoer := func(l *runner.Launch) string {
-		if l.Script != "" {
-			return ScriptDoer
-		}
-		return c.doer(l)
-	}
 	withPkg := func(l *runner.Launch) bool {
 		if pkgInstaller == nil {
 			return false
 		}
-		_, ok := c.systemsOf(pkgDoer(l))["pkg"]
+		_, ok := c.systemsOf(c.doer(l))["pkg"]
 		return ok
 	}
 	var instFor func(context.Context, *runner.Launch) (string, error)
@@ -224,7 +218,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 			// What starts installed: the doer's base, then what the spawn's environment pins —
 			// the operator's and the spawner's own word, so no row is asked; a failure refuses
 			// the launch, naming the package.
-			for _, ins := range startingInstalls(c.systemsOf(pkgDoer(l))["pkg"].Base, l.Environment) {
+			for _, ins := range startingInstalls(c.systemsOf(c.doer(l))["pkg"].Base, l.Environment) {
 				timed, cancel := context.WithTimeout(ctx, delivery.InstallTimeout)
 				_, err := pkgInstaller.Install(timed, dir, ins.Pkg, ins.Version, ins.As)
 				cancel()

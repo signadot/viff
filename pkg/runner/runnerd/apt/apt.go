@@ -22,6 +22,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -159,14 +160,36 @@ func (a *Apt) ensureIndex(ctx context.Context) error {
 	return a.Update(ctx)
 }
 
-// instLine reads one of `apt-get install -s`'s plan lines: the package, and the version that
-// would land (`Inst jq (1.6-2.1+deb12u2 Debian:12.5/stable [amd64])`, `[old]` before the
-// parenthesis on an upgrade).
-var instLine = regexp.MustCompile(`(?m)^Inst (\S+)(?: \[\S+\])? \((\S+) `)
+// instLine reads one of `apt-get install -s`'s plan lines: the package — arch-qualified where
+// multi-arch is in play (`libonig5:amd64`), and a name never carries a `:` of its own — the
+// version the image holds where the line is an upgrade (`[old]` before the parenthesis), and the
+// version that would land (`Inst jq (1.6-2.1+deb12u2 Debian:12.5/stable [amd64])`).
+var instLine = regexp.MustCompile(`(?m)^Inst (\S+)(?: \[(\S+)\])? \((\S+) `)
 
 // uriLine reads one of `--print-uris`'s plan lines: the url and the pool file it lands as. The
 // hash it prints is MD5 and is not read; integrity is the index's SHA256.
 var uriLine = regexp.MustCompile(`(?m)^'([^']+)' (\S+) \d+ `)
+
+// planName reads a plan destination (`jq_1%3a2.39.5-0+deb12u2_amd64.deb`) as the package and
+// version it is for. apt spells the pool file's name as `name_version_arch.deb` with what a
+// filename cannot carry percent-encoded — an epoch's `:` as `%3a` — so the decoded first two
+// parts are the very spellings the Inst lines use, where the pool file's own name is not (the
+// index's Filename omits the epoch). Neither name nor version carries a `_`.
+func planName(dest string) (name, version string, ok bool) {
+	base, found := strings.CutSuffix(filepath.Base(dest), ".deb")
+	if !found {
+		return "", "", false
+	}
+	decoded, err := url.PathUnescape(base)
+	if err != nil {
+		return "", "", false
+	}
+	parts := strings.SplitN(decoded, "_", 3)
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
 
 // Resolve is the closure installing a package means, past what the image provides: resolved
 // against the index (refreshed when stale), the named version where one is given, the
@@ -195,25 +218,42 @@ func (a *Apt) Resolve(ctx context.Context, name, version string) (Resolution, er
 		}
 		return Resolution{Name: name, Version: installed, Provided: true}, nil
 	}
+	// A plan line with an old version in it is apt upgrading something the image provides. The
+	// build never touches the image — a newer version of the named package, or of a dependency,
+	// lands in the prefix and shadows through the runpaths, which is the design — but libc and
+	// the loader are the one pair the prefix leans on the image for, and a bundled newer libc
+	// under the image's loader does not run (the pair must match). So a plan that moves libc is
+	// refused naming it, rather than laid broken; everything else of an upgrade bundles as any
+	// dependency does.
+	for _, m := range matches {
+		if bare := strings.SplitN(m[1], ":", 2)[0]; m[2] != "" && (bare == "libc6" || strings.HasPrefix(bare, "libc6-")) {
+			return Resolution{}, fmt.Errorf("installing %s needs a newer libc than the image's (%s %s to %s), and the prefix "+
+				"runs on the image's loader and libc, which move together: a newer image carries it, or a version this "+
+				"image's base satisfies", spec, m[1], m[2], m[3])
+		}
+	}
 	uris, err := a.run(ctx, "apt-get", append(a.opts(), "install", "-y", "--no-install-recommends", "--print-uris", spec)...)
 	if err != nil {
 		return Resolution{}, fmt.Errorf("reading the fetch plan for %s: %w", spec, err)
 	}
-	urlOf := map[string]string{} // pool file -> url
+	urlOf := map[string]string{} // "name version" -> url, both as the Inst lines spell them
 	for _, m := range uriLine.FindAllStringSubmatch(string(uris), -1) {
-		urlOf[m[2]] = m[1]
+		if n, v, ok := planName(m[2]); ok {
+			urlOf[n+" "+v] = m[1]
+		}
 	}
 	r := Resolution{Name: name}
 	for _, m := range matches {
-		p := Pkg{Name: m[1], Version: m[2]}
-		file, sha, err := a.indexEntry(ctx, p.Name, p.Version)
+		// The arch qualifier dropped: the index's paragraphs say `Package: libonig5`.
+		p := Pkg{Name: strings.SplitN(m[1], ":", 2)[0], Version: m[3]}
+		sha, err := a.indexEntry(ctx, p.Name, p.Version)
 		if err != nil {
 			return Resolution{}, err
 		}
 		p.SHA256 = sha
-		p.URL = urlOf[filepath.Base(file)]
+		p.URL = urlOf[p.Name+" "+p.Version]
 		if p.URL == "" {
-			return Resolution{}, fmt.Errorf("the fetch plan names no url for %s %s (%s)", p.Name, p.Version, file)
+			return Resolution{}, fmt.Errorf("the fetch plan names no url for %s %s", p.Name, p.Version)
 		}
 		if p.Name == name {
 			r.Version = p.Version
@@ -226,12 +266,12 @@ func (a *Apt) Resolve(ctx context.Context, name, version string) (Resolution, er
 	return r, nil
 }
 
-// indexEntry is a package's pool file and SHA256 as the verified index carries them
-// (`apt-cache show`), at the one version the closure names.
-func (a *Apt) indexEntry(ctx context.Context, name, version string) (file, sha string, err error) {
+// indexEntry is a package's SHA256 as the verified index carries it (`apt-cache show`), at the
+// one version the closure names.
+func (a *Apt) indexEntry(ctx context.Context, name, version string) (sha string, err error) {
 	out, err := a.run(ctx, "apt-cache", append(a.opts(), "show", name+"="+version)...)
 	if err != nil {
-		return "", "", fmt.Errorf("reading the index for %s=%s: %w", name, version, err)
+		return "", fmt.Errorf("reading the index for %s=%s: %w", name, version, err)
 	}
 	for _, paragraph := range strings.Split(string(out), "\n\n") {
 		fields := map[string]string{}
@@ -240,14 +280,14 @@ func (a *Apt) indexEntry(ctx context.Context, name, version string) (file, sha s
 				fields[k] = strings.TrimSpace(v)
 			}
 		}
-		if fields["Package"] == name && fields["Version"] == version && fields["SHA256"] != "" && fields["Filename"] != "" {
+		if fields["Package"] == name && fields["Version"] == version && fields["SHA256"] != "" {
 			if !hexSHA256(fields["SHA256"]) {
-				return "", "", fmt.Errorf("the index's SHA256 for %s %s is no sha256: %q", name, version, fields["SHA256"])
+				return "", fmt.Errorf("the index's SHA256 for %s %s is no sha256: %q", name, version, fields["SHA256"])
 			}
-			return fields["Filename"], fields["SHA256"], nil
+			return fields["SHA256"], nil
 		}
 	}
-	return "", "", fmt.Errorf("the index carries no SHA256 for %s %s", name, version)
+	return "", fmt.Errorf("the index carries no SHA256 for %s %s", name, version)
 }
 
 // hexSHA256 is whether s is a sha256 as the index spells one, 64 hex digits: everything the
@@ -303,6 +343,13 @@ func (a *Apt) Build(ctx context.Context, r Resolution) func(stage string) error 
 			}
 			if _, err := a.run(ctx, "dpkg-deb", "-x", deb, tree); err != nil {
 				return fmt.Errorf("extracting %s: %w", p.Name, err)
+			}
+			if off, err := carriable(tree); err != nil {
+				return err
+			} else if off != "" {
+				return fmt.Errorf("%s %s lays %s, which a flat prefix cannot carry: a prefix lands commands, "+
+					"their libraries and share, and a package whose programs live in a tree of their own does "+
+					"not work laid flat, so it is refused rather than installed broken", p.Name, p.Version, off)
 			}
 			if p.Name == r.Name {
 				named = tree
@@ -444,7 +491,7 @@ func (a *Apt) assemble(ctx context.Context, stage, named, trees string) error {
 			return err
 		}
 	}
-	for _, bins := range []string{"usr/bin", "bin"} {
+	for _, bins := range []string{"usr/bin", "bin", "usr/sbin", "sbin"} {
 		entries, err := os.ReadDir(filepath.Join(named, bins))
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -507,7 +554,13 @@ func (a *Apt) assemble(ctx context.Context, stage, named, trees string) error {
 		}
 		for _, e := range entries {
 			path := filepath.Join(stage, p.dir, e.Name())
-			if elf, err := isELF(path); err != nil || !elf {
+			// An unreadable file fails the build here, loudly: folded into "not an ELF" it
+			// would land an immutable prefix whose binary has no runpath, reported installed.
+			elf, err := isELF(path)
+			if err != nil {
+				return fmt.Errorf("reading %s for its runpath: %w", e.Name(), err)
+			}
+			if !elf {
 				continue
 			}
 			if _, err := a.run(ctx, "patchelf", "--set-rpath", p.runpath, path); err != nil {
@@ -516,6 +569,43 @@ func (a *Apt) assemble(ctx context.Context, stage, named, trees string) error {
 		}
 	}
 	return nil
+}
+
+// carriable is why a package's payload cannot be laid into a flat prefix, "" where it can. The
+// prefix lands commands (bin, sbin), share, and shared objects; a package whose programs live in
+// a tree of their own — git's usr/lib/git-core, python3's usr/lib/python3.11, a usr/libexec —
+// would land without that tree and break at run time, so the first path that shows one refuses
+// the build. Configuration and state (etc, var) are dropped as they always were: a tool reads
+// those where they are optional, and one that requires them is a service, which the system's
+// words already put outside.
+func carriable(tree string) (string, error) {
+	var offends string
+	err := filepath.WalkDir(tree, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if offends != "" {
+			return fs.SkipAll
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, rerr := filepath.Rel(tree, path)
+		if rerr != nil {
+			return rerr
+		}
+		rel = filepath.ToSlash(rel)
+		switch {
+		case strings.HasPrefix(rel, "usr/libexec/") || strings.HasPrefix(rel, "usr/games/") || strings.HasPrefix(rel, "opt/"):
+			offends = rel
+		case strings.HasPrefix(rel, "usr/lib/") || strings.HasPrefix(rel, "lib/") || strings.HasPrefix(rel, "lib64/"):
+			if name := d.Name(); !strings.HasSuffix(name, ".so") && !strings.Contains(name, ".so.") {
+				offends = rel
+			}
+		}
+		return nil
+	})
+	return offends, err
 }
 
 // isELF is whether a regular file begins with the ELF magic; a script or a data file is left as

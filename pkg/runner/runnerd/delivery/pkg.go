@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signadot/verse/pkg/runner/runnerd/cellar"
 	"github.com/signadot/verse/pkg/task"
 )
 
@@ -29,12 +30,16 @@ const (
 	installGrace   = time.Minute
 )
 
-// Installed is what an install landed: the version, the command's name on the task's PATH, and
-// whether the image provides the package already — then nothing was laid, and the command is the
-// image's own.
+// Installed is what an install landed: the version; the one renamed command where the call said
+// `as`, or the commands landed under their own names where it did not; and whether the image
+// provides the package already — then nothing was laid, and the command is the image's own.
 type Installed struct {
-	Version  string
-	As       string
+	Version string
+	// As is the one command the call renamed, "" where nothing was: never a list, since a
+	// consumer reads it as a name on the task's PATH.
+	As string
+	// Commands are the commands landed under their own names, where no `as` renamed one.
+	Commands []string
 	Provided bool
 }
 
@@ -60,12 +65,14 @@ func ReadInstall(pkg, version, as string) (Install, string) {
 	if pkg == "" {
 		return Install{}, "pkg names the package to install"
 	}
+	// The one name rule is the cellar's (CheckName), whose path segments the names become: a
+	// second copy here would drift from the one the layout's safety rests on.
 	for what, v := range map[string]string{"pkg": pkg, "version": version, "as": as} {
 		if v == "" {
 			continue
 		}
-		if strings.ContainsAny(v, "/\\") || v == "." || v == ".." || strings.HasPrefix(v, ".") {
-			return Install{}, fmt.Sprintf("%s %q: a name, never a path", what, v)
+		if err := cellar.CheckName(what, v); err != nil {
+			return Install{}, err.Error()
 		}
 	}
 	return Install{Pkg: pkg, Version: version, As: as}, ""
@@ -103,10 +110,13 @@ func (s *Server) pkgInstall(ctx context.Context, tk Task, req Request) (asked, R
 			return Reply{Error: "not installed: " + err.Error()}
 		}
 		var out string
-		if got.Provided {
+		switch {
+		case got.Provided:
 			out = fmt.Sprintf("the image provides %s %s, on PATH already", ins.Pkg, got.Version)
-		} else {
+		case got.As != "":
 			out = fmt.Sprintf("installed %s %s as %s", ins.Pkg, got.Version, got.As)
+		default:
+			out = fmt.Sprintf("installed %s %s: %s, on PATH", ins.Pkg, got.Version, strings.Join(got.Commands, ", "))
 		}
 		fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
 		return Reply{OK: true, Out: out}

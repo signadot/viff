@@ -146,7 +146,8 @@ func (i *installer) Install(ctx context.Context, inst, pkg, version, as string) 
 	}
 	// One hold spans the build and the links the task takes from it: released between the two,
 	// a collect could evict the just-built prefix before it is materialised.
-	var landed string
+	var renamed string
+	var landed []string
 	err = i.cellar.Holding(pkg, r.Version, func(h cellar.Held) error {
 		if err := h.Install(i.wrap.Build(ctx, r)); err != nil {
 			return err
@@ -164,7 +165,7 @@ func (i *installer) Install(ctx context.Context, inst, pkg, version, as string) 
 					return err
 				}
 			}
-			landed = strings.Join(cmds, ", ")
+			landed = cmds
 			return nil
 		}
 		var cmd string
@@ -180,13 +181,13 @@ func (i *installer) Install(ctx context.Context, inst, pkg, version, as string) 
 		if err := h.Materialise(inst, cmd, as); err != nil {
 			return err
 		}
-		landed = as
+		renamed = as
 		return nil
 	})
 	if err != nil {
 		return delivery.Installed{}, err
 	}
-	return delivery.Installed{Version: r.Version, As: landed}, nil
+	return delivery.Installed{Version: r.Version, As: renamed, Commands: landed}, nil
 }
 
 // startingInstalls is what the runner installs into a task's root before its process starts:

@@ -33,7 +33,7 @@ func (f *fakeInstaller) Install(_ context.Context, inst, pkg, version, as string
 		version = "9.9-candidate"
 	}
 	if as == "" {
-		as = pkg
+		return Installed{Version: version, Commands: []string{pkg}}, nil
 	}
 	return Installed{Version: version, As: as}, nil
 }
@@ -83,13 +83,13 @@ func TestAPkgInstallIsReadIntoOneStepAndLandsInTheTasksRoot(t *testing.T) {
 		says   string // "" is performed OK
 		out    string
 	}{
-		{"an open shape installs the candidate", open, installReq("jq", "", ""), "", "installed jq 9.9-candidate as jq"},
+		{"an open shape installs the candidate", open, installReq("jq", "", ""), "", "installed jq 9.9-candidate: jq, on PATH"},
 		{"a pinned version and a chosen name ride through", open, installReq("jq", "1.6-2.1", "jq-v1"), "", "installed jq 1.6-2.1 as jq-v1"},
 		{"a shape that pins the version refuses a call that names none",
 			[]systems.Shape{{"pkg": pattern(t, "jq"), "version": pattern(t, `"1.6-2.1"`)}}, installReq("jq", "", ""), "outside", ""},
 		{"and admits the call that names it",
-			[]systems.Shape{{"pkg": pattern(t, "jq"), "version": pattern(t, `"1.6-2.1"`)}}, installReq("jq", "1.6-2.1", ""), "", "installed jq 1.6-2.1 as jq"},
-		{"a pattern on the package admits what it matches", []systems.Shape{{"pkg": pattern(t, `!glob "lib*"`)}}, installReq("libonig5", "", ""), "", "installed libonig5 9.9-candidate as libonig5"},
+			[]systems.Shape{{"pkg": pattern(t, "jq"), "version": pattern(t, `"1.6-2.1"`)}}, installReq("jq", "1.6-2.1", ""), "", "installed jq 1.6-2.1: jq, on PATH"},
+		{"a pattern on the package admits what it matches", []systems.Shape{{"pkg": pattern(t, `!glob "lib*"`)}}, installReq("libonig5", "", ""), "", "installed libonig5 9.9-candidate: libonig5, on PATH"},
 		{"and refuses the rest", []systems.Shape{{"pkg": pattern(t, `!glob "lib*"`)}}, installReq("jq", "", ""), "outside", ""},
 		{"a name that is a path is refused unread", open, installReq("jq", "", "bin/evil"), "a name, never a path", ""},
 		{"a package must be named", open, installReq("", "", ""), "pkg names the package", ""},

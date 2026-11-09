@@ -365,3 +365,121 @@ func TestConcurrentResolvesUpdateTheIndexOnce(t *testing.T) {
 		t.Fatalf("updates %d, want one for both resolves", updates)
 	}
 }
+
+// AN EPOCH, AN ARCH QUALIFIER, AND A PLAN THAT MOVES LIBC: the plan's url is joined to the
+// closure by package and version as apt spells them — an epoch'd pool file percent-encodes the
+// `:` that the index's Filename omits, so a filename join would miss — an arch-qualified Inst
+// line resolves by its bare name, and a plan that upgrades libc is refused naming it, since the
+// prefix runs on the image's loader and libc, which move together. An upgrade of anything else
+// bundles as a dependency does: the image is never touched.
+func TestResolveReadsEpochsArchesAndRefusesALibcMove(t *testing.T) {
+	var calls []string
+	a := &Apt{
+		State: t.TempDir(),
+		Repos: []string{"deb http://deb.example/debian bookworm main"},
+		Exec: fakeApt(t, &calls, map[string]string{
+			"apt-get update": "",
+			"apt-get install -s --no-install-recommends git-man":              "Inst git-man:amd64 (1:2.39.5-0+deb12u2 Debian:12.5/stable [all])\n",
+			"apt-get install -y --no-install-recommends --print-uris git-man": "'http://deb.example/debian/pool/main/g/git/git-man_1%3a2.39.5-0+deb12u2_all.deb' git-man_1%3a2.39.5-0+deb12u2_all.deb 1 MD5Sum:aa\n",
+			"apt-cache show git-man=1:2.39.5-0+deb12u2":                       show("git-man", "1:2.39.5-0+deb12u2", "g/git"),
+		}),
+	}
+	r, err := a.Resolve(t.Context(), "git-man", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Version != "1:2.39.5-0+deb12u2" || len(r.Closure) != 1 ||
+		r.Closure[0].Name != "git-man" ||
+		r.Closure[0].URL != "http://deb.example/debian/pool/main/g/git/git-man_1%3a2.39.5-0+deb12u2_all.deb" {
+		t.Fatalf("%+v", r)
+	}
+
+	moved := &Apt{State: t.TempDir(), Repos: a.Repos, Exec: fakeApt(t, &calls, map[string]string{
+		"apt-get update": "",
+		"apt-get install -s --no-install-recommends jq": "Inst libc6 [2.36-9+deb12u4] (2.36-9+deb12u9 Debian-Security:12/stable-security [amd64])\n" + simJq,
+	})}
+	_, err = moved.Resolve(t.Context(), "jq", "")
+	if err == nil || !strings.Contains(err.Error(), "needs a newer libc than the image's") || !strings.Contains(err.Error(), "libc6 2.36-9+deb12u4 to 2.36-9+deb12u9") {
+		t.Fatalf("a libc move: %v", err)
+	}
+}
+
+// A PACKAGE WHOSE PROGRAMS LIVE IN A TREE OF THEIR OWN IS REFUSED, NOT INSTALLED BROKEN: the
+// prefix lands commands (sbin's too), share and shared objects, and a usr/lib tree past the
+// libraries — git-core, a python stdlib — would be dropped, so the build refuses it naming the
+// first path. A binary the assembler cannot read fails the build too, rather than landing an
+// immutable prefix with no runpath.
+func TestAPrivateTreeRefusesTheBuildAndSbinLands(t *testing.T) {
+	_, pkg := debs(t, map[string][]byte{"git": []byte("git deb"), "tool": []byte("tool deb"), "dim": []byte("dim deb")})
+	lay := func(files map[string]struct {
+		body []byte
+		perm os.FileMode
+	}) Exec {
+		return func(_ context.Context, name string, args ...string) ([]byte, error) {
+			switch name {
+			case "dpkg-deb":
+				if args[0] == "-e" {
+					return nil, nil
+				}
+				dir := args[2]
+				for rel, f := range files {
+					path := filepath.Join(dir, rel)
+					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+						return nil, err
+					}
+					if err := os.WriteFile(path, f.body, f.perm); err != nil {
+						return nil, err
+					}
+				}
+				return nil, nil
+			case "patchelf":
+				return nil, nil
+			}
+			return nil, fmt.Errorf("unexpected %s", name)
+		}
+	}
+	type file = struct {
+		body []byte
+		perm os.FileMode
+	}
+	git := &Apt{State: t.TempDir(), Exec: lay(map[string]file{
+		"usr/bin/git":              {elfFile("git"), 0o755},
+		"usr/lib/git-core/git-add": {elfFile("git-add"), 0o755},
+	})}
+	err := git.Build(t.Context(), Resolution{Name: "git", Version: "2.39", Closure: []Pkg{pkg("git", "2.39")}})(t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "usr/lib/git-core/git-add") || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("a private tree: %v", err)
+	}
+
+	// An sbin command lands in bin, beside the libraries.
+	tool := &Apt{State: t.TempDir(), Exec: lay(map[string]file{
+		"usr/sbin/toolctl":                        {elfFile("toolctl"), 0o755},
+		"usr/lib/x86_64-linux-gnu/libtool.so.1.0": {elfFile("libtool"), 0o644},
+	})}
+	stage := t.TempDir()
+	if err := tool.Build(t.Context(), Resolution{Name: "tool", Version: "1", Closure: []Pkg{pkg("tool", "1")}})(stage); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(stage, "bin/toolctl")); err != nil {
+		t.Fatal("the sbin command did not land in bin")
+	}
+
+	// A command the assembler cannot read fails the build, loudly, rather than being folded
+	// into "not an ELF" and landing with no runpath: the stage is seeded with an unreadable
+	// binary (the copy skips a name already landed), and the runpath pass must surface it.
+	if os.Geteuid() == 0 {
+		t.Skip("root reads everything, and the unreadable fixture reads")
+	}
+	dim := &Apt{State: t.TempDir(), Exec: lay(map[string]file{"usr/bin/dim": {elfFile("dim"), 0o755}})}
+	stage = t.TempDir()
+	if err := os.MkdirAll(filepath.Join(stage, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, "bin/dim"), elfFile("dim"), 0o311); err != nil {
+		t.Fatal(err)
+	}
+	err = dim.Build(t.Context(), Resolution{Name: "dim", Version: "1", Closure: []Pkg{pkg("dim", "1")}})(stage)
+	if err == nil || !strings.Contains(err.Error(), "for its runpath") {
+		t.Fatalf("an unreadable binary: %v", err)
+	}
+}

@@ -68,14 +68,18 @@ and filled once:
 
 - **Resolution is the manager's own, non-root.** The closure is resolved against the index
   `apt-get update` fetched and signature-checked with the image's keyrings, with the image's own
-  package database as the base — so the closure is only the delta past the image, and libc is
-  never in it.
+  package database as the base — so the closure is only the delta past the image. A closure
+  that would move libc is refused: the prefix runs on the image's loader and libc, which move
+  together, so a tool needing a newer libc needs a newer image.
 - **Each file is fetched by the index's SHA256**, never the plan's MD5: integrity rides the
   signed `Release → Packages → SHA256` chain.
 - **Extraction runs no maintainer script.** A package whose install scripts do more than the
   stock ldconfig stanza is refused by name: it would land half-configured, and nothing of a
   package's runs here. (Runpaths do ldconfig's work in a prefix.) So packages needing postinst,
-  alternatives or setuid do not work — CLI tools, libraries, compilers and interpreters do.
+  alternatives or setuid do not work — CLI tools and libraries do.
+- **A prefix is flat: commands, their libraries and share.** A package whose programs live in a
+  tree of their own (`usr/libexec`, `opt`, loose files under `usr/lib`) does not work laid flat,
+  and is refused by the path that gives it away rather than installed broken.
 - **Each prefix is self-contained by its runpaths:** `$ORIGIN/../lib` on each executable,
   `$ORIGIN` on each bundled library (a runpath does not reach a transitive dependency, so a
   library carries its own). A prefix runs with no `LD_LIBRARY_PATH` and collides with nothing.

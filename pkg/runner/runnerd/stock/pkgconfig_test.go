@@ -5,11 +5,12 @@ import (
 
 	"context"
 	"errors"
-	"github.com/signadot/tony-format/go-tony/ir"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/pkg/runner/runnerd/apt"
 	"github.com/signadot/verse/pkg/runner/runnerd/cellar"
@@ -129,7 +130,7 @@ func TestTheInstallerNamesCommandsAndAsRenamesOne(t *testing.T) {
 	ripgrep := &installer{cellar: store, wrap: fakeWrap{res: apt.Resolution{Name: "ripgrep", Version: "14.1.0-1",
 		Closure: []apt.Pkg{{Name: "ripgrep", Version: "14.1.0-1"}}}, cmds: []string{"rg"}}}
 	got, err := ripgrep.Install(t.Context(), inst, "ripgrep", "", "")
-	if err != nil || got.Version != "14.1.0-1" || got.As != "rg" || got.Provided {
+	if err != nil || got.Version != "14.1.0-1" || got.As != "" || len(got.Commands) != 1 || got.Commands[0] != "rg" || got.Provided {
 		t.Fatalf("%+v %v", got, err)
 	}
 	if _, err := os.Stat(filepath.Join(inst, "bin", "rg")); err != nil {
@@ -142,8 +143,12 @@ func TestTheInstallerNamesCommandsAndAsRenamesOne(t *testing.T) {
 
 	git := &installer{cellar: store, wrap: fakeWrap{res: apt.Resolution{Name: "git", Version: "1:2.39",
 		Closure: []apt.Pkg{{Name: "git", Version: "1:2.39"}}}, cmds: []string{"git", "git-shell", "scalar"}}}
-	if _, err := git.Install(t.Context(), inst, "git", "", ""); err == nil {
-		// several commands, no `as`: each under its own name
+	if got, err := git.Install(t.Context(), inst, "git", "", ""); err == nil {
+		// several commands, no `as`: each under its own name, said as the list it is, and As
+		// stays empty — a consumer reads As as one name on the PATH, never a list.
+		if got.As != "" || strings.Join(got.Commands, " ") != "git git-shell scalar" {
+			t.Errorf("landed %+v, want the commands and no As", got)
+		}
 		for _, cmd := range []string{"git", "git-shell", "scalar"} {
 			if _, err := os.Stat(filepath.Join(inst, "bin", cmd)); err != nil {
 				t.Errorf("%s is not on the root", cmd)
