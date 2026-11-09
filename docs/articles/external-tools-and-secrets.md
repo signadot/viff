@@ -236,7 +236,7 @@ sequenceDiagram
   participant C as command (its own sandbox)
   A->>R: secret-exec {name: npm-token, argv: [npm, publish, --ignore-scripts], dir: packages/a}
   R->>R: step secret.exec<br/>argv "npm publish --ignore-scripts"<br/>environment, autonomy, ceiling
-  R->>R: npm resolves under a system dir<br/>or a readOnly path, never the workspace
+  R->>R: npm resolves under a system dir, a readOnly path<br/>or the install root, never the workspace
   R->>S: read npm-token, now
   R->>C: start over the workspace, under the task's network<br/>NPM_TOKEN in this process alone
   R-->>A: two sockets: stdout, stderr
@@ -255,8 +255,9 @@ sequenceDiagram
   ambiguous, because the call gives a list.
 - It checks the step against the environment, the autonomy and the ceiling. Plain variables are
   checked **closed**: a variable that no shape names makes the call outside the environment.
-- It runs `npm` only if `npm` resolves under a system directory or a path the operator keeps
-  read-only. It never runs a program from the workspace.
+- It runs `npm` only if `npm` resolves under a system directory, a path the operator keeps
+  read-only, or the task's install root, which the runner fills from the signed index (`pkg`,
+  below) and the task cannot write. It never runs a program from the workspace.
 - It reads the secret, then starts the command **in a sandbox of its own**, over the task's
   workspace and under the task's network, with `NPM_TOKEN` in that process alone. The task's own
   processes are in another pid namespace and can't read it.
@@ -500,8 +501,10 @@ sandbox**: as the runner's user, on the runner's filesystem, next to the runner'
 
 `secret-exec` already built the missing piece: **a command in a sandbox of its own**, over the
 task's workspace, under the task's network, with one secret in its environment and the program
-held to one the runner keeps. A stdio server is exactly that kind of command, and it can be
-reached in two ways:
+held to one the runner keeps. A stdio server is exactly that kind of command — and since a
+command with a secret may start from the install root (`pkg`, below), the program it starts from
+no longer has to be in the image: `npx`, `uvx` or a server's own package is an install away. It
+can be reached in two ways:
 
 | | The runner is the client (the `mcp` system) | The task is the client (`secret-exec`) |
 |---|---|---|
@@ -537,11 +540,12 @@ flowchart LR
 
 ## Debian packages: tools the image doesn't carry (`pkg`)
 
-> **Status:** built, on `verse/pkg` over `verse/mcp` ([`2k5art3x`]), in ten commits (89f6d9eb
-> to 3aa1dac2): the document and the step, the cellar, the apt wrapper, the sandbox's `/inst`,
-> the delivery op, the stock wiring, the pinned installs and the operator's `base`, the words,
-> and what a review of the stack found in the installer. It supersedes the nix plan
-> ([`2b5art3x`]), and it has run on staging: a script had jq-v1 on PATH before its first line
+> **Status:** built, on `verse/pkg` over `verse/mcp` ([`2k5art3x`]): the document and the step,
+> the cellar, the apt wrapper, the delivery op, the stock wiring, the pinned installs and the
+> operator's `base`, the words, and what a review of the stack found in the installer. The
+> sandbox's `/inst` is `verse/secret-exec`'s, where a command run with a secret starts from a
+> program in that root; what fills one is here. It supersedes the nix plan ([`2b5art3x`]), and
+> it has run on staging: a script had jq-v1 on PATH before its first line
 > (the pinned shape), was asked about `jq-v2` and saw it land mid-run through the read-only
 > bind, installed ripgrep under its own `rg`, computed with what landed, and had
 > `touch /inst/bin/x` and the cellar refused; a claude task asking for ripgrep was answered
@@ -657,6 +661,14 @@ sequenceDiagram
 - **The task can write none of it.** `/inst` is one `--ro-bind`, and the cellar lies outside
   every sandbox. Under `-sandbox none`, or in an image without the toolchain (`apt-get`,
   `apt-cache`, `dpkg-deb`, `patchelf`), the runner closes `pkg` and says so at start.
+- **A command with a secret starts from it too.** `secret.exec`'s sandbox binds the task's
+  install root as the task's own sandbox does, and holds `argv[0]` to a system directory, a
+  `readOnly` path **or** that root. The three facts above are why this is no weakening: the root
+  is the runner's writing, from the same signed index the image's own `/usr` was built from, and
+  the task cannot write it — so an installed tool is the runner's program in exactly the sense
+  the check means. It is how a CLI the image doesn't carry gets to run with a key, instead of
+  waiting for a new image. `/inst/bin` is first on the task's `PATH`, so an installed name wins
+  over the image's where both have it.
 
 **Why apt, and not nix.** The nix plan ([`2b5art3x`]) got packages in at the start, and its
 limitations table was long: a separate single-user store to defend, flake code evaluated on the
@@ -675,7 +687,6 @@ nothing built from source. Those are the limitations below, and they are the che
 | **One libc family** | prefixes are built against the image's glibc; musl is another world | an `apk` wrapper, if a musl image earns one ([`2k5art3x`], open question 4) |
 | **Binaries and libraries, not services** | nothing is started, no user is made, no system path is written; a package that only works installed as root doesn't work here | |
 | **No `list` verb** | what's installed is what the environment and the replies already say | [`2k5art3x`]'s open question 2, if it earns its keep |
-| **A command with a secret doesn't see `/inst`** | `secret.exec`'s sandbox starts from the runner's own programs, and an installed `npm` is not yet one of them | composing the two, deferred |
 
 ---
 
@@ -684,10 +695,10 @@ nothing built from source. Those are the limitations below, and they are the che
 ```mermaid
 flowchart LR
   T1["table of ops<br/>built, on main"] --> T2["secret store<br/>built"]
-  T2 --> T3["secret-exec<br/>built, on its branch;<br/>stdin on the I/O socket"]
+  T2 --> T3["secret-exec<br/>built, on its branch;<br/>stdin on the I/O socket;<br/>starts from a program in /inst"]
   B["an answer bound<br/>to its step<br/>built"] --> T3
   T3 --> T4["mcp<br/>built, on top; run on staging"]
-  T4 --> T5["pkg<br/>built, on top; run on staging;<br/>installs during the run"]
+  T4 --> T5["pkg<br/>built, on top; run on staging;<br/>installs during the run;<br/>fills /inst"]
 ```
 
 **How it reaches the team:** `secret-exec` is the first pull request, and `mcp` and `pkg` are
@@ -701,9 +712,9 @@ pull request carries its own.
 | The channel's table of ops, one step per request, a deadline per op | built, on `main` | [`1k5art3x`] |
 | The secret store, with Slack and Linear reading from it | built, on `verse/secret-store` | [`1q5art3x`] |
 | An answer performs only the act it was given about | built, on `verse/secret-exec` | [`275art3x`] |
-| `secret-exec` | built, on `verse/secret-exec`; the first pull request. Its I/O socket now carries stdin too (`stdin: true`, [`hnp7jgfk`]) | [`pa35grmz`] |
+| `secret-exec` | built, on `verse/secret-exec`; the first pull request. Its I/O socket now carries stdin too (`stdin: true`, [`hnp7jgfk`]), and the sandbox's read-only `/inst` is here as well, so a command with a secret may start from a program the runner installed for the task — what the limitations table below used to defer | [`pa35grmz`] |
 | `mcp` | built, on `verse/mcp` over `verse/secret-exec`, every step reviewed and committed, and run on staging against Linear and Signadot's production server; the staging server waits on a server-side fix | [`1v5art3x`] |
-| `pkg`, installs during the run | built, on `verse/pkg` over `verse/mcp`, in ten commits, and run on staging: jq twice under two names (one pinned at launch, one asked mid-run), ripgrep as its own `rg`, a claude task answered "on PATH already", `/inst` refusing a write. The run found the offer failing verse's shape check, fixed at c3f777a5 | [`2k5art3x`] |
+| `pkg`, installs during the run | built, on `verse/pkg` over `verse/mcp`, in ten commits, and run on staging: jq twice under two names (one pinned at launch, one asked mid-run), ripgrep as its own `rg`, a claude task answered "on PATH already", `/inst` refusing a write. The run found the offer failing verse's shape check, fixed at c3f777a5. It fills the install root `secret-exec` opened to a command with a secret | [`2k5art3x`] |
 | `pkg-nix` | superseded by `pkg`: the image's own apt in place of a nix store, and installs as the task runs | [`2b5art3x`] |
 
 [`1k5art3x`]: #

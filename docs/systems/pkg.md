@@ -139,6 +139,7 @@ The system is performed where the `pkg:` section and a doer's ceiling naming it 
 It closes whole, and the runner says so, where tasks run unconfined (`-sandbox none`: there is no
 bind to make the root read-only through) and where the toolchain (`apt-get`, `apt-cache`,
 `dpkg-deb`, `patchelf`) is not in the image. A command run with a secret ([`secret`](secret.md))
-is confined with no install root: it starts from the runner's own programs, never an installed
-one. An installed tool runs inside the task, as the task's own; a remote service's tools stay
-outside, called by the runner ([`mcp`](mcp.md)).
+is confined with the task's install root bound as the task's own sandbox has it, so an installed
+tool is one such a command may start from: the root is the runner's writing from the signed
+index, and the task cannot write it. An installed tool otherwise runs inside the task, as the
+task's own; a remote service's tools stay outside, called by the runner ([`mcp`](mcp.md)).
