@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/systems/pkg/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>pkg - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="pkg - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/systems/pkg/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../secret/" class="dropdown-item">secret</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">mcp</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">pkg</a>
+</li>
+                                    
+<li>
+    <a href="../question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../mcp/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../question/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#pkg" class="nav-link">pkg</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-task-can-do" class="nav-link">What a task can do</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#how-an-install-lands" class="nav-link">How an install lands</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-question" class="nav-link">The question</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-runners-configuration" class="nav-link">The runner's configuration</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="pkg">pkg<a class="headerlink" href="#pkg" title="Permanent link">#</a></h1>
+<p>The <code>pkg</code> system is tools the runner installs into a task's prefix: a directory of the runner's,
+bound read-only into the sandbox at <code>/inst</code> when the task starts. The runner wraps a package
+manager — it resolves a package's name against the signed index of the repositories its operator
+trusts, fetches each file by the index's hash, extracts it with none of the package's own scripts
+run, and writes the tool into the prefix, where the task sees it through the bind and finds it on
+its PATH. The task only asks: the environment says which packages, the autonomy decides each
+install, and the ceiling bounds both.</p>
+<p>Installing is a file write on the runner's side, never a new mount and never a capability: the
+one bind is made at the task's start, and a tool installed mid-run appears through it. Nothing
+outside the task's own prefix changes, and an install runs no code of the package's — a task
+installing a library is no more than it fetching a binary itself, from a source the operator
+signed off on, laid where the task cannot write.</p>
+<h2 id="what-a-task-can-do">What a task can do<a class="headerlink" href="#what-a-task-can-do" title="Permanent link">#</a></h2>
+<p>A <code>pkg</code> block's <code>install</code> shapes say which packages, versions and names:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">claude</span><span class="p">}</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      <span class="na">commands</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>      <span class="na">files</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>      <span class="na">pkg</span><span class="o">:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="na">install</span><span class="o">:</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="p">-</span> <span class="p">{</span><span class="na">pkg</span><span class="o">:</span> <span class="sx">jq</span><span class="p">,</span> <span class="na">version</span><span class="o">:</span> <span class="s2">&quot;1.7.1-1&quot;</span><span class="p">,</span> <span class="na">as</span><span class="o">:</span> <span class="sx">jq-v2</span><span class="p">}</span>   <span class="c1"># pinned: installed before the process starts</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="p">-</span> <span class="p">{</span><span class="na">pkg</span><span class="o">:</span> <span class="k">!glob</span> <span class="s2">&quot;lib*&quot;</span><span class="p">}</span>                        <span class="c1"># a pattern: installs the task may ask for</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>  <span class="na">prompt</span><span class="o">:</span> <span class="s2">&quot;Compare jq 1.6&#39;s and 1.7&#39;s output for our filters.&quot;</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  <span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">pkg</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">install</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>  <span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<p>The task's tool is <code>pkg-install</code>, and each use of it is the step <code>pkg.install</code>, with <code>pkg</code>,
+<code>version</code> and <code>as</code>.</p>
+<p><strong>A shape that pins the package is installed before the process starts.</strong> A shape whose fields
+are single literals, the package named, is the spawner's own word: the runner installs it into
+the task's root during the launch, no row asked, and a failure refuses the launch, naming the
+package. A shape with a pattern anywhere pins nothing: it admits installs the task asks for as it
+runs, each decided by the autonomy.</p>
+<p><strong>The step carries what the call asked and no more.</strong> An install that names no <code>version</code> takes
+the index's candidate, and the answer says exactly what landed — but the step a row or a shape
+decides has no <code>version</code> field then, so a shape that pins the version refuses a call that names
+another or none. A ceiling that must pin versions forces the task to name them.</p>
+<p><strong><code>as</code> renames one command, so two versions sit side by side.</strong> <code>install {pkg: jq, version:
+"1.6-2.1+deb12u2", as: jq-v1}</code> and <code>{pkg: jq, version: "1.7.1-1", as: jq-v2}</code> give <code>jq-v1</code> and
+<code>jq-v2</code>, both on PATH, no collision: each version is its own prefix, and each prefix's libraries
+are its own. With no <code>as</code>, every command the package ships lands under its own name (<code>ripgrep</code>
+lands <code>rg</code>). A package of several commands refuses an <code>as</code>, naming them: it renames exactly one —
+the one named as the package, or the only one.</p>
+<p><strong>A package the image provides is answered as on PATH already.</strong> The base image's packages are
+the resolver's base, so <code>install {pkg: git}</code> on an image that ships git installs nothing and says
+so; its libraries are never bundled twice. An <code>as</code> on one is refused: there is no installed
+command to rename.</p>
+<h2 id="how-an-install-lands">How an install lands<a class="headerlink" href="#how-an-install-lands" title="Permanent link">#</a></h2>
+<p>The runner keeps a <strong>cellar</strong>, one immutable prefix per package and version, shared across tasks
+and filled once:</p>
+<ul>
+<li><strong>Resolution is the manager's own, non-root.</strong> The closure is resolved against the index
+  <code>apt-get update</code> fetched and signature-checked with the image's keyrings, with the image's own
+  package database as the base — so the closure is only the delta past the image. A closure
+  that would move libc is refused: the prefix runs on the image's loader and libc, which move
+  together, so a tool needing a newer libc needs a newer image.</li>
+<li><strong>Each file is fetched by the index's SHA256</strong>, never the plan's MD5: integrity rides the
+  signed <code>Release → Packages → SHA256</code> chain.</li>
+<li><strong>Extraction runs no maintainer script.</strong> A package whose install scripts do more than the
+  stock ldconfig stanza is refused by name: it would land half-configured, and nothing of a
+  package's runs here. (Runpaths do ldconfig's work in a prefix.) So packages needing postinst,
+  alternatives or setuid do not work — CLI tools and libraries do.</li>
+<li><strong>A prefix is flat: commands, their libraries and share.</strong> Every package of the closure is
+  held to it: one whose programs live in a tree of their own (<code>usr/libexec</code>, <code>usr/games</code>, <code>opt</code>,
+  or a file that is no shared object under <code>usr/lib</code>, <code>lib</code> or <code>lib64</code>) does not work laid flat,
+  and is refused by the path that gives it away rather than installed broken. The rule is
+  deliberately strict — a dependency with such a tree refuses the install too, though only its
+  shared objects would ever land — to be loosened to the named package's tree alone if and when
+  a closure worth carrying hits it.</li>
+<li><strong>Each prefix is self-contained by its runpaths:</strong> <code>$ORIGIN/../lib</code> on each executable,
+  <code>$ORIGIN</code> on each bundled library (a runpath does not reach a transitive dependency, so a
+  library carries its own). A prefix runs with no <code>LD_LIBRARY_PATH</code> and collides with nothing.</li>
+<li><strong>A task's root is hardlinked from the cellar,</strong> near-free on one volume, with <code>bin</code> a farm of
+  relative links. Above the operator's bound the least recently used prefixes are evicted; a
+  running task keeps an evicted prefix by its root's hardlinks until it ends, so eviction never
+  breaks a run. The root is removed with the task: installed tools are the cellar's to keep,
+  never a task's.</li>
+</ul>
+<h2 id="the-question">The question<a class="headerlink" href="#the-question" title="Permanent link">#</a></h2>
+<p>A row that asks about an install asks about the package, the version and the name, and the
+answer performs that install and no other. What the act resolved beyond the call — the candidate
+version, the commands' names — is the answer's to report, not the row's to decide.</p>
+<h2 id="the-runners-configuration">The runner's configuration<a class="headerlink" href="#the-runners-configuration" title="Permanent link">#</a></h2>
+<p>The runner names the manager and the repositories under <code>pkg:</code>, and a doer's <code>pkg</code> ceiling
+bounds what its tasks may install, with <code>base</code> the packages every task of the doer starts with
+(<a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#configuration">the verse runner</a>):</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">pkg</span><span class="o">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  <span class="na">cellar</span><span class="o">:</span> <span class="sx">/state/cellar</span>          <span class="c1"># the prefixes and the tasks&#39; roots, on a volume</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  <span class="na">manager</span><span class="o">:</span> <span class="sx">apt</span>                   <span class="c1"># the manager the runner wraps</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>  <span class="na">repos</span><span class="o">:</span> <span class="p">[</span><span class="s2">&quot;deb http://deb.debian.org/debian bookworm main&quot;</span><span class="p">]</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  <span class="na">collect-above</span><span class="o">:</span> <span class="sx">50Gi</span>            <span class="c1"># evict least recently used past this; absent, never</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="na">agents</span><span class="o">:</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  <span class="na">claude</span><span class="o">:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>      <span class="na">pkg</span><span class="o">:</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>        <span class="na">base</span><span class="o">:</span> <span class="p">[</span><span class="sx">ripgrep</span><span class="p">,</span> <span class="sx">jq</span><span class="p">]</span>      <span class="c1"># installed into every claude task&#39;s root at start</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>        <span class="na">ceiling</span><span class="o">:</span> <span class="p">{</span><span class="na">install</span><span class="o">:</span> <span class="p">{</span><span class="na">pkg</span><span class="o">:</span> <span class="k">!glob</span> <span class="s2">&quot;*&quot;</span><span class="p">}}</span>   <span class="c1"># a pattern over the index, not a list</span>
+</code></pre></div>
+<ul>
+<li><strong>The index is the catalog.</strong> The operator names a manager and repositories, never a list of
+  installable tools: the ceiling is a pattern over the index's names, and <code>{install: {pkg: !glob
+  "*"}}</code> over a signed repository is every tool in it, bounded by the autonomy asking. (Every
+  shape of <code>install</code> names <code>pkg</code>.) A wide ceiling is
+  defensible because an install runs non-root, extract-only, and lands only in the asking task's
+  own read-only prefix.</li>
+<li><strong><code>base</code> is the operator's installs,</strong> laid into every task's root before its process starts,
+  each at the index's candidate under its own commands' names; the ceiling does not bound them
+  and no row is asked. It is <code>pkg</code>'s key alone.</li>
+<li><strong>The equivalent of <code>brew update</code></strong> is the runner refreshing the index, which it does when the
+  lists are a day old; a version is pinned by naming it, and moving the default is the
+  operator's (another suite, a snapshot repository, a new image), never a task's.</li>
+<li><strong>One base image is one libc family.</strong> The manager is <code>apt</code>, Debian, glibc: the prefix model
+  bundles a package's own libraries and leans on the image's libc. Alpine/apk (musl) would be a
+  different base image, not mixable with glibc tools, and is not wrapped.</li>
+</ul>
+<p>The system is performed where the <code>pkg:</code> section and a doer's ceiling naming it are both there.
+It closes whole, and the runner says so, where tasks run unconfined (<code>-sandbox none</code>: there is no
+bind to make the root read-only through) and where the toolchain (<code>apt-get</code>, <code>apt-cache</code>,
+<code>dpkg-deb</code>, <code>patchelf</code>) is not in the image. A command run with a secret (<a href="../secret/"><code>secret</code></a>)
+is confined with the task's install root bound as the task's own sandbox has it, so an installed
+tool is one such a command may start from: the root is the runner's writing from the signed
+index, and the task cannot write it. An installed tool otherwise runs inside the task, as the
+task's own; a remote service's tools stay outside, called by the runner (<a href="../mcp/"><code>mcp</code></a>).</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

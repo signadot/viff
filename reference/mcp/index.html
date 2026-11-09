@@ -136,6 +136,18 @@
 </li>
                                     
 <li>
+    <a href="../../systems/secret/" class="dropdown-item">secret</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/mcp/" class="dropdown-item">mcp</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/pkg/" class="dropdown-item">pkg</a>
+</li>
+                                    
+<li>
     <a href="../../systems/question/" class="dropdown-item">question</a>
 </li>
                                     
@@ -233,6 +245,9 @@
 <a href="https://modelcontextprotocol.io">MCP</a>. The host starts it and talks to it on stdin and stdout.
 Each tool does what the <code>verse</code> command it is named after does, and answers what that command
 prints.</p>
+<p>This is verse as an MCP server. Verse's runner is also an MCP client, of remote servers its
+operator names, whose tools a task calls through the runner: that is the <a href="../../systems/mcp/"><code>mcp</code>
+system</a>, and this page is not about it.</p>
 <h2 id="adding-it-to-a-host">Adding it to a host<a class="headerlink" href="#adding-it-to-a-host" title="Permanent link">#</a></h2>
 <p>The host runs <code>verse mcp</code> as a command. For Claude Code:</p>
 <div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>claude<span class="w"> </span>mcp<span class="w"> </span>add<span class="w"> </span>verse<span class="w"> </span>--<span class="w"> </span>verse<span class="w"> </span>mcp

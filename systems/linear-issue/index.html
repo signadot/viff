@@ -136,6 +136,18 @@
 </li>
                                     
 <li>
+    <a href="../secret/" class="dropdown-item">secret</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">mcp</a>
+</li>
+                                    
+<li>
+    <a href="../pkg/" class="dropdown-item">pkg</a>
+</li>
+                                    
+<li>
     <a href="../question/" class="dropdown-item">question</a>
 </li>
                                     
@@ -307,10 +319,13 @@ same environment and rows decide them.</p>
 <p><strong>The iod</strong> needs <code>LINEAR_API_KEY</code>. Its value is the <code>Authorization</code> header as Linear takes it:
 a personal key alone, or an OAuth token as <code>Bearer …</code>.</p>
 <p><strong>The task</strong> holds no credential. The runner makes each call with its own credential, in the
-same form, <code>LINEAR_API_KEY</code>. The runner offers the system where a doer's ceiling in its
-configuration names it and the variable is set; without it, the runner starts with the system
-closed, and a spawn that needs it is refused where it is written. The iod and the runner may hold one
-credential or two.</p>
+same form: <code>LINEAR_API_KEY</code>, or a secret of its <a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#the-secret-store">secret
+store</a> where its configuration names one
+(<code>secrets: {dir: /secrets, systems: {linear-issue: linear}}</code>), which is read at each call, so a
+rotated key is the next call's. The runner offers the system where a doer's ceiling in its
+configuration names it and the credential is there; without it, the runner starts with the
+system closed, and a spawn that needs it is refused where it is written. The iod and the runner
+may hold one credential or two.</p>
 <p><strong>The operator</strong> sets a limit on what any task may do, in the runner's configuration, under each
 doer whose tasks may use it:</p>
 <div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="na">agents</span><span class="o">:</span>

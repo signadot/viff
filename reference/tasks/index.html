@@ -136,6 +136,18 @@
 </li>
                                     
 <li>
+    <a href="../../systems/secret/" class="dropdown-item">secret</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/mcp/" class="dropdown-item">mcp</a>
+</li>
+                                    
+<li>
+    <a href="../../systems/pkg/" class="dropdown-item">pkg</a>
+</li>
+                                    
+<li>
     <a href="../../systems/question/" class="dropdown-item">question</a>
 </li>
                                     
@@ -392,7 +404,7 @@ block gives is refused before any row is read (<a href="../../systems/#a-block-g
 </tr>
 <tr>
 <td><code>github</code></td>
-<td>a GitHub repository's pull requests, of a repository <code>git</code> checks out: <code>create-pr</code>, <code>update-pr</code>, <code>list-prs</code> and <code>read-pr</code>, where the runner's forge is GitHub (<a href="../../systems/github/">github</a>).</td>
+<td>a GitHub repository's pull requests, of a repository <code>git</code> checks out: <code>create-pr</code>, <code>update-pr</code>, <code>list-prs</code>, <code>read-pr</code>, <code>comment-pr</code> and <code>reply-comment</code>, where the runner's forge is GitHub (<a href="../../systems/github/">github</a>).</td>
 </tr>
 <tr>
 <td><code>github-issue</code></td>
@@ -591,6 +603,14 @@ params are the verb's:</p>
 <tr>
 <td><code>github.read-pr</code></td>
 <td><code>repo</code>, <code>pr</code></td>
+</tr>
+<tr>
+<td><code>github.comment-pr</code></td>
+<td><code>repo</code>, <code>pr</code></td>
+</tr>
+<tr>
+<td><code>github.reply-comment</code></td>
+<td><code>repo</code>, <code>pr</code>, <code>comment</code></td>
 </tr>
 <tr>
 <td><code>files.write</code></td>

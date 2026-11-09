@@ -136,6 +136,18 @@
 </li>
                                     
 <li>
+    <a href="../secret/" class="dropdown-item">secret</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">mcp</a>
+</li>
+                                    
+<li>
+    <a href="../pkg/" class="dropdown-item">pkg</a>
+</li>
+                                    
+<li>
     <a href="../question/" class="dropdown-item">question</a>
 </li>
                                     
@@ -245,13 +257,18 @@ discussions, workflow runs and comments.</p>
 </tr>
 <tr>
 <td><code>github.&lt;org&gt;.&lt;name&gt;.comment.&lt;n&gt;.&lt;id&gt;</code></td>
-<td>a comment, on the pull request or issue that <code>on</code> names</td>
+<td>a comment, on the pull request or issue that <code>on</code> names. <code>kind</code> is <code>conversation</code> or <code>review</code>, one on a line of the diff, which also says where it is and what it answers: <code>path</code>, <code>line</code>, <code>startLine</code>, <code>startSide</code>, <code>side</code>, <code>commitId</code>, <code>inReplyTo</code> (its thread's first comment, on a reply), and <code>diffHunk</code>, capped and then marked <code>diffHunkTruncated: true</code></td>
 </tr>
 </tbody>
 </table>
 <p><code>requestedReviewers</code> holds a person until they submit a review, and again when one is requested
 of them anew, so a login in it means the pull request is waiting on that person. Their reviews
 are not reflected: a task reads them with <code>github-read-pr</code>.</p>
+<p>A review comment's <code>diffHunk</code> ends at the line it is on, so a task asked to address "rename
+this" reads what "this" is. The iod keeps the hunk's last 20 lines, or a multi-line comment's
+lines and 3 before them (<a href="https://github.com/signadot/verse/blob/main/docs/reference/iod.md#what-github-reflects">what github reflects</a>). An
+outdated comment has no <code>line</code>, and its hunk is the code it was on. A reply's <code>inReplyTo</code> is the
+thread's first comment, which <code>github-reply-comment</code> answers in.</p>
 <p>A rule reacts to a pull request as it reacts to any data. Its <code>checks</code> is what CI last said
 about its head: the newest run's conclusion (<code>success</code>, <code>failure</code>) or what it is still doing
 (<code>in_progress</code>). Here, an open pull
@@ -328,6 +345,16 @@ branch this run did not push whatever the rows say.</p>
 <td>reads one pull request by its number: its fields, whom a review is requested from, the reviews given so far, what CI says of its head (check runs and commit statuses: failing and unfinished by name and link, passing and skipped counted), and its description</td>
 <td><code>github.read-pr</code>, with <code>repo</code>, <code>pr</code></td>
 </tr>
+<tr>
+<td><code>github-comment-pr</code></td>
+<td>comments on a pull request's conversation, by its number, open, closed or merged. A number that is an issue is refused, naming <code>github-issue-comment</code>, and one that is nothing is refused as no pull request.</td>
+<td><code>github.comment-pr</code>, with <code>repo</code>, <code>pr</code></td>
+</tr>
+<tr>
+<td><code>github-reply-comment</code></td>
+<td>replies in the thread of an inline review comment, by the pull request's number and the comment's id. A reply to a reply goes into its thread, and the answer names both: <code>replied in the thread of comment 900 (902 is a reply in it)</code>. A conversation comment has no thread and is refused, naming <code>github-comment-pr</code>; so is a comment whose thread is on another pull request than <code>pr</code>, and an id that is no comment.</td>
+<td><code>github.reply-comment</code>, with <code>repo</code>, <code>pr</code>, <code>comment</code></td>
+</tr>
 </tbody>
 </table>
 <p>A pull request must come from a branch this run pushed. A pull request from any other branch
@@ -339,22 +366,49 @@ and they come into the task's context as written. A pull request that is not the
 and the task re-plans on it.</p>
 <p>A block that names no verbs gives every verb, the reads and the writes alike. A task that only
 reads names them: <code>github: [{repo: acme/app, read-pr: {}}]</code>.</p>
+<p>A comment carries its pull request in its step, and a reply its comment's id as the task gave
+it, so a row or a shape can hold a task to one pull request. A task woken by a review comment
+on pull request 71 can answer there and nowhere else:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="na">github</span><span class="o">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="p">-</span> <span class="na">repo</span><span class="o">:</span> <span class="sx">acme/app</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  <span class="na">read-pr</span><span class="o">:</span> <span class="p">{</span><span class="na">pr</span><span class="o">:</span> <span class="mi">71</span><span class="p">}</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  <span class="na">comment-pr</span><span class="o">:</span> <span class="p">{</span><span class="na">pr</span><span class="o">:</span> <span class="mi">71</span><span class="p">}</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  <span class="na">reply-comment</span><span class="o">:</span> <span class="p">{</span><span class="na">pr</span><span class="o">:</span> <span class="mi">71</span><span class="p">}</span>
+</code></pre></div>
+<p>or, with a block that gives more, by its rows:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">github</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">comment-pr</span><span class="p">,</span> <span class="na">pr</span><span class="o">:</span> <span class="mi">71</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">github</span><span class="p">,</span> <span class="na">verb</span><span class="o">:</span> <span class="sx">reply-comment</span><span class="p">,</span> <span class="na">pr</span><span class="o">:</span> <span class="mi">71</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">github</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<p>The row decides on the <code>pr</code> the task named, before the runner reads anything at the forge. The
+runner then checks that the comment's thread is on that pull request, and refuses a reply whose
+thread is on another, so a task held to 71 cannot reply on 72 by naming 72's comment.</p>
+<p>A pull request's conversation is an issue's at GitHub, but a comment on it is this system's
+verb: <code>github-issue-comment</code> refuses a pull request's number, naming <code>github-comment-pr</code>
+(<a href="../github-issue/">github-issue</a>).</p>
 <h2 id="where-the-credential-lives">Where the credential lives<a class="headerlink" href="#where-the-credential-lives" title="Permanent link">#</a></h2>
 <p><strong>The iod</strong> needs a fine-grained token or a GitHub App for the repositories it reads. For its
 out half, it needs write access on pull requests and issues.</p>
-<p><strong>The task</strong> holds no credential. The runner opens, updates and reads pull requests with its token for
-the forge, <code>GITHUB_TOKEN</code>. For a GitHub Enterprise Server, set <code>repos.api: https://&lt;host&gt;/api/v3</code>
+<p><strong>The task</strong> holds no credential. The runner opens, updates, reads and comments on pull requests
+with its token for the forge, <code>GITHUB_TOKEN</code>. For a GitHub Enterprise Server, set <code>repos.api: https://&lt;host&gt;/api/v3</code>
 in the runner's configuration, and <code>repos.host</code> to the host.</p>
 <p><strong>The operator</strong> sets a limit on what any task may propose, in the runner's configuration, under each doer whose tasks may use it:</p>
-<div class="codehilite"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="na">agents</span><span class="o">:</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  <span class="na">claude</span><span class="o">:</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="na">systems</span><span class="o">:</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>      <span class="na">github</span><span class="o">:</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>        <span class="na">ceiling</span><span class="o">:</span> <span class="p">{</span><span class="na">repo</span><span class="o">:</span> <span class="k">!regexp</span> <span class="s2">&quot;^github\\.com/acme/&quot;</span><span class="p">,</span> <span class="na">create-pr</span><span class="o">:</span> <span class="p">{</span><span class="na">base</span><span class="o">:</span> <span class="sx">main</span><span class="p">},</span> <span class="na">update-pr</span><span class="o">:</span> <span class="p">{}}</span>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="na">agents</span><span class="o">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="na">claude</span><span class="o">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>      <span class="na">github</span><span class="o">:</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="na">ceiling</span><span class="o">:</span> <span class="p">{</span><span class="na">repo</span><span class="o">:</span> <span class="k">!regexp</span> <span class="s2">&quot;^github\\.com/acme/&quot;</span><span class="p">,</span> <span class="na">create-pr</span><span class="o">:</span> <span class="p">{</span><span class="na">base</span><span class="o">:</span> <span class="sx">main</span><span class="p">},</span> <span class="na">update-pr</span><span class="o">:</span> <span class="p">{}}</span>
 </code></pre></div>
 <p>Verse refuses to install a spawn whose environment gives proposals beyond the ceiling, saying
 what the ceiling gives; the runner holds each proposal at the act to the environment, the row,
-and then the ceiling.</p></div>
+and then the ceiling.</p>
+<p><code>comment-pr</code> and <code>reply-comment</code> write at the forge, and a ceiling gives them as it gives any
+verb. A ceiling that lists its verbs, as the one above, lacks them until the operator adds them
+(<code>comment-pr: {}, reply-comment: {}</code>). A ceiling block that names no verb
+(<code>github: {ceiling: {}}</code>) allows every verb of the system, so an operator who wrote one gives
+tasks these two writes as well, with no change to the configuration.</p></div>
             </div>
         </div>
 

@@ -136,6 +136,18 @@
 </li>
                                     
 <li>
+    <a href="../secret/" class="dropdown-item">secret</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">mcp</a>
+</li>
+                                    
+<li>
+    <a href="../pkg/" class="dropdown-item">pkg</a>
+</li>
+                                    
+<li>
     <a href="../question/" class="dropdown-item">question</a>
 </li>
                                     
@@ -271,16 +283,22 @@ checks out, where the runner's forge is GitHub.</p>
 </tr>
 <tr>
 <td><code>github-issue-comment</code></td>
-<td>comments on an issue there, by its number</td>
+<td>comments on an issue there, by its number. A pull request's number is refused, naming <code>github-comment-pr</code>.</td>
 <td><code>github-issue.comment</code>, with <code>repo</code>, <code>issue</code></td>
 </tr>
 <tr>
 <td><code>github-issue-close</code></td>
-<td>closes an issue there, by its number</td>
+<td>closes an issue there, by its number. A pull request's number is refused: this system does not close a pull request.</td>
 <td><code>github-issue.close</code>, with <code>repo</code>, <code>issue</code></td>
 </tr>
 </tbody>
 </table>
+<p>GitHub keeps a pull request's conversation as an issue's, so its issue routes take a pull
+request's number too. The runner reads the number before a comment or a close, and refuses one
+that is a pull request: a comment on a pull request is the <a href="../github/"><code>github</code></a> system's
+<code>comment-pr</code>, and <code>github-issue</code> closes no pull request. A number that is nothing is refused as
+no issue. So a doer given <code>github-issue</code> and no <code>github</code> block cannot comment on a pull
+request, as it could before.</p>
 <p>Every verb is a step, because each one uses the runner's credential. So an environment can leave
 any of them out (above, <code>comment</code>), and an autonomy can refuse or ask about any it gives. In a
 row or a shape, <code>repo</code> is the repository as <code>host/owner/name</code>, and <code>issue</code> is the number. A

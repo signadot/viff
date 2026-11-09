@@ -136,6 +136,18 @@
 </li>
                                     
 <li>
+    <a href="secret/" class="dropdown-item">secret</a>
+</li>
+                                    
+<li>
+    <a href="mcp/" class="dropdown-item">mcp</a>
+</li>
+                                    
+<li>
+    <a href="pkg/" class="dropdown-item">pkg</a>
+</li>
+                                    
+<li>
     <a href="question/" class="dropdown-item">question</a>
 </li>
                                     
@@ -198,6 +210,10 @@
             <li class="nav-item" data-bs-level="1"><a href="#systems" class="nav-link">Systems</a>
               <ul class="nav flex-column">
             <li class="nav-item" data-bs-level="2"><a href="#a-block-gives-verbs" class="nav-link">A block gives verbs</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-task-lacks" class="nav-link">What a task lacks</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -285,7 +301,7 @@ of any branch; a charter that ships writes its git push shapes instead.</p>
 </tr>
 <tr>
 <td><a href="github/"><code>github</code></a></td>
-<td><code>create-pr</code>, <code>update-pr</code>, <code>list-prs</code>, <code>read-pr</code></td>
+<td><code>create-pr</code>, <code>update-pr</code>, <code>list-prs</code>, <code>read-pr</code>, <code>comment-pr</code>, <code>reply-comment</code></td>
 <td><a href="https://github.com/signadot/verse/blob/main/docs/reference/iod.md#github">iod github</a></td>
 </tr>
 <tr>
@@ -302,6 +318,21 @@ of any branch; a charter that ships writes its git push shapes instead.</p>
 <td><a href="slack/"><code>slack</code></a></td>
 <td><code>post</code>, <code>reply</code>, <code>read</code>, <code>react</code></td>
 <td><a href="https://github.com/signadot/verse/blob/main/docs/reference/iod.md#slack">iod slack</a></td>
+</tr>
+<tr>
+<td><a href="secret/"><code>secret</code></a></td>
+<td><code>exec</code></td>
+<td>none: one command the runner runs with a secret of its store, which the task never holds</td>
+</tr>
+<tr>
+<td><a href="mcp/"><code>mcp</code></a></td>
+<td><code>call</code></td>
+<td>none: the tools of a remote MCP server the operator names, called by the runner with the server's credential</td>
+</tr>
+<tr>
+<td><a href="pkg/"><code>pkg</code></a></td>
+<td><code>install</code></td>
+<td>none: a package the runner installs into the task's read-only prefix, from the signed repositories the operator trusts</td>
 </tr>
 <tr>
 <td><a href="verse/"><code>verse</code></a></td>
@@ -326,8 +357,20 @@ of any branch; a charter that ships writes its git push shapes instead.</p>
 </tbody>
 </table>
 <p>The runner performs the verbs of <code>git</code>, <code>git-issue</code>, <code>github</code>, <code>github-issue</code>, <code>linear-issue</code>,
-<code>slack</code> and <code>verse</code>. It uses its own credential, and stays within the ceiling its configuration puts
-over each system (<a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#configuration">the verse runner</a>).</p></div>
+<code>slack</code>, <code>secret</code>, <code>mcp</code> and <code>verse</code>. It uses its own credential, and stays within the ceiling its
+configuration puts over each system (<a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#configuration">the verse runner</a>).</p>
+<h2 id="what-a-task-lacks">What a task lacks<a class="headerlink" href="#what-a-task-lacks" title="Permanent link">#</a></h2>
+<p>Three of the systems exist for what a task's image and its own hands do not give it, and they are
+one design read three ways. A tool the image does not carry is <a href="pkg/"><code>pkg</code></a>'s: the runner
+installs it into the task's read-only prefix, and the tool then runs inside the task, as the
+task's own. A command that needs a credential is <a href="secret/"><code>secret</code></a>'s: the runner runs it
+once, in a sandbox of its own, with one secret of its store, which the task never holds. A remote
+service's tools are <a href="mcp/"><code>mcp</code></a>'s: the runner calls them with the server's credential, and
+the task never reaches the server. In each the task only asks; the same environment, autonomy and
+ceiling grammar decides; and the trust is the runner's, never the task's — the <a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#the-secret-store">secret
+store</a> under <code>secret</code> and <code>mcp</code>, and for <code>pkg</code> the
+signed index of the repositories the operator names, so that system holds no credential at all.
+None has an iod: these are what a task does, decided as it is done, not something verse watches.</p></div>
             </div>
         </div>
 

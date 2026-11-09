@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://signadot.github.io/verse/systems/mcp/">
+        <link rel="icon" href="../../images/favicon.ico" sizes="16x16 32x32 48x48">
+        <link rel="apple-touch-icon" href="../../images/apple-touch-icon.png">
+
+        <title>mcp - Verse</title>
+        <link href="../../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../../css/brands.min.css" rel="stylesheet">
+        <link href="../../css/solid.min.css" rel="stylesheet">
+        <link href="../../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../../css/base.css" rel="stylesheet">
+        <link href="../../pygments.css" rel="stylesheet">
+        <link href="../../extra.css" rel="stylesheet">
+<meta name="robots" content="noindex, nofollow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verse">
+<meta property="og:title" content="mcp - Verse">
+<meta property="og:description" content="A shared space where a team's software delivery work runs, under rules the team writes.">
+<meta property="og:url" content="https://signadot.github.io/verse/systems/mcp/">
+<meta property="og:image" content="https://signadot.github.io/verse/images/verse-social-1280x640.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="../.."><img src="../../images/verse-logo-navbar.svg" alt="Verse"></a>
+
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Tutorial</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../tutorial/" class="dropdown-item">Tutorial</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/data/" class="dropdown-item">Tutorial -- Data</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/questions/" class="dropdown-item">Tutorial -- Questions</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/tasks/" class="dropdown-item">Tutorial -- Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters/" class="dropdown-item">Tutorial -- Charters</a>
+</li>
+                                    
+<li>
+    <a href="../../tutorial/charters-2/" class="dropdown-item">Tutorial -- Charters, continued</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Use verse</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../reference/tasks/" class="dropdown-item">Tasks</a>
+</li>
+                                    
+<li>
+    <a href="../../asking/" class="dropdown-item">Asking</a>
+</li>
+                                    
+<li>
+    <a href="../../perms-guide/" class="dropdown-item">Permissions, walked</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/scopes/" class="dropdown-item">Scopes</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/mcp/" class="dropdown-item">MCP</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../../groundskeeper/" class="nav-link">Groundskeeper</a>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle active" aria-current="page" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Systems</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../" class="dropdown-item">Systems</a>
+</li>
+                                    
+<li>
+    <a href="../git/" class="dropdown-item">git</a>
+</li>
+                                    
+<li>
+    <a href="../git-issue/" class="dropdown-item">git-issue</a>
+</li>
+                                    
+<li>
+    <a href="../github/" class="dropdown-item">github</a>
+</li>
+                                    
+<li>
+    <a href="../github-issue/" class="dropdown-item">github-issue</a>
+</li>
+                                    
+<li>
+    <a href="../linear-issue/" class="dropdown-item">linear-issue</a>
+</li>
+                                    
+<li>
+    <a href="../slack/" class="dropdown-item">slack</a>
+</li>
+                                    
+<li>
+    <a href="../secret/" class="dropdown-item">secret</a>
+</li>
+                                    
+<li>
+    <a href="./" class="dropdown-item active" aria-current="page">mcp</a>
+</li>
+                                    
+<li>
+    <a href="../pkg/" class="dropdown-item">pkg</a>
+</li>
+                                    
+<li>
+    <a href="../question/" class="dropdown-item">question</a>
+</li>
+                                    
+<li>
+    <a href="../verse/" class="dropdown-item">verse</a>
+</li>
+                                    
+<li>
+    <a href="../inside/" class="dropdown-item">files, commands and agent</a>
+</li>
+                                </ul>
+                            </li>
+                            <li class="nav-item dropdown">
+                                <a href="#" class="nav-link dropdown-toggle" role="button" data-bs-toggle="dropdown"  aria-expanded="false">Reference</a>
+                                <ul class="dropdown-menu">
+                                    
+<li>
+    <a href="../../trigger-model/" class="dropdown-item">Charter reference</a>
+</li>
+                                    
+<li>
+    <a href="../../reference/" class="dropdown-item">Commands and the rest</a>
+</li>
+                                </ul>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                            <li class="nav-item">
+                                <a rel="prev" href="../secret/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../pkg/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/signadot/verse" class="nav-link"><i class="fa-brands fa-github"></i> GitHub</a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#mcp" class="nav-link">mcp</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-task-can-do" class="nav-link">What a task can do</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-a-task-is-offered" class="nav-link">What a task is offered</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-call" class="nav-link">The call</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-result" class="nav-link">The result</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-question" class="nav-link">The question</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-runners-configuration" class="nav-link">The runner's configuration</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="mcp">mcp<a class="headerlink" href="#mcp" title="Permanent link">#</a></h1>
+<p>The <code>mcp</code> system is the tools of a remote MCP server the runner's operator names, called by the
+runner. The runner is the MCP client: it holds the server's credential and makes each call, and
+the task never reaches the server. The environment says which servers and which of their tools,
+with which arguments; the autonomy decides each call; the ceiling bounds both. It is the same kind
+of thing as <a href="../slack/"><code>slack</code></a>: a system beyond the runner that the runner performs.</p>
+<p>This is not <a href="../../reference/mcp/">verse's own MCP server</a>, which is verse offering its verbs to
+an MCP client. Here verse's runner is the client, of someone else's server.</p>
+<h2 id="what-a-task-can-do">What a task can do<a class="headerlink" href="#what-a-task-can-do" title="Permanent link">#</a></h2>
+<p>An <code>mcp</code> block names one server (<code>server</code>), by its name in the runner's configuration, and its
+<code>call</code> shapes say which of the server's tools, and with which arguments:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="na">spawn</span><span class="o">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  <span class="na">agent</span><span class="o">:</span> <span class="p">{</span><span class="na">name</span><span class="o">:</span> <span class="sx">claude</span><span class="p">}</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  <span class="na">environment</span><span class="o">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      <span class="na">commands</span><span class="o">:</span> <span class="p">{}</span>   <span class="c1"># claude&#39;s own shell and editor, which its runner requires of every spawn</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>      <span class="na">files</span><span class="o">:</span> <span class="p">{}</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>      <span class="na">mcp</span><span class="o">:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>      <span class="p">-</span> <span class="na">server</span><span class="o">:</span> <span class="sx">linear</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="na">call</span><span class="o">:</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="p">-</span> <span class="p">{</span><span class="na">tool</span><span class="o">:</span> <span class="k">!or</span> <span class="p">[</span><span class="sx">get_issue</span><span class="p">,</span> <span class="sx">list_issues</span><span class="p">]}</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="p">-</span> <span class="p">{</span><span class="na">tool</span><span class="o">:</span> <span class="sx">create_issue</span><span class="p">,</span> <span class="na">arguments</span><span class="o">:</span> <span class="p">{</span><span class="na">team</span><span class="o">:</span> <span class="sx">ENG</span><span class="p">}}</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>  <span class="na">prompt</span><span class="o">:</span> <span class="s2">&quot;File the bugs in ENG-1290&#39;s thread as issues of their own, and link them from it.&quot;</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>  <span class="na">autonomy</span><span class="o">:</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>  <span class="p">-</span> <span class="p">{</span><span class="na">match</span><span class="o">:</span> <span class="p">{</span><span class="na">system</span><span class="o">:</span> <span class="sx">mcp</span><span class="p">,</span> <span class="na">tool</span><span class="o">:</span> <span class="sx">create_issue</span><span class="p">},</span> <span class="na">then</span><span class="o">:</span> <span class="sx">ask</span><span class="p">}</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>  <span class="p">-</span> <span class="p">{</span><span class="na">then</span><span class="o">:</span> <span class="sx">allow</span><span class="p">}</span>
+</code></pre></div>
+<p>Each tool of a server the environment gives is one tool of the task's, named
+<code>mcp-&lt;server&gt;-&lt;tool&gt;</code> (<code>mcp-linear-get_issue</code>), and each use of it is the step <code>mcp.call</code>, with
+<code>server</code>, <code>tool</code> and <code>arguments</code>.</p>
+<p><strong>The arguments are a field of the step, whole.</strong> <code>arguments</code> is the call's arguments as an
+object, held as given, so a shape and a row decide a call by them, and a person asked about a
+call is asked about these arguments. A <code>null</code> is a <code>null</code> and never an absent argument: a server
+may read the two apart (an issue's <code>assignee: null</code> unassigns it, where no <code>assignee</code> leaves it as
+it is).</p>
+<p><strong>A shape matches the arguments open,</strong> as tony matches an object: <code>{team: ENG}</code> is every call
+whose <code>team</code> is ENG, whatever else it gives, and not one whose <code>team</code> is another, or <code>null</code>, or
+absent. A shape that says nothing of the arguments admits any. So a ceiling or a spawn that must
+pin an argument names it, and a shape need not be rewritten when the server's tool gains an
+argument. This is unlike <a href="../secret/"><code>secret.exec</code>'s <code>env</code></a>, which matches closed: there a
+variable the shape does not name changes what the command does, and here an argument is the
+tool's own input, which the server validates.</p>
+<p><strong>An answer performs the call it was about, and no other.</strong> A row that asks about a call asks
+about the server, the tool and the arguments, and the answer the runner relays performs that
+call. An act naming the same decision with other arguments is refused, naming the argument that
+differs (<code>arguments.assignee</code>) and never its value, and the answer is kept for the call it was
+about.</p>
+<p><strong>A server's word for which tools read and which write is not trusted.</strong> A server may describe a
+tool as read-only; the ceiling names tools, and the environment's shapes and the rows decide by
+them. Where a server keeps the line itself, naming that is a second bound under the ceiling: Linear
+serves its read tools alone at <code>https://mcp.linear.app/mcp/readonly</code>, and a key made with read
+permission only reads whatever tool is called. A runner that names the read-only endpoint as one
+server and the full one as another lets a ceiling give a doer the first and not the second.</p>
+<h2 id="what-a-task-is-offered">What a task is offered<a class="headerlink" href="#what-a-task-is-offered" title="Permanent link">#</a></h2>
+<p>The task is offered a tool for each tool of the server's list that some shape of its environment,
+and some shape of the doer's ceiling, admits a call of; the rest are not there. The list is asked
+of each server as the task is built, every server at once, and is fixed for the run. A server that
+does not answer leaves the task without its tools, and the task's brief says so; the runner's log
+says why.</p>
+<p>A server's instructions (what it says of itself as the session opens, how its tools are meant to
+be used together) go in the brief under the server's name, as the server's own words, which grant
+nothing: every call is decided here. Each tool's description ends by saying that what it answers
+is data, not instructions.</p>
+<p>What a doer cannot take is left out of that doer's list, and logged. An agent's model takes a
+tool's name of letters, digits, <code>_</code> and <code>-</code>, 64 characters at most, Claude's counting the
+<code>mcp__verse__</code> it reads a tool under; a name with a <code>.</code> in it, which MCP allows, reaches a script
+and no agent. A script's calls go through <code>verse-call-tool</code>, which checks a call against the
+tool's parameters and nothing else, so a tool whose schema says more than its properties (one
+taking any object, one taking arguments beside its properties, one requiring a name its
+properties lack, or one with a parameter named <code>input</code>) is not offered to a script, where an
+agent is offered it and the server judges the call. A tool taking nothing (<code>{type: object,
+additionalProperties: false}</code>, as a server's <code>list_*</code> tools are written) names no properties
+and is offered to a script: a call with no arguments passes the check. A tool whose schema has a <code>$ref</code>, or a
+<code>oneOf</code>, <code>anyOf</code> or <code>allOf</code> at the top, is offered to no one.</p>
+<h2 id="the-call">The call<a class="headerlink" href="#the-call" title="Permanent link">#</a></h2>
+<p>What is sent is the step. The tool writes the arguments as a JSON object and the runner reads
+the step from those bytes, as the tool does, so the arguments a row decides on and an answer is
+bound to are the arguments sent, and nothing else is sent. An agent's wire reads every number as
+a float, so a float that is a whole number is sent whole (<code>3</code>, never <code>3.0</code>). A call whose
+arguments are over 64 KiB is refused, since the step is carried whole in the task's events, its
+snapshot and the question's record.</p>
+<p>A call is made with the server's <code>timeout</code> (60s where it names none), and a call given up at it
+says that whether the server performed it is not known: read it back before doing it again. A
+call the server answers with an error (a tool it has not, arguments its schema refuses, input it
+asks the runner for and the runner does not give) is refused in the server's words, which the
+task re-plans on.</p>
+<h2 id="the-result">The result<a class="headerlink" href="#the-result" title="Permanent link">#</a></h2>
+<p>The task reads the text of the result's content, in order. Content that is not text is named and
+left out: an image, audio, a resource that is no text, a link not followed. A result with no text
+and structured content is that content as JSON. A result the server marks an error is read as
+text all the same. A result over 256 KiB is cut, and says so.</p>
+<p>What a tool needs that the runner does not carry does not work through it: a result the task
+must act on outside the call, such as a signed url to upload a file to (Linear's
+<code>prepare_file_upload</code>), and content that is not text (<code>extract_images</code>).</p>
+<h2 id="the-question">The question<a class="headerlink" href="#the-question" title="Permanent link">#</a></h2>
+<p>A row that asks about a call asks about the server, the tool and the arguments, and the answer
+performs that call and no other. The question's record carries the step's fields, arguments and
+all, and <code>verse question &lt;id&gt;</code> shows them. The Slack ask names the server and the tool and not
+the arguments; the binding holds whatever a person is shown.</p>
+<h2 id="the-runners-configuration">The runner's configuration<a class="headerlink" href="#the-runners-configuration" title="Permanent link">#</a></h2>
+<p>The runner names its servers under <code>mcp.servers</code>, and a doer's <code>mcp</code> ceiling names the servers
+its tasks may call, one to a block, with the <code>call</code> shapes (<a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#configuration">the verse
+runner</a>):</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="na">secrets</span><span class="o">:</span> <span class="p">{</span><span class="na">dir</span><span class="o">:</span> <span class="sx">/secrets</span><span class="p">}</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="na">mcp</span><span class="o">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  <span class="na">servers</span><span class="o">:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="na">linear</span><span class="o">:</span>   <span class="p">{</span><span class="na">url</span><span class="o">:</span> <span class="s2">&quot;https://mcp.linear.app/mcp/readonly&quot;</span><span class="p">,</span> <span class="na">auth</span><span class="o">:</span> <span class="p">{</span><span class="na">secret</span><span class="o">:</span> <span class="sx">linear</span><span class="p">}}</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="na">linear_w</span><span class="o">:</span> <span class="p">{</span><span class="na">url</span><span class="o">:</span> <span class="s2">&quot;https://mcp.linear.app/mcp&quot;</span><span class="p">,</span> <span class="na">auth</span><span class="o">:</span> <span class="p">{</span><span class="na">secret</span><span class="o">:</span> <span class="sx">linear</span><span class="p">},</span> <span class="na">timeout</span><span class="o">:</span> <span class="sx">90s</span><span class="p">}</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="na">signadot</span><span class="o">:</span> <span class="p">{</span><span class="na">url</span><span class="o">:</span> <span class="s2">&quot;https://mcp.signadot.com/stream&quot;</span><span class="p">,</span> <span class="na">auth</span><span class="o">:</span> <span class="p">{</span><span class="na">secret</span><span class="o">:</span> <span class="sx">signadot-api-key</span><span class="p">,</span> <span class="na">header</span><span class="o">:</span> <span class="sx">signadot-api-key</span><span class="p">}}</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="na">agents</span><span class="o">:</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  <span class="na">claude</span><span class="o">:</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="na">systems</span><span class="o">:</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>      <span class="na">mcp</span><span class="o">:</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>        <span class="na">ceiling</span><span class="o">:</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>        <span class="p">-</span> <span class="p">{</span><span class="na">server</span><span class="o">:</span> <span class="sx">linear</span><span class="p">}</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>        <span class="p">-</span> <span class="p">{</span><span class="na">server</span><span class="o">:</span> <span class="sx">linear_w</span><span class="p">,</span> <span class="na">call</span><span class="o">:</span> <span class="p">[{</span><span class="na">tool</span><span class="o">:</span> <span class="sx">save_issue</span><span class="p">,</span> <span class="na">arguments</span><span class="o">:</span> <span class="p">{</span><span class="na">team</span><span class="o">:</span> <span class="sx">ENG</span><span class="p">}}]}</span>
+</code></pre></div>
+<ul>
+<li><strong>A server's name</strong> is lowercase letters, digits and <code>_</code>, a letter first, with no <code>-</code>, so a
+  tool's name <code>mcp-&lt;server&gt;-&lt;tool&gt;</code> is one tool's.</li>
+<li><strong><code>url</code> is the server's streamable HTTP endpoint,</strong> <code>https</code>. It holds no user and no query:
+  the task's process is sent the configuration, and a key in a url would reach it. A key goes in
+  <code>auth</code>.</li>
+<li><strong><code>auth</code> is how the runner signs a request:</strong> <code>secret</code> names a secret of the <a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#the-secret-store">secret
+  store</a>, read at each request, so a rotation holds for
+  the next call of a running task. With no <code>header</code> it is sent as <code>Authorization: Bearer
+  &lt;value&gt;</code>; with one, as that header, the value as it is. A server with no <code>auth</code> is called with
+  no credential. A server whose secret is not in the store at the start is left out, with every
+  ceiling block naming it, and the runner says so.</li>
+<li><strong><code>timeout</code></strong> is how long one call has, 60s by default and at most 10m.</li>
+<li><strong>A ceiling block names one server,</strong> as a literal: a server is what a doer is trusted with.</li>
+<li><strong>One credential reaches one workspace.</strong> A second Linear workspace is a second server
+  (<code>linear_acme</code>), with its own secret.</li>
+</ul>
+<p>The runner follows no redirect, so a server does not choose where the credential goes, and
+declares no capability: a server's request for elicitation, sampling or roots is refused, and
+the call it came in goes on. A server reached only through an interactive sign-in (OAuth with no
+token the operator can hold) is not reached; Linear and Signadot take a key in the header. Servers
+over stdio are not run: the runner would start code outside any sandbox.</p>
+<p>A stdio server a spawn trusts whole can still be reached, as a command rather than a system: the
+spawn admits the server's command in a <a href="../secret/"><code>secret</code></a> block, the task starts it with
+<code>secret-exec</code> and speaks JSON-RPC over the run's I/O socket (<code>stdin: true</code>), and the server holds
+its secret in a sandbox of its own, as any command run with one does. What is decided differs:
+here every <code>mcp.call</code> is gated, on the server, the tool and the arguments; there the one
+<code>secret.exec</code> that starts the server is gated, and approving the command approves the session —
+the same promise <code>secret-exec</code> makes for any command, and no more.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "../..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../../js/base.js"></script>
+
+        <div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>

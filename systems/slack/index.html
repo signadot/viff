@@ -136,6 +136,18 @@
 </li>
                                     
 <li>
+    <a href="../secret/" class="dropdown-item">secret</a>
+</li>
+                                    
+<li>
+    <a href="../mcp/" class="dropdown-item">mcp</a>
+</li>
+                                    
+<li>
+    <a href="../pkg/" class="dropdown-item">pkg</a>
+</li>
+                                    
+<li>
     <a href="../question/" class="dropdown-item">question</a>
 </li>
                                     
@@ -170,7 +182,7 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../question/" class="nav-link">
+                                <a rel="next" href="../secret/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
@@ -326,8 +338,11 @@ no such line.</p>
 <p><strong>The iod</strong> needs a bot token, <code>SLACK_BOT_TOKEN</code>, with the scopes that the
 <a href="https://github.com/signadot/verse/blob/main/docs/reference/iod.md#slack">iod reference</a> lists.</p>
 <p><strong>The task</strong> holds no credential. The runner makes each call with its own bot token: the
-<code>SLACK_BOT_TOKEN</code>. Without it, a runner whose configuration names <code>slack</code> in a doer's ceiling
-starts with the system closed, and a spawn that needs it is refused where it is written. The bot needs
+<code>SLACK_BOT_TOKEN</code>, or a secret of its <a href="https://github.com/signadot/verse/blob/main/docs/reference/runnerd.md#the-secret-store">secret store</a>
+where its configuration names one (<code>secrets: {dir: /secrets, systems: {slack: slack-bot}}</code>),
+which is read at each call, so a rotated token is the next call's. Without either, a runner whose
+configuration names <code>slack</code> in a doer's ceiling starts with the system closed, and a spawn that
+needs it is refused where it is written. The bot needs
 <code>chat:write</code>; <code>channels:read</code> and <code>groups:read</code> to find a channel by its name;
 <code>channels:history</code> and <code>groups:history</code> to read; and <code>reactions:write</code> to react. The iod and the
 runner may use the same bot's token or two bots' tokens. Either way, a bot reaches only the
