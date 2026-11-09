@@ -24,8 +24,9 @@ type fakeTUISource struct {
 	records  map[string]*ir.Node
 }
 
-func (f *fakeTUISource) snapshot(at string) tuiSnapshot {
+func (f *fakeTUISource) snapshot(at string, reads tuiReads) tuiSnapshot {
 	s := f.snap
+	s.reads = reads
 	var under []string
 	for _, p := range f.paths {
 		if parentOf(p) == at {
@@ -98,7 +99,7 @@ func run(t *testing.T, m tuiModel, cmd tea.Cmd) tuiModel {
 
 func loaded(t *testing.T, src *fakeTUISource) tuiModel {
 	m := newTUI(src, "user:you@example.com", time.Second)
-	next, _ := m.Update(snapMsg{snap: src.snapshot(""), seq: askSeq.Add(1)})
+	next, _ := m.Update(snapMsg{snap: src.snapshot("", readAll), seq: askSeq.Add(1)})
 	return next.(tuiModel)
 }
 
@@ -135,21 +136,22 @@ func TestTheTUIProceedsAQuestion(t *testing.T) {
 	}
 }
 
-// A NO SAYS WHY: enter with nothing typed answers nothing; the reason goes with the deny.
-func TestTheTUIDeniesWithAReason(t *testing.T) {
+// A NO MAY SAY WHY, as `verse question deny -say` may: what is typed goes with the deny, and
+// enter with nothing typed denies without words.
+func TestTheTUIDeniesWithOrWithoutAReason(t *testing.T) {
 	src := twoQuestions()
-	m := press(t, loaded(t, src), "d", "enter")
-	if len(src.answered) != 0 || m.mode != modeSay {
-		t.Fatalf("a deny with no reason answered %q (mode %d)", src.answered, m.mode)
-	}
-	m = press(t, m, "n", "o", "t", " ", "y", "e", "t", "enter")
+	m := press(t, loaded(t, src), "d", "n", "o", "t", " ", "y", "e", "t", "enter")
 	if len(src.answered) != 1 || src.answered[0] != "q1 | deny | user:you@example.com | not yet" {
 		t.Fatalf("answered %q", src.answered)
 	}
 	// esc goes back without answering.
-	press(t, m, "d", "esc")
+	m = press(t, m, "d", "esc")
 	if len(src.answered) != 1 {
 		t.Fatalf("esc answered: %q", src.answered)
+	}
+	press(t, m, "d", "enter")
+	if len(src.answered) != 2 || src.answered[1] != "q1 | deny | user:you@example.com | " {
+		t.Fatalf("a deny with nothing typed answered %q", src.answered)
 	}
 }
 
@@ -485,7 +487,7 @@ func TestTheTUISourceListsTheData(t *testing.T) {
 	rootCmd()
 	g.Addr = testAddr
 	h := &httpSource{c: apiClient()}
-	s := h.snapshot("demo.drift")
+	s := h.snapshot("demo.drift", readAll)
 	if e := s.errs[tabData]; e != "" {
 		t.Fatal(e)
 	}
@@ -496,7 +498,7 @@ func TestTheTUISourceListsTheData(t *testing.T) {
 	if strings.Join(got, " ") != "range=demo.drift.range x=demo.drift.x" {
 		t.Errorf("demo.drift lists %q", got)
 	}
-	if root := h.snapshot(""); len(root.data) != 2 || root.data[0].note != "demo" {
+	if root := h.snapshot("", readAll); len(root.data) != 2 || root.data[0].note != "demo" {
 		t.Errorf("the root lists %+v", root.data)
 	}
 	if len(s.charters) == 0 {
@@ -526,14 +528,15 @@ func TestCutCountsCellsNotEscapes(t *testing.T) {
 func ansiStrip(s string) string { return ansi.Strip(s) }
 
 // A GATE'S QUESTION IS POSED BY ITS RULE: it carries no pose, so the screen asks whether the
-// rule may act on its subject rather than showing a blank.
+// rule may act on its subject rather than showing a blank, in the words `verse question
+// --watch` says it in (poseOf).
 func TestAGateQuestionIsPosedByItsRule(t *testing.T) {
 	p := ir.FromMap(map[string]*ir.Node{
 		"gate": ir.FromString("on-call"), "subject": ir.FromString("acme.bug.inc4211"), "reason": ir.FromString("trigger hotfix"),
 		"from": ir.FromMap(map[string]*ir.Node{"at": ir.FromString("acme"), "rule": ir.FromString("hotfix")}),
 	})
-	if q := questionOf("q", p); q.pose != "Let rule hotfix act on acme.bug.inc4211?" {
-		t.Errorf("pose %q", q.pose)
+	if q := questionOf("q", p); q.pose != "Let rule hotfix act on acme.bug.inc4211?" || poseOf(p) != q.pose {
+		t.Errorf("the tui poses %q, the cli %q", q.pose, poseOf(p))
 	}
 }
 

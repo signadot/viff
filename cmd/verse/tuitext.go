@@ -157,22 +157,53 @@ func under(subject, at string) bool {
 	return true
 }
 
-// tokenOf is an address as a task's id carries its subject: entity.SegToken, without the hash a
-// lossy flattening adds (so that a place's token is a prefix of its children's).
-func tokenOf(at string) string {
-	if segs, ok := segsOf(at); ok {
-		at = entity.SegToken(segs)
-	}
-	tok, _, _ := strings.Cut(at, entity.HashSep)
-	return tok
-}
-
-// tokenUnder is whether a task's subject token is at or beneath the address at.
+// tokenUnder is whether a task's subject token (the part of its id after `@`) is at or beneath
+// the address at.
+//
+// A TOKEN IS NOT ALWAYS AN ADDRESS READ BACK. entity.SegToken joins the segments with dots, and
+// where that loses something (a segment holding a dot, or a character it rewrites) it adds a
+// hash of the segments. A token without the hash splits back into its segments, which are
+// compared with at's one by one, so `x.pr.123` is under `x.pr."123"` and `a.b.c` is not under
+// `a."b.c"`. A token with the hash cannot be split back: it matches only the place it was made
+// from, hash and all, and never a place above it. That shows a few tasks too few rather than
+// some that are not the place's, until the task record says its subject itself
+// (git-issue crk9g2t4h12kss57xxn0).
 func tokenUnder(tok, at string) bool {
 	if at == "" {
 		return true
 	}
-	tok, _, _ = strings.Cut(tok, entity.HashSep)
-	a := tokenOf(at)
-	return tok == a || strings.HasPrefix(tok, a+".")
+	segs, ok := segsOf(at)
+	if !ok {
+		return false
+	}
+	if tok == entity.SegToken(segs) {
+		return true
+	}
+	if hashed(tok) {
+		return false
+	}
+	ts := strings.Split(tok, ".")
+	if len(ts) <= len(segs) {
+		return false
+	}
+	for i, s := range segs {
+		if ts[i] != s {
+			return false
+		}
+	}
+	return true
+}
+
+// hashed is whether a token ends in the hash entity.SegToken adds to a lossy one.
+func hashed(tok string) bool {
+	i := strings.LastIndex(tok, entity.HashSep)
+	if i < 0 || len(tok)-i-1 != 8 {
+		return false
+	}
+	for _, r := range tok[i+1:] {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return false
+		}
+	}
+	return true
 }

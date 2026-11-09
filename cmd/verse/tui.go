@@ -22,11 +22,16 @@ import (
 // through (POST /asks/{id}/answer, /tasks/{id}/cancel), as the configured user. Nothing it shows is
 // computed anywhere else.
 //
-// IT POLLS, every --every (2s), rather than following /watch: the questions, the tasks, the
-// runners, the charters, the place the Data section lists and the row under the cursor are a
-// round of reads, and a read is what makes the screen agree with what `verse question` or
-// `verse task` print at the same moment. One round is on its way at a time, each request is
-// bounded (readTimeout), and a section whose read fails keeps its rows and says why.
+// IT READS WHAT CHANGED. Every --every (2s) it reads a round: the runners, the place the Data
+// section lists and the row under the cursor always; the tasks and the questions when their
+// watch says they changed (tuiwatch.go); the charters while their section is open. A read is
+// what makes the screen agree with what `verse question` or `verse task` print at the same
+// moment, so a watch's frame only says which sections to read.
+//
+// A tick starts no round while one is on its way, so a slow verse is not read faster than it
+// answers. A key that needs a read now starts one anyway: r, an answer, a cancel, going to a
+// place in the data. Rounds may then overlap, and the one asked last is the one drawn (seq). Each
+// request is bounded (readTimeout), and a section whose read fails keeps its rows and says why.
 //
 // THE DATA is the verse's own tree, browsed an address at a time: an address's children, and
 // the one under the cursor as it stands — its record, what it was derived from (the engine's
@@ -91,6 +96,7 @@ func (cfg *tuiConfig) run(cc *cli.Context, args []string) error {
 	}
 	src := &httpSource{c: apiClient(), allTasks: cfg.All}
 	m := newTUI(src, me, every)
+	m.watch = startTUIWatch(cc.Go, src.c)
 	m.dataAt = strings.Trim(at, ".")
 	_, err = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithContext(cc.Go)).Run()
 	return err

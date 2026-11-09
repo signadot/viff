@@ -7,6 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/signadot/tony-format/go-tony/ir"
+
+	"github.com/signadot/verse/pkg/entity"
 )
 
 // The tui's review: each test is one thing the review found the screen doing wrong.
@@ -77,7 +79,7 @@ func TestTheTUIKeepsTheSelectedRowAcrossReads(t *testing.T) {
 func TestTheTUIKeepsRowsAcrossAFailedOrLateRead(t *testing.T) {
 	src := twoQuestions()
 	m := press(t, loaded(t, src), "2", "j")
-	failed := src.snap
+	failed := src.snapshot("", readAll)
 	failed.tasks, failed.errs = nil, map[tuiTab]string{tabTasks: "502 bad gateway"}
 	next, _ := m.Update(snapMsg{snap: failed, seq: askSeq.Add(1)})
 	m = next.(tuiModel)
@@ -88,11 +90,11 @@ func TestTheTUIKeepsRowsAcrossAFailedOrLateRead(t *testing.T) {
 		t.Errorf("the failure is not said:\n%s", v)
 	}
 	old, newer := askSeq.Add(1), askSeq.Add(1)
-	fresh := src.snap
+	fresh := src.snapshot("", readAll)
 	fresh.questions = nil
 	next, _ = m.Update(snapMsg{snap: fresh, seq: newer})
 	m = next.(tuiModel)
-	next, _ = m.Update(snapMsg{snap: src.snap, seq: old})
+	next, _ = m.Update(snapMsg{snap: src.snapshot("", readAll), seq: old})
 	m = next.(tuiModel)
 	if len(m.snap.questions) != 0 {
 		t.Fatal("an older read drew over a newer one")
@@ -132,7 +134,7 @@ func TestTheTUIDrawsOnlyWhatIsUnderTheCursor(t *testing.T) {
 		t.Fatal("a read of b drew while the cursor is on a")
 	}
 	// Into a: the read of the root, asked before, arrives after.
-	stale, staleSeq := src.snapshot(""), askSeq.Add(1)
+	stale, staleSeq := src.snapshot("", readAll), askSeq.Add(1)
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(tuiModel)
 	next, _ = m.Update(snapMsg{snap: stale, seq: staleSeq})
@@ -165,6 +167,15 @@ func TestTheTUIScrollStopsAtTheEnd(t *testing.T) {
 func TestTheTUIReadsAddressesAsSegments(t *testing.T) {
 	if !tokenUnder("x.pr.123", `x.pr."123"`) || !tokenUnder("x.pr.123.review", `x.pr."123"`) || tokenUnder("x.pr.1234", `x.pr."123"`) {
 		t.Error("a task's subject token against a quoted address")
+	}
+	// A dotted segment is hashed into the token: its task is the dotted place's, and no other's.
+	dotted := entity.SegToken([]string{"a", "b.c"})
+	if !tokenUnder(dotted, `a."b.c"`) || tokenUnder(dotted, "a.b.c") || tokenUnder("a.b.c", `a."b.c"`) ||
+		tokenUnder(dotted, "a.b") || tokenUnder(entity.SegToken([]string{"a", "b.c", "d"}), "a.b") {
+		t.Errorf("a dotted segment's token %q matched a place it is not", dotted)
+	}
+	if !tokenUnder("x.a+b.y", "x") {
+		t.Error("a + in a segment is not the hash")
 	}
 	if got := parentOf(`verse.schedule."repos.verse.git-issue:sweep"`); got != "verse.schedule" {
 		t.Errorf("parentOf a dotted key = %q", got)
@@ -218,14 +229,14 @@ func TestATasksQuestionShowsItsStep(t *testing.T) {
 		"step":      ir.FromString("github.merge"),
 		"tool":      ir.FromString("merge_pr"),
 		"fields":    ir.FromMap(map[string]*ir.Node{"repo": ir.FromString("signadot/verse"), "number": ir.FromString("12")}),
-		"waitingOn": ir.FromSlice([]*ir.Node{ir.FromString("user:ana@x.com"), ir.FromString("user:bo@x.com")}),
+		"waitingOn": ir.FromSlice([]*ir.Node{ir.FromString("user:ana@example.com"), ir.FromString("user:bo@example.com")}),
 		"deadline":  ir.FromMap(map[string]*ir.Node{"at": ir.FromString("2026-11-06T20:00:00Z"), "default": ir.FromString("deny")}),
 		"reason":    ir.FromString("github.merge repo=signadot/verse number=12"),
 		"gate":      ir.FromString("autonomy[0]"),
 	})
 	text := questionText(questionOf("run~d1", rec))
 	for _, want := range []string{"FROM", "task repos.verse.merge:train@x.pr.12", "STEP", "github.merge", "merge_pr",
-		"signadot/verse", "WAITS ON", "user:ana@x.com", "DUE", "then deny"} {
+		"signadot/verse", "WAITS ON", "user:ana@example.com", "DUE", "then deny"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the task's question does not show %q:\n%s", want, text)
 		}

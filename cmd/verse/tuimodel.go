@@ -75,14 +75,18 @@ type tuiModel struct {
 	// dropped.
 	polls   *atomic.Int32
 	applied int64
-	width   int
-	height  int
-	mode    tuiMode
-	pending struct{ id, choice string } // the answer waiting on what to say, or the task to cancel
-	input   textinput.Model
-	status  string  // the last act's outcome, or an error
-	focus   int     // paneList or paneDetail
-	dview   tuiView // a data row's content
+	// watch is what the watches on tasks and questions have said (tuiwatch.go): nil reads every
+	// section every round. lastRead is when each section last read without error.
+	watch    *tuiWatch
+	lastRead [tabCount]time.Time
+	width    int
+	height   int
+	mode     tuiMode
+	pending  struct{ id, choice string } // the answer waiting on what to say, or the task to cancel
+	input    textinput.Model
+	status   string  // the last act's outcome, or an error
+	focus    int     // paneList or paneDetail
+	dview    tuiView // a data row's content
 	// dataAt is the address the Data section lists; dataSel the row to put its cursor on once
 	// the listing arrives (the place just come up from), and entering says the listing of a
 	// place just gone to has not arrived yet.
@@ -140,10 +144,35 @@ func newTUI(src tuiSource, me string, every time.Duration) tuiModel {
 
 func (m tuiModel) Init() tea.Cmd { return m.load() }
 
-func (m tuiModel) load() tea.Cmd {
+// load is a round of reads of every section: the first, r, and after an answer or a cancel.
+func (m tuiModel) load() tea.Cmd { return m.loadOf(readAll) }
+
+// loadDue is a tick's round: the sections due (see tuiwatch.go).
+func (m tuiModel) loadDue() tea.Cmd { return m.loadOf(m.due(time.Now())) }
+
+// due is the sections a tick reads: runners and the Data section's listing always; tasks and
+// questions when their watch is down, has said they changed, or tuiResync has passed; the
+// charters while their section is open, else every tuiCharterEvery.
+func (m tuiModel) due(now time.Time) tuiReads {
+	if m.watch == nil {
+		return readAll
+	}
+	r := readsOf(tabRunners, tabData)
+	for t, s := range map[tuiTab]*watchState{tabTasks: &m.watch.tasks, tabQuestions: &m.watch.questions} {
+		if s.due() || now.Sub(m.lastRead[t]) >= tuiResync {
+			r |= readsOf(t)
+		}
+	}
+	if m.tab == tabCharters || now.Sub(m.lastRead[tabCharters]) >= tuiCharterEvery {
+		r |= readsOf(tabCharters)
+	}
+	return r
+}
+
+func (m tuiModel) loadOf(reads tuiReads) tea.Cmd {
 	src, at, polls, seq := m.src, m.dataAt, m.polls, askSeq.Add(1)
 	polls.Add(1)
-	snap := func() tea.Msg { return snapMsg{snap: src.snapshot(at), seq: seq} }
+	snap := func() tea.Msg { return snapMsg{snap: src.snapshot(at, reads), seq: seq} }
 	// The record under the cursor is read again with the listing, unless it is too big to.
 	if m.tab == tabData && m.recBig {
 		return snap
@@ -200,6 +229,11 @@ func (m tuiModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applied = msg.seq
 		first := !m.loaded
 		m.snap, m.loaded, m.read = m.merge(msg.snap), true, time.Now()
+		for t := tuiTab(0); t < tabCount; t++ {
+			if _, failed := msg.snap.errs[t]; msg.snap.reads.has(t) && !failed {
+				m.lastRead[t] = m.read
+			}
+		}
 		m.relocate()
 		if m.snap.dataAt == m.dataAt && (m.entering || m.dataSel != "") {
 			// The listing of the place just gone to: the cursor on the place come up from, or
@@ -257,7 +291,7 @@ func (m tuiModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.polls.Load() > 0 {
 			return m, m.tick() // the last read has not come back: wait for it
 		}
-		return m, tea.Batch(m.load(), m.tick())
+		return m, tea.Batch(m.loadDue(), m.tick())
 	case actedMsg:
 		if msg.err != nil {
 			m.status = "✗ " + msg.err.Error()
@@ -742,7 +776,7 @@ func (m tuiModel) dataGo(at, sel string) (tea.Model, tea.Cmd) {
 	m.dataAt, m.dataSel, m.cursor[tabData], m.onHeader, m.entering = at, sel, 0, false, true
 	m.sel[tabData], m.rec, m.recFor, m.recBig = "", nil, "", false
 	m.status = "data at " + addrText(at)
-	return m, m.load()
+	return m, m.loadOf(readsOf(tabData))
 }
 
 // addrText is an address as the screen names it: the root by name.
@@ -769,13 +803,13 @@ func (m *tuiModel) setView(v tuiView) {
 	m.dview, m.scroll = v, 0
 }
 
-// startAnswer asks what to say with choice: a yes may go with nothing, a no is asked why.
+// startAnswer asks what to say with choice, if anything: a no is asked why, and may go without.
 func (m tuiModel) startAnswer(q tuiQuestion, choice string) (tea.Model, tea.Cmd) {
 	m.mode, m.pending.id, m.pending.choice = modeSay, q.id, choice
 	m.input.SetValue("")
 	m.input.Placeholder = "what to say with it (enter to send, esc to go back)"
 	if choice == "deny" {
-		m.input.Placeholder = "why not — the steward reads this (enter to send, esc to go back)"
+		m.input.Placeholder = "why not, if you say — the steward reads this (enter to send, esc to go back)"
 	}
 	return m, m.input.Focus()
 }
@@ -787,11 +821,9 @@ func (m tuiModel) sayKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.input.Blur()
 		return m, nil
 	case "enter":
+		// What is said is optional, for a deny as for anything: `verse question deny` takes
+		// -say and does not insist on it.
 		say := strings.TrimSpace(m.input.Value())
-		if m.pending.choice == "deny" && say == "" {
-			m.status = "a no says why: type the reason, or esc"
-			return m, nil
-		}
 		m.mode = modeBrowse
 		m.input.Blur()
 		src, id, choice, me := m.src, m.pending.id, m.pending.choice, m.me
@@ -942,10 +974,21 @@ func (m *tuiModel) relocate() {
 }
 
 // merge is a round of reads over the last: a section whose read failed keeps the rows it had,
-// so one refusal or timeout does not empty it (and move its cursor).
+// so one refusal or timeout does not empty it (and move its cursor), and a section the round did
+// not read keeps its rows and its error, if its last read had one.
 func (m tuiModel) merge(s tuiSnapshot) tuiSnapshot {
 	old := m.snap
-	for t := range s.errs {
+	for t := tuiTab(0); t < tabCount; t++ {
+		_, failed := s.errs[t]
+		read := s.reads.has(t)
+		if read && !failed {
+			continue
+		}
+		if !read {
+			if e, ok := old.errs[t]; ok {
+				s.errs[t] = e
+			}
+		}
 		switch t {
 		case tabQuestions:
 			s.questions = old.questions

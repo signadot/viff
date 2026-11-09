@@ -54,10 +54,16 @@ func lockedBearer(ctx context.Context) (string, error) {
 
 func (s skewCheck) RoundTrip(r *http.Request) (*http.Response, error) {
 	return client.Transport{
-		Base:      s.base,
-		Version:   s.mine,
-		Principal: func() (string, error) { return principal("") },
-		Bearer:    lockedBearer,
+		Base:    s.base,
+		Version: s.mine,
+		// Under the bearer's lock too: principal reads the logins bearer sets aside, and two
+		// requests side by side (the tui's watches and its reads) would otherwise race on them.
+		Principal: func() (string, error) {
+			bearerMu.Lock()
+			defer bearerMu.Unlock()
+			return principal("")
+		},
+		Bearer: lockedBearer,
 		Warn: func(msg string) {
 			skewWarned.Do(func() { fmt.Fprintf(warnTo, "verse: %s\n", msg) })
 		},

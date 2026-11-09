@@ -21,8 +21,9 @@ import (
 
 // tuiSource is what the tui reads and does: the verse over HTTP, or a fake in the tests.
 type tuiSource interface {
-	// snapshot is one round of reads, the Data section's listing of dataAt among them.
-	snapshot(dataAt string) tuiSnapshot
+	// snapshot is one round of reads of the sections in reads, the Data section's listing of
+	// dataAt among them.
+	snapshot(dataAt string, reads tuiReads) tuiSnapshot
 	// record is what stands at an address, as the Data section shows the row under its cursor.
 	record(at string) (*ir.Node, error)
 	answer(id, choice, as, say string) (string, error)
@@ -42,7 +43,26 @@ type tuiSnapshot struct {
 	dataAt   string
 	charters []tuiItem
 	errs     map[tuiTab]string
+	// reads is the sections this round read; the others keep what the last round found.
+	reads tuiReads
 }
+
+// tuiReads is a set of sections to read.
+type tuiReads uint8
+
+// readsOf is the set of ts.
+func readsOf(ts ...tuiTab) tuiReads {
+	var r tuiReads
+	for _, t := range ts {
+		r |= 1 << t
+	}
+	return r
+}
+
+// readAll is every section.
+const readAll = tuiReads(1<<tabCount - 1)
+
+func (r tuiReads) has(t tuiTab) bool { return r&(1<<t) != 0 }
 
 // tuiQuestion is one question waiting on the caller.
 type tuiQuestion struct {
@@ -88,32 +108,42 @@ func (h *httpSource) client() (*client.Client, context.CancelFunc) {
 	return h.c.With(ctx), cancel
 }
 
-func (h *httpSource) snapshot(dataAt string) tuiSnapshot {
-	s := tuiSnapshot{errs: map[tuiTab]string{}, dataAt: dataAt}
-	if qs, err := h.questions(); err != nil {
-		s.errs[tabQuestions] = err.Error()
-	} else {
-		s.questions = qs
+func (h *httpSource) snapshot(dataAt string, reads tuiReads) tuiSnapshot {
+	s := tuiSnapshot{errs: map[tuiTab]string{}, dataAt: dataAt, reads: reads}
+	if reads.has(tabQuestions) {
+		if qs, err := h.questions(); err != nil {
+			s.errs[tabQuestions] = err.Error()
+		} else {
+			s.questions = qs
+		}
 	}
-	if n, err := h.read("/tasks", nil); err != nil {
-		s.errs[tabTasks] = err.Error()
-	} else {
-		s.tasks, s.everyTask = taskRows(n, h.allTasks), taskRows(n, true)
+	if reads.has(tabTasks) {
+		if n, err := h.read("/tasks", nil); err != nil {
+			s.errs[tabTasks] = err.Error()
+		} else {
+			s.tasks, s.everyTask = taskRows(n, h.allTasks), taskRows(n, true)
+		}
 	}
-	if rs, err := h.runners(); err != nil {
-		s.errs[tabRunners] = err.Error()
-	} else {
-		s.runners = rs
+	if reads.has(tabRunners) {
+		if rs, err := h.runners(); err != nil {
+			s.errs[tabRunners] = err.Error()
+		} else {
+			s.runners = rs
+		}
 	}
-	if ds, err := h.children(dataAt); err != nil {
-		s.errs[tabData] = err.Error()
-	} else {
-		s.data = ds
+	if reads.has(tabData) {
+		if ds, err := h.children(dataAt); err != nil {
+			s.errs[tabData] = err.Error()
+		} else {
+			s.data = ds
+		}
 	}
-	if n, err := h.read("/charter", url.Values{"depth": {"-1"}}); err != nil {
-		s.errs[tabCharters] = err.Error()
-	} else {
-		s.charters = charterRows(n)
+	if reads.has(tabCharters) {
+		if n, err := h.read("/charter", url.Values{"depth": {"-1"}}); err != nil {
+			s.errs[tabCharters] = err.Error()
+		} else {
+			s.charters = charterRows(n)
+		}
 	}
 	return s
 }
@@ -279,19 +309,8 @@ func (h *httpSource) questions() ([]tuiQuestion, error) {
 
 // questionOf reads one ask record as the tui shows it.
 func questionOf(id string, p *ir.Node) tuiQuestion {
-	q := tuiQuestion{id: id, pose: entity.Str(p, "pose"), about: entity.Str(p, "about"),
+	q := tuiQuestion{id: id, pose: poseOf(p), about: entity.Str(p, "about"),
 		subject: entity.Str(p, "subject"), gate: entity.Str(p, "gate"), posedAt: entity.Str(p, "posedAt"), record: p}
-	if q.pose == "" {
-		q.pose = entity.Str(p, "question")
-	}
-	if rule := entity.Str(entity.Get(p, "from"), "rule"); q.pose == "" && rule != "" {
-		// A rule's gate poses nothing of its own: what it asks is whether the rule may act,
-		// and on what.
-		q.pose = fmt.Sprintf("Let rule %s act on %s?", rule, q.subject)
-	}
-	if q.pose == "" {
-		q.pose = entity.Str(p, "reason")
-	}
 	if s := entity.Str(p, "id"); s != "" {
 		q.id = s
 	}
