@@ -40,6 +40,15 @@ spawn:
 | `secret-exec` | runs one command with the block's secret in its environment under `as`, and blocks until it ends; the task reads back the run's id, the exit status, and each stream's file in its workspace, size and tail | `secret.exec`, with `name`, `as`, `argv`, `dir`, `stdin` and `env` |
 | `secret-exec-kill` | kills a run `secret-exec` is waiting on, by its id (`e1`) | none: it acts on a run already decided, and is offered with `secret-exec` |
 
+**The task is told which secrets it may name.** `secret-exec` takes its secret as an argument,
+where every other system's target is part of the tool's name the task is offered (`git-push`,
+`slack-post`), so the brief names the environment's secrets, each with the variable its command
+finds it in, and says that `name` is the secret's own name and not the variable's. Without that a
+task guesses, and the variable it can see in the shapes is the wrong guess nearest to hand: a
+model given `as: SIGNADOT_API_KEY` sends `SIGNADOT_API_KEY` as the `name`, which is no secret's
+name, and then a lowercasing of it, which is no block's. The sentence is the offered tools' and
+the environment's both, so it cannot name a secret a task has none of.
+
 **The command is a list, and the step is one line.** The tool takes `argv` as a list of arguments,
 never a shell line, and the runner runs that list. The step's `argv` is the list spelled as one
 line, each argument quoted where it holds a space, a quote or a character a shell reads (`npm

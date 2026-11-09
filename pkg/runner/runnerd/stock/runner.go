@@ -290,7 +290,7 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 			// shadow them.
 			set = append(set, TrailersEnv+"="+strings.Join(trailers, "\n"))
 		}
-		prompt = toolsBrief(tools) + prompt
+		prompt = toolsBrief(tools, l.Environment) + prompt
 	}
 	if l.Script != "" {
 		p, stop, err := newScriptTask(l, r.root, r.cfg.shellEnv(ScriptDoer), set, tools, r.callTool, reg, r.cfg.taskCeilings(ScriptDoer))
