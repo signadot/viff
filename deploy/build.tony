@@ -57,6 +57,58 @@ build:
     docdPoolLabel: "verse/pool"
     spotVersed: false
 
+    # The runners' placement, the same two halves as docd's and for a sharper reason once their
+    # state is a PVC rather than an emptyDir: an EBS volume is pinned to one AZ, and a spot node
+    # that goes away without a clean detach leaves the volume attached to an instance that no
+    # longer exists, with the replacement pod waiting on a timeout. On-demand nodes are not a
+    # performance choice here, they are what makes a PVC-backed runner come back.
+    #
+    # It may name the pool docd is already on — the knob is a value, not a nodegroup, and
+    # "on-demand, must not vanish" describes a runner holding a volume as well as it describes
+    # the store. "" leaves the runners wherever they land, which is right while /state is an
+    # emptyDir and wrong once it is not.
+    runnerPool: ""
+    runnerPoolLabel: "verse/pool"
+
+    # The runners' state volume (/state: the mirrors and the pkg cellar). "" is the emptyDir the
+    # manifests carry, where both die with the pod. A size is a PVC per runner.
+    #
+    # Size it OVER the cellar's own ceiling (`pkg.collect-above` in a runner's config), never
+    # under: a threshold larger than the volume can never fire and the disk fills first. The
+    # mirrors are the other half and the smaller one — seven of a repository set's bare mirrors
+    # are ~1Gi, a few Gi once a year of refs/heads/verse/auto/* and the undelivered refs have
+    # piled up. Start low: a class with allowVolumeExpansion grows in place and never shrinks.
+    runnerStateSize: ""
+    # The class a runner's PVC asks for, "" to omit the field and take the cluster default. It is
+    # deliberately NOT docd's storageClassName, which doubles as the hostPV switch — "" there
+    # disables dynamic provisioning so the VCT binds a static PV, and a runner wants neither that
+    # meaning nor a static volume.
+    runnerStateClassName: ""
+
+    # The runners' memory and disk. "" on all four leaves the containers with no request and no
+    # limit: BestEffort, nothing reserved, first evicted.
+    #
+    # A limit here is a ceiling on the runner AND every task it is running. runnerd has no cap on
+    # how many tasks it accepts and makes no per-task cgroup — a task is a plain child process
+    # (`runnerd -task` under bwrap), so it lives in the container's cgroup. That is what makes a
+    # runner safe to put beside the store: an unbounded number of tasks inside a bounded cgroup
+    # contend with each other, and a runaway one is OOM-killed in the runner's own cgroup instead
+    # of taking the node and the store with it.
+    #
+    # ephemeral-storage is the other half and the easier one to miss: a task's workspace, its
+    # HOME and its build caches are all under runnerd's TMPDIR on the CONTAINER filesystem, not
+    # on the state volume, so the PVC does nothing for them. Unlimited, they fill the node disk
+    # and the kubelet evicts by usage-over-request — which, with no requests anywhere, can take
+    # the neighbours rather than the offender.
+    #
+    # No CPU knob: nothing here requests CPU, docd included, and a CPU limit on a runner
+    # throttles the builds its tasks exist to run. Read /proc/1/status in the pod under real load
+    # before moving any of these rather than picking a number.
+    runnerMemoryRequest: ""
+    runnerMemoryLimit: ""
+    runnerEphemeralRequest: ""
+    runnerEphemeralLimit: ""
+
     # docd memory. "" on both leaves the container with no request and no limit, which is
     # right on a laptop profile — a request is a RESERVATION, and one sized for a cluster
     # makes the pod unschedulable on minikube.
@@ -382,7 +434,8 @@ build:
 
   # Namespace every namespaced resource (StorageClass is cluster-scoped — excluded).
   - match:
-      kind: !or [StatefulSet, Deployment, Service, ConfigMap, Secret, Ingress, ServiceAccount, ExternalSecret]
+      kind: !or [StatefulSet, Deployment, Service, ConfigMap, Secret, Ingress, ServiceAccount, ExternalSecret,
+                 PersistentVolumeClaim]
     patch:
       metadata:
         namespace: $[namespace]
@@ -943,6 +996,323 @@ build:
                     - key: eks.amazonaws.com/capacityType
                       operator: In
                       values: [SPOT]
+
+  # ── The runners' state volume and placement ───────────────────────
+  #
+  # runnerStateSize "" is the emptyDir the manifests carry: drop each PVC, change nothing else.
+  - if: '.[ runnerStateSize == "" ]'
+    match:
+      kind: PersistentVolumeClaim
+      metadata:
+        name: verse-runner-state
+    patch: !delete null
+  - if: '.[ runnerStateSize == "" ]'
+    match:
+      kind: PersistentVolumeClaim
+      metadata:
+        name: codex-runner-state
+    patch: !delete null
+  - if: '.[ runnerStateSize == "" ]'
+    match:
+      kind: PersistentVolumeClaim
+      metadata:
+        name: claude-runner-state
+    patch: !delete null
+
+  # Sized, the PVCs stand. One size for the three: they hold the same two things.
+  - if: '.[ runnerStateSize != "" ]'
+    match:
+      kind: PersistentVolumeClaim
+      metadata:
+        name: !or [verse-runner-state, codex-runner-state, claude-runner-state]
+    patch:
+      spec:
+        resources:
+          requests:
+            storage: $[runnerStateSize]
+  - if: '.[ runnerStateClassName != "" ]'
+    match:
+      kind: PersistentVolumeClaim
+      metadata:
+        name: !or [verse-runner-state, codex-runner-state, claude-runner-state]
+    patch:
+      spec:
+        storageClassName: $[runnerStateClassName]
+
+  # /state becomes the claim. emptyDir is DELETED rather than left beside it: a volume names one
+  # type, and a keyed-list patch MERGES into the element it matches, so adding the claim to an
+  # element that still carries emptyDir is a pod spec the API refuses. One patch each, since the
+  # claim each names is its own.
+  - if: '.[ runnerStateSize != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: verse-runner
+    patch:
+      spec:
+        template:
+          spec:
+            volumes: !key(name)
+            - name: state
+              emptyDir: !delete null
+              persistentVolumeClaim:
+                claimName: verse-runner-state
+  - if: '.[ runnerStateSize != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: codex-runner
+    patch:
+      spec:
+        template:
+          spec:
+            volumes: !key(name)
+            - name: state
+              emptyDir: !delete null
+              persistentVolumeClaim:
+                claimName: codex-runner-state
+  - if: '.[ runnerStateSize != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: claude-runner
+    patch:
+      spec:
+        template:
+          spec:
+            volumes: !key(name)
+            - name: state
+              emptyDir: !delete null
+              persistentVolumeClaim:
+                claimName: claude-runner-state
+
+  # And the ownership, which is the half that does not announce itself. A freshly provisioned
+  # volume mounts root-owned 0755; these containers run as 65532 with runAsNonRoot and every
+  # capability dropped, so without fsGroup the runner cannot create its mirrors directory and
+  # dies at its first fetch. docd needs none of this because docd runs as root, and emptyDir
+  # hides it because the kubelet gives that 0777.
+  #
+  # OnRootMismatch so the kubelet checks the top directory instead of chowning a whole cellar on
+  # every start. On a pod with hostUsers: false this is fsGroup through a user namespace — worth
+  # watching on the first roll, with a root initContainer that chowns /state as the fallback.
+  - if: '.[ runnerStateSize != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: !or [verse-runner, codex-runner, claude-runner]
+    patch:
+      spec:
+        template:
+          spec:
+            securityContext:
+              fsGroup: 65532
+              fsGroupChangePolicy: OnRootMismatch
+
+  # The pool, both halves, exactly as docd's: the selector says where the runners go, the
+  # toleration is what gets them past the taint reserving those nodes. A pool named here that the
+  # cluster does not label leaves the runners Pending — the right failure for a tier whose volume
+  # is pinned to one AZ.
+  - if: '.[ runnerPool != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: !or [verse-runner, codex-runner, claude-runner]
+    patch:
+      spec:
+        template:
+          spec:
+            nodeSelector:
+              pool: $[runnerPool]
+            tolerations:
+            - key: $[runnerPoolLabel]
+              value: $[runnerPool]
+              effect: NoSchedule
+  # The selector's key is the knob, and a key is not interpolated as a value is: written as
+  # `pool` above, then renamed to runnerPoolLabel.
+  - if: '.[ runnerPool != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: !or [verse-runner, codex-runner, claude-runner]
+    patch:
+      spec:
+        template:
+          spec:
+            nodeSelector: !rename
+            - from: pool
+              to: $[runnerPoolLabel]
+
+  # The runners' resources. One patch per runner per knob: a keyed-list element has to carry its
+  # key, and the three containers are differently named, so a match over the three has nothing to
+  # merge.
+  - if: '.[ runnerMemoryRequest != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: verse-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: verse-runner
+              resources:
+                requests:
+                  memory: $[runnerMemoryRequest]
+  - if: '.[ runnerMemoryRequest != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: codex-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: codex-runner
+              resources:
+                requests:
+                  memory: $[runnerMemoryRequest]
+  - if: '.[ runnerMemoryRequest != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: claude-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: claude-runner
+              resources:
+                requests:
+                  memory: $[runnerMemoryRequest]
+  - if: '.[ runnerMemoryLimit != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: verse-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: verse-runner
+              resources:
+                limits:
+                  memory: $[runnerMemoryLimit]
+  - if: '.[ runnerMemoryLimit != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: codex-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: codex-runner
+              resources:
+                limits:
+                  memory: $[runnerMemoryLimit]
+  - if: '.[ runnerMemoryLimit != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: claude-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: claude-runner
+              resources:
+                limits:
+                  memory: $[runnerMemoryLimit]
+  - if: '.[ runnerEphemeralRequest != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: verse-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: verse-runner
+              resources:
+                requests:
+                  ephemeral-storage: $[runnerEphemeralRequest]
+  - if: '.[ runnerEphemeralRequest != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: codex-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: codex-runner
+              resources:
+                requests:
+                  ephemeral-storage: $[runnerEphemeralRequest]
+  - if: '.[ runnerEphemeralRequest != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: claude-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: claude-runner
+              resources:
+                requests:
+                  ephemeral-storage: $[runnerEphemeralRequest]
+  - if: '.[ runnerEphemeralLimit != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: verse-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: verse-runner
+              resources:
+                limits:
+                  ephemeral-storage: $[runnerEphemeralLimit]
+  - if: '.[ runnerEphemeralLimit != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: codex-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: codex-runner
+              resources:
+                limits:
+                  ephemeral-storage: $[runnerEphemeralLimit]
+  - if: '.[ runnerEphemeralLimit != "" ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: claude-runner
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: claude-runner
+              resources:
+                limits:
+                  ephemeral-storage: $[runnerEphemeralLimit]
 
   # ── Tailscale ─────────────────────────────────────────────────────────────
   #
