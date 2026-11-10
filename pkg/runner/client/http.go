@@ -4,7 +4,6 @@
 package client
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -232,7 +231,7 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Event, func()) {
 		return out, func() {}
 	}
 	// A rejected subscribe is not an empty one. Subscribe cannot return an error, and the
-	// reader below keeps only "data: " lines, so a 4xx/5xx body would scan to nothing and
+	// reader below keeps only frames, so a 4xx/5xx body would scan to nothing and
 	// close the channel — leaving the mirror to conclude the remote task simply had
 	// nothing to say. Report it on the plane the caller is already reading, the way a
 	// cancel does below.
@@ -284,15 +283,10 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Event, func()) {
 	go func() {
 		defer close(out)
 		defer resp.Body.Close()
-		sc := bufio.NewScanner(resp.Body)
-		sc.Buffer(make([]byte, 0, 64*1024), 8<<20)
-		for sc.Scan() {
-			data, ok := strings.CutPrefix(sc.Text(), "data: ")
-			if !ok {
-				continue // blank line / comment
-			}
+		frames := codec.NewFrames(resp.Body, 8<<20)
+		for frames.Next() {
 			var ev task.Event
-			if codec.Unmarshal([]byte(data), &ev, frameFmt) != nil {
+			if codec.Unmarshal([]byte(frames.Text()), &ev, frameFmt) != nil {
 				continue
 			}
 			select {

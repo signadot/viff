@@ -1,7 +1,10 @@
 package codec
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -64,11 +67,11 @@ func (s *SSE) Send(v any) error {
 
 // SendNode writes one document as a frame.
 //
-// The document is rendered in WIRE form — compact, single line — so one frame is one
-// `data:` line and a reader can stay line-oriented. YAML is the exception: it has no
-// single-line form, so its frames are split across several `data:` lines, which the SSE
-// spec joins back with newlines. Handling that here rather than at each call site is the
-// reason this type exists at all.
+// The document is rendered in WIRE form, which is one line unless the format has no
+// single-line form (YAML) or the document carries comments, each of which ends its line. A
+// frame is then several `data:` lines, which a reader joins back with newlines up to the
+// blank line that ends it: Frames is that reader. Handling the split here rather than at
+// each call site is the reason this type exists at all.
 func (s *SSE) SendNode(n *ir.Node) error {
 	if s.err != nil {
 		return s.err
@@ -102,3 +105,68 @@ func (s *SSE) fail(err error) error {
 	}
 	return err
 }
+
+// ErrFrameTooLong is what Frames stops on when a frame is longer than it was told to read.
+var ErrFrameTooLong = errors.New("frame too long")
+
+// Frames reads an event stream's frames: what SSE wrote, a frame at a time. A frame is its
+// `data:` lines joined with newlines, ended by a blank line; a stream that stops inside a
+// frame did not send it, and it is not answered.
+type Frames struct {
+	sc   *bufio.Scanner
+	max  int
+	text string
+	err  error
+}
+
+// NewFrames reads frames from r, none longer than max bytes.
+func NewFrames(r io.Reader, max int) *Frames {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64*1024), max)
+	return &Frames{sc: sc, max: max}
+}
+
+// Next reads the next frame and says whether there was one. After a false, Err says whether
+// the stream ended or stopped short.
+func (f *Frames) Next() bool {
+	if f.err != nil {
+		return false
+	}
+	var b strings.Builder
+	open := false
+	for f.sc.Scan() {
+		line := f.sc.Text()
+		if line == "" {
+			if open {
+				f.text = b.String()
+				return true
+			}
+			continue
+		}
+		data, ok := strings.CutPrefix(line, "data:")
+		if !ok {
+			continue // a comment, or a field this stream does not use
+		}
+		data = strings.TrimPrefix(data, " ")
+		if open {
+			b.WriteByte('\n')
+		}
+		open = true
+		if b.Len()+len(data) > f.max {
+			f.err = ErrFrameTooLong
+			return false
+		}
+		b.WriteString(data)
+	}
+	f.err = f.sc.Err()
+	if errors.Is(f.err, bufio.ErrTooLong) {
+		f.err = ErrFrameTooLong
+	}
+	return false
+}
+
+// Text is the frame Next read.
+func (f *Frames) Text() string { return f.text }
+
+// Err is what stopped the stream short, or nil when it ended.
+func (f *Frames) Err() error { return f.err }

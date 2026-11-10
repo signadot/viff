@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -587,14 +586,9 @@ func followFrames(ctx context.Context, c *client.Client, q url.Values, opened fu
 		opened()
 	}
 	in := streamFmt(resp)
-	sc := bufio.NewScanner(resp.Body)
-	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-	for sc.Scan() {
-		data, ok := strings.CutPrefix(sc.Text(), "data: ")
-		if !ok {
-			continue
-		}
-		n, err := codec.ParseNode([]byte(data), in)
+	frames := codec.NewFrames(resp.Body, 1<<20)
+	for frames.Next() {
+		n, err := codec.ParseNode([]byte(frames.Text()), in)
 		if err != nil {
 			continue
 		}
@@ -610,7 +604,7 @@ func followFrames(ctx context.Context, c *client.Client, q url.Values, opened fu
 	if ctx.Err() != nil {
 		return true, nil
 	}
-	return true, sc.Err()
+	return true, frames.Err()
 }
 
 // askWatch turns frames into lines. It holds each ask as its frames say it stands, and says what

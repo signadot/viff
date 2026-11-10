@@ -119,3 +119,23 @@ func TestAWatchSaysWhenAFrameIsTooLong(t *testing.T) {
 		t.Fatalf("a frame over the limit ended the watch as a quiet one: err=%v out=%q", err, out)
 	}
 }
+
+// A FRAME OF SEVERAL LINES IS ONE FRAME. A payload with comments goes out as several `data:`
+// lines, and --until has to match it and end the watch there, with --trim applied to it.
+func TestAWatchReadsACommentedFrameAsOne(t *testing.T) {
+	fakeVerse(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {at: demo.pr.1 op: set rev: 1 to: {note:\ndata: # why it is here\ndata: kept stage: seen}}\n\n")
+		fmt.Fprint(w, "data: {at: demo.pr.2 op: set rev: 2 to: {stage: after}}\n\n")
+	})
+	out, err := runCLI(t, "watch", "demo", "pr", "*", "--until", `{to: {stage: seen}}`, "--trim", `{to: {stage: null}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "stage: seen") || strings.Contains(out, "after") {
+		t.Fatalf("--until did not end the watch at the commented frame: %q", out)
+	}
+	if strings.Contains(out, "kept") {
+		t.Fatalf("--trim was not applied to the commented frame: %q", out)
+	}
+}

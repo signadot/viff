@@ -439,7 +439,7 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 	defer resp.Body.Close()
 	// Every non-streaming route checks its status (printBody does it centrally); this one
 	// did not, and a stream is exactly where the omission hides. The reader below keeps
-	// only "data: " lines, so a 404 — or any body that is not an event stream — scans to
+	// only frames, so a 404 — or any body that is not an event stream — scans to
 	// zero output and returns nil: a task that does not exist looks identical to one
 	// with nothing to say, and attach exits 0 having told you nothing.
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -574,14 +574,11 @@ func scanFrames(body io.Reader) (<-chan string, func() error) {
 	var short error
 	go func() {
 		defer close(ch)
-		sc := bufio.NewScanner(body)
-		sc.Buffer(make([]byte, 0, 64*1024), frameMax)
-		for sc.Scan() {
-			if data, ok := strings.CutPrefix(sc.Text(), "data: "); ok {
-				ch <- data
-			}
+		frames := codec.NewFrames(body, frameMax)
+		for frames.Next() {
+			ch <- frames.Text()
 		}
-		if errors.Is(sc.Err(), bufio.ErrTooLong) {
+		if errors.Is(frames.Err(), codec.ErrFrameTooLong) {
 			short = fmt.Errorf("a frame of the transcript is longer than the %d bytes this reads", frameMax)
 		}
 	}()

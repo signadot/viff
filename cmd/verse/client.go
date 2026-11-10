@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -504,8 +503,8 @@ func streamChanges(cc *cli.Context, what string, q url.Values, s stream) error {
 		return fmt.Errorf("%s: %w (is `verse up` running on %s?)", what, err, g.Addr)
 	}
 	defer resp.Body.Close()
-	// A rejected watch must not read as a quiet verse. The loop below keeps only "data: "
-	// lines, so an error body scans to nothing and watch blocks-then-exits 0 exactly as if
+	// A rejected watch must not read as a quiet verse. The loop below keeps only frames, so
+	// an error body scans to nothing and watch blocks-then-exits 0 exactly as if
 	// the store had no changes to report.
 	if resp.StatusCode >= http.StatusBadRequest {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
@@ -523,13 +522,9 @@ func streamChanges(cc *cli.Context, what string, q url.Values, s stream) error {
 	if err != nil {
 		return err
 	}
-	sc := bufio.NewScanner(resp.Body)
-	sc.Buffer(make([]byte, 0, 64*1024), watchFrameMax)
-	for sc.Scan() {
-		data, ok := strings.CutPrefix(sc.Text(), "data: ")
-		if !ok {
-			continue
-		}
+	frames := codec.NewFrames(resp.Body, watchFrameMax)
+	for frames.Next() {
+		data := frames.Text()
 		line, keep, err := f.frame(data, in)
 		if err != nil {
 			return err
@@ -552,12 +547,12 @@ func streamChanges(cc *cli.Context, what string, q url.Values, s stream) error {
 	// A STREAM THAT STOPS SHORT SAYS SO. Only the server closing it is the quiet end above; a
 	// frame the scan cannot hold, or a read that breaks, is an error, or it would print and exit
 	// exactly as a verse with nothing to report does.
-	if errors.Is(sc.Err(), bufio.ErrTooLong) {
+	if errors.Is(frames.Err(), codec.ErrFrameTooLong) {
 		return fmt.Errorf("%s: a frame is longer than the %d bytes this reads. A node's opening "+
 			"state is one frame; '*' after its steps watches its children, a frame each",
 			what, watchFrameMax)
 	}
-	if err := sc.Err(); err != nil {
+	if err := frames.Err(); err != nil {
 		return fmt.Errorf("%s: the stream broke: %w", what, err)
 	}
 	return nil
