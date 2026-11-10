@@ -112,7 +112,7 @@ and `-if` kept none of it.
 | `-ago <n>` | the last `<n>` commits the store keeps ([watching](entities.md#watching)) |
 | `-if <pat> [-if-at <field.path>]` | only changes whose payload matches |
 | `-until <pat>` | stop at the first frame matching `<pat>`, after printing it. The pattern is over the frame. Exit 0 whether or not it matched. |
-| `-nowire` | print each frame as a block opened by `---`, not on one line. The default, one frame per line, is for `grep`; this is for a person reading. The output is a tony document stream either way. |
+| `-nowire` | print each frame as a block opened by `---`, not on one line. The default, one frame per line, is for `grep`; this is for a person reading. A frame whose payload carries comments takes several lines either way ([watching](entities.md#watching)). The output is a tony document stream either way. |
 
 ### question (questions, qs, gate, gates)
 

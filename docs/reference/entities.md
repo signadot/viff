@@ -663,6 +663,18 @@ whole verse. That stream has no opening state, and a cursor replays history in i
 
 There is one line per change, in flow form, so you can grep a watch.
 
+A payload that carries comments is the exception. A comment ends its line, so the change is
+printed over several lines, with each comment on a line of its own:
+
+```tony
+{op: set at: demo.pr."1" rev: 3 to:
+# why it is held
+{stage: held owner: ana}}
+```
+
+It is still one frame: `-until` and `-trim` take it whole. On the route, a frame of several
+lines is several `data:` lines, joined with newlines up to the blank line that ends the frame.
+
 | Field | Meaning |
 |---|---|
 | `at` | the address the change is about |
