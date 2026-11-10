@@ -432,6 +432,9 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 	if since != "" {
 		q = url.Values{"since": {since}}
 	}
+	// What is typed is read from before the stream is asked for, so a line already written is
+	// in hand by the time a frame arrives, and is taken as typed before it (see the loop).
+	lines := readLines(cc.In)
 	resp, err := httpGet("/tasks/"+id+"/events", q)
 	if err != nil {
 		return fmt.Errorf("task attach: %w", err)
@@ -474,38 +477,46 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 	// question answered elsewhere while its prompt is up closes the prompt here, and a task
 	// that ends while somebody is deciding is seen to end.
 	frames, short := scanFrames(resp.Body)
-	lines := readLines(cc.In)
 	// Lines typed while no prompt is up are for the task's NEXT question. A line cannot answer
 	// a question it was typed before — on a yes-or-no gate it would deny an action the person
 	// never saw — so it waits, and a `reply` prompt takes everything waiting as one message,
 	// the way a person's paragraphs are one message.
 	var queued []string
 	var open *prompt
+	typed := func(line string, ok bool) {
+		if !ok {
+			lines = nil // EOF: nothing more will be typed; the stream goes on
+			// …except a conversation, which EOF ends: Ctrl-D at the turn is the
+			// person leaving, and the turn is answered `end` on their behalf.
+			if open != nil && open.turn {
+				answerPrompt(cc, open, task.End, nil, as)
+				open = nil
+			}
+			// A prompt nobody is left to type at is a question standing with no word on how
+			// to answer it: it is closed, saying how, as one met after EOF is.
+			if open != nil {
+				fmt.Fprintln(cc.Out, "\n  ⏸ "+open.hint(as))
+				open = nil
+			}
+			return
+		}
+		if open == nil {
+			queued = append(queued, line)
+			fmt.Fprintln(cc.Out, "  (queued for the task's next question)")
+			return
+		}
+		choice, say, ok := open.take(line)
+		if !ok {
+			open.show(cc.Out) // not an answer: ask again
+			return
+		}
+		answerPrompt(cc, open, choice, say, as)
+		open = nil
+	}
 	for {
 		select {
 		case line, ok := <-lines:
-			if !ok {
-				lines = nil // EOF: nothing more will be typed; the stream goes on
-				// …except a conversation, which EOF ends: Ctrl-D at the turn is the
-				// person leaving, and the turn is answered `end` on their behalf.
-				if open != nil && open.turn {
-					answerPrompt(cc, open, task.End, nil, as)
-					open = nil
-				}
-				continue
-			}
-			if open == nil {
-				queued = append(queued, line)
-				fmt.Fprintln(cc.Out, "  (queued for the task's next question)")
-				continue
-			}
-			choice, say, ok := open.take(line)
-			if !ok {
-				open.show(cc.Out) // not an answer: ask again
-				continue
-			}
-			answerPrompt(cc, open, choice, say, as)
-			open = nil
+			typed(line, ok)
 
 		case data, ok := <-frames:
 			if !ok {
@@ -513,6 +524,18 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 					return fmt.Errorf("task attach %s: %w", id, err)
 				}
 				return nil
+			}
+			// WHAT WAS TYPED BEFORE A FRAME IS TAKEN BEFORE IT. A select with both ready takes
+			// either, and a line waiting to be read was typed before the question this frame
+			// may raise: taken after, it would be read as an answer to a prompt its writer
+			// never saw.
+			for waiting := lines != nil; waiting && lines != nil; {
+				select {
+				case line, ok := <-lines:
+					typed(line, ok)
+				default:
+					waiting = false
+				}
 			}
 			// Wire, always: a transcript is a running commentary, and the loop below reads
 			// each frame as a task.Event to know when the task is over — so one frame per
@@ -588,7 +611,7 @@ func scanFrames(body io.Reader) (<-chan string, func() error) {
 // readLines hands what is typed over a channel, line by line, closed at EOF. A nil reader is
 // a closed channel: nothing will be typed.
 func readLines(in io.Reader) <-chan string {
-	ch := make(chan string)
+	ch := make(chan string, 64) // room for what was written ahead, so reading it waits on nobody
 	if in == nil {
 		close(ch)
 		return ch
