@@ -78,7 +78,7 @@ this includes an operator's edit.
 | `verse.trigger.rule.*`, `verse.trigger.strata.*`, `verse.trigger.package.*` | child-owner, read | everyone |
 | `verse.iods.*`, `verse.runners.*`, `verse.resolvers.*`, `verse.schedule.*` | child-owner, read | everyone |
 | `verse.principal.group.*` | child-owner, read | everyone |
-| `verse.principal.*`, `verse.trigger.suspension.*` | read | everyone |
+| `verse.principal.*`, `verse.trigger.*`, `verse.trigger.suspension.*` | read | everyone |
 | `verse.ask.*`, the docket | child-owner, read | everyone |
 | `verse.ask.*` | read-write | `user:*`, `agent:*` |
 

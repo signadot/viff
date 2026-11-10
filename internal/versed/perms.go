@@ -56,6 +56,10 @@ var seed = []struct {
 	// A suspension is written by the route that holds its table, as the system; what it holds,
 	// and who holds it, is everybody's to read, so a suspended thing is never a mystery.
 	{entity.VerseRef(charter.System, trigger.SuspensionKind), entity.Read, []string{entity.Everyone}},
+	// The charter's records as one tree: every kind beneath is everybody's to read by its own
+	// row, and this one holds out the node above them, so `verse.trigger..` is one read and one
+	// watch. It reaches nothing beneath that carries a record, which each kind does.
+	{entity.VerseRef(charter.System), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.OwnerLevel, []string{entity.Everyone}},
 	{entity.VerseRef(resolver.System), entity.Read, []string{entity.Everyone}},
 	{entity.VerseRef(runnersSystem), entity.OwnerLevel, []string{entity.Everyone}},
