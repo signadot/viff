@@ -183,3 +183,38 @@ func TestAnActionCancelledInFlightIsRecordedAsUnknown(t *testing.T) {
 		t.Errorf("the record says %q, which does not say the outcome is unknown", said)
 	}
 }
+
+// errOnCancel blocks in Next until the context ends, then returns the context's error, as a
+// driver waiting on a model does.
+type errOnCancel struct{ blocked chan struct{} }
+
+func (d *errOnCancel) Next(ctx context.Context, _ StepResult) (ToolUse, bool, error) {
+	close(d.blocked)
+	<-ctx.Done()
+	return ToolUse{}, false, context.Cause(ctx)
+}
+
+// A cancel that reaches a task while its driver is thinking ends the run cancelled. The
+// driver's turn fails because the cancel ended it, and that failure is not the task's.
+func TestACancelWhileTheDriverThinksEndsTheRunCancelled(t *testing.T) {
+	d := &errOnCancel{blocked: make(chan struct{})}
+	p := NewTask("t", toolSup(allowAll(), AutoResolver{}), d, &recExec{})
+
+	type ran struct {
+		out Outcome
+		err error
+	}
+	done := make(chan ran, 1)
+	go func() {
+		out, err := p.Run(context.Background())
+		done <- ran{out, err}
+	}()
+
+	<-d.blocked
+	p.Cancel("operator changed their mind", "")
+	r := <-done
+
+	if r.out.Reason != "cancelled" {
+		t.Fatalf("reason = %q (err %v), want cancelled", r.out.Reason, r.err)
+	}
+}

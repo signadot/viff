@@ -447,6 +447,9 @@ func (s *state) fold(in input) []effect {
 		}
 		s.answer = v.answer
 		if v.err != nil {
+			if s.cancelling { // the cancel is what broke the driver's turn, so the run ends as it
+				return s.exit(s.exitStatus)
+			}
 			s.setCause(v.err)
 			return s.exit(Failed)
 		}
