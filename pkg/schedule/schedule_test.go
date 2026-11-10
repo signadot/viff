@@ -32,6 +32,10 @@ func TestNextIsTheFirstGridPointStrictlyAfter(t *testing.T) {
 	if got := Next(onGrid, time.Hour, at); !got.Equal(onGrid) {
 		t.Fatalf("next before the phase = %s, want the phase %s", got, onGrid)
 	}
+	// At the phase: it is a grid point like any other, so the next one.
+	if got := Next(onGrid, time.Hour, onGrid); !got.Equal(onGrid.Add(time.Hour)) {
+		t.Fatalf("next at the phase = %s, want %s", got, onGrid.Add(time.Hour))
+	}
 }
 
 // A period of whole days steps by calendar days, so a daily schedule keeps its wall-clock time
@@ -66,6 +70,10 @@ func TestDueIsTheLastGridPointAndMissedCountsTheSkipped(t *testing.T) {
 	armed := time.Date(2026, 9, 18, 9, 0, 0, 0, time.UTC)
 	if due := Due(from, time.Hour, armed.Add(time.Second)); !due.Equal(armed) {
 		t.Fatalf("due just after 09:00 = %s, want 09:00", due)
+	}
+	// At the phase itself: the phase, which is the grid's first point.
+	if due := Due(armed, time.Hour, armed); !due.Equal(armed) {
+		t.Fatalf("due at the phase = %s, want the phase %s", due, armed)
 	}
 	late := armed.Add(90 * time.Minute)
 	due := Due(from, time.Hour, late)

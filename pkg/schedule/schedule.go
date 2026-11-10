@@ -156,7 +156,7 @@ func Step(t time.Time, every time.Duration, n int) time.Time {
 
 // Next is the first grid point strictly after `after`: from + n*every.
 func Next(from time.Time, every time.Duration, after time.Time) time.Time {
-	if !after.After(from) {
+	if after.Before(from) {
 		return from
 	}
 	// A first guess by division, then walk: a day is 23 or 25 hours across a change.
