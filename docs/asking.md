@@ -328,9 +328,11 @@ The screen reads the `tui:` section of verse's config (`~/.config/verse.tony`). 
 set how often it reads, where it opens, which sections it shows and in what order, names for
 places in the data (`:go <name>`), and which keys do what.
 [The example](reference/examples/tui/verse.tony) sets each of them. A key is bound to an
-action by name, such as `answer.proceed: [y]`, and `[]` leaves an action unbound. A key bound
-to two actions, an unknown section or a bookmark that is not an address stops the screen from
-starting and says what is wrong. `verse tui --config` prints the section as in force, with
+action by name, such as `answer.proceed: [y]`, and `[]` leaves an action unbound. Keys are
+spelled as the terminal reports them: `ctrl+d`, `pgdown`, `shift+tab`, `space`, `G`. A bookmark's
+name is letters, digits, `-` and `_`. A mistake stops the screen from starting and says what is
+wrong: a field that is not one, a key bound to two actions or spelled as no terminal sends it, an
+unknown section, a bookmark that is not an address, or a config file that did not load. `verse tui --config` prints the section as in force, with
 every key, ready to paste; `verse tui --commands` lists every command and action.
 
 ![verse tui with the example's sections, bookmarks and keys: y proceeds, n denies](images/tui/config-keys.png)

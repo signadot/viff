@@ -66,9 +66,12 @@ func resolveTUI(c config.TUIConfig, everyFlag, atFlag string) (tuiSettings, erro
 	}
 	s.bookmarks = map[string]string{}
 	for name, at := range c.Bookmarks {
+		if !bookmarkName(name) {
+			return s, fmt.Errorf("tui.bookmarks: %q is not a bookmark's name: a name is letters, digits, - and _", name)
+		}
 		at = strings.Trim(at, ".")
-		if _, ok := segsOf(at); !ok || at == "" || strings.ContainsAny(name, " \t") {
-			return s, fmt.Errorf("tui.bookmarks.%s: a bookmark is a name without spaces for an address, and %q is not one", name, at)
+		if _, ok := segsOf(at); !ok {
+			return s, fmt.Errorf("tui.bookmarks.%s is an address, and %q is not one", name, at)
 		}
 		s.bookmarks[name] = at
 	}
@@ -103,6 +106,20 @@ func tuiSections(names []string) ([]tuiTab, error) {
 		out = append(out, t)
 	}
 	return out, nil
+}
+
+// bookmarkName is whether name may name a bookmark: one word `:go` takes, written in the config
+// as it is.
+func bookmarkName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !(r == '-' || r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') {
+			return false
+		}
+	}
+	return true
 }
 
 func tabNamed(name string) (tuiTab, bool) {

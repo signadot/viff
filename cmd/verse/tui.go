@@ -74,9 +74,14 @@ func (cfg *tuiConfig) run(cc *cli.Context, args []string) error {
 	if at == "" {
 		at = os.Getenv("VERSE_TUI_AT")
 	}
+	// A config file that did not load is said here, before the screen takes the terminal: the
+	// warning main printed would be drawn over, and the screen would run on the defaults.
+	if configErr != nil {
+		return fmt.Errorf("the config did not load, so the tui would run without it: %w", configErr)
+	}
 	set, err := resolveTUI(appCfg.TUI, cfg.Every, at)
 	if err != nil {
-		return fmt.Errorf("%w: %v", cli.ErrUsage, err)
+		return err
 	}
 	if cfg.Config {
 		_, err := fmt.Fprint(cc.Out, set.configText())

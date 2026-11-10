@@ -680,6 +680,9 @@ func Load() (*Config, error) {
 	if envErr != nil {
 		return c, fmt.Errorf("config: %w", envErr)
 	}
+	if err := tuiFields(merged); err != nil {
+		return c, fmt.Errorf("config: %w", err)
+	}
 	if err := c.Format.validate(); err != nil {
 		return c, fmt.Errorf("config: %w", err)
 	}

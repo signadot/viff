@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/verse/internal/config"
@@ -146,6 +147,10 @@ func TestTheTUIConfigIsChecked(t *testing.T) {
 		`tui.start is a section shown`:                      {Sections: []string{"tasks"}, Start: "data"},
 		"at least 200ms":                                    {Every: "10ms"},
 		"is not one":                                        {Bookmarks: map[string]string{"x": "a..b"}},
+		`"#c" is not a bookmark's name`:                     {Bookmarks: map[string]string{"#c": "x.z"}},
+		`"Ctrl+C" is not a key the terminal reports (keys are lower case: "ctrl+c")`: {Keys: map[string][]string{"quit": {"Ctrl+C"}}},
+		`"pagedown" is not a key`:   {Keys: map[string][]string{"scroll.down": {"pagedown"}}},
+		`move.down lists "j" twice`: {Keys: map[string][]string{"move.down": {"j", "j"}}},
 	} {
 		if _, err := resolveTUI(c, "", ""); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%+v: got %v, want %q", c, err, want)
@@ -211,4 +216,64 @@ func loadTUIConfig(t *testing.T, text string) tuiSettings {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// THE KEYS ARE THE TERMINAL'S NAMES: what bubbletea reports, a character, either after alt+.
+func TestTheTUIKnowsTheKeysTheTerminalReports(t *testing.T) {
+	for _, k := range []string{"j", "G", "/", ":", "enter", "esc", "shift+tab", "pgdown", "ctrl+d", "f5", "alt+x", "alt+space", "space", "é"} {
+		if !isKey(keyName(k)) {
+			t.Errorf("%q is a key the terminal reports", k)
+		}
+	}
+}
+
+// THE PALETTE AND THE HINTS FOLLOW THE KEYS: over the palette, quit and command are the keys
+// they are bound to, and the screen's hints name those keys.
+func TestTheTUIPaletteFollowsTheKeys(t *testing.T) {
+	m := configured(t, twoQuestions(), config.TUIConfig{Keys: map[string][]string{
+		"quit": {"Q"}, "help": {"q", "?"}, "command": {";"}, "view.next": {"tab"}}})
+	m = press(t, m, "q")
+	if m.mode != modeHelp {
+		t.Fatal("q, bound to help, did not open the palette")
+	}
+	if v := m.View(); !strings.Contains(v, "; command") || !strings.Contains(v, "q help") {
+		t.Errorf("the command line's hint does not name ; and q:\n%s", v)
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if m = next.(tuiModel); cmd != nil || m.mode != modeBrowse {
+		t.Fatal("q over the palette did not close it")
+	}
+	m = press(t, m, "?", ";")
+	if m.mode != modeCommand {
+		t.Fatalf("; over the palette did not open the command line (mode %d)", m.mode)
+	}
+}
+
+// DATA HIDDEN IS NOT GONE TO: :go, :data and :up say it is not shown.
+func TestTheTUIDoesNotOpenHiddenData(t *testing.T) {
+	src := twoQuestions()
+	src.paths = []string{"x"}
+	m := configured(t, src, config.TUIConfig{Sections: []string{"questions", "tasks"}, Bookmarks: map[string]string{"p": "x"}})
+	for _, c := range []string{"go p", "data x", "up"} {
+		m = press(t, m, append([]string{":"}, append(strings.Split(c, ""), "enter")...)...)
+		if m.tab == tabData || !strings.Contains(m.status, "data is not shown") {
+			t.Fatalf(":%s with data hidden: tab %v status %q", c, m.tab, m.status)
+		}
+	}
+}
+
+// A FIELD THE TUI DOES NOT HAVE IS SAID: a misspelt one would be read as absent.
+func TestTheTUIConfigSaysAnUnknownField(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "verse.tony")
+	if err := os.WriteFile(p, []byte("addr: example:1\ntui:\n  section: [data]\n  tasks:\n    recnet: 3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.EnvConfigPath, p)
+	c, err := config.Load()
+	if err == nil || !strings.Contains(err.Error(), "tui.section, tui.tasks.recnet: no such field") {
+		t.Fatalf("got %v", err)
+	}
+	if c.Addr != "example:1" {
+		t.Fatalf("the rest of the config was dropped: addr %q", c.Addr)
+	}
 }

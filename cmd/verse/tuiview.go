@@ -163,7 +163,14 @@ func (m tuiModel) commandLine() string {
 	if m.mode == modeCommand {
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(left + m.cmd.View())
 	}
-	left += tuiFaint.Render("▊  : command · tab completes · ? help")
+	hint := []string{}
+	if k := m.keys.first("command"); k != "" {
+		hint = append(hint, k+" command · tab completes")
+	}
+	if k := m.keys.first("help"); k != "" {
+		hint = append(hint, k+" help")
+	}
+	left += tuiFaint.Render("▊  " + strings.Join(hint, " · "))
 	who := tuiFaint.Render(fmt.Sprintf("%s · read %s", m.me, m.read.Format("15:04:05")))
 	if gap := m.width - lipgloss.Width(left) - lipgloss.Width(who); gap >= 2 {
 		left += strings.Repeat(" ", gap) + who
@@ -410,7 +417,11 @@ func (m tuiModel) tabsLine() string {
 				parts = append(parts, tuiFaint.Render("  "+name+"  "))
 			}
 		}
-		return strings.Join(parts, "  ") + tuiFaint.Render("   tab / v switches")
+		switches := ""
+		if k := m.keys.all("view.next"); k != "" {
+			switches = "   " + strings.ReplaceAll(k, " ", " / ") + " switches"
+		}
+		return strings.Join(parts, "  ") + tuiFaint.Render(switches)
 	}
 	if m.onHeader {
 		return tuiBrand.Render("[ TABLE ]") + tuiFaint.Render("  "+strings.ToLower(m.tab.String())+m.filterNote())

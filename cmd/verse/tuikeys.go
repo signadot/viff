@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // THE KEYS ARE A MAP FROM ACTIONS, not a switch on keys: each thing the screen does in browsing
@@ -87,11 +90,23 @@ func newKeymap(over map[string][]string) (keymap, error) {
 	}
 	for _, a := range tuiActions {
 		for _, k := range km.keys[a.name] {
+			raw := k
 			k = keyName(k)
 			if k == "" {
 				return keymap{}, fmt.Errorf("tui.keys: %s names an empty key", a.name)
 			}
-			if other, ok := km.byKey[k]; ok {
+			if !isKey(k) {
+				hint := ""
+				if isKey(keyName(strings.ToLower(raw))) {
+					hint = fmt.Sprintf(" (keys are lower case: %q)", strings.ToLower(raw))
+				}
+				return keymap{}, fmt.Errorf("tui.keys: %s: %q is not a key the terminal reports%s; a key is "+
+					"one character (a, G, /), a name (enter, esc, tab, shift+tab, backspace, up, pgdown, home, f1…, space), "+
+					"or one of those after ctrl+ or alt+ as the terminal sends it (ctrl+d, alt+x)", a.name, raw, hint)
+			}
+			if other, ok := km.byKey[k]; ok && other == a.name {
+				return keymap{}, fmt.Errorf("tui.keys: %s lists %q twice", a.name, keyLabel(k))
+			} else if ok {
 				return keymap{}, fmt.Errorf("tui.keys: %q is bound to both %s and %s; a key does one thing", keyLabel(k), other, a.name)
 			}
 			km.byKey[k] = a.name
@@ -129,12 +144,34 @@ func (km keymap) all(action string) string {
 	return strings.Join(out, " ")
 }
 
-// keyName is a key as the terminal library reports it: "space" is " ".
+// keyName is a key as the terminal library reports it: "space" is " ", and "alt+space" "alt+ ".
 func keyName(k string) string {
-	if strings.TrimSpace(k) == "space" {
+	k = strings.TrimSpace(k)
+	switch k {
+	case "space":
 		return " "
+	case "alt+space":
+		return "alt+ "
 	}
-	return strings.TrimSpace(k)
+	return k
+}
+
+// termKeys is every key the terminal library names (enter, ctrl+d, pgdown, f1…).
+var termKeys = func() map[string]bool {
+	out := map[string]bool{}
+	for t := tea.KeyType(-256); t <= 256; t++ {
+		if s := t.String(); s != "" && s != "runes" {
+			out[s] = true
+		}
+	}
+	return out
+}()
+
+// isKey is whether k is a key the terminal library reports: a name it has, or one character,
+// either one after alt+.
+func isKey(k string) bool {
+	k = strings.TrimPrefix(k, "alt+")
+	return termKeys[k] || utf8.RuneCountInString(k) == 1
 }
 
 // keyLabel is a key as the screen shows it.

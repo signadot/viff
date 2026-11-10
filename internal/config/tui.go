@@ -1,5 +1,13 @@
 package config
 
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/signadot/tony-format/go-tony/ir"
+)
+
 // TUIConfig is `verse tui`'s section of the config: how often it reads, where it opens, which
 // sections it shows, the places it keeps names for, and which keys do what. Every field is
 // optional, and a flag given to `verse tui` overrides the field it names. The tui checks it
@@ -37,4 +45,46 @@ type TUITasksConfig struct {
 	// Recent is how many finished tasks are listed, the newest first; 0 is 15. --all lists
 	// every one.
 	Recent int `tony:"field=recent,omitzero"`
+}
+
+// tuiFields says which fields of the file's tui section are none of TUIConfig's: a misspelt
+// field would otherwise be read as absent, and the setting it meant ignored without a word.
+func tuiFields(merged *ir.Node) error {
+	known := map[string]map[string]bool{
+		"tui":       {"every": true, "start": true, "at": true, "sections": true, "tasks": true, "bookmarks": true, "keys": true},
+		"tui.tasks": {"recent": true},
+	}
+	var unknown []string
+	for at, fields := range known {
+		n := merged
+		for _, f := range strings.Split(at, ".") {
+			n = field(n, f)
+		}
+		if n == nil || n.Type != ir.ObjectType {
+			continue
+		}
+		for _, f := range n.Fields {
+			if !fields[f.String] {
+				unknown = append(unknown, at+"."+f.String)
+			}
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	sort.Strings(unknown)
+	return fmt.Errorf("%s: no such field (verse tui --config prints every one)", strings.Join(unknown, ", "))
+}
+
+// field is the value of an object's field name, or nil.
+func field(n *ir.Node, name string) *ir.Node {
+	if n == nil || n.Type != ir.ObjectType {
+		return nil
+	}
+	for i, f := range n.Fields {
+		if f.String == name {
+			return n.Values[i]
+		}
+	}
+	return nil
 }

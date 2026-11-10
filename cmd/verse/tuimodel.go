@@ -145,7 +145,7 @@ func newTUI(src tuiSource, me string, every time.Duration) tuiModel {
 	f.Placeholder = "filter (enter to keep, esc to clear)"
 	c := textinput.New()
 	c.Prompt = ""
-	c.Placeholder = "a command (tab completes, ? lists them)"
+	c.Placeholder = "a command (tab completes, :help lists them)"
 	// The cursors do not blink: a blink is a timer per keystroke, and the screen redraws for it.
 	for _, t := range []*textinput.Model{&in, &f, &c} {
 		t.Cursor.SetMode(cursor.CursorStatic)
@@ -797,16 +797,18 @@ func (m tuiModel) run(line string) (tea.Model, tea.Cmd) {
 	case "quit", "q":
 		return m, tea.Quit
 	default:
-		m.status = "✗ no command " + verb + " (? lists them)"
+		m.status = "✗ no command " + verb + " (:help lists them)"
 	}
 	return m, nil
 }
 
+// helpKey is a key over the palette: quit and command do what they do anywhere, by the keys
+// they are bound to; any other key closes it.
 func (m tuiModel) helpKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch k.String() {
-	case "q", "ctrl+c":
+	switch m.keys.action(k.String()) {
+	case "quit":
 		return m, tea.Quit
-	case ":":
+	case "command":
 		m.mode = modeCommand
 		m.cmd.SetValue("")
 		return m, m.cmd.Focus()
@@ -818,6 +820,10 @@ func (m tuiModel) helpKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 // dataGo lists the data at at, the cursor on the row whose address is sel once it arrives (or
 // the first row).
 func (m tuiModel) dataGo(at, sel string) (tea.Model, tea.Cmd) {
+	if !slicesContains(m.order, tabData) {
+		m.status = "✗ data is not shown (tui.sections in the config)"
+		return m, nil
+	}
 	m.tab, m.folded[tabData], m.focus, m.scroll = tabData, false, paneList, 0
 	m.filter = ""
 	m.finput.SetValue("")
