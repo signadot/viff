@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"os"
@@ -349,12 +350,28 @@ func writeDescribed(w entity.Store, name string, desc runner.Description) error 
 // way a task's status is, whoever's spawn or check asked. A spawner need not own the
 // registration, and on a deployment that holds registrations to its admin none but the admin
 // does.
+//
+// WHAT THE RUNNER SAID BEFORE IS LEFT STANDING where it says the same now, which is every
+// launch but the one after it changed. Keeping a description is two writes with none standing
+// between them (writeDescribed), and a launch asks for one each: two launches together, two
+// rules firing on one commit, would have the second read the registration inside the first's
+// two writes and be refused as if no runner offered it.
 func (s *Server) recordOffers(e api.Runner, desc runner.Description) {
+	if e.Current() && sameDescription(e.Description(), desc) {
+		return
+	}
 	if err := writeDescribed(s.Store, e.Name, desc); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: runner %s: keeping what it offers: %v\n", runnerEntityRef(e.Name), err)
 		return
 	}
 	s.offersChanged()
+}
+
+// sameDescription is whether two descriptions say the same, as they are written.
+func sameDescription(a, b runner.Description) bool {
+	x, errA := codec.Marshal(a, codec.Tony)
+	y, errB := codec.Marshal(b, codec.Tony)
+	return errA == nil && errB == nil && bytes.Equal(x, y)
 }
 
 // recordUnverified is recordOffers for a runner that did not prove it is its subject: what it
