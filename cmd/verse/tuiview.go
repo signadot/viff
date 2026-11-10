@@ -459,16 +459,28 @@ func (m tuiModel) contentLines(w, h int) []string {
 	}
 	where := m.summary()
 	if len(lines) > rows {
-		where = fmt.Sprintf("scroll ↑/↓ J/K · %d-%d of %d", scroll+1, end, len(lines))
+		where = fmt.Sprintf("scroll %s · %d-%d of %d", keyPair(m.keys.first("scroll.up"), m.keys.first("scroll.down")), scroll+1, end, len(lines))
 	}
 	return append(out, tuiFaint.Render(where))
 }
 
 // summary is the verse in one line, under the content when it fits.
 func (m tuiModel) summary() string {
-	s := fmt.Sprintf("%d need you · %d tasks running · %d charters · %d runners",
-		len(m.snap.questions), m.running(), len(m.snap.charters), len(m.snap.runners))
-	return s
+	// A hidden section is not read, so it is not counted: a 0 would read as a fact.
+	var parts []string
+	for _, t := range m.order {
+		switch t {
+		case tabQuestions:
+			parts = append(parts, fmt.Sprintf("%d need you", len(m.snap.questions)))
+		case tabTasks:
+			parts = append(parts, fmt.Sprintf("%d tasks running", m.running()))
+		case tabCharters:
+			parts = append(parts, fmt.Sprintf("%d charters", len(m.snap.charters)))
+		case tabRunners:
+			parts = append(parts, fmt.Sprintf("%d runners", len(m.snap.runners)))
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // contentText is the content's text, and whether it is prose to wrap (a record, a question)
@@ -793,7 +805,11 @@ func (m tuiModel) table(w int) string {
 			if e := m.snap.errs[tabData]; e != "" {
 				return tuiBad.Render(lipgloss.NewStyle().Width(w).Render("✗ " + e))
 			}
-			return tuiFaint.Render("nothing under " + addrText(m.dataAt) + " · u goes up")
+			empty := "nothing under " + addrText(m.dataAt)
+			if k := m.keys.first("data.up"); k != "" {
+				empty += " · " + k + " goes up"
+			}
+			return tuiFaint.Render(empty)
 		}
 		nameW := min(40, max(w/3, 12))
 		head(fmt.Sprintf("  %-*s %s", nameW, "UNDER "+strings.ToUpper(addrText(m.dataAt)), "WAITING ON YOU"))
@@ -844,7 +860,7 @@ func (m tuiModel) table(w int) string {
 // helpText is the command palette: the commands, then the keys.
 func (m tuiModel) helpText() string {
 	var b strings.Builder
-	b.WriteString(sectionRule("COMMANDS  (: then the command, tab completes)", 80) + "\n")
+	b.WriteString(sectionRule("COMMANDS  ("+orNone(m.keys.first("command"))+" then the command, tab completes)", 80) + "\n")
 	for _, c := range tuiCommands {
 		b.WriteString(fmt.Sprintf("%s %s\n", tuiKey.Render(fmt.Sprintf("%-38s", c[0])), tuiFaint.Render(c[1])))
 	}
@@ -889,7 +905,7 @@ func (m tuiModel) footer() string {
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(m.finput.View()) + "\n" + tuiFaint.Render("enter keeps the filter · esc clears it")
 	}
 	km := m.keys
-	keys := [][2]string{{km.first("move.up") + km.first("move.down"), "move"}, {km.first("back") + km.first("pane.next"), "pane"},
+	keys := [][2]string{{keyPair(km.first("move.up"), km.first("move.down")), "move"}, {keyPair(km.first("back"), km.first("pane.next")), "pane"},
 		{km.first("open"), "open"}, {km.first("command"), "command"}, {km.first("filter"), "filter"}, {km.first("help"), "help"},
 		{km.first("quit"), "quit"}}
 	switch {

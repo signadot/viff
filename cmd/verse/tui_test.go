@@ -388,7 +388,7 @@ func TestTheTUISaysWhereItIs(t *testing.T) {
 	src.snap.questions[0].subjectRecord = rec
 	m := loaded(t, src)
 	m.width, m.height = 100, 16
-	if v := m.View(); !strings.Contains(v, "scroll ↑/↓") || !strings.Contains(v, "1-9 of") {
+	if v := m.View(); !strings.Contains(v, "scroll "+keyPair(m.keys.first("scroll.up"), m.keys.first("scroll.down"))) || !strings.Contains(v, "1-9 of") {
 		t.Fatalf("no scroll position:\n%s", v)
 	}
 	m = press(t, m, "J")

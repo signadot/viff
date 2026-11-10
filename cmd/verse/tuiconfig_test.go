@@ -277,3 +277,20 @@ func TestTheTUIConfigSaysAnUnknownField(t *testing.T) {
 		t.Fatalf("the rest of the config was dropped: addr %q", c.Addr)
 	}
 }
+
+func TestTheTUIHintsNameTheBoundKeys(t *testing.T) {
+	if got := keyPair("↑", "↓"); got != "↑↓" {
+		t.Fatal(got)
+	}
+	if got := keyPair("ctrl+p", "ctrl+n"); got != "ctrl+p/ctrl+n" {
+		t.Fatal(got)
+	}
+	if got := keyPair("", "x"); got != "x" {
+		t.Fatal(got)
+	}
+	m := newTUI(twoQuestions(), "user:you", 0)
+	m.order = []tuiTab{tabQuestions, tabTasks, tabData}
+	if s := m.summary(); strings.Contains(s, "charters") || strings.Contains(s, "runners") {
+		t.Fatalf("hidden sections counted: %s", s)
+	}
+}

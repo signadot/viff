@@ -144,6 +144,26 @@ func (km keymap) all(action string) string {
 	return strings.Join(out, " ")
 }
 
+// keyPair is two keys shown as one hint: run together when each is one glyph (↑↓), else apart
+// (ctrl+p/ctrl+n), or the one bound when the other is not.
+func keyPair(a, b string) string {
+	switch {
+	case a == "" || b == "":
+		return a + b
+	case utf8.RuneCountInString(a) == 1 && utf8.RuneCountInString(b) == 1:
+		return a + b
+	}
+	return a + "/" + b
+}
+
+// orNone is a key as a hint names it, or "(unbound)" for an action no key starts.
+func orNone(k string) string {
+	if k == "" {
+		return "(unbound)"
+	}
+	return k
+}
+
 // keyName is a key as the terminal library reports it: "space" is " ", and "alt+space" "alt+ ".
 func keyName(k string) string {
 	k = strings.TrimSpace(k)

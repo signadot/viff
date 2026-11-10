@@ -84,6 +84,8 @@ func resolveTUI(c config.TUIConfig, everyFlag, atFlag string) (tuiSettings, erro
 // apply puts s on a model just made.
 func (s tuiSettings) apply(m *tuiModel) {
 	m.keys, m.order, m.bookmarks, m.dataAt = s.keys, s.sections, s.bookmarks, s.at
+	// Until the first read lands, the section a key acts on is the first one shown.
+	m.tab = m.order[0]
 	if t, ok := tabNamed(s.start); ok {
 		m.start, m.hasStart = t, true
 	}
@@ -196,7 +198,7 @@ func (s tuiSettings) configText() string {
 // commandsText is every command and every action with its keys: what --commands prints.
 func commandsText(km keymap) string {
 	var b strings.Builder
-	b.WriteString("COMMANDS (: then the command)\n")
+	b.WriteString("COMMANDS (" + orNone(km.first("command")) + " then the command)\n")
 	for _, c := range tuiCommands {
 		fmt.Fprintf(&b, "  %-38s %s\n", c[0], c[1])
 	}
