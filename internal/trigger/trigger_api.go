@@ -92,6 +92,11 @@ func (e *Engine) InstallTriggerAs(ctx context.Context, as string, t Trigger) err
 // pass does not clear. A pass is the vet and the asks for the rule's watches, answered at once
 // — the store opens them behind the arm — so an install's answer says what the rule waits for,
 // and not that it waits for the pass.
+//
+// A rule with no owner record is one no pass arms: the install's write is what records whose
+// it is, and it has returned, so a record that is not here now was not written — the installer
+// holds less than `owner` there, or the store did not record it. There is nothing to wait for,
+// and the rule stays held for its record, which is what the caller is answered with.
 func (e *Engine) passed(ctx context.Context, name string) {
 	e.trigMu.Lock()
 	var settled chan struct{}
@@ -100,6 +105,9 @@ func (e *Engine) passed(ctx context.Context, name string) {
 	}
 	e.trigMu.Unlock()
 	if settled == nil {
+		return
+	}
+	if _, hold := e.asOwner(name); hold != nil && hold.kind == causeOwner {
 		return
 	}
 	select {
