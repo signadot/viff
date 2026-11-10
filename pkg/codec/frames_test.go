@@ -2,6 +2,7 @@ package codec
 
 import (
 	"errors"
+	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -36,7 +37,11 @@ func TestAFrameOfSeveralLinesIsOneFrame(t *testing.T) {
 
 	frames := NewFrames(strings.NewReader(wire), 1<<20)
 	var got []string
+	first := ""
 	for frames.Next() {
+		if first == "" {
+			first = frames.Text()
+		}
 		n, err := ParseNode([]byte(frames.Text()), sse.Format())
 		if err != nil {
 			t.Fatalf("frame %d does not parse: %v\n%s", len(got), err, frames.Text())
@@ -50,23 +55,13 @@ func TestAFrameOfSeveralLinesIsOneFrame(t *testing.T) {
 	if len(got) != 2 || got[0] != "x" || got[1] != "y" {
 		t.Fatalf("read frames at %q; want x then y", got)
 	}
-	if !strings.Contains(NewFramesText(t, wire), "why the rule is here") {
-		t.Fatal("the comment did not reach the reader")
+	if !strings.Contains(first, "why the rule is here") {
+		t.Fatalf("the comment did not reach the reader: %q", first)
 	}
-}
-
-// NewFramesText is the first frame of wire.
-func NewFramesText(t *testing.T, wire string) string {
-	t.Helper()
-	frames := NewFrames(strings.NewReader(wire), 1<<20)
-	if !frames.Next() {
-		t.Fatalf("no frame: %v", frames.Err())
-	}
-	return frames.Text()
 }
 
 // A frame is bounded as a whole, not a line at a time, and a stream that stops inside a frame
-// did not send it.
+// did not send it and did not end.
 func TestAFrameIsBoundedAndWhole(t *testing.T) {
 	long := strings.Repeat("data: "+strings.Repeat("x", 40<<10)+"\n", 4) + "\n"
 	frames := NewFrames(strings.NewReader(long), 100<<10)
@@ -78,7 +73,7 @@ func TestAFrameIsBoundedAndWhole(t *testing.T) {
 	for frames.Next() {
 		got = append(got, frames.Text())
 	}
-	if len(got) != 1 || got[0] != "whole" || frames.Err() != nil {
-		t.Fatalf("read %q, err=%v; want only the frame that ended", got, frames.Err())
+	if len(got) != 1 || got[0] != "whole" || !errors.Is(frames.Err(), io.ErrUnexpectedEOF) {
+		t.Fatalf("read %q, err=%v; want only the frame that ended, and the cut said", got, frames.Err())
 	}
 }

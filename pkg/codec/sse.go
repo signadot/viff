@@ -110,8 +110,9 @@ func (s *SSE) fail(err error) error {
 var ErrFrameTooLong = errors.New("frame too long")
 
 // Frames reads an event stream's frames: what SSE wrote, a frame at a time. A frame is its
-// `data:` lines joined with newlines, ended by a blank line; a stream that stops inside a
-// frame did not send it, and it is not answered.
+// `data:` lines joined with newlines, ended by a blank line. A stream that stops inside a
+// frame did not send it: the frame is not answered, and Err is io.ErrUnexpectedEOF, so a
+// stream cut short does not read as one that ended.
 type Frames struct {
 	sc   *bufio.Scanner
 	max  int
@@ -159,8 +160,11 @@ func (f *Frames) Next() bool {
 		b.WriteString(data)
 	}
 	f.err = f.sc.Err()
-	if errors.Is(f.err, bufio.ErrTooLong) {
+	switch {
+	case errors.Is(f.err, bufio.ErrTooLong):
 		f.err = ErrFrameTooLong
+	case f.err == nil && open:
+		f.err = io.ErrUnexpectedEOF
 	}
 	return false
 }
