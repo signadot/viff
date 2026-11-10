@@ -8,6 +8,7 @@ duplicates: []
 id: srv3xwgxh12ks6jsydn0
 labels:
 - bug
-related_issues: []
+related_issues:
+- 4h5pm5kvh12krkbjsdn0
 status: open
-updated: "2026-11-10T18:51:22.78843+01:00"
+updated: "2026-11-10T18:51:35.752074+01:00"
