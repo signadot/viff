@@ -654,6 +654,13 @@ func Launcher(principal string) string {
 // they chose, their ballot — and the frame is the worker's acknowledgement that it arrived:
 // nothing is touched. The frame's verdict is not read, so it cannot differ.
 //
+// THE CLAIM IS HOW THAT IS KNOWN, not the answered record. The route claims the question
+// (`followed`), delivers, and records the answer, in that order, so the frame a delivery
+// causes can arrive before the answer is recorded: read as "nobody was asked", it would be
+// written over the route's record as the worker's decision. The claim stands before the
+// delivery, so it stands before the frame. One whose delivery failed is not an answer that
+// arrived, and what the worker then settles is the worker's.
+//
 // WHERE NOBODY WAS ASKED, the worker settled it, and the verdict is the frame's because there
 // is no other: by the runtime's own name where the frame says the runtime did it (auto, the
 // deadline, a cancel — names that are nobody's), and otherwise by the worker of record, never
@@ -662,9 +669,13 @@ func Launcher(principal string) string {
 // otherwise leave the runner a ballot beside the answerer's.
 func settleRelayed(docket entity.Store, questionID string, res task.Resolution, claimant string) {
 	ref := QuestionRef(questionID)
-	if e, ok, err := docket.Get(ref); err == nil && ok &&
-		entity.Str(e.Payload, "status") == QuestionAnswered && entity.Str(e.Payload, "by") != "" {
-		return
+	if e, ok, err := docket.Get(ref); err == nil && ok {
+		if entity.Str(e.Payload, "status") == QuestionAnswered && entity.Str(e.Payload, "by") != "" {
+			return
+		}
+		if claim := entity.Get(e.Payload, "followed"); claim != nil && entity.Get(claim, "undelivered") == nil {
+			return
+		}
 	}
 	if res.Cast() {
 		res.By = claimant
