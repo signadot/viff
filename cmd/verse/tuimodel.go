@@ -76,9 +76,12 @@ type tuiModel struct {
 	polls   *atomic.Int32
 	applied int64
 	// watch is what the watches on tasks and questions have said (tuiwatch.go): nil reads every
-	// section every round. lastRead is when each section last read without error.
+	// section every round. lastRead is when each section last read without error (the charters:
+	// last read at all, so a refusal is not asked again every round), and seen the watch's count
+	// of changes as of the read drawn.
 	watch    *tuiWatch
 	lastRead [tabCount]time.Time
+	seen     [tabCount]int64
 	width    int
 	height   int
 	mode     tuiMode
@@ -105,10 +108,12 @@ type tuiModel struct {
 	read   time.Time
 }
 
-// snapMsg is a round of reads, and when it was asked (askSeq).
+// snapMsg is a round of reads, when it was asked (askSeq), and the watches' counts of changes
+// when it was (tuiwatch.go).
 type snapMsg struct {
 	snap tuiSnapshot
 	seq  int64
+	gens [tabCount]int64
 }
 
 var askSeq atomic.Int64
@@ -142,7 +147,8 @@ func newTUI(src tuiSource, me string, every time.Duration) tuiModel {
 		width: 100, height: 30, dview: viewRecord, polls: new(atomic.Int32)}
 }
 
-func (m tuiModel) Init() tea.Cmd { return m.load() }
+// Init is the first round, and the tick, which runs from here on whatever round is drawn first.
+func (m tuiModel) Init() tea.Cmd { return tea.Batch(m.load(), m.tick()) }
 
 // load is a round of reads of every section: the first, r, and after an answer or a cancel.
 func (m tuiModel) load() tea.Cmd { return m.loadOf(readAll) }
@@ -158,8 +164,8 @@ func (m tuiModel) due(now time.Time) tuiReads {
 		return readAll
 	}
 	r := readsOf(tabRunners, tabData)
-	for t, s := range map[tuiTab]*watchState{tabTasks: &m.watch.tasks, tabQuestions: &m.watch.questions} {
-		if s.due() || now.Sub(m.lastRead[t]) >= tuiResync {
+	for t, s := range m.watched() {
+		if !s.live.Load() || s.gen.Load() != m.seen[t] || now.Sub(m.lastRead[t]) >= tuiResync {
 			r |= readsOf(t)
 		}
 	}
@@ -169,10 +175,23 @@ func (m tuiModel) due(now time.Time) tuiReads {
 	return r
 }
 
+// watched is the sections a watch follows, by section.
+func (m tuiModel) watched() map[tuiTab]*watchState {
+	if m.watch == nil {
+		return nil
+	}
+	return map[tuiTab]*watchState{tabTasks: &m.watch.tasks, tabQuestions: &m.watch.questions}
+}
+
 func (m tuiModel) loadOf(reads tuiReads) tea.Cmd {
 	src, at, polls, seq := m.src, m.dataAt, m.polls, askSeq.Add(1)
+	// The counts before the reads: a change while they are on their way is read next round.
+	var gens [tabCount]int64
+	for t, s := range m.watched() {
+		gens[t] = s.gen.Load()
+	}
 	polls.Add(1)
-	snap := func() tea.Msg { return snapMsg{snap: src.snapshot(at, reads), seq: seq} }
+	snap := func() tea.Msg { return snapMsg{snap: src.snapshot(at, reads), seq: seq, gens: gens} }
 	// The record under the cursor is read again with the listing, unless it is too big to.
 	if m.tab == tabData && m.recBig {
 		return snap
@@ -230,8 +249,12 @@ func (m tuiModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		first := !m.loaded
 		m.snap, m.loaded, m.read = m.merge(msg.snap), true, time.Now()
 		for t := tuiTab(0); t < tabCount; t++ {
-			if _, failed := msg.snap.errs[t]; msg.snap.reads.has(t) && !failed {
+			_, failed := msg.snap.errs[t]
+			if msg.snap.reads.has(t) && (!failed || t == tabCharters) {
 				m.lastRead[t] = m.read
+			}
+			if msg.snap.reads.has(t) && !failed {
+				m.seen[t] = msg.gens[t]
 			}
 		}
 		m.relocate()
@@ -266,7 +289,7 @@ func (m tuiModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tab = tabQuestions
 			}
 			m.clamp()
-			return m, tea.Batch(m.tick(), m.loadRecord())
+			return m, m.loadRecord() // the tick runs from Init
 		}
 		m.clamp()
 		if m.tab == tabData && !m.onHeader {

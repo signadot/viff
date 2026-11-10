@@ -194,7 +194,9 @@ func tokenUnder(tok, at string) bool {
 	return true
 }
 
-// hashed is whether a token ends in the hash entity.SegToken adds to a lossy one.
+// hashed is whether a token ends in the hash entity.SegToken adds to a lossy one. A segment
+// that itself ends in + and eight hex digits reads as hashed too, and its task is then shown at
+// its own place only.
 func hashed(tok string) bool {
 	i := strings.LastIndex(tok, entity.HashSep)
 	if i < 0 || len(tok)-i-1 != 8 {

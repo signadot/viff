@@ -22,11 +22,19 @@ type fakeTUISource struct {
 	canceled []string
 	paths    []string // every address the Data section can list
 	records  map[string]*ir.Node
+	fail     map[tuiTab]string // the sections whose reads fail, and how
 }
 
 func (f *fakeTUISource) snapshot(at string, reads tuiReads) tuiSnapshot {
 	s := f.snap
 	s.reads = reads
+	s.errs = map[tuiTab]string{}
+	for t, e := range f.snap.errs {
+		s.errs[t] = e
+	}
+	for t, e := range f.fail {
+		s.errs[t] = e
+	}
 	var under []string
 	for _, p := range f.paths {
 		if parentOf(p) == at {

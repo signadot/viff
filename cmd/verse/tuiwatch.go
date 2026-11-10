@@ -27,9 +27,14 @@ import (
 // as before; one whose watch is open is read when a frame says it changed, and every
 // tuiResync besides, in case a frame was lost.
 //
-// The charter tree has no such watch: its rules live under verse.trigger, which a caller without
-// a system grant may not watch, and what it says of held and pending rules is the engine's state,
-// not a record. It is read every round while the Charters section is the one open, and every
+// A CHANGE IS READ WHEN A READ OF IT IS DRAWN, not when one is sent. Each watch counts its
+// frames (gen); a round carries the count as it was when the round was sent, and a section is
+// up to date once a round that read it without error is drawn with the count it carries. A
+// round dropped for a newer one, or a read that failed, leaves the section behind the count, so
+// the next round reads it again.
+//
+// The charter tree is not watched: what it says of held and pending rules is the engine's state,
+// not a record, so a watch of verse.trigger would not see all of it change. It is read every round while the Charters section is the one open, and every
 // tuiCharterEvery otherwise. Runners, the Data section's listing and the record under the cursor
 // are read every round.
 
@@ -43,17 +48,11 @@ type tuiWatch struct {
 	tasks, questions watchState
 }
 
-// watchState is one watch: whether it is open, and whether it has said something changed since
-// the section was last read.
+// watchState is one watch: whether it is open, and how many changes it has said (an opening
+// counts as one: what changed while it was down is read after it).
 type watchState struct {
-	live, dirty atomic.Bool
-}
-
-// due says whether the section is to be read this round, and takes the change it is read for.
-// A frame arriving while the read is on its way marks it again, for the next round.
-func (s *watchState) due() bool {
-	dirty := s.dirty.Swap(false)
-	return dirty || !s.live.Load()
+	live atomic.Bool
+	gen  atomic.Int64
 }
 
 // startTUIWatch opens the watches, for as long as ctx lasts.
@@ -64,19 +63,20 @@ func startTUIWatch(ctx context.Context, c *client.Client) *tuiWatch {
 	return w
 }
 
-// follow keeps a watch at place open, marking s on each frame. A watch the verse refuses is not
-// asked again: the section is read every round instead.
+// follow keeps a watch at place open, counting each frame on s. A watch the verse refuses
+// (a grant missing, a login expired) is asked again every askRetryMax; meanwhile the section is
+// read every round.
 func follow(ctx context.Context, c *client.Client, place string, s *watchState) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		q := url.Values{"at": {place + ".*"}, "wait-if-absent": {"true"}}
 		began, err := followFrames(ctx, c, q,
-			func() { s.live.Store(true); s.dirty.Store(true) },
-			func(askFrame) { s.dirty.Store(true) })
+			func() { s.gen.Add(1); s.live.Store(true) },
+			func(askFrame) { s.gen.Add(1) })
 		s.live.Store(false)
 		var refused *watchRefused
 		if !began && errors.As(err, &refused) && refused.status < http.StatusInternalServerError {
-			return
+			backoff = askRetryMax
 		}
 		if began {
 			backoff = time.Second
