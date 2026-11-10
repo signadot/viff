@@ -442,7 +442,8 @@ func (m tuiModel) filterKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.filter = strings.TrimSpace(m.finput.Value())
 	m.scroll = 0
 	m.relocate()
-	m.onHeader = m.rows() == 0
+	// A folded section's rows are not drawn, so the cursor stays on its line.
+	m.onHeader = m.rows() == 0 || m.folded[m.tab]
 	return m, cmd
 }
 
@@ -758,7 +759,7 @@ func (m tuiModel) run(line string) (tea.Model, tea.Cmd) {
 		m.finput.SetValue(arg)
 		m.scroll = 0
 		m.relocate()
-		m.onHeader = m.rows() == 0
+		m.onHeader = m.rows() == 0 || m.folded[m.tab]
 		return m, m.loadRecord()
 	case "top":
 		m.scroll = 0
@@ -796,6 +797,8 @@ func (m tuiModel) dataGo(at, sel string) (tea.Model, tea.Cmd) {
 	m.tab, m.folded[tabData], m.focus, m.scroll = tabData, false, paneList, 0
 	m.filter = ""
 	m.finput.SetValue("")
+	// The other sections' cursors were counted in the filtered rows: back on the rows they were on.
+	m.relocate()
 	m.dataAt, m.dataSel, m.cursor[tabData], m.onHeader, m.entering = at, sel, 0, false, true
 	m.sel[tabData], m.rec, m.recFor, m.recBig = "", nil, "", false
 	m.status = "data at " + addrText(at)

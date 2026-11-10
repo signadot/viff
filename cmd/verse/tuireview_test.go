@@ -263,3 +263,59 @@ func TestACharterShowsSchedulesSendsAndWatches(t *testing.T) {
 		}
 	}
 }
+
+// GOING TO THE DATA KEEPS EACH SECTION ON ITS ROW. The filter it clears had the cursors counted
+// in the rows it kept; back on Questions before the listing lands, `a` answers the question that
+// was selected.
+func TestTheTUIDataKeepsTheOtherSectionsRows(t *testing.T) {
+	src := twoQuestions()
+	m := press(t, loaded(t, src), "/", "W", "h", "i", "c", "h", "enter")
+	if q, _ := m.question(); q.id != "q2" {
+		t.Fatalf("the filter left the cursor on %q", q.id)
+	}
+	// The listing's read has not landed when 1 is pressed.
+	next, _ := m.dataGo("", "")
+	press(t, next.(tuiModel), "1", "a", "enter")
+	if len(src.answered) != 1 || !strings.HasPrefix(src.answered[0], "q2 | proceed") {
+		t.Fatalf("answered %q, not q2", src.answered)
+	}
+}
+
+// A FILTER ON A FOLDED SECTION LEAVES THE CURSOR ON ITS LINE: its rows are not drawn.
+func TestTheTUIFilterKeepsAFoldedSectionOnItsLine(t *testing.T) {
+	m := loaded(t, twoQuestions())
+	m.tab, m.onHeader, m.folded[tabTasks] = tabTasks, true, true
+	m = press(t, m, "/", "s", "t", "e", "p", "enter")
+	if !m.onHeader {
+		t.Fatalf("the cursor is on a row the folded section hides")
+	}
+}
+
+// A CLICK SELECTS THE LINE DRAWN UNDER IT, also when the section's read failed and its error
+// is drawn under the rows.
+func TestTheTUIClickSelectsTheLineDrawnWithAnError(t *testing.T) {
+	src := twoQuestions()
+	for i := range 10 {
+		src.snap.runners = append(src.snap.runners, tuiItem{name: "verse.runners.r" + string(rune('a'+i))})
+	}
+	m := loaded(t, src)
+	m.width, m.height = 120, 20
+	m.snap.errs[tabRunners] = "refused"
+	m.tab, m.onHeader, m.cursor[tabRunners] = tabRunners, false, 9
+	exW, _, bodyH := m.layout()
+	drawn := m.explorerLines(exW, bodyH)
+	row := -1
+	for i, l := range drawn {
+		if strings.Contains(l, "RUNNERS") {
+			row = i
+		}
+	}
+	if row < 0 {
+		t.Fatalf("RUNNERS is not drawn:\n%s", strings.Join(drawn, "\n"))
+	}
+	next, _ := m.Update(tea.MouseMsg{X: 1, Y: row + 2, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = next.(tuiModel)
+	if m.tab != tabRunners || !m.onHeader {
+		t.Fatalf("clicked RUNNERS, selected %s (on its line: %v)", m.tab, m.onHeader)
+	}
+}

@@ -194,7 +194,16 @@ func (m tuiModel) count(t tuiTab) string {
 // exStart is the explorer's first line shown, so the cursor stays on screen: above the last
 // line while rows follow it, since that line then says how many more there are.
 func (m tuiModel) exStart(n, h int) int {
-	return exStartAt(m.exAt(), n, h)
+	return exStartAt(m.exAt(), m.exLines(n), h)
+}
+
+// exLines is how many lines an explorer of n rows draws: two more under a section whose read
+// failed, for the error. A click counts them as the screen does.
+func (m tuiModel) exLines(n int) int {
+	if m.snap.errs[m.tab] != "" {
+		return n + 2
+	}
+	return n
 }
 
 func exStartAt(cur, n, h int) int {
@@ -215,10 +224,7 @@ func (m tuiModel) explorerLines(w, h int) []string {
 		lists.items[t] = m.itemsOf(t)
 	}
 	errLine := m.snap.errs[m.tab]
-	n := len(ex)
-	if errLine != "" {
-		n += 2
-	}
+	n := m.exLines(len(ex))
 	start := exStartAt(cur, n, h)
 	end := min(start+h, n)
 	var lines []string
