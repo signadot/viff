@@ -27,7 +27,7 @@ spawn:
         as: NPM_TOKEN
         exec:
         - {argv: "npm publish --ignore-scripts", dir: !glob "packages/*"}
-        - {argv: !regexp "^npm view ", env: {NODE_OPTIONS: null}}
+        - {argv: !regexp "^npm view ", env: {NPM_CONFIG_REGISTRY: !regexp "^https://registry\\.npmjs\\.org/"}}
   prompt: "Publish each package under packages/ whose version is not yet on the registry."
   autonomy:
   - {match: {system: secret, env: {LD_PRELOAD: null}}, then: deny}
@@ -176,14 +176,21 @@ command the shapes admit sends the secret wherever the task's network reaches, c
 files the task can write. Pair a `secret` block with a network that reaches the one host the
 command needs (`tcp-client: {host: registry.npmjs.org}`, as above), and in the ceiling too.
 
+**Nothing bounds what the command writes.** It runs over the task's workspace, and a file it
+leaves there the task reads, with nothing redacted: `git clone
+https://x-access-token:$TOKEN@github.com/acme/lib` keeps the value in `.git/config`, and a cache
+or a debug log may keep it too. The network and the redaction do not reach a file, so there the
+shapes are the only guard.
+
 ## Where the secret lives
 
 In the runner's [secret store](../reference/runnerd.md#the-secret-store), under the block's
 `name`: one file to a secret, read at the run, so a rotated secret is the next run's. A secret's
 name is public: it is in the runner's description and in every spawn that uses it, so it must not
 be a secret itself. The value is in the runner's memory while the command runs, in the command's
-environment, and nowhere else: in no log, no reply and no file. The task's own processes are in
-another pid namespace and see no `/proc` of the command's.
+environment, and nowhere else of the runner's: in no log, no reply and no file it writes. What the
+command writes is the command's, and the shapes' to bound. The task's own processes are in another
+pid namespace and see no `/proc` of the command's.
 
 A runner without a store, or whose sandbox is `none`, performs nothing of `secret`: a command
 unconfined would run as the runner's user on the whole machine, and the secret would be the
@@ -204,7 +211,7 @@ agents:
           exec:
             argv: !regexp "^npm (publish --ignore-scripts|view )"
             dir: !glob "packages/*"
-            env: {NPM_CONFIG_REGISTRY: !regexp "^https://registry\\.npmjs\\.org/", NODE_OPTIONS: null}
+            env: {NPM_CONFIG_REGISTRY: !regexp "^https://registry\\.npmjs\\.org/"}
 ```
 
 A ceiling block names its secret as a literal, never a pattern, and a block that names none is
