@@ -3,8 +3,8 @@
 The `secret` system is one command run with one secret of the runner's [secret
 store](../reference/runnerd.md#the-secret-store). The task never holds the secret. The runner
 reads it, starts the command in a sandbox of its own over the task's workspace and under the
-task's network, and gives the task the command's exit status and its output, the secret's value
-redacted. The environment says which secret and which commands; the autonomy decides each run; the
+task's network, and gives the task the command's output as it comes and its exit status, the
+secret's value redacted. The environment says which secret and which commands; the autonomy decides each run; the
 ceiling bounds both.
 
 It is for a command that needs a secret, and nothing else. A command that needs none is the task's
@@ -37,8 +37,15 @@ spawn:
 
 | Tool | What it does | Step |
 |---|---|---|
-| `secret-exec` | runs one command with the block's secret in its environment under `as`, and blocks until it ends; the task reads back the run's id, the exit status, and each stream's file in its workspace, size and tail | `secret.exec`, with `name`, `as`, `argv`, `dir`, `stdin` and `env` |
-| `secret-exec-kill` | kills a run `secret-exec` is waiting on, by its id (`e1`) | none: it acts on a run already decided, and is offered with `secret-exec` |
+| `secret-exec` | starts one command with the block's secret in its environment under `as`, and answers once it has started: the run's id (`e1`) and where its sockets and files are | `secret.exec`, with `name`, `as`, `argv`, `dir`, `stdin` and `env` |
+| `secret-exec-wait` | blocks until a run ends, by its id, and answers the exit status and each stream's file in the workspace, size and tail | none: it acts on a run already decided, and is offered with `secret-exec` |
+| `secret-exec-kill` | kills a run, by its id | none, as the wait |
+
+**The call answers at the start, and the command runs on.** A task does one thing at a time: an
+agent's loop runs one tool, and a script's calls reach the loop one by one. So the call that
+starts a command does not wait for it, and the task is free to read the output as it comes, to
+give the input, to wait, or to kill. A call that is refused, or whose command could not start,
+answers that, and there is no run.
 
 **The task is told which secrets it may name.** `secret-exec` takes its secret as an argument,
 where every other system's target is part of the tool's name the task is offered (`git-push`,
@@ -101,10 +108,18 @@ appears whole: an encoding of it, or the value split by the command's own format
 caught, which is the shapes' to prevent and not the redaction's. The task's process writes each to
 a file in the workspace, `.verse/exec/<id>.out` and `<id>.err`, cut at 16 MiB and said, and serves
 each while the command runs at `<id>.sock` and `<id>.err.sock` beside them, where a shell of the
-task's can connect and read along from then on. A reader that stops reading is dropped after ten
-seconds, and the run goes on. The tool answers the model with the run's id and its end (`exited
-3`, `killed after 30s, the timeout`), then each stream's file, size and last 16 KiB. A file that
-cannot be written, or a socket whose path is too long, is said in the answer, and the run goes on.
+task's can connect and read. A reader reads the stream from its start, however late it connects:
+it is sent the file's part first, and then what comes. One that connects once the file is cut is
+closed, since the start is no longer to be had, and one that stops reading is dropped after ten
+seconds; the run goes on either way, and the file holds what such a reader did not get. A file
+that cannot be written, or a socket whose path is too long, is said in the answers, and the run
+goes on.
+
+**The end is a file too.** When the command ends, its end is written to `.verse/exec/<id>.exit`,
+one line (`exited 3`, `killed after 30s, the timeout`), before the output's sockets close: a
+reader that reads a stream to its end finds the end there, with no call. `secret-exec-wait`
+answers the same end, then each stream's file, size and last 16 KiB, when the command ends or at
+once where it has; the last 32 runs' answers are kept for it.
 
 **`stdin: true` opens the command's input.** The default is a command with no input: a shape that
 says nothing of `stdin` means `stdin: false`, in the environment and in the ceiling both, so an
@@ -118,14 +133,43 @@ connected leaves the command waiting on its stdin, with the timeout as the bound
 
 **The run lives while the task holds its output.** `timeout` on the call is in seconds, 10 minutes
 where none, an hour at most, and refused where it is no whole number. Past it the command is
-killed, with everything it started, and the answer says so. The task lets go of the run, and the
-runner kills it, when `secret-exec-kill` names its id, when the call is given up (the task
-cancelled), and when the task's process goes. There is no other signal: a command that wants a
-graceful end gets one from its own timeout.
+killed, with everything it started, and its end says so. The task lets go of the run, and the
+runner kills it, when `secret-exec-kill` names its id and when the task's process goes, which
+is where a task that ends or is cancelled takes its runs with it. A call given up before its
+command has started lets go of it as it starts; a wait given up leaves the run. There is no
+other signal: a command that wants a graceful end gets one from its own timeout.
 
-`secret-exec` blocks, so the kill is reachable from beside it: a script makes the call in the
-background (`verse-call-tool secret-exec … &`) and kills it by id, and the same environment and
-rows decide the call. An agent whose loop runs one tool at a time bounds a run with `timeout`.
+## From a shell
+
+A script calls the three tools with `verse-call-tool`, and the same environment and rows decide
+the call. `verse-secret-exec` is the call and everything around it, for a command that is to
+read as if it ran in place:
+
+```sh
+verse-secret-exec -name npm-token -dir packages/a -- npm publish --ignore-scripts
+printf 'yes\n' | verse-secret-exec -name signadot-key -stdin -- signadot sandbox apply -f -
+```
+
+It starts the run, connects its own stdout and stderr to the run's two sockets and, with
+`-stdin`, its stdin to the third, and exits with the command's exit status, read from the
+`.exit` file. `-dir`, `-env NAME=value` (repeated) and `-timeout` are the tool's `dir`, `env`
+and `timeout`. What a socket did not give it (a command over before it connected) it reads from
+the stream's file, so its output is whole up to the file's 16 MiB cut.
+
+| Exit status | What happened |
+|---|---|
+| the command's | it exited |
+| 124 | the run's timeout killed it |
+| 125 | `verse-secret-exec` failed, or the run ended another way; stderr says how |
+| 126 | the call was refused, by a row or by the runner; stderr says why |
+| 128 + the signal's number | a signal to `verse-secret-exec` ended the run |
+
+On SIGINT, SIGTERM or SIGHUP it kills the run with `secret-exec-kill`, or gives the call up
+where the command has not started, which withdraws a question still standing about it. The
+signal itself does not reach the command.
+
+It is found where `verse-call-tool` is, on a script's `PATH`, and like it speaks to the socket
+`$VERSE_TOOLS` names, which a script's shell has.
 
 **The network bounds where the secret can go.** The command runs under the task's network, so a
 command the shapes admit sends the secret wherever the task's network reaches, configured by

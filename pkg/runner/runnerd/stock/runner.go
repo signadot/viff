@@ -85,6 +85,10 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	var programs []string
 	if tool != "" {
 		programs = []string{tool}
+		// And the command a script runs a command with a secret by, where it is beside it.
+		if se := FindSecretExec(tool); se != "" {
+			programs = append(programs, se)
+		}
 	} else {
 		fmt.Fprintf(log, "runnerd: no %s beside %s or on PATH: a script reaches its tools only by "+
 			"the socket $%s names\n", CallToolBinary, command[0], calltool.Env)

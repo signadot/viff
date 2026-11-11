@@ -12,6 +12,7 @@
 /iod
 /runnerd
 /verse-call-tool
+/verse-secret-exec
 dist/
 # mkdocs build output (`mkdocs build` defaults here; `mkdocs serve` needs nothing)
 site/

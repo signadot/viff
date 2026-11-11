@@ -4,7 +4,7 @@
 # ~/.config/verse-local.env.
 #
 #   - the settings, rendered into ~/.verse/local/local.env, which pitchfork's run lines source;
-#   - verse, runnerd and verse-call-tool built from this tree, and the `o` it pins, in the bin dir;
+#   - verse, runnerd, verse-call-tool and verse-secret-exec built from this tree, and the `o` it pins, in the bin dir;
 #   - the verse's config: who you are, where the verse is, and the issuer it signs as;
 #   - the data dir, with the issuer's key, and logd's config with the compaction cutoff;
 #   - the runner's dir: its config (scripts and claude) and its token, 0600;
@@ -112,8 +112,8 @@ MCP_NAME="$VERSE_LOCAL_MCP_NAME"
 say "binaries, in $BIN"
 mkdir -p "$BIN"
 # Together, always: verse refuses a runnerd of another build than its own.
-(cd "$REPO" && go build -o "$BIN/" ./cmd/verse ./cmd/runnerd ./cmd/verse-call-tool)
-say "  built   verse, runnerd, verse-call-tool"
+(cd "$REPO" && go build -o "$BIN/" ./cmd/verse ./cmd/runnerd ./cmd/verse-call-tool ./cmd/verse-secret-exec)
+say "  built   verse, runnerd, verse-call-tool, verse-secret-exec"
 pin="$(awk '$1 == "github.com/signadot/tony-format/go-tony" {print $2}' "$REPO/go.mod")"
 [[ -n "$pin" ]] || die "no go-tony pin in go.mod"
 if [[ -x "$BIN/o" ]] && go version -m "$BIN/o" 2>/dev/null | grep -q "go-tony.*$pin"; then

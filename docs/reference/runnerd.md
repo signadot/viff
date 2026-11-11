@@ -100,7 +100,9 @@ a file: `#!/bin/sh`, `#!/usr/bin/env python3`, `#!/usr/bin/env node`. The line i
 the kernel reads it: the program, and at most one argument. A script with no `#!` line runs with
 `bash`. A script calls the task's tools from its shell with `verse-call-tool`. The runner finds
 it beside its own binary or on its `PATH`, binds it read-only into the sandbox at the same path,
-and puts its directory first on the script's `PATH`.
+and puts its directory first on the script's `PATH`. `verse-secret-exec`, where it is beside it,
+is bound and found the same way: [one command run with a secret](../systems/secret.md#from-a-shell),
+as if in place.
 
 Each task runs in a directory of its own, in a process of its own ([the sandbox](#the-sandbox)).
 A launch whose environment gives repositories (its `git` blocks) gets them checked out there,
