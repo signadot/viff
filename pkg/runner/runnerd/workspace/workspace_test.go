@@ -18,6 +18,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/systems"
 	"github.com/signadot/verse/pkg/task"
@@ -828,9 +829,12 @@ func TestAnExistingBranchFastForwardsUnlessForced(t *testing.T) {
 // AN AGENT'S DELIVERY IS WHAT IT COMMITTED, each commit carrying the trailers, and nothing it left
 // uncommitted. A commit without them is refused with what is missing, so the agent re-commits and
 // stays the author; nothing here rewrites its commits.
-// A person's launch commits as that person at a tagged address; anything else commits as the
-// runner, which has the one mailbox it can vouch for.
+// A person's launch commits as that person at a tagged address, and so does a rule's task acting
+// for a person (a pair, read one level as its asker); anything else commits as the runner, which
+// has the one mailbox it can vouch for: an agent, a rule acting alone, a pair whose asker is no
+// person.
 func TestTheWorkspaceCommitsAsThePersonWhoLaunchedIt(t *testing.T) {
+	forAna := entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request")
 	cases := []struct{ principal, driver, name, email string }{
 		{"user:ana@example.com", "codex", "ana@example.com (verse codex)", "ana+verse-codex-runner@example.com"},
 		{"user:ana@example.com", "llm", "ana@example.com (verse llm)", "ana+verse-llm-runner@example.com"},
@@ -838,6 +842,13 @@ func TestTheWorkspaceCommitsAsThePersonWhoLaunchedIt(t *testing.T) {
 		{"agent:reviewer", "codex", RunnerAuthor.Name, RunnerAuthor.Email},
 		{"user:ana", "codex", RunnerAuthor.Name, RunnerAuthor.Email},
 		{"", "codex", RunnerAuthor.Name, RunnerAuthor.Email},
+		{forAna, "codex", "ana@example.com (verse codex)", "ana+verse-codex-runner@example.com"},
+		{forAna, "", "ana@example.com (verse code)", "ana+verse-code-runner@example.com"},
+		{entity.Pair("agent:reviewer", "via:verse.trigger.rule.x"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
+		{entity.Pair("runner:verse-runner", "via:verse.trigger.rule.x"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
+		{entity.Pair("user:ana", "via:verse.trigger.rule.x"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
+		{"via:verse.trigger.rule.x", "codex", RunnerAuthor.Name, RunnerAuthor.Email},
+		{entity.Pair(entity.Pair("user:ana@example.com", "via:a"), "via:b"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
 	}
 	for _, c := range cases {
 		if got := AuthorFor(c.principal, c.driver); got.Name != c.name || got.Email != c.email {
@@ -940,7 +951,12 @@ func TestIdentityForIsWhatTheCheckoutIsGiven(t *testing.T) {
 	if got := IdentityFor(noAgent); got.Email != "ana+verse-agent-runner@example.com" {
 		t.Errorf("a person's launch with no agent named: %v, want the driver \"agent\"", got)
 	}
-	for _, p := range []string{"agent:x", ""} {
+	forAna := &runner.Launch{ID: "r1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{
+		Principal: entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request")}}
+	if got, want := IdentityFor(forAna), AuthorFor("user:ana@example.com", "codex"); got != want {
+		t.Errorf("a rule's launch for a person: %v, want the person's %v", got, want)
+	}
+	for _, p := range []string{"agent:x", "", entity.Pair("agent:x", "via:verse.trigger.rule.x")} {
 		l := &runner.Launch{ID: "c1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: p}}
 		if got := IdentityFor(l); got != RunnerAuthor {
 			t.Errorf("principal %q: %v, want the runner's", p, got)
@@ -950,7 +966,9 @@ func TestIdentityForIsWhatTheCheckoutIsGiven(t *testing.T) {
 
 // A DELIVERY IS HELD TO THE CHECKOUT'S IDENTITY, as it is to the trailers: a commit the task made
 // authored or committed as anyone else is refused, not rewritten, naming the commit once with
-// everything wrong with it and the identity it must carry. For a person's launch and a charter's.
+// everything wrong with it and the identity it must carry. For a person's launch, a charter's, and
+// a rule's task acting for a person, which is held to the person's and no longer passes as the
+// runner.
 func TestADeliveryIsHeldToTheCheckoutsIdentity(t *testing.T) {
 	launches := []struct {
 		name, want string
@@ -960,8 +978,12 @@ func TestADeliveryIsHeldToTheCheckoutsIdentity(t *testing.T) {
 			ID: "p1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: "user:ana@example.com"}}},
 		{"charter", "verse runner <runner@invalid>", &runner.Launch{
 			ID: "c1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: "agent:comment-drift", Chain: "comment-drift"}}},
+		{"pair", "ana@example.com (verse codex) <ana+verse-codex-runner@example.com>", &runner.Launch{
+			ID: "r1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{
+				Principal: entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request"), Chain: "run-request"}}},
 	}
 	other := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
+	runnerSig := &object.Signature{Name: RunnerAuthor.Name, Email: RunnerAuthor.Email, When: time.Now()}
 	for _, lc := range launches {
 		l := lc.l
 		id := IdentityFor(l)
@@ -1012,6 +1034,16 @@ func TestADeliveryIsHeldToTheCheckoutsIdentity(t *testing.T) {
 					}
 				}
 			})
+			if id != RunnerAuthor {
+				t.Run("the runner's identity", func(t *testing.T) {
+					sha, ok, why := deliver(t, runnerSig, runnerSig, signed)
+					for _, s := range []string{sha, "author verse runner <runner@invalid>", "committer verse runner <runner@invalid>", lc.want} {
+						if !ok || !strings.Contains(why, s) {
+							t.Errorf("ok=%v, refusal %q lacks %q", ok, why, s)
+						}
+					}
+				})
+			}
 			t.Run("another committer", func(t *testing.T) {
 				sha, ok, why := deliver(t, self, other, signed)
 				if !ok || !strings.Contains(why, sha) || !strings.Contains(why, "committer test <test@example.com>") || strings.Contains(why, "author test") {

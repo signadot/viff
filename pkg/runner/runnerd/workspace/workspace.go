@@ -25,6 +25,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 
+	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/runner"
 )
 
@@ -305,7 +306,8 @@ const AutoBranchPrefix = "verse/auto/"
 type Author struct{ Name, Email string }
 
 // RunnerAuthor is the identity when no person's can be derived: a charter firing, whose
-// principal is an agent or nobody, and the runner's own commits.
+// principal is an agent or nobody, a rule acting alone or for a pair whose asker is not a person,
+// and the runner's own commits.
 var RunnerAuthor = Author{Name: "verse runner", Email: "runner@invalid"}
 
 // AuthorFor derives the identity from the launch's principal and the driver that works for it.
@@ -316,7 +318,16 @@ var RunnerAuthor = Author{Name: "verse runner", Email: "runner@invalid"}
 // their behalf — so a forge's view of the commit and the trailer agree, and the person's mail
 // is where a reply to the commit goes. Any other principal is the runner's identity: an agent
 // has no mailbox to tag, and the trailer already names it.
+//
+// A pair (`pair:<asker> via:<rule>`, entity.Pair: a rule's task acting for whoever wrote the
+// record) commits as its asker, read once with entity.PairOf, as mirror.ActsFor reads it: the
+// person on whose authority the work was done is on the commit, as their own launch would put
+// them, and the rule is said by the Verse-Principal trailer, which carries the whole pair. A pair
+// whose asker is no person is the runner's.
 func AuthorFor(principal, driver string) Author {
+	if asker, _, ok := entity.PairOf(principal); ok {
+		principal = asker
+	}
 	addr, ok := strings.CutPrefix(principal, "user:")
 	user, host, at := strings.Cut(addr, "@")
 	if !ok || !at || user == "" || host == "" {
