@@ -692,7 +692,9 @@ func issuePayload(repo string, i issue) entity.Obj {
 func pullPayload(repo string, p pull) entity.Obj {
 	out := entity.Obj{
 		"repo": repo, "number": p.Number, "title": p.Title, "state": p.State,
-		"draft": p.Draft, "merged": p.Merged,
+		// The pulls listing has no `merged`, only `merged_at`, so a listed pull request would say
+		// false for every one; the single-pull read has both.
+		"draft": p.Draft, "merged": p.Merged || p.MergedAt != "",
 	}
 	if p.User != nil {
 		out["author"] = p.User.Login
