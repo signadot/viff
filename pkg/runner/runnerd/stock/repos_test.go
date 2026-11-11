@@ -24,6 +24,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/client"
 	"github.com/signadot/verse/pkg/runner/runnerd"
@@ -220,51 +221,65 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 // AN AGENT COMMITS AS ITS CHECKOUT AND IS BRIEFED SO: the identity the runner configures in the
 // checkout is the one a delivery is held to, so an agent that commits plainly, leaving it alone,
 // delivers as before, as the person who launched it at their tagged address; and its brief says
-// which identity that is.
+// which identity that is. So too a rule's task acting for that person: it commits as the person,
+// and the trailer still names the pair, rule and all.
 func TestAnAgentCommitsAsItsCheckoutAndIsBriefedSo(t *testing.T) {
-	forge := t.TempDir()
-	seed(t, forge, "acme/svc")
-	var brief string
-	model := modeltest.New(t, func(r modeltest.Request) modeltest.Reply {
-		switch res := r.Results(); len(res) {
-		case 0:
-			brief = r.Prompt()
-			return modeltest.Use("run_bash", map[string]any{"command": "cd svc && echo work > f && git add f && " +
-				"git commit -qm work -m \"$" + TrailersEnv + "\""})
-		case 1:
-			return modeltest.Use("git-push", map[string]any{})
-		default:
-			return modeltest.Say(res[len(res)-1])
-		}
-	})
-	rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})
-	launch := runner.Launch{ID: "t1", Prompt: "do the work", Autonomy: append(task.Autonomy{{Name: "push", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAllow}}},
-		allowing("git", "commands", "files")...),
-		Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil), "commands", "files"),
-		Provenance: runner.Provenance{Principal: "user:ana@example.com"}}
-	rt.Launch(launch)
-	snap := ended(t, rt, "t1")
-	if snap.Status != task.Done || !strings.Contains(snap.Result, "pushed svc -> refs/heads/verse/auto/t1") {
-		t.Fatalf("task: %+v", snap)
-	}
-	id := workspace.IdentityFor(&launch)
-	if !strings.Contains(brief, id.Name+" <"+id.Email+">") {
-		t.Errorf("the brief does not name %v:\n%s", id, brief)
-	}
-	origin, err := git.PlainOpen(filepath.Join(forge, "acme/svc"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	tip, err := origin.Reference("refs/heads/verse/auto/t1", true)
-	if err != nil {
-		t.Fatalf("the branch is not at the forge: %v", err)
-	}
-	c, err := origin.CommitObject(tip.Hash())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.Author.Name != id.Name || c.Author.Email != id.Email || c.Committer.Name != id.Name || c.Committer.Email != id.Email {
-		t.Errorf("the forge's tip is authored %s <%s>, committed %s <%s>; want %v", c.Author.Name, c.Author.Email, c.Committer.Name, c.Committer.Email, id)
+	forAna := entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request")
+	for _, principal := range []string{"user:ana@example.com", forAna} {
+		t.Run(principal, func(t *testing.T) {
+			forge := t.TempDir()
+			seed(t, forge, "acme/svc")
+			var brief string
+			model := modeltest.New(t, func(r modeltest.Request) modeltest.Reply {
+				switch res := r.Results(); len(res) {
+				case 0:
+					brief = r.Prompt()
+					return modeltest.Use("run_bash", map[string]any{"command": "cd svc && echo work > f && git add f && " +
+						"git commit -qm work -m \"$" + TrailersEnv + "\""})
+				case 1:
+					return modeltest.Use("git-push", map[string]any{})
+				default:
+					return modeltest.Say(res[len(res)-1])
+				}
+			})
+			rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})
+			launch := runner.Launch{ID: "t1", Prompt: "do the work", Autonomy: append(task.Autonomy{{Name: "push", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAllow}}},
+				allowing("git", "commands", "files")...),
+				Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil), "commands", "files"),
+				Provenance: runner.Provenance{Principal: principal}}
+			rt.Launch(launch)
+			snap := ended(t, rt, "t1")
+			if snap.Status != task.Done || !strings.Contains(snap.Result, "pushed svc -> refs/heads/verse/auto/t1") {
+				t.Fatalf("task: %+v", snap)
+			}
+			id := workspace.IdentityFor(&launch)
+			if !strings.Contains(brief, id.Name+" <"+id.Email+">") {
+				t.Errorf("the brief does not name %v:\n%s", id, brief)
+			}
+			origin, err := git.PlainOpen(filepath.Join(forge, "acme/svc"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			tip, err := origin.Reference("refs/heads/verse/auto/t1", true)
+			if err != nil {
+				t.Fatalf("the branch is not at the forge: %v", err)
+			}
+			c, err := origin.CommitObject(tip.Hash())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.Author.Name != id.Name || c.Author.Email != id.Email || c.Committer.Name != id.Name || c.Committer.Email != id.Email {
+				t.Errorf("the forge's tip is authored %s <%s>, committed %s <%s>; want %v", c.Author.Name, c.Author.Email, c.Committer.Name, c.Committer.Email, id)
+			}
+			if principal == forAna {
+				if want := "ana+verse-" + AgentName + "-runner@example.com"; id.Email != want {
+					t.Errorf("a rule's task for ana commits as %v, want the address %s", id, want)
+				}
+				if want := "Verse-Principal: " + forAna; !strings.HasSuffix(strings.TrimSpace(c.Message), want) {
+					t.Errorf("the forge's tip says %q, want it to end %q", c.Message, want)
+				}
+			}
+		})
 	}
 }
 
