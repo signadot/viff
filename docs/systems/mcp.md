@@ -28,16 +28,20 @@ spawn:
       - server: linear
         call:
         - {tool: !or [get_issue, list_issues]}
+      - server: linear_w
+        call:
         - {tool: save_issue, arguments: !and [{team: ENG}, !not {id: null}]}
-  prompt: "File the bugs in ENG-1290's thread as issues of their own, and link them from it."
+  prompt: "File the bugs in ENG-1290's thread as issues of their own."
   autonomy:
   - {match: {system: mcp, tool: save_issue}, then: ask}
   - {then: allow}
 ```
 
-Each tool of a server the environment gives is one tool of the task's, named
-`mcp-<server>-<tool>` (`mcp-linear-get_issue`), and each use of it is the step `mcp.call`, with
-`server`, `tool` and `arguments`.
+The two servers are Linear twice, as [the runner's configuration](#the-runners-configuration)
+names them: `linear` is its read-only endpoint, and `linear_w` the one that writes. Each tool of a
+server the environment gives is one tool of the task's, named `mcp-<server>-<tool>`
+(`mcp-linear-get_issue`, `mcp-linear_w-save_issue`), and each use of it is the step `mcp.call`,
+with `server`, `tool` and `arguments`.
 
 **The arguments are a field of the step, whole.** `arguments` is the call's arguments as an
 object, held as given, so a shape and a row decide a call by them, and a person asked about a
