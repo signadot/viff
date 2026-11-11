@@ -1,0 +1,3 @@
+# secret: a task's end lets go of the commands it started with a secret
+
+Since secret-exec answers at the start (fp0gbb5e), a run is tied to no call, and what ended it with its task was the task's process going. A task that ends while its process stays (cancelled, done with a run still under way) left the command to its timeout. The task's end now lets go of every run under way, and of any that starts after: secretTools gives the runner what to call when the task has ended (Build's cleanup).
