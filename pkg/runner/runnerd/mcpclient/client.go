@@ -68,13 +68,24 @@ type Servers map[string]Server
 // a new session is opened and the call sent on it, once. Several calls finding the session gone
 // at once open one new session between them, under the server's lock.
 //
+// A SESSION THAT FAILED IS OPENED AGAIN BY THE NEXT CALL. The SDK fails a whole connection on
+// what it cannot read as the protocol's (a reply that is no 2xx and carries no JSON-RPC body: a
+// gateway's plain 401 while a key is rotated), and a call on a failed connection is answered
+// mcp.ErrConnectionClosed with nothing sent. Such a call, no request of its own made (mark),
+// opens a new session and is sent on it, once. What failed the connection is not asked: the
+// session is dead, and the call was not sent. The SDK tells the server as a failed connection
+// closes, within its bound (5s), and a call is answered closed after that: where the server is
+// slow to answer, with a call still in flight there, the next call waits that long first.
+//
 // A CALL IS NEVER SENT TWICE. A response cut after the call was sent is resumed where the
 // server gives event ids: the SDK's transport asks for the rest with `Last-Event-ID`, a GET that
 // does not send the call again. Where it gives none, or the resumption fails, the call fails,
 // and whether the server did it is not known. The SDK fails the whole connection on a 404, and
 // every call in flight on it hears mcp.ErrSessionMissing, so that alone does not say whose POST
 // was refused: each call marks its own (mark), through the request's context, and only a call
-// whose own POST was refused is sent again.
+// whose own POST was refused is sent again. A call a failed connection answered closed is sent
+// where none of its requests was made, and a call in flight when the connection failed had one
+// made: it fails, and whether the server did it is not known.
 type Sessions struct {
 	servers Servers
 	store   *secretstore.Store
@@ -343,15 +354,16 @@ func Read(r *mcp.CallToolResult) Result {
 	return out
 }
 
-// mark is one call's, carried in its context to the requests the SDK makes for it: whether
-// the server refused the call's own POST as of a session it does not know, which is the one
-// case the call is known not to have been taken.
-type mark struct{ refused atomic.Bool }
+// mark is one call's, carried in its context to the requests the SDK makes for it. The call is
+// known not to have been taken in two cases, and it says which: no request was made for it
+// (sent unset), or the server refused its own POST as of a session it does not know (refused).
+type mark struct{ sent, refused atomic.Bool }
 
 type markKey struct{}
 
 // with runs f on the task's session with server, opening one where there is none; where the
-// server answers the call's own request that it does not know the session, on a new one, once.
+// server answers the call's own request that it does not know the session, or the session's
+// connection had failed and nothing of the call was sent, on a new one, once.
 // Where the session ended under the call with its request taken, the call fails, saying that
 // whether it was performed is not known, and the session is let go for the next call to open
 // another.
@@ -363,14 +375,18 @@ func (s *Sessions) with(ctx context.Context, server string, f func(context.Conte
 	m := &mark{}
 	ctx = context.WithValue(ctx, markKey{}, m)
 	err = f(ctx, cs)
-	if !errors.Is(err, mcp.ErrSessionMissing) {
+	switch {
+	case errors.Is(err, mcp.ErrSessionMissing):
+		if !m.refused.Load() {
+			s.drop(server, cs)
+			return fmt.Errorf("%s: the server ended the session with the call in flight, and whether it performed the call is not known: %w", server, err)
+		}
+		fmt.Fprintf(s.log, "mcp: %s: the server ended the session; opening another\n", server)
+	case errors.Is(err, mcp.ErrConnectionClosed) && !m.sent.Load():
+		fmt.Fprintf(s.log, "mcp: %s: the session is closed; opening another\n", server)
+	default:
 		return err
 	}
-	if !m.refused.Load() {
-		s.drop(server, cs)
-		return fmt.Errorf("%s: the server ended the session with the call in flight, and whether it performed the call is not known: %w", server, err)
-	}
-	fmt.Fprintf(s.log, "mcp: %s: the server ended the session; opening another\n", server)
 	cs, err = s.session(ctx, server, cs)
 	if err != nil {
 		return err
@@ -510,6 +526,11 @@ func (a *authorized) RoundTrip(req *http.Request) (*http.Response, error) {
 			req.Header.Set("Authorization", "Bearer "+value)
 		}
 	}
+	// A request made for a call: from here the server may have taken it (mark).
+	m, _ := req.Context().Value(markKey{}).(*mark)
+	if m != nil {
+		m.sent.Store(true)
+	}
 	resp, err := a.rt.RoundTrip(req)
 	if err != nil {
 		return nil, err
@@ -517,7 +538,7 @@ func (a *authorized) RoundTrip(req *http.Request) (*http.Response, error) {
 	// A call's own POST refused as of a session the server does not know: the call was not
 	// taken, which the call reads (mark).
 	if req.Method == http.MethodPost && resp.StatusCode == http.StatusNotFound && req.Header.Get("Mcp-Session-Id") != "" {
-		if m, ok := req.Context().Value(markKey{}).(*mark); ok {
+		if m != nil {
 			m.refused.Store(true)
 		}
 	}

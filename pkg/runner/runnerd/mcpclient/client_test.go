@@ -339,6 +339,76 @@ func TestASessionTheServerEndedIsOpenedAgain(t *testing.T) {
 	}
 }
 
+// A SESSION THAT FAILED IS OPENED AGAIN BY THE NEXT CALL. A reply that is no 2xx and carries no
+// JSON-RPC body (a gateway's plain 401 while a key is rotated) fails the SDK's whole connection:
+// the call that got it fails, and the next call, which the dead connection sends nothing of,
+// opens a session and answers, the server seeing it once. A call in flight when the connection
+// failed had its request sent, and is not sent again.
+func TestASessionThatFailedIsOpenedAgain(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusBadRequest} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			sp := &spy{}
+			var echoes, waits atomic.Int32
+			inFlight := make(chan struct{}, 1)
+			release := make(chan struct{})
+			letGo := sync.OnceFunc(func() { close(release) })
+			srv := echo(t, &echoes, nil)
+			srv.AddTool(&mcp.Tool{Name: "wait", InputSchema: map[string]any{"type": "object"}},
+				func(context.Context, *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+					waits.Add(1)
+					inFlight <- struct{}{}
+					<-release
+					return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "done"}}}, nil
+				})
+			// The server's front refuses one POST, plainly, when told to.
+			var refuse atomic.Bool
+			refusing := func(h http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodPost && refuse.Swap(false) {
+						http.Error(w, "no", status)
+						return
+					}
+					h.ServeHTTP(w, r)
+				})
+			}
+			var log logged
+			s := sessions(t, Servers{"s": {URL: serve(t, srv, nil, sp.wrap, refusing), Timeout: 5 * time.Second}}, nil, &log)
+			t.Cleanup(letGo) // before the sessions and the server close, which wait for the call
+			ctx := context.Background()
+			if _, err := s.Call(ctx, "s", "echo", json.RawMessage(`{}`)); err != nil {
+				t.Fatal(err)
+			}
+			waited := make(chan error, 1)
+			go func() {
+				_, err := s.Call(ctx, "s", "wait", json.RawMessage(`{}`))
+				waited <- err
+			}()
+			<-inFlight
+			refuse.Store(true)
+			if _, err := s.Call(ctx, "s", "echo", json.RawMessage(`{"refused":1}`)); err == nil {
+				t.Fatal("the call the server refused answered")
+			}
+			// The call in flight ends, answered or failed as the failed connection has it, and is
+			// not sent again. Let go first: the server ends a session once its calls are done, and
+			// the SDK tells it before a call on the failed connection is answered.
+			letGo()
+			<-waited
+			for i := range 2 {
+				arguments := fmt.Sprintf(`{"after":%d}`, i)
+				if got := text(t)(s.Call(ctx, "s", "echo", json.RawMessage(arguments))); got != arguments {
+					t.Errorf("the call after: %q", got)
+				}
+			}
+			if n, e, w := sp.count("initialize"), echoes.Load(), waits.Load(); n != 2 || e != 3 || w != 1 {
+				t.Errorf("%d sessions, %d echoes and %d waits performed, want 2, 3 and 1", n, e, w)
+			}
+			if !strings.Contains(log.String(), "the session is closed; opening another") {
+				t.Errorf("the log: %q", log.String())
+			}
+		})
+	}
+}
+
 // cut is a connection to a server, cut the first time the server's answer to a call goes by:
 // a TCP proxy that drops the connection on both sides at the first result it sees, and forwards
 // everything else. What a connection cut after the call reached the server looks like. all cuts
