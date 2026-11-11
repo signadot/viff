@@ -880,6 +880,14 @@ whole verse. That stream has no opening state, and a cursor replays history in i
 <a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="p">{</span><span class="na">op</span><span class="o">:</span> <span class="sx">delete</span> <span class="na">at</span><span class="o">:</span> <span class="sx">demo.pr.</span><span class="s2">&quot;9&quot;</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">7</span><span class="p">}</span>
 </code></pre></div>
 <p>There is one line per change, in flow form, so you can grep a watch.</p>
+<p>A payload that carries comments is the exception. A comment ends its line, so the change is
+printed over several lines, with each comment on a line of its own:</p>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="p">{</span><span class="na">op</span><span class="o">:</span> <span class="sx">set</span> <span class="na">at</span><span class="o">:</span> <span class="sx">demo.pr.</span><span class="s2">&quot;1&quot;</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">3</span> <span class="na">to</span><span class="o">:</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="c1"># why it is held</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">held</span> <span class="na">owner</span><span class="o">:</span> <span class="sx">ana</span><span class="p">}}</span>
+</code></pre></div>
+<p>It is still one frame: <code>-until</code> and <code>-trim</code> take it whole. On the route, a frame of several
+lines is several <code>data:</code> lines, joined with newlines up to the blank line that ends the frame.</p>
 <table>
 <thead>
 <tr>
@@ -948,7 +956,7 @@ buffer. See <a href="https://github.com/signadot/verse/blob/main/docs/change-eve
 <p>A change deeper than the address a watch asks about is reported at the node the address reaches
 above it. A watch of <code>demo pr '*'</code>, while <code>{status: pass}</code> is written at
 <code>demo.pr.1.checks.lint</code> and the record says <code>stage: open</code>, gives:</p>
-<div class="codehilite"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="p">{</span><span class="na">op</span><span class="o">:</span> <span class="sx">set</span> <span class="na">at</span><span class="o">:</span> <span class="sx">demo.pr.</span><span class="s2">&quot;1&quot;</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">152</span> <span class="na">to</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">open</span> <span class="na">checks</span><span class="o">:</span> <span class="p">{</span><span class="na">lint</span><span class="o">:</span> <span class="p">{</span><span class="na">status</span><span class="o">:</span> <span class="sx">pass</span><span class="p">}}}}</span>
+<div class="codehilite"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="p">{</span><span class="na">op</span><span class="o">:</span> <span class="sx">set</span> <span class="na">at</span><span class="o">:</span> <span class="sx">demo.pr.</span><span class="s2">&quot;1&quot;</span> <span class="na">rev</span><span class="o">:</span> <span class="mi">152</span> <span class="na">to</span><span class="o">:</span> <span class="p">{</span><span class="na">stage</span><span class="o">:</span> <span class="sx">open</span> <span class="na">checks</span><span class="o">:</span> <span class="p">{</span><span class="na">lint</span><span class="o">:</span> <span class="p">{</span><span class="na">status</span><span class="o">:</span> <span class="sx">pass</span><span class="p">}}}}</span>
 </code></pre></div>
 <p>The node the address reaches is <code>demo.pr.1</code>. What changed inside it, <code>checks.lint</code>, is nested
 inside <code>to</code>. Nothing inside it is missed. A rule over that subtree still selects the deep node,
