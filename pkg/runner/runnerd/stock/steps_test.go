@@ -133,7 +133,8 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	defer func() { cl.Close(); <-served }()
 
 	tools := append(repoTools(cl, ws, true), issueTools(cl, ws, l.Trackers(), true, true)...)
-	tools = append(append(tools, slackTools(cl)...), secretTools(cl, ws, env)...)
+	secret, _ := secretTools(cl, ws, env)
+	tools = append(append(tools, slackTools(cl)...), secret...)
 	tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)
 	seen := map[string]bool{}
 	for _, tl := range tools {

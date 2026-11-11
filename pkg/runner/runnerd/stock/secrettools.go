@@ -38,7 +38,8 @@ import (
 //
 // `secret-exec-wait` blocks until a run ends, by its id, and answers the end and each stream's
 // file, size and tail. `secret-exec-kill` ends a run by its id: the task's ends of the run's
-// output are closed, which the runner reads as the task letting go, and kills the command.
+// output are closed, which the runner reads as the task letting go, and kills the command. The
+// task's end lets go of every run the same way (secretTools' ended).
 // Neither is a step, since each acts on nothing but a run the autonomy already decided. The end
 // is written to a file beside the output as well (`<id>.exit`), so a shell reads it with no call.
 var (
@@ -58,13 +59,15 @@ const (
 )
 
 // secretTools are the secret system's tools, where the environment gives a `secret.exec`: the
-// run, the wait and the kill, which share the runs.
-func secretTools(cl *delivery.Client, ws *workspace.Workspace, env systems.Environment) []verse.Tool {
+// run, the wait and the kill, which share the runs. ended is for when the task has ended: it
+// lets go of every run under way, and of any that starts after, so a command does not outlive
+// the task that started it, whatever becomes of the task's process.
+func secretTools(cl *delivery.Client, ws *workspace.Workspace, env systems.Environment) (tools []verse.Tool, ended func()) {
 	if !env.Gives(task.StepSecretExec) {
-		return nil
+		return nil, func() {}
 	}
 	runs := &execRuns{runs: map[string]*execRun{}}
-	return []verse.Tool{secretExecToolFor(cl, ws, env, runs), secretExecWaitToolFor(runs), secretExecKillToolFor(runs)}
+	return []verse.Tool{secretExecToolFor(cl, ws, env, runs), secretExecWaitToolFor(runs), secretExecKillToolFor(runs)}, runs.letGo
 }
 
 // execRun is one run: what kills it, and once done is closed, what it came to, as a call that
@@ -80,18 +83,41 @@ type execRun struct {
 }
 
 // execRuns are the runs by the id the task gave each: those under way, and the last
-// execRunsKept that ended.
+// execRunsKept that ended. over is the task ended, after which no run is left under way.
 type execRuns struct {
 	n     atomic.Int64
 	mu    sync.Mutex
 	runs  map[string]*execRun
 	ended []string
+	over  bool
 }
 
 func (r *execRuns) add(run *execRun) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.runs[run.id] = run
+	over := r.over
+	r.mu.Unlock()
+	if over {
+		run.kill()
+	}
+}
+
+// letGo is the task ended: every run under way is killed, and each that starts after.
+func (r *execRuns) letGo() {
+	r.mu.Lock()
+	r.over = true
+	var under []*execRun
+	for _, run := range r.runs {
+		select {
+		case <-run.done:
+		default:
+			under = append(under, run)
+		}
+	}
+	r.mu.Unlock()
+	for _, run := range under {
+		run.kill()
+	}
 }
 
 // end is the run over, with what it came to: whoever waits on it reads that, and it is kept for

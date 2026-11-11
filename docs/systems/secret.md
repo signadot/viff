@@ -134,8 +134,8 @@ connected leaves the command waiting on its stdin, with the timeout as the bound
 **The run lives while the task holds its output.** `timeout` on the call is in seconds, 10 minutes
 where none, an hour at most, and refused where it is no whole number. Past it the command is
 killed, with everything it started, and its end says so. The task lets go of the run, and the
-runner kills it, when `secret-exec-kill` names its id and when the task's process goes, which
-is where a task that ends or is cancelled takes its runs with it. A call given up before its
+runner kills it, when `secret-exec-kill` names its id, when the task ends, however it ends
+(done, failed, cancelled), and when the task's process goes. A call given up before its
 command has started lets go of it as it starts; a wait given up leaves the run. There is no
 other signal: a command that wants a graceful end gets one from its own timeout.
 

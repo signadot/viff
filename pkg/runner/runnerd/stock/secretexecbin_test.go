@@ -66,7 +66,7 @@ func TestVerseSecretExecRunsTheCommandInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl := delivery.NewClient(conn)
-	tools := secretTools(cl, &workspace.Workspace{Root: root}, env)
+	tools, _ := secretTools(cl, &workspace.Workspace{Root: root}, env)
 	srv := &calltool.Server{Tools: described(tools), Call: func(ctx context.Context, name string, in map[string]any) (string, bool, error) {
 		for _, tool := range tools {
 			if tool.Name == name {

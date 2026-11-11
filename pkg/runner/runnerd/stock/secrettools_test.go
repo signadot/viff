@@ -43,10 +43,10 @@ func withSecret(t *testing.T) systems.Environment {
 // directory cleaned, the variables an object. A call that does not read is no step, and is
 // refused by the tool before it reaches the runner.
 func TestSecretExecIsTheStepTheRunnerDecides(t *testing.T) {
-	if tools := secretTools(&delivery.Client{}, &workspace.Workspace{Root: "/w"}, systems.Environment{}); tools != nil {
+	if tools, _ := secretTools(&delivery.Client{}, &workspace.Workspace{Root: "/w"}, systems.Environment{}); tools != nil {
 		t.Errorf("offered with no block: %v", tools)
 	}
-	tools := secretTools(&delivery.Client{}, &workspace.Workspace{Root: "/w"}, withSecret(t))
+	tools, _ := secretTools(&delivery.Client{}, &workspace.Workspace{Root: "/w"}, withSecret(t))
 	if len(tools) != 3 || tools[0].Name != "secret-exec" || tools[1].Name != "secret-exec-wait" || tools[2].Name != "secret-exec-kill" ||
 		tools[0].Step != task.StepSecretExec || tools[1].Step != "" || tools[2].Step != "" {
 		t.Fatalf("the tools: %+v", tools)
@@ -134,7 +134,7 @@ func (runsHere) Confine(cmd *exec.Cmd, root, dir string, _ delivery.Network, _ s
 // THE RUN: the call answers at the start with the id, and the wait answers the id, the exit
 // status and each stream's file and tail, the secret's value redacted; the files are in the
 // workspace, the end among them; the sockets serve the output from its start; a kill ends the
-// run, and a wait given up does not. The log and the answer never hold the value.
+// run, and so does the task's end, and a wait given up does not. The log and the answer never hold the value.
 func TestSecretExecRunsTheCommandAndServesItsOutput(t *testing.T) {
 	// A root short enough for a unix socket's path under it, on macOS too.
 	root, err := os.MkdirTemp("", "vx")
@@ -166,7 +166,7 @@ func TestSecretExecRunsTheCommandAndServesItsOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl := delivery.NewClient(conn)
-	tools := secretTools(cl, &workspace.Workspace{Root: root}, env)
+	tools, ended := secretTools(cl, &workspace.Workspace{Root: root}, env)
 	kill := tools[2]
 	script := func(script string) map[string]any {
 		return map[string]any{"name": "npm-token", "argv": []any{"sh", "-c", script}, "timeout": 20}
@@ -244,6 +244,16 @@ func TestSecretExecRunsTheCommandAndServesItsOutput(t *testing.T) {
 	if out, _, err := tools[0].Do(gone, task.ToolUse{Name: tools[0].Name, Input: script("sleep 30")}); err != nil || strings.Contains(out, ": started, in ") || !strings.Contains(out, "e4: killed: the task let go") {
 		t.Errorf("the call given up: %q, %v", out, err)
 	}
+	// The task's end lets go of a run under way, and of one that starts after.
+	id = startRun(t, tools, root, script("exec sleep 30"))
+	ended()
+	if out, err := waitRun(t.Context(), tools, id); err != nil || !strings.Contains(out, "e5: killed: the task let go") {
+		t.Errorf("the run at the task's end: %q, %v", out, err)
+	}
+	id = startRun(t, tools, root, script("exec sleep 30"))
+	if out, err := waitRun(t.Context(), tools, id); err != nil || !strings.Contains(out, "e6: killed: the task let go") {
+		t.Errorf("the run after the task's end: %q, %v", out, err)
+	}
 	cl.Close()
 	<-served
 }
@@ -308,7 +318,7 @@ func TestSecretExecServesTheCommandsStdin(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl := delivery.NewClient(conn)
-	tools := secretTools(cl, &workspace.Workspace{Root: root}, env)
+	tools, _ := secretTools(cl, &workspace.Workspace{Root: root}, env)
 	id := startRun(t, tools, root, map[string]any{"name": "npm-token", "argv": []any{"sh", "-c", "cat; echo done"}, "timeout": 20, "stdin": true})
 	c, err := net.Dial("unix", filepath.Join(root, ".verse", "exec", id+".in.sock"))
 	if err != nil {

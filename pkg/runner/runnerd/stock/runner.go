@@ -276,7 +276,10 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 			tools = append(tools, slackTools(cl)...)
 		}
 		if slices.Contains(performs, "secret") {
-			tools = append(tools, secretTools(cl, ws, l.Environment)...)
+			// A command with a secret ends with the task that started it.
+			secret, letGo := secretTools(cl, ws, l.Environment)
+			tools = append(tools, secret...)
+			cleanup = append(cleanup, letGo)
 		}
 		if r.cfg.reachesVerse {
 			tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)
