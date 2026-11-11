@@ -1,4 +1,4 @@
-# mcp.md: the sample shape reads narrower than it matches, and nothing says how a stdio server is run
+# mcp.md: the sample shape reads narrower than it matches, and nothing says where a stdio server stands
 
 From Daniel's review of PR #7 (pullrequestreview-5864267561), in `docs/systems/mcp.md`:
 
@@ -6,6 +6,8 @@ From Daniel's review of PR #7 (pullrequestreview-5864267561), in `docs/systems/m
 
 2. The first example names `create_issue`, which Linear's server has not: the tool is `save_issue`.
 
-3. His question on stdio servers. A task runs a stdio server itself, as a command, with `secret-exec` where it needs a credential; no bridge and no runner-side support is intended. The document says so where someone asking "how do I get verse to run my MCP server?" lands: a pointer at the top and a section of its own, rather than one clause at the end of the configuration.
+3. His question on stdio servers. The document said only, at the end of the configuration, that servers over stdio are not run. It now says where one stands, in a section of its own with a pointer from the top: the runner starts none, so a stdio server's tools are not a task's tools and no call of one is decided; a task can run one as a command (its own shell, or `secret-exec`), which gives the agent a process to speak JSON-RPC to, none of the server's tools, and a decision on the command and not on each call.
+
+Offering a stdio server's tools through this system, gated as a remote server's are, is a design of its own and has its own issue.
 
 Docs only.
