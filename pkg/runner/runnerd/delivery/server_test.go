@@ -16,6 +16,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
 	"github.com/signadot/verse/pkg/systems"
@@ -193,7 +194,10 @@ func commitAs(t *testing.T, dir, msg string, who workspace.Author) plumbing.Hash
 // the mirror's pending refs get it. Re-committed as the checkout's identity, it goes as before.
 // For a person's launch and for a charter's.
 func TestAPushAsAnotherIdentityIsRefusedAndNothingLeaves(t *testing.T) {
-	for _, principal := range []string{"user:ana@example.com", "agent:comment-drift"} {
+	// The third is a rule's task acting for a person, which is held to the person's identity: its
+	// runner's identity, which it carried before, is refused too.
+	forAna := entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request")
+	for _, principal := range []string{"user:ana@example.com", "agent:comment-drift", forAna} {
 		t.Run(principal, func(t *testing.T) {
 			forge := t.TempDir()
 			origin := initRepo(t, forge, "acme/svc")
@@ -226,35 +230,15 @@ func TestAPushAsAnotherIdentityIsRefusedAndNothingLeaves(t *testing.T) {
 			defer cl.Close()
 			dir := filepath.Join(ws.Root, "svc")
 			msg := "work\n\n" + strings.Join(workspace.RequiredTrailers(l), "\n") + "\n"
-
-			commitAs(t, dir, msg, workspace.Author{Name: "test", Email: "test@example.com"})
-			rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch})
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, s := range []string{"author test <test@example.com>", id.Name + " <" + id.Email + ">", "Amend or re-commit"} {
-				if rep.OK || !strings.Contains(rep.Refused, s) {
-					t.Errorf("a push as another identity: %+v, want it refused naming %q", rep, s)
+			if principal == forAna {
+				if want := (workspace.Author{Name: "ana@example.com (verse verse)", Email: "ana+verse-verse-runner@example.com"}); id != want {
+					t.Fatalf("a rule's task for ana is given %v, want %v", id, want)
 				}
 			}
 			forgeRepo, err := git.PlainOpen(origin)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := forgeRepo.Reference(plumbing.ReferenceName("refs/heads/"+ws.Branch), true); err == nil {
-				t.Errorf("the forge has %s after a refused push", ws.Branch)
-			}
-			staged, err := mirrors.Staged(origin)
-			if err != nil {
-				t.Fatal(err)
-			}
-			for _, s := range staged {
-				if s.Task == l.ID {
-					t.Errorf("a refused push was staged: %+v", s)
-				}
-			}
-
-			// Back to the base and committed again as the checkout's identity: delivered.
 			r, err := git.PlainOpen(dir)
 			if err != nil {
 				t.Fatal(err)
@@ -263,9 +247,46 @@ func TestAPushAsAnotherIdentityIsRefusedAndNothingLeaves(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := wt.Reset(&git.ResetOptions{Commit: plumbing.NewHash(ws.Trees[0].Head), Mode: git.HardReset}); err != nil {
-				t.Fatal(err)
+			// toBase drops what was committed, back to the checkout's base.
+			toBase := func() {
+				t.Helper()
+				if err := wt.Reset(&git.ResetOptions{Commit: plumbing.NewHash(ws.Trees[0].Head), Mode: git.HardReset}); err != nil {
+					t.Fatal(err)
+				}
 			}
+
+			others := []workspace.Author{{Name: "test", Email: "test@example.com"}}
+			if id != workspace.RunnerAuthor {
+				others = append(others, workspace.RunnerAuthor)
+			}
+			for _, other := range others {
+				toBase()
+				commitAs(t, dir, msg, other)
+				rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, s := range []string{"author " + other.Name + " <" + other.Email + ">", id.Name + " <" + id.Email + ">", "Amend or re-commit"} {
+					if rep.OK || !strings.Contains(rep.Refused, s) {
+						t.Errorf("a push as %v: %+v, want it refused naming %q", other, rep, s)
+					}
+				}
+				if _, err := forgeRepo.Reference(plumbing.ReferenceName("refs/heads/"+ws.Branch), true); err == nil {
+					t.Errorf("the forge has %s after a refused push as %v", ws.Branch, other)
+				}
+				staged, err := mirrors.Staged(origin)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, s := range staged {
+					if s.Task == l.ID {
+						t.Errorf("a refused push as %v was staged: %+v", other, s)
+					}
+				}
+			}
+
+			// Back to the base and committed again as the checkout's identity: delivered.
+			toBase()
 			commitAs(t, dir, msg, id)
 			if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK {
 				t.Fatalf("a push as the checkout's identity: %+v %v", rep, err)
