@@ -357,7 +357,10 @@ could select somebody's records and run a task of the installer's design as them
 refuses the charter at install.
 
 The task record is the owner's, and says so as `actsFor:`. Its own gates ask the owner. Where the
-owner is the system, the task acts as the rule alone.
+owner is the system, the task acts as the rule alone. Its commits carry the owner's tagged address
+as author and committer, as the owner's own launch would (`u+verse-<agent>-runner@h`), with the
+pair in the `Verse-Principal` trailer; where the owner is not a person, or is the system, they
+carry the runner's.
 
 `subject` is the only value that `as` takes. Verse refuses any other at install. It also refuses
 a charter that writes `actsFor:` itself, because the engine sets it.
