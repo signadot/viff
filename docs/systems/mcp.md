@@ -9,6 +9,9 @@ of thing as [`slack`](slack.md): a system beyond the runner that the runner perf
 This is not [verse's own MCP server](../reference/mcp.md), which is verse offering its verbs to
 an MCP client. Here verse's runner is the client, of someone else's server.
 
+It is for a server reached over HTTP with a key the operator holds. A server that is a program
+speaking on its stdio [is not offered through it](#a-server-over-stdio).
+
 ## What a task can do
 
 An `mcp` block names one server (`server`), by its name in the runner's configuration, and its
@@ -25,10 +28,10 @@ spawn:
       - server: linear
         call:
         - {tool: !or [get_issue, list_issues]}
-        - {tool: create_issue, arguments: {team: ENG}}
+        - {tool: save_issue, arguments: !and [{team: ENG}, !not {id: null}]}
   prompt: "File the bugs in ENG-1290's thread as issues of their own, and link them from it."
   autonomy:
-  - {match: {system: mcp, tool: create_issue}, then: ask}
+  - {match: {system: mcp, tool: save_issue}, then: ask}
   - {then: allow}
 ```
 
@@ -49,6 +52,23 @@ pin an argument names it, and a shape need not be rewritten when the server's to
 argument. This is unlike [`secret.exec`'s `env`](secret.md), which matches closed: there a
 variable the shape does not name changes what the command does, and here an argument is the
 tool's own input, which the server validates.
+
+**A shape that must keep an argument out says so, with `!not`.** Linear's `save_issue` creates an
+issue where it is given no `id`, and updates the issue an `id` names. So `{team: ENG}` admits
+`{team: ENG, id: ENG-7}`, an update of any issue the key reaches. The shape that admits creating
+and nothing else is the one above:
+
+```tony
+- {tool: save_issue, arguments: !and [{team: ENG}, !not {id: null}]}
+```
+
+`{id: null}` is every call that gives an `id`, whatever its value, and `!not` of it is every call
+that gives none. A spawn under a ceiling that says this says it again: `{team: ENG}` alone is
+wider than the ceiling, and refused.
+
+**Be careful: `!not` applies to its value.** `{team: ENG, id: !not null}` is not the same shape.
+There `!not` applies to `null`, which as a pattern is any value, so it asks for an `id` that no
+value can be, and admits no call: not one with an `id`, and not one without.
 
 **An answer performs the call it was about, and no other.** A row that asks about a call asks
 about the server, the tool and the arguments, and the answer the runner relays performs that
@@ -140,7 +160,7 @@ agents:
       mcp:
         ceiling:
         - {server: linear}
-        - {server: linear_w, call: [{tool: save_issue, arguments: {team: ENG}}]}
+        - {server: linear_w, call: [{tool: save_issue, arguments: !and [{team: ENG}, !not {id: null}]}]}
 ```
 
 - **A server's name** is lowercase letters, digits and `_`, a letter first, with no `-`, so a
@@ -162,5 +182,22 @@ agents:
 The runner follows no redirect, so a server does not choose where the credential goes, and
 declares no capability: a server's request for elicitation, sampling or roots is refused, and
 the call it came in goes on. A server reached only through an interactive sign-in (OAuth with no
-token the operator can hold) is not reached; Linear and Signadot take a key in the header. Servers
-over stdio are not run: the runner would start code outside any sandbox.
+token the operator can hold) is not reached; Linear and Signadot take a key in the header.
+
+## A server over stdio
+
+Many MCP servers are programs that speak on their stdio (`npx @scope/some-mcp-server`). The
+runner starts none of them, so the tools of one are not a task's tools, and no call of one is
+decided here. A runner that started such a program as it calls a remote server would run its code
+outside any sandbox, as the runner's user, beside its own credentials.
+
+A task can still run one, as a command and not through this system: from its own shell
+([`commands.run`](inside.md)), or with a secret, where the spawn admits the server's command in a
+[`secret`](secret.md) block with `stdin: true` and the task starts it with `secret-exec`. The task
+then speaks JSON-RPC to the program itself. That is a different thing from what this page
+describes:
+
+- **The agent is offered none of the server's tools.** It has a process to write requests to.
+- **No call is decided.** What is decided is the command that starts the server, and approving
+  it approves the session: the promise `commands.run` and `secret-exec` make for any command, and
+  no more.
