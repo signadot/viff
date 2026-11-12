@@ -1065,8 +1065,9 @@ func (t *Tree) AuthoredWork(l *runner.Launch) (ok bool, refusal string, head plu
 		if authorOnly {
 			fmt.Fprintf(&b, "For another's patch, re-commit each such commit with --reset-author and "+
 				"credit its author with a `Co-Authored-By: Name <email>` trailer: `git commit --amend "+
-				"--reset-author` when it is the tip, or `git rebase -x 'git commit --amend --no-edit "+
-				"--reset-author' %s` for every commit since the base. ", ShortSha(t.Head))
+				"--reset-author` when it is the tip, or, when the branch holds only your own commits "+
+				"since the base, `git rebase -x 'git commit --amend --no-edit --reset-author' %s`; "+
+				"otherwise amend each such commit by hand. ", ShortSha(t.Head))
 		}
 		b.WriteString("Amend or re-commit with them, then push again.")
 		return true, b.String(), head, nil
