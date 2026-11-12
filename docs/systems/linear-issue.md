@@ -66,10 +66,13 @@ same environment and rows decide them.
 a personal key alone, or an OAuth token as `Bearer …`.
 
 **The task** holds no credential. The runner makes each call with its own credential, in the
-same form, `LINEAR_API_KEY`. The runner offers the system where a doer's ceiling in its
-configuration names it and the variable is set; without it, the runner starts with the system
-closed, and a spawn that needs it is refused where it is written. The iod and the runner may hold one
-credential or two.
+same form: `LINEAR_API_KEY`, or a secret of its [secret
+store](../reference/runnerd.md#the-secret-store) where its configuration names one
+(`secrets: {dir: /secrets, systems: {linear-issue: linear}}`), which is read at each call, so a
+rotated key is the next call's. The runner offers the system where a doer's ceiling in its
+configuration names it and the credential is there; without it, the runner starts with the
+system closed, and a spawn that needs it is refused where it is written. The iod and the runner
+may hold one credential or two.
 
 **The operator** sets a limit on what any task may do, in the runner's configuration, under each
 doer whose tasks may use it:

@@ -40,7 +40,7 @@ defaults:
 | path | setting | what it holds |
 |---|---|---|
 | `~/.verse/local/local.env` | | the settings, rendered: what the run lines source |
-| `~/.verse/local/bin` | `VERSE_LOCAL_BIN` | `verse`, `runnerd`, `verse-call-tool`, and the `o` this tree pins |
+| `~/.verse/local/bin` | `VERSE_LOCAL_BIN` | `verse`, `runnerd`, `verse-call-tool`, `verse-secret-exec`, and the `o` this tree pins |
 | `~/.verse/local/config.tony` | `VERSE_LOCAL_CONFIG` | the verse's config: who you are, its address, the issuer it signs as |
 | `~/.verse/local/data` | `VERSE_LOCAL_DATA` | the data dir: the store, the issuer's key (`issuer.pem`) and logd's config |
 | `~/.verse/local/runner` | `VERSE_LOCAL_RUNNER_DIR` | the runner's `runner.tony`, its `token` (0600) and its credentials, `env` (0600) |

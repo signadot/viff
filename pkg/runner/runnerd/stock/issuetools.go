@@ -219,7 +219,7 @@ func gitIssuePull(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 			if t == nil {
 				return noSuchRepo(tu.Input, names), true, nil
 			}
-			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitIssuePull, Repo: t.Repo.Name()})
+			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitIssuePull, Fields: map[string]string{"repo": t.Repo.Name()}})
 			switch {
 			case err != nil:
 				return "", false, fmt.Errorf("asking the runner to pull the issues of %s: %w", t.Repo.Name(), err)
@@ -256,7 +256,7 @@ func gitIssuePush(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 			if t == nil {
 				return noSuchRepo(tu.Input, names), true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitIssuePush, Repo: t.Repo.Name()}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitIssuePush, Fields: map[string]string{"repo": t.Repo.Name()}}))
 		},
 	}
 }
@@ -292,7 +292,7 @@ func githubIssueCreate(cl *delivery.Client, ws *workspace.Workspace, names []str
 			if strings.TrimSpace(title) == "" {
 				return "not filed: an issue needs a title", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubIssueCreate, Repo: t.Repo.Name(), Title: title, Body: str(tu.Input, "body")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubIssueCreate, Body: str(tu.Input, "body"), Fields: map[string]string{"repo": t.Repo.Name(), "title": title}}))
 		},
 	}
 }
@@ -311,21 +311,26 @@ func githubIssueVerb(cl *delivery.Client, ws *workspace.Workspace, names []strin
 		params["body"] = map[string]any{"type": "string"}
 		required = append(required, "body")
 	}
+	all := repoParams(names, params)
 	return verse.Tool{
 		Name:        name,
 		Description: what + " Repositories: " + strings.Join(names, ", ") + ".",
-		Params:      repoParams(names, params),
+		Params:      all,
 		Required:    requiredWith(names, required...),
 		Step:        step,
 		Fields: func(in map[string]any) (map[string]string, bool) {
 			t := treeOf(ws, names, in)
 			n, ok := issueNumber(in)
-			if t == nil || !ok {
+			if _, stray := untaken(name, in, all); t == nil || !ok || stray {
 				return nil, false
 			}
 			return map[string]string{"repo": t.Repo.Repo.Canonical(), "issue": strconv.Itoa(n)}, true
 		},
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			// A close given a body is refused, not closed without it (untaken).
+			if why, stray := untaken(name, tu.Input, all); stray {
+				return why, true, nil
+			}
 			t := treeOf(ws, names, tu.Input)
 			if t == nil {
 				return noSuchRepo(tu.Input, names), true, nil
@@ -337,7 +342,7 @@ func githubIssueVerb(cl *delivery.Client, ws *workspace.Workspace, names []strin
 			if op == delivery.OpGitHubIssueComment && strings.TrimSpace(str(tu.Input, "body")) == "" {
 				return "not commented: a comment needs a body", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Repo: t.Repo.Name(), Issue: strconv.Itoa(n), Body: str(tu.Input, "body")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Body: str(tu.Input, "body"), Fields: map[string]string{"repo": t.Repo.Name(), "issue": strconv.Itoa(n)}}))
 		},
 	}
 }
@@ -392,7 +397,7 @@ func linearIssueCreate(cl *delivery.Client) verse.Tool {
 			case strings.TrimSpace(title) == "":
 				return "not filed: an issue needs a title", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpLinearIssueCreate, Team: team, Title: title, Body: str(tu.Input, "description")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpLinearIssueCreate, Body: str(tu.Input, "description"), Fields: map[string]string{"team": team, "title": title}}))
 		},
 	}
 }
@@ -415,12 +420,16 @@ func linearIssueVerb(cl *delivery.Client, name, op, step string) verse.Tool {
 		Step: step,
 		Fields: func(in map[string]any) (map[string]string, bool) {
 			id := strings.ToUpper(strings.TrimSpace(str(in, "issue")))
-			if id == "" {
+			if _, stray := untaken(name, in, params); id == "" || stray {
 				return nil, false
 			}
 			return map[string]string{"issue": id}, true
 		},
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			// A close given a body is refused, not closed without it (untaken).
+			if why, stray := untaken(name, tu.Input, params); stray {
+				return why, true, nil
+			}
 			id := strings.ToUpper(strings.TrimSpace(str(tu.Input, "issue")))
 			switch {
 			case id == "":
@@ -428,7 +437,7 @@ func linearIssueVerb(cl *delivery.Client, name, op, step string) verse.Tool {
 			case op == delivery.OpLinearIssueComment && strings.TrimSpace(str(tu.Input, "body")) == "":
 				return "not commented: a comment needs a body", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Issue: id, Body: str(tu.Input, "body")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Body: str(tu.Input, "body"), Fields: map[string]string{"issue": id}}))
 		},
 	}
 }

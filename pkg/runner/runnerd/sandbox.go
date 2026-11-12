@@ -1,7 +1,10 @@
 package runnerd
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
 )
 
 // Sandbox confines a task's process. It is drawn once, around the whole process, so everything
@@ -21,11 +25,91 @@ type Sandbox interface {
 	Name() string
 	// Provides reports whether this sandbox can build net, and says what it can't if not.
 	Provides(net Network) error
-	// Wrap rewrites cmd to run confined, with dir its working directory and the only path it
-	// may write, and net what it may reach. programs are the other programs it runs (a script's
-	// verse-call-tool), which it finds where they are, read only. The descriptors on
-	// cmd.ExtraFiles are passed through. Called only after Provides said yes.
-	Wrap(cmd *exec.Cmd, dir string, net Network, programs []string) error
+	// Wrap rewrites cmd to run confined, with dir the only path it may write and its working
+	// directory, unless cmd.Dir names one under it, and net what it may reach. programs are
+	// the other programs it runs (a script's verse-call-tool), which it finds where they are,
+	// read only. inst, where it is given, is the task's install root, bound read only at
+	// InstPath: the runner writes tools into it from its own side (the pkg system), and the
+	// task sees them through the bind. The descriptors on cmd.ExtraFiles are passed through.
+	// Called only after Provides said yes.
+	Wrap(cmd *exec.Cmd, dir string, net Network, programs []string, inst string) error
+}
+
+// Confiner confines a command the runner runs for a task apart from the task's own process
+// (delivery.Confine, for `secret.exec`): in the same kind of sandbox the task's process is in,
+// over the task's root, under the task's network, with the paths the operator keeps read only
+// and the task's install root bound read only at InstPath, as its own sandbox has it. The
+// program is one of the runner's, under a system directory, a readOnly path or that install
+// root, where it is and where it resolves to: a program of the task's would read the secret for
+// it. The install root is the runner's as those directories are — the runner writes a tool into
+// it from its own side, and the task cannot write it — so a tool it installed for the task is
+// one a command with a secret may start from. A runner that runs its tasks unconfined confines
+// nothing, and says so.
+type Confiner struct {
+	Sandbox  Sandbox
+	ReadOnly []string
+	// Kept is the runner's own directories (KeptDirs), which no readOnly path may reach.
+	Kept map[string]string
+}
+
+// Confine implements delivery.Confine.
+func (c Confiner) Confine(cmd *exec.Cmd, root, dir string, net delivery.Network, inst string) error {
+	if c.Sandbox == nil || c.Sandbox.Name() == (Unconfined{}).Name() {
+		return errors.New("this runner runs its tasks unconfined (-sandbox none), and runs no command with a secret")
+	}
+	if !filepath.IsAbs(cmd.Path) {
+		return fmt.Errorf("the program %q is no absolute path", cmd.Path)
+	}
+	if !filepath.IsAbs(root) || !filepath.IsAbs(dir) || !underAny(filepath.Clean(dir), []string{root}) {
+		return fmt.Errorf("the directory %s is not under the task's root %s", dir, root)
+	}
+	// Each path as written and as it resolves, on both sides: a link under a kept path to a
+	// program elsewhere is refused for where it resolves, and a readOnly path that is itself
+	// reached through a link (/var on macOS) admits what lies under where it resolves.
+	var kept []string
+	for _, d := range c.ReadOnly {
+		kept = append(kept, d, resolved(d))
+	}
+	// A program in the install root is named by the path INSIDE the sandbox, which is where the
+	// command runs it and where nothing on this side lies: it is checked where that path lands
+	// on this side, under inst, so a link that leaves the root is refused for where it resolves
+	// like any other. A task with no install root has no such program.
+	check := []string{cmd.Path, resolved(cmd.Path)}
+	if within(cmd.Path, InstPath) {
+		if inst == "" {
+			return fmt.Errorf("the program %s is in an install root, and this task has none", cmd.Path)
+		}
+		rel, err := filepath.Rel(InstPath, cmd.Path)
+		if err != nil {
+			return fmt.Errorf("the program %s is no path under %s: %w", cmd.Path, InstPath, err)
+		}
+		side := filepath.Join(inst, rel)
+		check = []string{side, resolved(side)}
+		kept = append(kept, inst, resolved(inst))
+	}
+	for _, p := range check {
+		if !UnderSystem(p) && !underAny(p, kept) {
+			return fmt.Errorf("the program %s is under no system directory, no readOnly path of the runner's and "+
+				"no install root of the task's; a command run with a secret starts from one of the runner's own, "+
+				"and what that one runs is the environment's shapes' to bound", p)
+		}
+	}
+	cmd.Dir = dir
+	// The readOnly paths this host lacks were said when the task's own process started
+	// (SubprocessHandler), and are not said again for each command. The install root is bound as
+	// the task's own sandbox binds it, read only at InstPath: a command's PATH names it (the
+	// task's shell's, which the command is given), so the bind is what makes that name resolve.
+	return c.Sandbox.Wrap(cmd, root, Network{Mode: net.Mode, Egress: net.Egress}, withReadOnly(nil, c.ReadOnly, c.Kept, io.Discard), inst)
+}
+
+// underAny is whether path is, or lies under, one of dirs.
+func underAny(path string, dirs []string) bool {
+	for _, d := range dirs {
+		if within(path, d) {
+			return true
+		}
+	}
+	return false
 }
 
 // Network is what a task's process may reach: the runner's own network (NetworkOpen,
@@ -52,6 +136,11 @@ var NetworkModes = []string{NetworkOpen, NetworkNone, NetworkAllow}
 // EgressPath is where the egress socket appears inside a sandbox: a fixed path, because the
 // sandbox binds it and the task's process dials it (UseEgress), two programs agreeing on a name.
 const EgressPath = "/run/verse-egress"
+
+// InstPath is where a task's install root appears inside its sandbox, read only: delivery's,
+// which resolves a program the task names against it (delivery.InstPath), and the sandboxes
+// here are what make it so — the bind below, and the PATH a task's shell is given.
+const InstPath = delivery.InstPath
 
 func (n Network) mode() string {
 	if n.Mode == "" {
@@ -99,8 +188,10 @@ func (Unconfined) Provides(net Network) error {
 	return nil
 }
 
-func (Unconfined) Wrap(cmd *exec.Cmd, dir string, _ Network, _ []string) error {
-	cmd.Dir = dir
+func (Unconfined) Wrap(cmd *exec.Cmd, dir string, _ Network, _ []string, _ string) error {
+	// No install root either: there is no bind to make it read only through, so the pkg system
+	// is closed where tasks run unconfined (stock.Standalone), as secret is.
+	cmd.Dir = cmp.Or(cmd.Dir, dir)
 	return nil
 }
 
@@ -120,7 +211,7 @@ func Bwrap() (*BwrapSandbox, error) {
 	}
 	b := BwrapAt(bin)
 	probe := exec.Command("true")
-	if err := b.Wrap(probe, os.TempDir(), Network{Mode: NetworkNone}, nil); err != nil {
+	if err := b.Wrap(probe, os.TempDir(), Network{Mode: NetworkNone}, nil, ""); err != nil {
 		return nil, err
 	}
 	if out, err := probe.CombinedOutput(); err != nil {
@@ -141,7 +232,7 @@ func (*BwrapSandbox) Provides(net Network) error { return checkMode(net) }
 // that exposes whatever wasn't thought of.
 var systemDirs = []string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/opt"}
 
-func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []string) error {
+func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []string, inst string) error {
 	args := []string{
 		"--die-with-parent", "--new-session",
 		// No capabilities, even for a runner run as root, which bwrap would otherwise let keep
@@ -154,18 +245,29 @@ func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []s
 		args = append(args, "--ro-bind-try", d, d)
 	}
 	// /etc/resolv.conf is a link out of /etc on a systemd host.
-	if conf, err := filepath.EvalSymlinks("/etc/resolv.conf"); err == nil && !underSystem(conf) {
+	if conf, err := filepath.EvalSymlinks("/etc/resolv.conf"); err == nil && !UnderSystem(conf) {
 		args = append(args, "--ro-bind-try", conf, conf)
 	}
 	// The programs have to exist inside: the runner's own binary is a task's process, and it and
 	// the others may be installed outside the system directories. Bound read only at their own
 	// paths, so nothing the task may write shares their inode.
+	// A program under InstPath is not bound here and is not this side's path at all: the install
+	// root's own bind, below, is what puts it inside.
 	for _, p := range append([]string{cmd.Path}, programs...) {
-		if prog, err := filepath.Abs(p); err == nil && !underSystem(prog) {
+		if prog, err := filepath.Abs(p); err == nil && !UnderSystem(prog) && !within(prog, InstPath) {
 			args = append(args, "--ro-bind", prog, prog)
 		}
 	}
-	args = append(args, "--bind", dir, dir, "--chdir", dir)
+	// The task's install root, read only, at its fixed path: the one mount the pkg system ever
+	// makes, at the start.
+	if inst != "" {
+		args = append(args, "--ro-bind", inst, InstPath)
+	}
+	// The working directory is dir, or what cmd.Dir names under it: a command run for the task
+	// in one directory of its tree (Confiner). It is bwrap's to change to, inside, and not the
+	// host's: cmd.Dir is taken off, so nothing changes directory on the runner's side.
+	args = append(args, "--bind", dir, dir, "--chdir", cmp.Or(cmd.Dir, dir))
+	cmd.Dir = ""
 	switch net.mode() {
 	case NetworkNone:
 		args = append(args, "--unshare-net")
@@ -185,7 +287,10 @@ func (b *BwrapSandbox) Wrap(cmd *exec.Cmd, dir string, net Network, programs []s
 	return nil
 }
 
-func underSystem(path string) bool {
+// UnderSystem reports whether path is, or lies under, one of the system directories: what
+// every task's sandbox has, read only, whatever else it is given. So nothing the runner keeps
+// from its tasks may be there (CheckSecretStore).
+func UnderSystem(path string) bool {
 	for _, d := range systemDirs {
 		if path == d || strings.HasPrefix(path, d+"/") {
 			return true

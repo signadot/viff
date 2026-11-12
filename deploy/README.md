@@ -258,7 +258,7 @@ should be passed the Service name directly rather than discovering it.
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | `secretStore` | `aws-secretsmanager` | the `ClusterSecretStore` every entry below comes from |
 | `llmSecretKey` | `""` | entry for `verse-llm`; `""` emits no `ExternalSecret` |
-| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` / `codexSecretKey` / `claudeSecretKey` / `issuerSecretKey` | `""` | the same, one per credential |
+| `gitSecretKey` / `slackSecretKey` / `linearSecretKey` / `githubSecretKey` / `runnerSecretKey` / `codexSecretKey` / `claudeSecretKey` / `issuerSecretKey` / `runnerStoreKey` | `""` | the same, one per credential |
 | `llmModel` | `""` | `OPENAI_MODEL` for versed; `""` leaves the driver's `gpt-4o` |
 | `systemCharter` | `""` | a charter, by path (relative to `deploy/`, or absolute), mounted into versed and installed at start as the system (`VERSE_SYSTEM_CHARTER`); read at start, so a change takes a restart. The example a deployment copies under `deploy/` is [gate-ask](../docs/reference/examples/gate-ask/gate-ask.tony), with its Slack place filled in |
 | `authConfig` | `""` | verse's `auth` block, a file by path (relative to `deploy/`, or absolute), mounted into versed as its config (`VERSE_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). eks: `auth/eks.tony` |
@@ -579,13 +579,14 @@ are the names each consumer reads:
 |---|---|---|---|
 | `llmSecretKey` | `verse-llm` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` (`PORTKEY_BASE_URL`, `OPENAI_MODEL` optional) | env, by versed **and** the verse runner, which without `PORTKEY_API_KEY` starts with the verse agent closed, offering scripts alone, and says so |
 | `gitSecretKey` | `verse-git` | `credential` — the value being `username=x-access-token\npassword=<PAT>\n` | a **file** at `/git-credentials/credential` |
-| `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start. `SLACK_BOT_TOKEN` also in the runners, `optional: true` in the pod spec: a runner without it starts with `slack` closed, and says so |
-| `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env; `LINEAR_API_KEY` also in the runners, `optional: true` in the pod spec: a runner without it starts with `linear-issue` closed, and says so |
+| `slackSecretKey` | `verse-slack` | `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET` | env; **not** optional — no token, no start. `SLACK_BOT_TOKEN` also in the runners, `optional: true` in the pod spec, and as the **file** `slack-bot` in [their secret store](#the-runners-secret-store): a runner without it starts with `slack` closed, and says so |
+| `linearSecretKey` | `verse-linear` | `LINEAR_API_KEY` (the `Authorization` header verbatim), `LINEAR_WEBHOOK_SECRET` | env; `LINEAR_API_KEY` also in the runners, `optional: true` in the pod spec, and as the **file** `linear` in their secret store: a runner without it starts with `linear-issue` closed, and says so |
 | `githubSecretKey` | `verse-github` | `GITHUB_TOKEN`, or `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID` and `GITHUB_APP_PRIVATE_KEY` ([The GitHub App](#the-github-app)); and `GITHUB_WEBHOOK_SECRET` | env; **not** optional — no Secret, no start |
 | `runnerSecretKey` | `verse-runner` | `gitToken` | env (`GITHUB_TOKEN`), in the runners and never in the sandbox |
 | `codexSecretKey` | `verse-codex` | `OPENAI_API_KEY` | env, in the codex runner, `optional: true` — a runner without it starts, and its first codex spawn fails; written as each task's Codex login |
 | `claudeSecretKey` | `verse-claude` | `ANTHROPIC_API_KEY` | env, in the claude runner, `optional: true` — a runner without it starts, and its first claude spawn fails, not logged in; handed to each task's claude process |
 | `issuerSecretKey` | `verse-issuer` | `issuer.pem`, an RSA private key in PEM (`openssl genrsa 2048`) | a **file** at `/etc/verse/issuer/issuer.pem`, read by versed alone: what it signs its own tokens with, the gate credential and the token toward each runner |
+| `runnerStoreKey` | `verse-runner-secrets` | any: each key is a secret's name in [the runners' secret store](#the-runners-secret-store) — lower case letters, digits, `-`, `_`, `.`, not starting with `.` | a **file** at `/secrets/<key>` in each runner, `optional: true`: what a runner performs a system with that no other Secret holds |
 
 ### Creating the entries
 
@@ -624,6 +625,11 @@ put <deployment>/verse/codex /tmp/e.json
 
 printf '{"ANTHROPIC_API_KEY":"%s"}' "$key" > /tmp/e.json
 put <deployment>/verse/claude /tmp/e.json
+
+# The runners' secret store: each key a file at /secrets/<key>, named as the store names them.
+# Only for what no other Secret holds; the Slack and Linear tokens reach the store on their own.
+printf '{"some-server":"%s"}' "$token" > /tmp/e.json
+put <deployment>/verse/runner-secrets /tmp/e.json
 
 # `issuer.pem` is a FILE versed reads, a multi-line PEM: jq carries its newlines into the JSON
 # string, and nobody but versed ever sees the private half.
@@ -891,6 +897,33 @@ reject both `Unconfined` and `Unmasked`; the `verse` namespace carries no PSA la
 `/state` is an `emptyDir`, and the manifest says why that is the first thing to change: a
 delivery that could not reach its remote leaves the commit under `refs/pending/<task>/<repo>`
 for the runner to retry, and on an `emptyDir` that work dies with the pod.
+
+### The runners' secret store
+
+Each runner mounts a projected volume at `/secrets`, its [secret
+store](../docs/reference/runnerd.md#the-secret-store): one file to a secret, read by the runner
+at each act and by no task — no sandbox binds the directory, and the runner refuses to start with
+a store where one would. The volume's sources are all `optional`, so it is there on every
+deployment and empty on one with none of them:
+
+| file | from | the system that may name it |
+|---|---|---|
+| `slack-bot` | `verse-slack`'s `SLACK_BOT_TOKEN` | `slack` |
+| `linear` | `verse-linear`'s `LINEAR_API_KEY` | `linear-issue` |
+| `<key>` | each key of `verse-runner-secrets` (`runnerStoreKey`) | what comes to need one and has no Secret of its own |
+
+The manifests' configuration names no secret, so each system reads its variable as it always
+has, from the same Secrets. A deployment moves a system to the store in its runner configuration
+(`runnerConfig` and the other two): `secrets: {dir: /secrets, systems: {slack: slack-bot,
+linear-issue: linear}}`. The variable is then not read, and the runner says so at start if it is
+set; a rotation is the next act's, with no restart, where a variable takes a rollout; and a
+named secret whose file is absent or empty at start closes its system to every doer, with a
+warning that names the file and the directory. The iods go on reading the same Secrets, so a
+token is kept once.
+
+Not a `subPath` mount, on purpose: one does not follow a Secret that changes. The projected
+volume follows one within the kubelet's sync period, as the `ExternalSecret` follows the entry
+within its `refreshInterval`.
 
 ## Shipping one tier at a time
 

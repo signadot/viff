@@ -39,18 +39,22 @@ O_PKG := github.com/signadot/tony-format/go-tony/cmd/o
 #   verse-call-tool
 #            a task's tools from the shell (cmd/verse-call-tool): the runner finds it beside
 #            itself and copies it into each task's workspace, for a program running there.
+#   verse-secret-exec
+#            one command run with a secret from the shell, as if in place (cmd/verse-secret-exec):
+#            beside verse-call-tool, where a task's script finds both.
 define go_build
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse ./cmd/verse
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/o $(O_PKG)
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/iod ./cmd/iod
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/runnerd ./cmd/runnerd
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse-call-tool ./cmd/verse-call-tool
+	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse-secret-exec ./cmd/verse-secret-exec
 endef
 
 .DEFAULT_GOAL := help
 
 .PHONY: bin
-bin: ## build verse + o + iod + runnerd + verse-call-tool for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
+bin: ## build verse + o + iod + runnerd + verse-call-tool + verse-secret-exec for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
 	$(call go_build,$(GOOS),$(GOARCH))
 
 .PHONY: iod
@@ -65,8 +69,12 @@ runnerd: ## build just the runners (verse) for the host
 verse-call-tool: ## build just the shell's tool caller for the host
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/verse-call-tool ./cmd/verse-call-tool
 
+.PHONY: verse-secret-exec
+verse-secret-exec: ## build just the shell's command-with-a-secret for the host
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/verse-secret-exec ./cmd/verse-secret-exec
+
 .PHONY: dist-linux
-dist-linux: ## cross-compile verse + o + iod + runnerd + verse-call-tool for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
+dist-linux: ## cross-compile verse + o + iod + runnerd + verse-call-tool + verse-secret-exec for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
 	$(call go_build,linux,$(IMAGE_ARCH))
 
 .PHONY: docker
@@ -76,13 +84,16 @@ docker: dist-linux ## build the image, COPYing the pre-built linux binaries (no 
 # The verse runner is its OWN image and its own target. It is not folded into `docker` because the
 # two images have nothing to do with each other's cadence: the runtime image is thin and pinned
 # to the engine, this one is sized by the toolchain the repositories it serves need to build.
-# verse-call-tool rides beside runnerd, where the runner finds it for a task's scripts.
+# verse-call-tool and verse-secret-exec ride beside runnerd, where the runner finds them for a
+# task's scripts.
 .PHONY: runner-linux
-runner-linux: ## cross-compile runnerd and verse-call-tool for linux/$(IMAGE_ARCH)
+runner-linux: ## cross-compile runnerd, verse-call-tool and verse-secret-exec for linux/$(IMAGE_ARCH)
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
 	  -o $(DIST)/linux/$(IMAGE_ARCH)/runnerd ./cmd/runnerd
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
 	  -o $(DIST)/linux/$(IMAGE_ARCH)/verse-call-tool ./cmd/verse-call-tool
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
+	  -o $(DIST)/linux/$(IMAGE_ARCH)/verse-secret-exec ./cmd/verse-secret-exec
 
 .PHONY: runner-docker
 runner-docker: runner-linux ## build the verse runner image (bubblewrap containment)

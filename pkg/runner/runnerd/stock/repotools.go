@@ -135,7 +135,8 @@ func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) v
 			if err != nil {
 				return "not pushed: " + err.Error(), true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: "push", Repo: t.Repo.Name(), Branch: branch, Delete: del, Force: force}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: "push", Fields: map[string]string{
+				"repo": t.Repo.Name(), "branch": branch, "delete": strconv.FormatBool(del), "force": strconv.FormatBool(force)}}))
 		},
 	}
 }
@@ -198,7 +199,7 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 		Step:     step,
 		Fields: func(in map[string]any) (map[string]string, bool) {
 			t, head, base, err := resolve(in)
-			if err != nil {
+			if _, stray := untaken(name, in, params); err != nil || stray {
 				return nil, false
 			}
 			fields := map[string]string{"repo": t.Repo.Repo.Canonical(), "head": head}
@@ -214,6 +215,11 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 			return fields, true
 		},
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			// An update given `draft: true` is refused, not made with the draft state left as
+			// it was (untaken).
+			if why, stray := untaken(name, tu.Input, params); stray {
+				return why, true, nil
+			}
 			t, head, base, err := resolve(tu.Input)
 			if err != nil {
 				return "no pull request: " + err.Error(), true, nil
@@ -222,8 +228,11 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 			if name == updatePRTool {
 				op = delivery.OpUpdatePR
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Repo: t.Repo.Name(), Branch: head, Base: base,
-				Title: str(tu.Input, "title"), Body: str(tu.Input, "body"), Draft: name == createPRTool && draftOf(tu.Input)}))
+			asked := map[string]string{"repo": t.Repo.Name(), "branch": head, "base": base, "title": str(tu.Input, "title")}
+			if name == createPRTool {
+				asked["draft"] = strconv.FormatBool(draftOf(tu.Input)) // an update leaves it as it is
+			}
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: op, Body: str(tu.Input, "body"), Fields: asked}))
 		},
 	}
 }
@@ -265,7 +274,7 @@ func listPRsToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string
 			if t == nil {
 				return noSuchRepo(tu.Input, names), true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubListPRs, Repo: t.Repo.Name()}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubListPRs, Fields: map[string]string{"repo": t.Repo.Name()}}))
 		},
 	}
 }
@@ -300,7 +309,7 @@ func readPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string)
 			if !ok {
 				return "refused: a pull request number is required", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubReadPR, Repo: t.Repo.Name(), PR: strconv.Itoa(n)}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubReadPR, Fields: map[string]string{"repo": t.Repo.Name(), "pr": strconv.Itoa(n)}}))
 		},
 	}
 }
@@ -308,6 +317,10 @@ func readPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string)
 // commentPRToolFor comments on a pull request's conversation by its number, with the runner's
 // token: a step the autonomy decides (github.comment-pr), on the repository and the number.
 func commentPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
+	params := repoParams(names, map[string]any{
+		"pr":   map[string]any{"type": "integer"},
+		"body": map[string]any{"type": "string"},
+	})
 	return verse.Tool{
 		Name: commentPRTool,
 		Description: "Comment on a pull request's conversation at a GitHub repository, by its number, with the body " +
@@ -315,21 +328,23 @@ func commentPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []stri
 			"one that is nothing. To answer an inline review comment in its thread, use " + replyCommentTool + ". " +
 			"The runner comments with its own token; what you read back is the comment's url. " +
 			"Repositories: " + strings.Join(names, ", ") + ".",
-		Params: repoParams(names, map[string]any{
-			"pr":   map[string]any{"type": "integer"},
-			"body": map[string]any{"type": "string"},
-		}),
+		Params:   params,
 		Required: requiredWith(names, "pr", "body"),
 		Step:     task.StepGitHubCommentPR,
 		Fields: func(in map[string]any) (map[string]string, bool) {
 			t := treeOf(ws, names, in)
 			n, ok := numberIn(in, "pr")
-			if t == nil || !ok {
+			if _, stray := untaken(commentPRTool, in, params); t == nil || !ok || stray {
 				return nil, false
 			}
 			return map[string]string{"repo": t.Repo.Repo.Canonical(), "pr": strconv.Itoa(n)}, true
 		},
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {
+			// A comment given a review comment's id is refused, not made on the conversation
+			// where a reply in the thread was meant (untaken).
+			if why, stray := untaken(commentPRTool, tu.Input, params); stray {
+				return why, true, nil
+			}
 			t := treeOf(ws, names, tu.Input)
 			if t == nil {
 				return noSuchRepo(tu.Input, names), true, nil
@@ -341,8 +356,7 @@ func commentPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []stri
 			if strings.TrimSpace(str(tu.Input, "body")) == "" {
 				return "not commented: a comment needs a body", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubCommentPR, Repo: t.Repo.Name(),
-				PR: strconv.Itoa(n), Body: str(tu.Input, "body")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubCommentPR, Body: str(tu.Input, "body"), Fields: map[string]string{"repo": t.Repo.Name(), "pr": strconv.Itoa(n)}}))
 		},
 	}
 }
@@ -390,8 +404,7 @@ func replyCommentToolFor(cl *delivery.Client, ws *workspace.Workspace, names []s
 			case strings.TrimSpace(str(tu.Input, "body")) == "":
 				return "not replied: a reply needs a body", true, nil
 			}
-			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubReplyComment, Repo: t.Repo.Name(),
-				PR: strconv.Itoa(pr), Comment: strconv.Itoa(comment), Body: str(tu.Input, "body")}))
+			return relay(cl.Ask(delivery.Request{Decision: tu.Decision, Op: delivery.OpGitHubReplyComment, Body: str(tu.Input, "body"), Fields: map[string]string{"repo": t.Repo.Name(), "pr": strconv.Itoa(pr), "comment": strconv.Itoa(comment)}}))
 		},
 	}
 }
@@ -423,7 +436,7 @@ func fetchToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 				return fmt.Sprintf("there is no repository %q here; it has: %s",
 					str(tu.Input, "repo"), strings.Join(names, ", ")), true, nil
 			}
-			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: "fetch", Repo: t.Repo.Name()})
+			rep, err := cl.Ask(delivery.Request{Decision: tu.Decision, Op: "fetch", Fields: map[string]string{"repo": t.Repo.Name()}})
 			switch {
 			case err != nil:
 				return "", false, fmt.Errorf("asking the runner to fetch %s: %w", t.Repo.Name(), err)
@@ -489,5 +502,5 @@ func askState(cl *delivery.Client, repo, branch string) (delivery.Reply, error) 
 	if cl == nil {
 		return delivery.Reply{}, errors.New("no delivery channel")
 	}
-	return cl.Ask(delivery.Request{Op: delivery.OpState, Repo: repo, Branch: branch})
+	return cl.Ask(delivery.Request{Op: delivery.OpState, Fields: map[string]string{"repo": repo, "branch": branch}})
 }

@@ -96,6 +96,14 @@ var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
 // `mcp__<server>__`.
 const mcpServer = "verse"
 
+// TakesTool is why Claude cannot be offered a tool of this name, nil where it can: the name
+// Claude reads is `mcp__verse__<name>`, and its API bounds a tool's name in length and in
+// letters — the one bound every doer takes (verse.TakesToolNamed). A runtime offering tools it
+// did not write (an MCP server's) asks before offering one.
+func TakesTool(name string) error {
+	return verse.TakesToolNamed("claude", name, "mcp__"+mcpServer+"__"+name)
+}
+
 // The variables the runner reads Claude's credential from, the first set taken: a
 // subscription's token (`claude setup-token`), which is a person's and runs on a runner that is
 // theirs; then an API key, which is what a shared runner holds. The runner sends the value to the

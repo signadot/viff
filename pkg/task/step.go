@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
@@ -51,6 +52,62 @@ func (s Step) With(name string, v *ir.Node) Step {
 // spelled on the way (a flow object read back is tagged `!bracket`), no fields being `{}`.
 func (s Step) Same(o Step) bool {
 	return s.Name == o.Name && plainFields(s.Fields).DeepEqual(plainFields(o.Fields))
+}
+
+// Differs is what o says otherwise than s, by name and never by value: `name` where the steps
+// are of different verbs, else each field one carries and the other does not or says otherwise,
+// in order. A field of form `doc` that is an object on both sides is named by the keys under it
+// that differ, one level down (`arguments.assignee`): a call's arguments are one field, and
+// naming the field alone says nothing of which argument moved. Nil where o is the same step
+// (Same). A refusal names these and not the values: it is logged, and a value (a command's
+// variables, a call's arguments) is not the runner's to repeat.
+func (s Step) Differs(o Step) []string {
+	if s.Same(o) {
+		return nil
+	}
+	if s.Name != o.Name {
+		return []string{"name"}
+	}
+	a, b := plainFields(s.Fields), plainFields(o.Fields)
+	var differ []string
+	for _, n := range keysDiffer(a, b) {
+		x, y := ir.Get(a, n), ir.Get(b, n)
+		if systems.FormOf(s.Name, n) == systems.FormDoc && x != nil && y != nil && x.Type == ir.ObjectType && y.Type == ir.ObjectType {
+			if under := keysDiffer(x, y); under != nil {
+				for _, k := range under {
+					differ = append(differ, n+"."+k)
+				}
+				continue
+			}
+		}
+		differ = append(differ, n)
+	}
+	if differ == nil { // fields that are not an object, saying otherwise
+		return []string{"fields"}
+	}
+	return differ
+}
+
+// keysDiffer is each key of two objects that one carries and the other does not, or that they
+// give different values, a's keys first and then b's own, in order.
+func keysDiffer(a, b *ir.Node) []string {
+	var names []string
+	for _, k := range a.Fields {
+		names = append(names, k.String)
+	}
+	for _, k := range b.Fields {
+		if !slices.Contains(names, k.String) {
+			names = append(names, k.String)
+		}
+	}
+	var differ []string
+	for _, n := range names {
+		x, y := ir.Get(a, n), ir.Get(b, n)
+		if x == nil || y == nil || !x.DeepEqual(y) {
+			differ = append(differ, n)
+		}
+	}
+	return differ
 }
 
 // plainFields is fields without their layout, `{}` for none.
@@ -132,6 +189,13 @@ var (
 	// A connection a task opens through the runner's proxy, which only a network of allow has:
 	// the proxy decides it, by the host and the port it sees.
 	StepNetworkTCPClient = systems.Step("network", "tcp-client", "mode", "host", "port")
+	// One command the runner runs for a task with one secret of its store, under the block's `as`:
+	// the command as one line (systems.Argv), where it runs, the plain variables beside it, and
+	// whether its stdin is open to the task.
+	StepSecretExec = systems.Step("secret", "exec", "name", "as", "argv", "dir", "stdin", "env")
+	// One call of a tool of an MCP server the operator names, which the runner makes with the
+	// server's credential: the server's name, the tool's, and the call's arguments whole.
+	StepMCPCall = systems.Step("mcp", "call", "server", "tool", "arguments")
 )
 
 // String is the step in one line: `files.write path=db/x.sql`, its fields in the order the

@@ -44,6 +44,8 @@ COPY dist/linux/${TARGETARCH}/runnerd /usr/local/bin/runnerd
 # A task's scripts call its tools with verse-call-tool, which the runner finds beside itself and
 # binds into each task's sandbox.
 COPY dist/linux/${TARGETARCH}/verse-call-tool /usr/local/bin/verse-call-tool
+# And run a command with a secret, as if in place, with verse-secret-exec beside it.
+COPY dist/linux/${TARGETARCH}/verse-secret-exec /usr/local/bin/verse-secret-exec
 
 VOLUME ["/state"]
 EXPOSE 9802

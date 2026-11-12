@@ -57,7 +57,7 @@ func TestAReadOnlyPathMayNotReachTheRunnersOwn(t *testing.T) {
 	if err := os.Symlink(run, link); err != nil {
 		t.Fatal(err)
 	}
-	kept := KeptDirs(work, control, mirrors)
+	kept := KeptDirs(work, control, mirrors, "", "")
 	for p, want := range map[string]string{
 		run:                                     "control", // the parent of control and work
 		control:                                 "control", // the directory itself
@@ -89,7 +89,7 @@ func TestALaunchLeavesOutAPathThatNowReachesTheRunnersOwn(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	kept := KeptDirs("", control, "")
+	kept := KeptDirs("", control, "", "", "")
 	var log bytes.Buffer
 	if got := withReadOnly(nil, []string{cache}, kept, &log); !slices.Equal(got, []string{cache}) {
 		t.Fatalf("a plain cache: bound %q (%s)", got, log.String())
@@ -106,5 +106,80 @@ func TestALaunchLeavesOutAPathThatNowReachesTheRunnersOwn(t *testing.T) {
 	}
 	if !strings.Contains(log.String(), "the runner's control") {
 		t.Errorf("said %q", log.String())
+	}
+}
+
+// THE SECRET STORE IS ONE OF THE RUNNER'S OWN: no readOnly path may hold it, be it, or lie in it,
+// at the start, and one that comes to reach it after is left out of the launch, and said.
+func TestAReadOnlyPathMayNotReachTheSecretStore(t *testing.T) {
+	base := t.TempDir()
+	store, cache := filepath.Join(base, "secrets"), filepath.Join(base, "cache")
+	for _, d := range []string{store, cache} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	kept := KeptDirs("", "", "", store, "")
+	for _, p := range []string{store, base, filepath.Join(store, "slack-bot")} {
+		if err := CheckReadOnly([]string{p}, kept); err == nil || !strings.Contains(err.Error(), "the runner's secrets directory") {
+			t.Errorf("readOnly %s: %v, want refused for the store", p, err)
+		}
+	}
+	var log bytes.Buffer
+	if got := withReadOnly(nil, []string{cache}, kept, &log); !slices.Equal(got, []string{cache}) {
+		t.Fatalf("a plain cache: bound %q (%s)", got, log.String())
+	}
+	if err := os.Remove(cache); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(store, cache); err != nil {
+		t.Fatal(err)
+	}
+	log.Reset()
+	if got := withReadOnly(nil, []string{cache}, kept, &log); len(got) != 0 {
+		t.Errorf("a cache turned link to the store was bound: %q", got)
+	}
+	if !strings.Contains(log.String(), "the runner's secrets directory") {
+		t.Errorf("said %q", log.String())
+	}
+}
+
+// THE STORE IS WHERE NO SANDBOX BINDS IT. One under a system directory would be every task's to
+// read, since every sandbox has those; one that holds or lies in the runner's work, mirrors or
+// control directory is refused as a readOnly path there is. A link is where it leads.
+func TestTheSecretStoreIsWhereNoSandboxBindsIt(t *testing.T) {
+	base := t.TempDir()
+	work, control, mirrors := filepath.Join(base, "work"), filepath.Join(base, "control"), filepath.Join(base, "mirrors")
+	store := filepath.Join(base, "secrets")
+	for _, d := range []string{work, control, mirrors, store} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	intoEtc := filepath.Join(base, "into-etc")
+	if err := os.Symlink("/etc", intoEtc); err != nil {
+		t.Fatal(err)
+	}
+	kept := KeptDirs(work, control, mirrors, "", "")
+	for dir, want := range map[string]string{
+		"/etc/verse/secrets":             "every task's sandbox has",
+		"/opt/secrets":                   "every task's sandbox has",
+		"/usr/local/share/secrets":       "every task's sandbox has",
+		"/etc":                           "every task's sandbox has",
+		filepath.Join(intoEtc, "verse"):  "every task's sandbox has",
+		"/":                              "the whole machine",
+		base:                             "overlaps the runner's control directory",
+		filepath.Join(work, "t1", "s"):   "overlaps the runner's work directory",
+		filepath.Join(mirrors, "secret"): "overlaps the runner's mirrors directory",
+		control:                          "overlaps the runner's control directory",
+	} {
+		if err := CheckSecretStore(dir, kept); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("secrets.dir %s: %v, want refused: %s", dir, err, want)
+		}
+	}
+	for _, dir := range []string{store, filepath.Join(base, "not-made-yet"), "/secrets", "/etcetera/secrets"} {
+		if err := CheckSecretStore(dir, kept); err != nil {
+			t.Errorf("secrets.dir %s: %v", dir, err)
+		}
 	}
 }

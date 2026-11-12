@@ -61,58 +61,64 @@ const noVerse = "this runner reaches no verse with a token of its own (its `vers
 
 // verseAskCreate answers a `verse.ask-create`: decided by the task's autonomy and the runner's
 // ceiling like any act, then carried to verse.
-func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) Reply {
+func (s *Server) verseAskCreate(ctx context.Context, tk Task, req Request) (asked, Reply) {
 	if s.Services.Verse == nil {
-		return Reply{Error: noVerse}
+		return before(Reply{Error: noVerse})
 	}
 	st, why := StepOf(req)
 	if why != "" {
-		return Reply{Refused: why}
+		return before(Reply{Refused: why})
 	}
-	if why := s.refused(tk, req.Decision, st); why != "" {
-		return Reply{Refused: why}
-	}
-	// The question as the task wrote it, which the step is about and verse is given; StepOf read
-	// it already.
-	var ask api.Ask
-	if err := codec.Unmarshal([]byte(req.Ask), &ask, codec.Tony); err != nil {
-		return Reply{Refused: "the ask does not read: " + err.Error()}
-	}
-	code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodPost, "/asks", []byte(req.Ask))
-	switch {
-	case err != nil:
-		return unanswered(http.MethodPost, err)
-	case code/100 == 4:
-		return Reply{Refused: "the verse refused the ask: " + said}
-	case code/100 != 2:
-		return Reply{Error: fmt.Sprintf("the verse answered %d: %s", code, said)}
-	}
-	var asked api.Asked
-	if err := codec.Unmarshal([]byte(said), &asked, codec.Tony); err != nil || asked.ID == "" {
-		return Reply{Error: "the verse raised the ask and its answer does not say the id: " + said}
-	}
-	out := api.AskRaised(asked.ID, ask.Question)
-	fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
-	return Reply{OK: true, Out: out}
+	return asking(st, func() Reply {
+		// The question as the task wrote it, which the step is about and verse is given; StepOf
+		// read it already.
+		var ask api.Ask
+		if err := codec.Unmarshal([]byte(req.Field("ask")), &ask, codec.Tony); err != nil {
+			return Reply{Refused: "the ask does not read: " + err.Error()}
+		}
+		code, said, err := s.Services.Verse(ctx, tk.ID, http.MethodPost, "/asks", []byte(req.Field("ask")))
+		switch {
+		case err != nil:
+			return unanswered(http.MethodPost, err)
+		case code/100 == 4:
+			return Reply{Refused: "the verse refused the ask: " + said}
+		case code/100 != 2:
+			return Reply{Error: fmt.Sprintf("the verse answered %d: %s", code, said)}
+		}
+		var raised api.Asked
+		if err := codec.Unmarshal([]byte(said), &raised, codec.Tony); err != nil || raised.ID == "" {
+			return Reply{Error: "the verse raised the ask and its answer does not say the id: " + said}
+		}
+		out := api.AskRaised(raised.ID, ask.Question)
+		fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
+		return Reply{OK: true, Out: out}
+	})
 }
 
-// StepOf is the step a request to verse is, and why it is refused before any row decides it, ""
-// where it is not. The runner decides it (Server's verse verbs), and so does the task before it
-// sends the request (stock's verse tools), so a row decides one step on both sides: the ask a
-// raise carries, the address a data verb names, the address an install acts at.
+// StepOf is the step a request to verse is, or an `mcp.call`, and why it is refused before any
+// row decides it, "" where it is not. The runner decides it (Server's verse verbs, mcpCall), and
+// so does the task before it sends the request (stock's verse tools, its MCP tools), so a row
+// decides one step on both sides: the ask a raise carries, the address a data verb names, the
+// address an install acts at, the arguments a call sends.
 func StepOf(req Request) (task.Step, string) {
 	switch req.Op {
+	case OpMCPCall:
+		c, why := ReadCall(req.Field("server"), req.Field("tool"), req.Body)
+		if why != "" {
+			return task.Step{}, why
+		}
+		return c.Step(), ""
 	case OpVerseAskCreate:
-		if strings.TrimSpace(req.Ask) == "" {
+		if strings.TrimSpace(req.Field("ask")) == "" {
 			return task.Step{}, "a raise carries the ask"
 		}
 		var ask api.Ask
-		if err := codec.Unmarshal([]byte(req.Ask), &ask, codec.Tony); err != nil {
+		if err := codec.Unmarshal([]byte(req.Field("ask")), &ask, codec.Tony); err != nil {
 			return task.Step{}, "the ask does not read: " + err.Error()
 		}
 		return askStep(ask), ""
 	case OpVerseAskGet:
-		if strings.TrimSpace(req.Ask) == "" {
+		if strings.TrimSpace(req.Field("ask")) == "" {
 			return task.Step{}, "a read names the ask, by its name or its id"
 		}
 		return task.NewStep(task.StepVerseAskGet, nil), ""
@@ -123,7 +129,7 @@ func StepOf(req Request) (task.Step, string) {
 	if !ok {
 		return task.Step{}, fmt.Sprintf("%s is no verb of verse's", req.Op)
 	}
-	q, err := url.ParseQuery(req.Query)
+	q, err := url.ParseQuery(req.Field("query"))
 	if err != nil {
 		return task.Step{}, "the query does not read: " + err.Error()
 	}
@@ -217,51 +223,57 @@ func askStep(ask api.Ask) task.Step {
 	return st
 }
 
-// verseAskGet answers a `verse.ask-get`: the ask req.Ask names, by its id or the name it was asked
+// verseAskGet answers a `verse.ask-get`: the ask req.Field("ask") names, by its id or the name it was asked
 // under, among the owner's asks, shown as `verse ask <name|id>` shows it (mirror.AskShown): its
 // answer, `pending` until it settles. Decided like any act, since it reads as the owner.
-func (s *Server) verseAskGet(ctx context.Context, tk Task, req Request) Reply {
+func (s *Server) verseAskGet(ctx context.Context, tk Task, req Request) (asked, Reply) {
 	if s.Services.Verse == nil {
-		return Reply{Error: noVerse}
+		return before(Reply{Error: noVerse})
 	}
-	if _, why := StepOf(req); why != "" {
-		return Reply{Refused: why}
+	st, why := StepOf(req)
+	if why != "" {
+		return before(Reply{Refused: why})
 	}
-	arg := strings.TrimSpace(req.Ask)
-	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskGet, api.AskQuery(arg))
-	if asks == nil {
-		return rep
-	}
-	e, err := mirror.AskNamed(asks, arg)
-	if err != nil {
-		return Reply{Refused: err.Error()}
-	}
-	return tonyOut(mirror.AskShown(e).Payload())
+	return asking(st, func() Reply {
+		arg := strings.TrimSpace(req.Field("ask"))
+		asks, rep := s.ownersAsks(ctx, tk, api.AskQuery(arg))
+		if asks == nil {
+			return rep
+		}
+		e, err := mirror.AskNamed(asks, arg)
+		if err != nil {
+			return Reply{Refused: err.Error()}
+		}
+		return tonyOut(mirror.AskShown(e).Payload())
+	})
 }
 
 // verseAskList answers a `verse.ask-list`: the owner's asks, each as `verse ask` lists it
 // (mirror.AskRows), or the sentence that says there are none.
-func (s *Server) verseAskList(ctx context.Context, tk Task, req Request) Reply {
+func (s *Server) verseAskList(ctx context.Context, tk Task, req Request) (asked, Reply) {
 	if s.Services.Verse == nil {
-		return Reply{Error: noVerse}
+		return before(Reply{Error: noVerse})
 	}
-	asks, rep := s.ownersAsks(ctx, tk, req, task.StepVerseAskList, nil)
-	if asks == nil {
-		return rep
+	st, why := StepOf(req)
+	if why != "" {
+		return before(Reply{Refused: why})
 	}
-	if len(asks) == 0 {
-		return Reply{OK: true, Out: "the person this task runs for has no asks standing"}
-	}
-	return tonyOut(mirror.AskRows(asks))
+	return asking(st, func() Reply {
+		asks, rep := s.ownersAsks(ctx, tk, nil)
+		if asks == nil {
+			return rep
+		}
+		if len(asks) == 0 {
+			return Reply{OK: true, Out: "the person this task runs for has no asks standing"}
+		}
+		return tonyOut(mirror.AskRows(asks))
+	})
 }
 
-// ownersAsks is the owner's asks, read from verse for the task (GET /asks) once its autonomy and
-// the runner's ceiling decide step, narrowed by q where it names one (`ask`); nil, with the reply
-// that says why, where they were not read.
-func (s *Server) ownersAsks(ctx context.Context, tk Task, req Request, step string, q url.Values) ([]entity.Entity, Reply) {
-	if why := s.refused(tk, req.Decision, task.NewStep(step, map[string]string{})); why != "" {
-		return nil, Reply{Refused: why}
-	}
+// ownersAsks is the owner's asks, read from verse for the task (GET /asks), narrowed by q where
+// it names one (`ask`); nil, with the reply that says why, where they were not read. It is the
+// act of a read the task's autonomy and the runner's ceiling have decided.
+func (s *Server) ownersAsks(ctx context.Context, tk Task, q url.Values) ([]entity.Entity, Reply) {
 	path := "/asks"
 	if len(q) > 0 {
 		path += "?" + q.Encode()
@@ -320,35 +332,34 @@ var verseRoutes = map[string]struct {
 // verseRouted answers a verb of verseRoutes: decided like any act, then carried to verse on its
 // route, with the query and the document the task's tool read as the CLI reads them (api's data
 // grammar, charterfile). Out is what verse said, for the tool to show.
-func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) Reply {
+func (s *Server) verseRouted(ctx context.Context, tk Task, req Request) (asked, Reply) {
 	if s.Services.Verse == nil {
-		return Reply{Error: noVerse}
+		return before(Reply{Error: noVerse})
 	}
 	route := verseRoutes[req.Op]
 	st, why := StepOf(req)
 	if why != "" {
-		return Reply{Refused: why}
+		return before(Reply{Refused: why})
 	}
-	q, _ := url.ParseQuery(req.Query) // StepOf read it
-	if why := s.refused(tk, req.Decision, st); why != "" {
-		return Reply{Refused: why}
-	}
-	path := route.path
-	if len(q) > 0 {
-		path += "?" + q.Encode()
-	}
-	var body []byte
-	if route.method == http.MethodPost {
-		body = []byte(req.Body)
-	}
-	code, said, err := s.Services.Verse(ctx, tk.ID, route.method, path, body)
-	switch {
-	case err != nil:
-		return unanswered(route.method, err)
-	case code/100 == 4:
-		return Reply{Refused: "the verse refused it: " + said}
-	case code/100 != 2:
-		return Reply{Error: fmt.Sprintf("the verse answered %d: %s", code, said)}
-	}
-	return Reply{OK: true, Out: said}
+	q, _ := url.ParseQuery(req.Field("query")) // StepOf read it
+	return asking(st, func() Reply {
+		path := route.path
+		if len(q) > 0 {
+			path += "?" + q.Encode()
+		}
+		var body []byte
+		if route.method == http.MethodPost {
+			body = []byte(req.Body)
+		}
+		code, said, err := s.Services.Verse(ctx, tk.ID, route.method, path, body)
+		switch {
+		case err != nil:
+			return unanswered(route.method, err)
+		case code/100 == 4:
+			return Reply{Refused: "the verse refused it: " + said}
+		case code/100 != 2:
+			return Reply{Error: fmt.Sprintf("the verse answered %d: %s", code, said)}
+		}
+		return Reply{OK: true, Out: said}
+	})
 }

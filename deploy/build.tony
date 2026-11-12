@@ -139,6 +139,11 @@ build:
     codexSecretKey: ""
     claudeSecretKey: ""
     issuerSecretKey: ""
+    # The runners' secret store (verse-runner-secrets): an entry whose keys are the store's
+    # names, each a file at /secrets/<key> in the three runners, for a credential no other
+    # Secret holds. The Linear and Slack tokens reach the store from their own Secrets, so this
+    # is empty on a deployment that performs nothing more than those.
+    runnerStoreKey: ""
     # Comma-separated grantees who may take a top-level place (`walter@example.com,agent:ops`).
     # "" is the open verse. See the patch below for how it reaches versed, and what changing it
     # on a running verse takes.
@@ -546,6 +551,23 @@ build:
       kind: ExternalSecret
       metadata:
         name: verse-issuer
+    patch: !delete null
+
+  - if: '.[ runnerStoreKey != "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-runner-secrets
+    patch:
+      spec:
+        dataFrom:
+        - extract:
+            key: $[runnerStoreKey]
+  - if: '.[ runnerStoreKey == "" ]'
+    match:
+      kind: ExternalSecret
+      metadata:
+        name: verse-runner-secrets
     patch: !delete null
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.

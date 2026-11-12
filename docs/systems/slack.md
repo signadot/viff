@@ -86,8 +86,11 @@ verse-call-tool slack-post -channel deploys -text "v1.3 is rolling out"
 [iod reference](../reference/iod.md#slack) lists.
 
 **The task** holds no credential. The runner makes each call with its own bot token: the
-`SLACK_BOT_TOKEN`. Without it, a runner whose configuration names `slack` in a doer's ceiling
-starts with the system closed, and a spawn that needs it is refused where it is written. The bot needs
+`SLACK_BOT_TOKEN`, or a secret of its [secret store](../reference/runnerd.md#the-secret-store)
+where its configuration names one (`secrets: {dir: /secrets, systems: {slack: slack-bot}}`),
+which is read at each call, so a rotated token is the next call's. Without either, a runner whose
+configuration names `slack` in a doer's ceiling starts with the system closed, and a spawn that
+needs it is refused where it is written. The bot needs
 `chat:write`; `channels:read` and `groups:read` to find a channel by its name;
 `channels:history` and `groups:history` to read; and `reactions:write` to react. The iod and the
 runner may use the same bot's token or two bots' tokens. Either way, a bot reaches only the

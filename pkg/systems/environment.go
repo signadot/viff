@@ -95,6 +95,10 @@ func blockAt(system string, i, n int) string {
 // varName is a variable's name as a shell spells one.
 var varName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// IsVarName is whether name is a variable's name as a shell spells one: letters, digits and
+// `_`, not starting with a digit (the form var, and the keys of the form env).
+func IsVarName(name string) bool { return varName.MatchString(name) }
+
 func (b Block) check(d Document) error {
 	for _, name := range slices.Sorted(maps.Keys(b.Attributes)) {
 		a, ok := d.Attribute(name)
@@ -213,6 +217,9 @@ func (e Environment) Allows(step string, fields *ir.Node) bool {
 		if hasUnique && Canonical(unique.Form, FieldText(fields, unique.Name)) != Canonical(unique.Form, b.Attributes[unique.Name]) {
 			continue
 		}
+		if b.differs(d, fields) != "" {
+			continue
+		}
 		for _, s := range b.Given(system)[verb] {
 			if s.Matches(step, fields) {
 				return true
@@ -220,6 +227,22 @@ func (e Environment) Allows(step string, fields *ir.Node) bool {
 		}
 	}
 	return false
+}
+
+// differs is an attribute the block gives that the step carries another value of, "" where
+// there is none: the runner fills a step's attributes from the block it acts for, so these agree
+// by construction, and a step whose do not is no step of the block's.
+func (b Block) differs(d Document, fields *ir.Node) string {
+	for _, a := range d.Attributes {
+		v, given := b.Attributes[a.Name]
+		if !given || stepValue(fields, a.Name) == nil {
+			continue
+		}
+		if Canonical(a.Form, FieldText(fields, a.Name)) != Canonical(a.Form, v) {
+			return a.Name
+		}
+	}
+	return ""
 }
 
 // Refuses is why a step is outside the environment, in words an agent can correct its call by:
@@ -262,6 +285,9 @@ func (e Environment) Refuses(step string, fields *ir.Node) (why string, ok bool)
 	where := "`" + system + "`"
 	if hasUnique {
 		where = fmt.Sprintf("`%s` for %s", system, b.Attributes[unique.Name])
+	}
+	if name := b.differs(d, fields); name != "" {
+		return fmt.Sprintf("the environment's %s has %s %s, and the step's is %s", where, name, b.Attributes[name], FieldText(fields, name)), true
 	}
 	given := b.Given(system)
 	shapes, gives := given[verb]
@@ -415,8 +441,10 @@ func carries(d Document, verb string, params map[string]*ir.Node) bool {
 func (e Environment) Blocks(system string) []Block { return e.Systems[system] }
 
 // Meets is whether a shape and a row's params can both hold of one step: each field both name
-// has a value both patterns could match (FieldMeets). A field only one names is free.
+// has a value both patterns could match (FieldMeets). A field only one names is free, but for
+// one the shape leaves out that has a default, which the shape means (filled).
 func (s Shape) Meets(step string, params map[string]*ir.Node) bool {
+	s = filled(step, s)
 	for name, pattern := range params {
 		if sp, ok := s[name]; ok && !FieldMeets(FormOf(step, name), sp, pattern) {
 			return false
@@ -425,9 +453,10 @@ func (s Shape) Meets(step string, params map[string]*ir.Node) bool {
 	return true
 }
 
-// Matches is whether a step's fields are of the shape.
+// Matches is whether a step's fields are of the shape, a field the shape leaves out that has a
+// default read as the default (filled).
 func (s Shape) Matches(step string, fields *ir.Node) bool {
-	for name, pattern := range s {
+	for name, pattern := range filled(step, s) {
 		if !MatchField(FormOf(step, name), pattern, stepValue(fields, name)) {
 			return false
 		}

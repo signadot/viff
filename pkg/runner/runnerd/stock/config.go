@@ -22,6 +22,7 @@ import (
 	"github.com/signadot/verse/pkg/runner/runnerd/claude"
 	"github.com/signadot/verse/pkg/runner/runnerd/codex"
 	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
+	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
 	"github.com/signadot/verse/pkg/runner/runnerd/verse"
 	"github.com/signadot/verse/pkg/systems"
 	"github.com/signadot/verse/pkg/task"
@@ -45,17 +46,106 @@ const (
 	EnvSlackBotToken = "SLACK_BOT_TOKEN"
 )
 
-// credentials is every variable the runner reads a credential from, its own and its agents'. No
-// `shellEnv` names one: what the runner acts with stays in the runner, and no task's shell, nor
-// its process, holds it.
-var credentials = []string{
-	EnvGitHubToken, EnvLinearAPIKey, EnvSlackBotToken,
-	verse.EnvAPIKey, verse.EnvBaseURL, verse.EnvVirtualKey, codex.EnvAPIKey, claude.EnvOAuthToken, claude.EnvAPIKey,
+// credentials is every variable the runner reads a credential from, its own (the performed
+// systems', by the table) and its agents'. No `shellEnv` names one: what the runner acts with
+// stays in the runner, and no task's shell, nor its process, holds it.
+var credentials = append(performedEnvs(),
+	verse.EnvAPIKey, verse.EnvBaseURL, verse.EnvVirtualKey, codex.EnvAPIKey, claude.EnvOAuthToken, claude.EnvAPIKey)
+
+// A performed system is one the runner performs for its tasks over the channel, with a
+// credential of its own. THE TABLE BELOW IS EVERY ONE OF THEM, and what the runner says of a
+// system it reads here: whether this configuration performs it (performs), the variable its
+// credential is in (TokensFromEnv, credentials), whether it is closed where that is not set
+// (Held), and what a section naming it needs where the runner does not perform it (needsFor).
+// So a system the runner comes to perform is one entry, and none of those is its to remember.
+type performed struct {
+	system string
+	// when is whether a runner of this configuration performs the system.
+	when func(Config) bool
+	// atStart is a system whose `when` the file cannot say: it follows from how the runner is
+	// started. A section naming it is taken by the file's check either way (checkSystems).
+	atStart bool
+	// needs is what the configuration needs for the runner to perform it, said to a section
+	// that names it where the runner does not.
+	needs string
+	// env is the variable the runner reads the system's credential from, and token where it
+	// keeps what it read. A system with none acts with no credential of its environment's.
+	env   string
+	token func(*Tokens) *string
+	// own is a system whose credential is its own, and no other system's. It may name a
+	// secret of the store in place of its variable (`secrets.systems`), and it is closed where
+	// it has neither (Held). The forge's token is not: several systems act with it, without it
+	// the runner still fetches what is public, and a push over the network is refused where it
+	// reaches for one (CheckStart).
+	own bool
 }
 
-// held is the systems a ceiling may name whose credential the runner reads from its environment:
-// where it is not set, the runner runs with the system closed (Held).
-var held = []struct{ system, env string }{{"linear-issue", EnvLinearAPIKey}, {"slack", EnvSlackBotToken}}
+// The table's conditions.
+var (
+	checksOut    = func(c Config) bool { return c.Repos != nil }
+	atGitHub     = Config.atGitHub
+	reachesVerse = func(c Config) bool { return c.reachesVerse }
+	// ceilingNames is a system performed where a doer's ceiling names it.
+	ceilingNames = func(system string) func(Config) bool {
+		return func(c Config) bool { return len(c.naming(system)) > 0 }
+	}
+	gitToken = func(t *Tokens) *string { return &t.Git }
+	// hasStore is a system performed where the runner has a secret store and a doer's ceiling
+	// names the system. The sandbox it needs too is not the file's to say: Standalone closes
+	// the system where the tasks run unconfined.
+	hasStore = func(system string) func(Config) bool {
+		return func(c Config) bool { return c.secretsDir() != "" && len(c.naming(system)) > 0 }
+	}
+)
+
+const (
+	needsRepos  = "a `repos` section is what checks out repos"
+	needsGitHub = "a `repos` section whose forge is github.com, or `repos.api` naming the forge's GitHub API"
+	needsSecret = "a secret store (`secrets.dir`) and a sandbox are what runs a command with a secret"
+	needsMCP    = "an `mcp.servers` section names the servers the runner calls"
+)
+
+// performedSystems is the table, in the order an offer lists them.
+var performedSystems = []performed{
+	{system: "git", when: checksOut, needs: needsRepos, env: EnvGitHubToken, token: gitToken},
+	{system: "git-issue", when: checksOut, needs: needsRepos, env: EnvGitHubToken, token: gitToken},
+	{system: "github", when: atGitHub, needs: needsGitHub, env: EnvGitHubToken, token: gitToken},
+	{system: "github-issue", when: atGitHub, needs: needsGitHub, env: EnvGitHubToken, token: gitToken},
+	{system: "linear-issue", when: ceilingNames("linear-issue"), env: EnvLinearAPIKey, own: true,
+		token: func(t *Tokens) *string { return &t.Linear }},
+	{system: "slack", when: ceilingNames("slack"), env: EnvSlackBotToken, own: true,
+		token: func(t *Tokens) *string { return &t.Slack }},
+	// The secret system acts with no credential of the runner's: each ceiling block names the
+	// secret of the store it is for, and the runner reads that at the act.
+	{system: "secret", when: hasStore("secret"), needs: needsSecret},
+	// The mcp system acts with each server's own credential, which the server's entry names
+	// (`mcp.servers.<name>.auth`), read from the store at each request.
+	{system: "mcp", when: hasServers, needs: needsMCP},
+	// The verse system is carried to verse over the channel too, where the runner reaches its
+	// verse with a token of its own (Standalone's toVerse); `question`'s ask stays inside the run.
+	{system: "verse", when: reachesVerse, atStart: true},
+}
+
+// performedEnvs is the variables the performed systems' credentials are read from, each once.
+func performedEnvs() []string {
+	var out []string
+	for _, p := range performedSystems {
+		if p.env != "" && !slices.Contains(out, p.env) {
+			out = append(out, p.env)
+		}
+	}
+	return out
+}
+
+// performedNamed is the table's entry for a system, false for one the runner does not perform.
+func performedNamed(system string) (performed, bool) {
+	for _, p := range performedSystems {
+		if p.system == system {
+			return p, true
+		}
+	}
+	return performed{}, false
+}
 
 // ScriptDoer is the doer a script is, as a launch says it (runner.Launch.Who) and as the
 // systems an inner system is stopped for name it.
@@ -81,6 +171,12 @@ type Config struct {
 	// mirrors or control directory (runnerd.CheckReadOnly), and checks and binds each again at a
 	// launch, where it is then.
 	ReadOnly []string `tony:"field=readOnly,omitzero"`
+	// SecretStore is the runner's secret store (`secrets:`), where it has one: a directory the
+	// deployment mounts, one file to a secret. Absent, the runner has none, and reads each
+	// credential from its environment.
+	SecretStore *SecretStore `tony:"field=secrets,omitzero"`
+	// MCP is the remote MCP servers the runner calls for its tasks (`mcp:`), where it calls any.
+	MCP *MCP `tony:"field=mcp,omitzero"`
 
 	// reachesVerse is whether the runner carries the verse system's verbs to the verse it serves
 	// (Standalone's toVerse): not the file's to say, since it follows from the runner's `verse:`
@@ -144,6 +240,53 @@ type System struct {
 	// published with the doer's offer, holds a launch's environment at install and at launch
 	// (every block within it), and is read again at each act.
 	Ceiling systems.Ceiling `tony:"field=ceiling,omitzero"`
+}
+
+// SecretStore is the runner's secret store (secretstore.Store), as the file names it. The model
+// keys are not in it: a task's process holds those (Secrets), and the store holds only what no
+// task holds.
+type SecretStore struct {
+	// Dir is the directory, one file to a secret, the file's name the secret's. Absolute, and
+	// where no task's sandbox binds it: under no system directory (runnerd.UnderSystem), and
+	// apart from the runner's work, mirrors and control directories, which Standalone holds it
+	// to, where those are known (runnerd.CheckSecretStore). It is one of the runner's own
+	// directories from then on: no `readOnly` path may reach it, at the start or at a launch.
+	Dir string `tony:"field=dir"`
+	// Systems is the secret each system acts with, by the system's name: `slack: slack-bot`.
+	// A SYSTEM THAT NAMES A SECRET ACTS WITH THE STORE, AND ITS VARIABLE IS NOT READ. One this
+	// does not name reads its variable, as a runner with no store does. Only a system whose
+	// credential is its own may name one (performed.own): the forge's token is not the store's.
+	Systems map[string]string `tony:"field=systems,omitzero"`
+}
+
+// secretsDir is the directory of the runner's secret store, empty where it has none.
+func (c Config) secretsDir() string {
+	if c.SecretStore == nil {
+		return ""
+	}
+	return c.SecretStore.Dir
+}
+
+// secretOf is the secret a system acts with, by name, empty where it names none and reads its
+// variable.
+func (c Config) secretOf(system string) string {
+	if c.SecretStore == nil {
+		return ""
+	}
+	return c.SecretStore.Systems[system]
+}
+
+// credential is what the runner acts with for a system whose credential is its own: the secret
+// the system names, read from the store at each act, or what was read from its variable when
+// the runner started (fromEnv). ONLY THE RUNNER CALLS THIS (Standalone). The task's process is
+// sent the configuration too, and has no store to read: nothing it runs looks a credential up.
+func (c Config) credential(system, fromEnv string) delivery.Credential {
+	name := c.secretOf(system)
+	if name == "" {
+		return delivery.Holds(fromEnv)
+	}
+	store := secretstore.Open(c.secretsDir())
+	return func() (string, error) { return store.Get(name) }
 }
 
 // Repos is how the runner checks out a launch's repos.
@@ -238,28 +381,31 @@ func (c Config) services(t Tokens) delivery.Services {
 		api = cmp.Or(c.Repos.API, api)
 	}
 	api = cmp.Or(t.GitHubAPI, api)
-	return delivery.Services{LinearAuth: t.Linear, LinearAPI: t.LinearAPI, GitHubAPI: api, SlackToken: t.Slack, SlackAPI: t.SlackAPI}
+	// The store is the channel's too, for the secret a `secret.exec` runs a command with: one
+	// over no directory where the runner has none, which has no secret.
+	return delivery.Services{LinearAuth: c.credential("linear-issue", t.Linear), LinearAPI: t.LinearAPI, GitHubAPI: api,
+		SlackToken: c.credential("slack", t.Slack), SlackAPI: t.SlackAPI, Secrets: secretstore.Open(c.secretsDir()),
+		MCP: c.mcpClientServers()}
 }
 
 // TokensFromEnv reads the runner's tokens from its environment, each where the runner performs
-// what needs it.
+// what needs it, and each variable once however many systems share it (performedEnvs). A
+// system that names a secret of the store acts with that, and its variable is not read.
 func TokensFromEnv(c Config) Tokens {
 	var t Tokens
-	performs := c.performs()
-	if slices.Contains(performs, "linear-issue") {
-		t.Linear = os.Getenv(EnvLinearAPIKey)
-	}
-	if slices.Contains(performs, "slack") {
-		t.Slack = os.Getenv(EnvSlackBotToken)
-	}
-	if c.Repos != nil {
-		t.Git = os.Getenv(EnvGitHubToken)
+	var read []string
+	for _, p := range performedSystems {
+		if p.token == nil || !p.when(c) || c.secretOf(p.system) != "" || slices.Contains(read, p.env) {
+			continue
+		}
+		read = append(read, p.env)
+		*p.token(&t) = os.Getenv(p.env)
 	}
 	return t
 }
 
 // Held is the configuration the runner runs with in the environment it starts in (getenv): c,
-// with each system whose credential is not set (held) left out of every doer's section, and the
+// with each system whose credential is not there (performed.own) left out of every doer's section, and the
 // verse agent left out where its model key is not set. The runner then does not perform the
 // system, or run the agent, and no offer holds it, so a spawn that needs it is refused at
 // install, where it is written, rather than the runner not starting or the act failing at the
@@ -274,16 +420,104 @@ func (c Config) Held(getenv func(string) string) (Config, []string) {
 		warnings = append(warnings, fmt.Sprintf("%s is not set: agents.%s is closed, since the verse agent calls its model with it; a spawn that prompts it is refused at install",
 			verse.EnvAPIKey, AgentName))
 	}
-	for _, s := range held {
+	for _, s := range performedSystems {
 		naming := c.naming(s.system)
-		if len(naming) == 0 || getenv(s.env) != "" {
+		if !s.own || len(naming) == 0 {
+			continue
+		}
+		// A system that names a secret is held by the store, and its variable is not read. The
+		// secret is there where it reads and is not empty (secretstore.Store.Get), and what is
+		// closed here stays closed until a restart, though a value that changes is the next
+		// act's: what is offered is fixed at the start.
+		if name := c.secretOf(s.system); name != "" {
+			if _, err := secretstore.Open(c.secretsDir()).Get(name); err != nil {
+				c = c.without(s.system)
+				warnings = append(warnings, fmt.Sprintf("%v, in %s: %s is closed to every doer, though %s names it; a spawn that needs it is refused at install",
+					err, c.secretsDir(), s.system, strings.Join(naming, ", ")))
+			} else if getenv(s.env) != "" {
+				warnings = append(warnings, fmt.Sprintf("%s is set and is not read: %s acts with the secret %s (secrets.systems)",
+					s.env, s.system, name))
+			}
+			continue
+		}
+		if getenv(s.env) != "" {
 			continue
 		}
 		c = c.without(s.system)
 		warnings = append(warnings, fmt.Sprintf("%s is not set: %s is closed to every doer, though %s names it; a spawn that needs it is refused at install",
 			s.env, s.system, strings.Join(naming, ", ")))
 	}
-	return c, warnings
+	// A `secret` ceiling block names one secret of the store. One whose secret is not there at
+	// the start is left out of the ceiling, as a system is closed without its credential, and a
+	// doer whose blocks are all left out has the system closed. Here too what is closed stays
+	// closed until a restart.
+	if dir := c.secretsDir(); dir != "" {
+		store := secretstore.Open(dir)
+		for _, doer := range c.doers() {
+			sys, ok := c.systemsOf(doer)["secret"]
+			if !ok {
+				continue
+			}
+			at := sectionOf(doer) + ".systems.secret"
+			var kept systems.Ceiling
+			for i, b := range sys.Ceiling {
+				name, _ := secretNamed(b)
+				if _, err := store.Get(name); err != nil {
+					warnings = append(warnings, fmt.Sprintf("%v, in %s: %s.ceiling%s is left out; a spawn that names it is refused at install",
+						err, dir, at, blockAt(sys.Ceiling, i)))
+					continue
+				}
+				kept = append(kept, b)
+			}
+			switch {
+			case len(kept) == len(sys.Ceiling):
+			case len(kept) == 0:
+				c = c.withSection(doer, "secret", nil)
+				warnings = append(warnings, fmt.Sprintf("secret is closed to %s: no secret %s names is in the store", doer, at))
+			default:
+				c = c.withSection(doer, "secret", &System{Ceiling: kept})
+			}
+		}
+	}
+	// An MCP server's credential is a secret of the store too, named with the server: one whose
+	// secret is not there is left out, with every ceiling block naming it.
+	c, held := c.heldMCP()
+	return c, append(warnings, held...)
+}
+
+// withSection is c with doer's section for system set to s, or left out where s is nil. c's maps
+// are not changed.
+func (c Config) withSection(doer, system string, s *System) Config {
+	put := func(m map[string]System) map[string]System {
+		m = maps.Clone(m)
+		if m == nil {
+			m = map[string]System{}
+		}
+		if s == nil {
+			delete(m, system)
+		} else {
+			m[system] = *s
+		}
+		return m
+	}
+	if doer == ScriptDoer {
+		if c.Script == nil {
+			return c
+		}
+		script := *c.Script
+		script.Systems = put(script.Systems)
+		c.Script = &script
+		return c
+	}
+	a, ok := c.Agents[doer]
+	if !ok {
+		return c
+	}
+	agents := maps.Clone(c.Agents)
+	a.Systems = put(a.Systems)
+	agents[doer] = a
+	c.Agents = agents
+	return c
 }
 
 // without is c with no doer's section naming system. c's maps are not changed.
@@ -417,21 +651,10 @@ func (c Config) atGitHub() bool {
 // offer lists them, each under that doer's ceiling.
 func (c Config) performs() []string {
 	var out []string
-	if c.Repos != nil {
-		out = append(out, "git", "git-issue")
-		if c.atGitHub() {
-			out = append(out, "github", "github-issue")
+	for _, p := range performedSystems {
+		if p.when(c) {
+			out = append(out, p.system)
 		}
-	}
-	for _, name := range []string{"linear-issue", "slack"} {
-		if len(c.naming(name)) > 0 {
-			out = append(out, name)
-		}
-	}
-	// The verse system is carried to verse over the channel too, where the runner reaches its
-	// verse with a token of its own (reachesVerse); `question`'s ask stays inside the run.
-	if c.reachesVerse {
-		out = append(out, "verse")
 	}
 	return out
 }
@@ -624,6 +847,49 @@ func (c *Config) Check() error {
 			return fmt.Errorf("readOnly: %q is not an absolute path below /", p)
 		}
 	}
+	if s := c.SecretStore; s != nil {
+		switch {
+		case s.Dir == "":
+			return fmt.Errorf("secrets: `dir` names the directory the runner's secrets are in, one file to a secret")
+		case !filepath.IsAbs(s.Dir) || filepath.Clean(s.Dir) == "/":
+			return fmt.Errorf("secrets.dir: %q is not an absolute path below /", s.Dir)
+		}
+		// Where the runner's own directories are is not the file's to say, so the rest of the
+		// check is Standalone's; this much of it needs only the path.
+		if err := runnerd.CheckSecretStore(s.Dir, nil); err != nil {
+			return err
+		}
+		var may []string
+		for _, p := range performedSystems {
+			if p.own {
+				may = append(may, p.system)
+			}
+		}
+		for _, system := range slices.Sorted(maps.Keys(s.Systems)) {
+			at := "secrets.systems." + system
+			switch p, ok := performedNamed(system); {
+			case !ok:
+				return fmt.Errorf("%s: the runner performs no system called that (those that may name a secret: %s)", at, strings.Join(may, ", "))
+			case system == "secret":
+				return fmt.Errorf("%s: secret names its secret in each block of a doer's ceiling (`name`), not here (those that may name a secret: %s)",
+					at, strings.Join(may, ", "))
+			case system == "mcp":
+				return fmt.Errorf("%s: mcp names each server's secret with the server (`mcp.servers.<name>.auth.secret`), not here (those that may name a secret: %s)",
+					at, strings.Join(may, ", "))
+			case !p.own && p.env != "":
+				return fmt.Errorf("%s: %s acts with the forge's token (%s), which is not the store's (those that may name a secret: %s)",
+					at, system, p.env, strings.Join(may, ", "))
+			case !p.own:
+				return fmt.Errorf("%s: %s acts with no credential of its own to name (those that may name a secret: %s)", at, system, strings.Join(may, ", "))
+			}
+			if err := secretstore.CheckName(s.Systems[system]); err != nil {
+				return fmt.Errorf("%s: %w", at, err)
+			}
+		}
+	}
+	if err := c.checkMCP(); err != nil {
+		return err
+	}
 	if c.Script != nil {
 		if err := checkShellEnv("script", c.Script.ShellEnv); err != nil {
 			return err
@@ -744,10 +1010,10 @@ func (c *Config) checkSystems(doer string, sections map[string]System) error {
 				return fmt.Errorf("%s.%s: the runner does not stop %s on %s inside its run; of those, its section may name %s",
 					at, name, doer, name, strings.Join(innerFor(doer), ", "))
 			}
-		} else if name != "network" && name != "verse" && !slices.Contains(performs, name) {
+		} else if p, _ := performedNamed(name); name != "network" && !p.atStart && !slices.Contains(performs, name) {
 			// verse's section is taken whether or not the runner reaches a verse, which the file
-			// is checked before knowing (reachesVerse): the runner offers the system only where
-			// it does, with its own token.
+			// is checked before knowing (performed.atStart): the runner offers the system only
+			// where it does, with its own token.
 			return fmt.Errorf("%s.%s: this runner does not perform %s (it performs: %s); %s", at, name, name,
 				cmp.Or(strings.Join(performs, ", "), "nothing"), needsFor(name))
 		}
@@ -760,8 +1026,59 @@ func (c *Config) checkSystems(doer string, sections map[string]System) error {
 		if err := sys.Ceiling.Check(name); err != nil {
 			return fmt.Errorf("%s.%s.ceiling%w", at, name, err)
 		}
+		if name == "secret" {
+			if err := checkSecretCeiling(at, sys.Ceiling); err != nil {
+				return err
+			}
+		}
+		if name == "mcp" {
+			if err := c.checkMCPCeiling(at, sys.Ceiling); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
+}
+
+// checkSecretCeiling refuses a `secret` ceiling block that does not name one secret of the store
+// as a literal: a name is what a doer is trusted with, and the empty block would be every secret
+// the store comes to hold. The variable (`as`) may be a pattern or left out; its document's form
+// refuses what is no variable's name (Ceiling.Check).
+func checkSecretCeiling(at string, ceiling systems.Ceiling) error {
+	for i, b := range ceiling {
+		at := at + ".secret.ceiling" + blockAt(ceiling, i)
+		name, ok := secretNamed(b)
+		switch {
+		case b.Attributes["name"] == nil:
+			return fmt.Errorf("%s: names no secret; a secret ceiling block names the one secret of the store it is for (`name`)", at)
+		case !ok:
+			return fmt.Errorf("%s.name: %s is a pattern, and a secret's name is a literal, one to a block: a name is what a doer is trusted with",
+				at, systems.Words(b.Attributes["name"]))
+		}
+		if err := secretstore.CheckName(name); err != nil {
+			return fmt.Errorf("%s.name: %w", at, err)
+		}
+	}
+	return nil
+}
+
+// blockAt is how a message places block i of a ceiling, as Ceiling.Check places it: by its index
+// where there are several, bare where the ceiling is one block.
+func blockAt(ceiling systems.Ceiling, i int) string {
+	if len(ceiling) > 1 {
+		return fmt.Sprintf("[%d]", i)
+	}
+	return ""
+}
+
+// secretNamed is the one secret a `secret` ceiling block names, false where it names none, a
+// pattern, or several.
+func secretNamed(b systems.CeilingBlock) (string, bool) {
+	names, ok := systems.Literals(b.Attributes["name"])
+	if !ok || len(names) != 1 {
+		return "", false
+	}
+	return names[0], true
 }
 
 // innerFor is the inner systems doer is stopped on, by name.
@@ -778,11 +1095,8 @@ func innerFor(doer string) []string {
 
 // needsFor says what a system's section needs of the configuration to be performed.
 func needsFor(system string) string {
-	switch system {
-	case "git", "git-issue":
-		return "a `repos` section is what checks out repos"
-	case "github", "github-issue":
-		return "a `repos` section whose forge is github.com, or `repos.api` naming the forge's GitHub API"
+	if p, ok := performedNamed(system); ok && p.needs != "" {
+		return p.needs
 	}
 	return "the runner performs none of its verbs"
 }

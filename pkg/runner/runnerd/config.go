@@ -18,7 +18,8 @@ const DefaultListen = ":9802"
 // file, and Load reads both.
 //
 // Secrets are never in the file: a runner reads them from its environment, which is where a
-// deployment puts a Kubernetes Secret.
+// deployment puts a Kubernetes Secret, or from a secret store the file names the directory of
+// (the verse runner's `secrets:`, package secretstore), which is where a deployment mounts one.
 type Config struct {
 	// Listen is the address the runner serves verse on.
 	Listen string `tony:"field=listen,omitzero"`

@@ -5,6 +5,10 @@
 Each tool does what the `verse` command it is named after does, and answers what that command
 prints.
 
+This is verse as an MCP server. Verse's runner is also an MCP client, of remote servers its
+operator names, whose tools a task calls through the runner: that is the [`mcp`
+system](../systems/mcp.md), and this page is not about it.
+
 ## Adding it to a host
 
 The host runs `verse mcp` as a command. For Claude Code:

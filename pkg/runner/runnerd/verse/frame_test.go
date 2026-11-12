@@ -263,18 +263,25 @@ func TestUnderAskTheFrameSaysEveryStepStops(t *testing.T) {
 
 // A TOOL IS OFFERED IFF THE ENVIRONMENT GIVES ITS VERB: the agent's own tools and a runtime's
 // are left out of what the model sees where no block gives their verb, whatever the autonomy
-// says, while the tools that are no verb stay, `read_file` and `yield` among them.
+// says, while the tools that are no verb stay, `read_file` and `yield` among them. A tool is its
+// step's, so one whose name is no verb's (an MCP server's tool) goes with its step.
 func TestAToolIsOfferedIffTheEnvironmentGivesItsVerb(t *testing.T) {
 	env := systems.Environment{Systems: systems.Systems{
 		"files": {{Verbs: map[string][]systems.Shape{"write": {{}}}}},
 		"slack": {{Verbs: map[string][]systems.Shape{"read": {{}}}}},
 		"git":   {{Attributes: map[string]string{"repo": "acme/app"}, Verbs: map[string][]systems.Shape{"push": {{}}}}},
 	}}
-	extra := []Tool{{Name: "slack-post"}, {Name: "slack-read"}, {Name: "slack-react"}, {Name: "git-push"}, {Name: "question-ask"}}
+	extra := []Tool{{Name: "slack-post"}, {Name: "slack-read"}, {Name: "slack-react"}, {Name: "git-push"}, {Name: "question-ask"},
+		{Name: "mcp-linear-get_issue", Step: "mcp.call"}}
 	left := given(env, extra)
 	if names := fmt.Sprint(toolNamesOf(left)); names != "[slack-read git-push]" {
 		t.Errorf("extra tools offered: %s", names)
 	}
+	env.Systems["mcp"] = []systems.Block{{Attributes: map[string]string{"server": "linear"}, Verbs: map[string][]systems.Shape{"call": {{}}}}}
+	if names := fmt.Sprint(toolNamesOf(given(env, extra))); names != "[slack-read git-push mcp-linear-get_issue]" {
+		t.Errorf("extra tools offered where mcp.call is given: %s", names)
+	}
+	delete(env.Systems, "mcp")
 	tds, err := selectTools(nil, left)
 	if err != nil {
 		t.Fatal(err)

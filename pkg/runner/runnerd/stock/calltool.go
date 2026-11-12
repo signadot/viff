@@ -17,6 +17,8 @@ import (
 // The binary is never copied into a task: under bwrap it is bound read-only at its own path, as
 // the runner's own program is (SubprocessConfig.Programs), and the runner names it in the task's
 // configuration, so the task process uses the one bound and nothing writable shares its inode.
+// `verse-secret-exec` is bound with it where it is beside it (FindSecretExec), and found by the
+// same PATH.
 // The socket is in a directory of its own under the task process's temporary directory, as the
 // credential file is: under bwrap that is the sandbox's own /tmp, shared with the script and
 // nothing else, and no repository's tree is touched.
@@ -35,6 +37,22 @@ func FindCallTool(self string) string {
 		if abs, err := filepath.Abs(p); err == nil {
 			return abs
 		}
+	}
+	return ""
+}
+
+// SecretExecBinary is the name of the command a script runs one command with a secret by, as if
+// in place (cmd/verse-secret-exec): `secret-exec` and what a caller does around each call of it.
+const SecretExecBinary = "verse-secret-exec"
+
+// FindSecretExec is that command where a script finds it: beside callTool, whose directory is
+// the one put on a script's PATH. "" when it is not there, which leaves a script the tools.
+func FindSecretExec(callTool string) string {
+	if callTool == "" {
+		return ""
+	}
+	if p := filepath.Join(filepath.Dir(callTool), SecretExecBinary); isFile(p) {
+		return p
 	}
 	return ""
 }

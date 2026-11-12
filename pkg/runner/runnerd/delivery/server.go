@@ -9,14 +9,19 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/runner"
+	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
+	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
 	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
 	"github.com/signadot/verse/pkg/systems"
 	"github.com/signadot/verse/pkg/task"
@@ -38,6 +43,9 @@ type Server struct {
 	// whatever the autonomy said and whoever answered its questions. A system they name no
 	// ceiling for is closed (systems.Beyond).
 	Ceilings map[string]systems.Ceiling
+	// table is the ops this server answers; nil is the channel's own (ops), and only a test
+	// gives another.
+	table map[string]op
 }
 
 // Services is what a runner holds for the systems beyond its git token: a Linear credential (the
@@ -45,16 +53,68 @@ type Server struct {
 // bot token (`xoxb-…`), and where the APIs are when something other than the real ones answers
 // (a test).
 type Services struct {
-	LinearAuth string
+	LinearAuth Credential
 	LinearAPI  string // "" is Linear's own
 	// GitHubAPI is the API of the forge the runner's repos are on: github.com's (GitHubAPI),
 	// an Enterprise Server's, or a test's.
 	GitHubAPI  string
-	SlackToken string
+	SlackToken Credential
 	SlackAPI   string // "" is Slack's own
 	// Verse carries a task's request to the verse the runner serves, a verb of the verse system
 	// (verse.go); nil for a runner with no verse to reach, or no token of its own to reach it with.
 	Verse Verse
+	// Secrets is the runner's secret store, which a `secret.exec` reads the one secret it runs
+	// a command with from, at the act; nil, or one over no directory, has no secret.
+	Secrets *secretstore.Store
+	// Confine confines a command the runner runs for a task apart from the task's own process
+	// (`secret.exec`); nil, the runner runs none.
+	Confine Confine
+	// MCP is the remote MCP servers the runner calls for its tasks, by name, each credential a
+	// secret of Secrets; none, the runner calls none.
+	MCP mcpclient.Servers
+}
+
+// Confine confines a command the runner runs for a task, apart from the task's own process and
+// in a sandbox of its own: over the task's root, in dir under it, under the task's network, with
+// the task's install root (inst, empty where it has none) bound read only at InstPath as the
+// task's own sandbox has it. The program is cmd.Path, and one the runner does not keep is
+// refused: a program of the task's would read the secret for it. What the runner keeps is a
+// system directory, a path it keeps read only, and the install root, which the runner fills from
+// its own side and the task cannot write. The runner's sandbox implements it (runnerd.Confiner),
+// which this package cannot name.
+type Confine interface {
+	Confine(cmd *exec.Cmd, root, dir string, net Network, inst string) error
+}
+
+// Network is a task's network as the sandbox built it, which a command run for the task is held
+// to as well: its mode (open, none, allow), and under allow the egress socket of the proxy that
+// decides its connections, on the runner's side.
+type Network struct {
+	Mode   string
+	Egress string
+}
+
+// A Credential is what the runner acts with at a service, READ WHEN IT IS ASKED FOR: one the
+// runner keeps in its secret store is the value there at that act, so a secret that is rotated
+// is the next act's with no restart. nil is no credential. Its error names the secret and never
+// any of a value, and is the task's to read.
+type Credential func() (string, error)
+
+// Holds is a credential that is one value for as long as the runner runs, as one read from its
+// environment when it started is. An empty value is no credential.
+func Holds(value string) Credential {
+	if value == "" {
+		return nil
+	}
+	return func() (string, error) { return value, nil }
+}
+
+// read is the credential's value now, and empty with no error where there is none.
+func (c Credential) read() (string, error) {
+	if c == nil {
+		return "", nil
+	}
+	return c()
 }
 
 // Task is one task as the server knows it: its id, the workspace it works in, the launch whose
@@ -63,18 +123,39 @@ type Services struct {
 type Task struct {
 	ID        string
 	Workspace *workspace.Workspace
-	Launch    *runner.Launch
+	// Root is the directory the task works in, the workspace's root: what an op apart has of
+	// the workspace, since nothing in turn writes it (a command runs over it, `secret.exec`).
+	Root string
+	// Network is the task's network as the sandbox built it (Channel.SetNetwork): what a
+	// command run for the task apart is held to as well.
+	Network Network
+	// Env is the environment the task's process was started with (Channel.SetEnv), `k=v`
+	// each: what a command run for the task is given, under the call's variables and the
+	// secret. It holds no credential of the runner's, by the runner's own rule (shellEnv).
+	Env []string
+	// Inst is the task's install root on the runner's side, which its sandbox binds read only at
+	// InstPath: where the runner lays a tool it installs for the task, empty where the task has
+	// none, which is every task until something fills one. A command run with a secret may start
+	// from a program there (runSecret); nothing here writes it.
+	Inst   string
+	Launch *runner.Launch
 	// Autonomy is the task's current autonomy, where something holds it apart from the launch (a
 	// Channel, after a replacement); nil reads the launch's.
 	Policy func() task.Autonomy
 	// Answered is who answered proceed to the question a row asked about this call, by the
 	// decision the act names or by the call, taking that answer (Channel.answered): what an act
-	// a row asks about is performed on. nil is a side that relayed no answers, where such an
-	// act is refused.
-	Answered func(task.Step, string) (string, bool)
+	// a row asks about is performed on. differ is the fields in which the act is not the call
+	// the named decision's answer was about, an answer it is then not performed on. nil is a
+	// side that relayed no answers, where such an act is refused.
+	Answered func(st task.Step, decision string) (by string, differ []string, ok bool)
 	// Credential is the secret a push to one of the task's repositories is made with, or why
 	// there is none. The runner decides; its own forge token is the usual answer.
 	Credential func(repo workspace.Repo) (string, error)
+
+	// mcp is the task's sessions with the MCP servers the runner calls, made as Serve begins and
+	// closed as it returns, nil where the runner calls none. An op apart keeps it (apart):
+	// nothing in turn writes it, and the calls are apart.
+	mcp *mcpclient.Sessions
 
 	// created is the branches this task set out to create, by repo and ref: recorded when it
 	// stages the push that makes one, so it holds though that push failed and the sweep landed
@@ -82,30 +163,72 @@ type Task struct {
 	// again, rewrite, and propose from. pushed is every branch it pushed, created or not: what
 	// a proposal may be from.
 	created, pushed map[string]bool
+
+	// stream sends the task's process descriptors on a frame of the answer to request id,
+	// ahead of the final one (Reply.Streams), which an act that streams calls from inside: the
+	// task's ends of a command's output. Serve sets it; the files stay the caller's to close.
+	// Over a connection that is no unix socket nothing can be sent, and it says so.
+	stream func(id int, files ...*os.File) error
+}
+
+// apart is the task as an op performed apart is given it: without its checkout and without the
+// branches it made and pushed, which the ops in turn write. So what an op apart may not read it
+// cannot: the rule is the value it is handed, not a thing it remembers. Its root and its
+// network it keeps, since nothing in turn writes them.
+func (tk Task) apart() Task {
+	tk.Workspace, tk.created, tk.pushed = nil, nil, nil
+	return tk
 }
 
 // Serve answers one task's requests, for as long as its process lives.
 //
-// Sequential by construction — one connection, one request at a time. A task that asked twice
-// gets two pushes, which is what a task with more than one thing to push is.
+// IN TURN, one request at a time and in the order the task asked, as one connection read in a
+// loop once made them: a task that asked twice gets two pushes, and the second finds what the
+// first left. An op the table performs apart (op.apart) is the exception, and neither waits
+// for those in turn nor holds them. Each answer names its request (Reply.ID), since an answer
+// may come ahead of one asked for earlier: one apart's ahead of one in turn's, and of two in
+// turn the later's ahead of the earlier's, a turn passing once its request is performed and
+// before its answer is sent. What is in order is the performing.
+//
+// Serve returns once the task's end is gone and what it had begun is done. A request in turn
+// that was begun is finished, whatever became of the process that asked: a push half-performed
+// is not an answer (Channel.Settle). One still waiting its turn is given up, and so is one
+// apart: nobody is there to hear of it, and the runner does not act for a task that is gone.
 func (s *Server) Serve(tk Task, conn net.Conn) {
 	defer conn.Close()
 	tk.created, tk.pushed = map[string]bool{}, map[string]bool{}
-	br := bufio.NewReader(conn)
-	for {
-		var rep Reply
-		raw, err := readFrame(br)
-		var big frameTooLarge
-		switch {
-		case errors.As(err, &big):
-			rep = Reply{Error: "the request is " + big.Error()} // dropped, and the channel goes on
-		case err != nil:
-			return // the task process is gone, which is the ordinary end
-		default:
-			rep = s.answer(tk, raw)
-		}
+	// The task's sessions with the MCP servers: closed once what was begun is done (after
+	// inflight), so a call in flight is given up first, and nothing is left open.
+	if len(s.Services.MCP) > 0 {
+		tk.mcp = mcpclient.New(s.Services.MCP, s.Services.Secrets, s.Log)
+		defer tk.mcp.Close()
+	}
+	gone, leave := context.WithCancel(context.Background())
+	var (
+		writing  sync.Mutex // one frame onto the connection at a time
+		inflight sync.WaitGroup
+		turn     = make(chan struct{}) // closed once the last request in turn is done
+		slots    = make(chan struct{}, maxInFlight)
+	)
+	close(turn)
+	defer inflight.Wait()
+	defer leave()
+	// streamed is the requests whose one stream frame is written and not yet answered
+	// (tk.stream), read and written under writing: the answer lets its request's mark go, so
+	// the map does not grow with a long task's life, and an id the task uses again streams again.
+	streamed := map[int]bool{}
+	// send writes one answer. room, where it is given, gives back the request's place among
+	// those the runner holds (slots), and is called with the frame about to be written: A
+	// PLACE IS FREE BEFORE ITS ANSWER CAN BE HEARD, so a task that asks again on hearing an
+	// answer finds room. It is called holding the write, so one request at most has given its
+	// place back and not yet written its answer.
+	send := func(rep Reply, room func()) {
 		body, err := codec.Marshal(rep, codec.Tony)
 		if err != nil {
+			// No answer can be written, so the channel is ended rather than left with a
+			// request nobody will hear of: the task reads that its end is gone.
+			fmt.Fprintf(s.Log, "delivery: %s: an answer does not encode, and the channel is closed: %v\n", tk.ID, err)
+			conn.Close()
 			return
 		}
 		// AN ANSWER THE CHANNEL CANNOT CARRY is said to be one, in a frame it can: what was
@@ -114,65 +237,159 @@ func (s *Server) Serve(tk Task, conn net.Conn) {
 		// empty verse, and say there is nothing where there is too much.
 		if len(body) > maxFrame {
 			fmt.Fprintf(s.Log, "delivery: %s: the answer to it is %d bytes, over the channel's %d\n", tk.ID, len(body), maxFrame)
-			body, err = codec.Marshal(Reply{Error: "the answer is " + frameTooLarge{len(body)}.Error() +
+			body, err = codec.Marshal(Reply{ID: rep.ID, Error: "the answer is " + frameTooLarge{len(body)}.Error() +
 				"; ask for less of it"}, codec.Tony)
 			if err != nil {
+				conn.Close()
 				return
 			}
 		}
-		if err := writeFrame(conn, body); err != nil {
-			return
+		writing.Lock()
+		defer writing.Unlock()
+		if room != nil {
+			room()
 		}
+		delete(streamed, rep.ID)
+		_ = writeFrame(conn, body) // a task that is gone is found so at the next read
+	}
+	// A stream frame is written as send writes, under the same lock, with the descriptors on
+	// it: a frame of the answer, not the answer, so no place is given back for it. ONE AT MOST
+	// PER ANSWER: the asker has room for one and the answer, and a second is refused here.
+	tk.stream = func(id int, files ...*os.File) error {
+		uc, ok := conn.(*net.UnixConn)
+		if !ok {
+			return errors.New("the channel cannot carry a descriptor: it is no unix socket")
+		}
+		if len(files) == 0 || len(files) > maxRights {
+			return fmt.Errorf("a frame carries 1 to %d descriptors, not %d", maxRights, len(files))
+		}
+		body, err := codec.Marshal(Reply{ID: id, Streams: len(files)}, codec.Tony)
+		if err != nil {
+			return err
+		}
+		writing.Lock()
+		defer writing.Unlock()
+		if streamed[id] {
+			return fmt.Errorf("request %d has its stream frame already, and an answer has one at most", id)
+		}
+		streamed[id] = true
+		return writeFrameWith(uc, body, files)
+	}
+	br := bufio.NewReader(conn)
+	for {
+		raw, err := readFrame(br)
+		var big frameTooLarge
+		switch {
+		case errors.As(err, &big):
+			send(Reply{Error: "the request is " + big.Error()}, nil) // dropped, and the channel goes on
+			continue
+		case err != nil:
+			return // the task process is gone, which is the ordinary end
+		}
+		req, o, rep := s.read(raw)
+		if o == nil {
+			send(rep, nil)
+			continue
+		}
+		// No more than maxInFlight at once, in turn or apart. One past that is refused rather
+		// than waited on: the loop goes on reading, so it sees the task's end go, and a request
+		// behind the ones in turn is not begun for a task that is gone.
+		select {
+		case slots <- struct{}{}:
+		default:
+			send(Reply{ID: req.ID, Error: fmt.Sprintf("the runner holds %d of this task's requests, read and not yet "+
+				"answered, and takes no more until one is: nothing was done, ask again then", maxInFlight)}, nil)
+			continue
+		}
+		inflight.Add(1)
+		// The place is given back once: as its answer is written, or, where none is, when the
+		// request is done with.
+		room := sync.OnceFunc(func() { <-slots })
+		if o.apart {
+			go func() {
+				defer inflight.Done()
+				defer room()
+				send(s.run(gone, tk.apart(), *o, req), room)
+			}()
+			continue
+		}
+		// A request with none ahead of it is begun as it is read, and so is finished. One that
+		// waits is begun when its turn comes, unless the task's end went first.
+		waits := true
+		select {
+		case <-turn:
+			waits = false
+		default:
+		}
+		ahead, done := turn, make(chan struct{})
+		turn = done
+		go func() {
+			defer inflight.Done()
+			defer room()
+			// THE TURN PASSES BEFORE THE ANSWER IS SENT. A task that hears an answer and asks
+			// again then finds nothing ahead of what it asks, so that request is begun as it
+			// is read, and is finished though the task's end goes the moment after.
+			rep, begun := func() (Reply, bool) {
+				defer close(done)
+				<-ahead
+				if waits && gone.Err() != nil {
+					fmt.Fprintf(s.Log, "delivery: %s: %s was not begun: the task's end went while it waited its turn\n", tk.ID, req.Op)
+					return Reply{}, false
+				}
+				return s.run(context.Background(), tk, *o, req), true
+			}()
+			if begun {
+				send(rep, room)
+			}
+		}()
 	}
 }
 
-// answer dispatches the three ops. Each is PERFORMED here, by the side that holds the mirror and
-// the credential: the task names a repository and a branch, and what comes back is what happened.
-// The credential never leaves this process, so the task's shell — which shares the task's network
-// namespace — has neither the secret nor, under a network that does not allow the forge, any route to the forge.
-func (s *Server) answer(tk Task, raw []byte) Reply {
+// maxInFlight is how many of one task's requests the runner holds at once, read and not yet
+// answered. One more may be writing its answer, its place already given back (Serve's send).
+const maxInFlight = 32
+
+// read is a frame as the request it carries and the op that answers it, or, with no op, the
+// reply that says why there is none. A frame that does not decode is answered under the id it
+// gave, where that much of it read. A key the request does not have is one that does not
+// decode: what an op is asked with is under `fields`, and a name beside it would be dropped
+// where a name within it is refused.
+func (s *Server) read(raw []byte) (Request, *op, Reply) {
 	var req Request
-	if err := codec.Unmarshal(raw, &req, codec.Tony); err != nil {
-		return Reply{Error: "undecodable request: " + err.Error()}
+	if err := codec.UnmarshalStrict(raw, &req, codec.Tony); err != nil {
+		// The id is read for itself, whatever else the frame holds, so the one who asked hears
+		// why rather than waits on an answer that names nobody.
+		var named struct {
+			ID int `tony:"field=id,omitzero"`
+		}
+		_ = codec.Unmarshal(raw, &named, codec.Tony)
+		return req, nil, Reply{ID: named.ID, Error: "undecodable request, and nothing was done: " + err.Error()}
 	}
-	// A request's calls to the forge are made holding its mirror's lock: a forge that stops
-	// answering would otherwise hold every task on that repo with it.
-	ctx, cancel := context.WithTimeout(context.Background(), workspace.ForgeTimeout)
+	table := s.table
+	if table == nil {
+		table = ops
+	}
+	o, ok := table[req.Op]
+	if !ok {
+		return req, nil, Reply{ID: req.ID, Error: fmt.Sprintf("unknown operation %q", req.Op)}
+	}
+	return req, &o, Reply{}
+}
+
+// run performs a request with its op, within the op's deadline, and names the request in the
+// answer. Each is PERFORMED here, by the side that holds the mirror and the credential: the task
+// names a repository and a branch, and what comes back is what happened. The credential never
+// leaves this process, so the task's shell — which shares the task's network namespace — has
+// neither the secret nor, under a network that does not allow the forge, any route to the forge.
+//
+// A request's calls to the forge are made holding its mirror's lock: a forge that stops
+// answering would otherwise hold every task on that repo with it.
+func (s *Server) run(ctx context.Context, tk Task, o op, req Request) Reply {
+	ctx, cancel := context.WithTimeout(ctx, o.deadline)
 	defer cancel()
-	switch req.Op {
-	case "push":
-		return s.push(ctx, tk, req)
-	case OpCreatePR, OpUpdatePR:
-		return s.pullRequest(ctx, tk, req)
-	case OpGitHubListPRs, OpGitHubReadPR:
-		return s.githubRead(ctx, tk, req)
-	case OpGitHubCommentPR, OpGitHubReplyComment:
-		return s.githubComment(ctx, tk, req)
-	case "fetch":
-		return s.refresh(ctx, tk, req)
-	case OpState:
-		return s.branchState(ctx, tk, req)
-	case OpGitIssuePull:
-		return s.gitIssuePull(ctx, tk, req)
-	case OpGitIssuePush:
-		return s.gitIssuePush(ctx, tk, req)
-	case OpGitHubIssueCreate, OpGitHubIssueComment, OpGitHubIssueClose:
-		return s.githubIssue(ctx, tk, req)
-	case OpLinearIssueCreate, OpLinearIssueComment, OpLinearIssueClose:
-		return s.linearIssue(ctx, tk, req)
-	case OpSlackPost, OpSlackReply, OpSlackRead, OpSlackReact:
-		return s.slack(ctx, tk, req)
-	case OpVerseAskCreate:
-		return s.verseAskCreate(ctx, tk, req)
-	case OpVerseAskGet:
-		return s.verseAskGet(ctx, tk, req)
-	case OpVerseAskList:
-		return s.verseAskList(ctx, tk, req)
-	case OpVerseDataGet, OpVerseDataPut, OpVerseDataRm, OpVerseCharterGet, OpVerseCharterCheck,
-		OpVerseCharterInstall, OpVerseCharterRemove:
-		return s.verseRouted(ctx, tk, req)
-	}
-	return Reply{Error: fmt.Sprintf("unknown operation %q", req.Op)}
+	rep := s.perform(ctx, tk, o, req)
+	rep.ID = req.ID
+	return rep
 }
 
 // refresh answers a `fetch`: the mirror up to upstream, then the checkout up to the mirror.
@@ -180,28 +397,27 @@ func (s *Server) answer(tk Task, raw []byte) Reply {
 // The fetch is the one every launch does, bounded by the request's deadline. A remote that cannot be reached is an error the task
 // reads as an answer, and the checkout is left as it was — `ensure` keeps what the mirror had,
 // and nothing here moves a ref to a base nobody has.
-func (s *Server) refresh(ctx context.Context, tk Task, req Request) Reply {
-	t := tk.Workspace.Tree(req.Repo)
+func (s *Server) refresh(ctx context.Context, tk Task, req Request) (asked, Reply) {
+	t := tk.Workspace.Tree(req.Field("repo"))
 	if t == nil {
-		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
+		return before(Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Field("repo"))})
 	}
-	if why := s.refused(tk, req.Decision, task.NewStep(task.StepGitFetch, map[string]string{"repo": t.Repo.Repo.Canonical(), "from": t.Repo.From})); why != "" {
-		return Reply{Refused: why}
-	}
-	mirror, err := s.Mirrors.Ensure(ctx, t.Repo.Remote)
-	if err != nil {
-		fmt.Fprintf(s.Log, "delivery: %s: fetch of %s: %v\n", tk.ID, t.Repo.Name(), err)
-		return Reply{Error: err.Error()}
-	}
-	moved, err := t.Refresh(mirror)
-	if err != nil {
-		fmt.Fprintf(s.Log, "delivery: %s: refreshing %s from its mirror: %v\n", tk.ID, t.Repo.Name(), err)
-		return Reply{Error: err.Error()}
-	}
-	if len(moved) > 0 {
-		fmt.Fprintf(s.Log, "delivery: %s: fetched %s: %s\n", tk.ID, t.Repo.Name(), strings.Join(moved, ", "))
-	}
-	return Reply{OK: true, Updated: moved}
+	return asking(task.NewStep(task.StepGitFetch, map[string]string{"repo": t.Repo.Repo.Canonical(), "from": t.Repo.From}), func() Reply {
+		mirror, err := s.Mirrors.Ensure(ctx, t.Repo.Remote)
+		if err != nil {
+			fmt.Fprintf(s.Log, "delivery: %s: fetch of %s: %v\n", tk.ID, t.Repo.Name(), err)
+			return Reply{Error: err.Error()}
+		}
+		moved, err := t.Refresh(mirror)
+		if err != nil {
+			fmt.Fprintf(s.Log, "delivery: %s: refreshing %s from its mirror: %v\n", tk.ID, t.Repo.Name(), err)
+			return Reply{Error: err.Error()}
+		}
+		if len(moved) > 0 {
+			fmt.Fprintf(s.Log, "delivery: %s: fetched %s: %s\n", tk.ID, t.Repo.Name(), strings.Join(moved, ", "))
+		}
+		return Reply{OK: true, Updated: moved}
+	})
 }
 
 // push answers a `push`: decide it by the launch's autonomy, check what the task committed, stage
@@ -220,18 +436,18 @@ func (s *Server) refresh(ctx context.Context, tk Task, req Request) Reply {
 // which is this side's own disk, before anything is tried over a network. The push is then the
 // staged ref to the target, which is the same act the sweep performs for anything that did not
 // land (Reflect), so there is one way work leaves and the retry is it.
-func (s *Server) push(ctx context.Context, tk Task, req Request) Reply {
-	t := tk.Workspace.Tree(req.Repo)
+func (s *Server) push(ctx context.Context, tk Task, req Request) (asked, Reply) {
+	t := tk.Workspace.Tree(req.Field("repo"))
 	if t == nil {
-		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
+		return before(Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Field("repo"))})
 	}
-	ref, err := runner.BranchRef(req.Branch)
+	ref, err := runner.BranchRef(req.Field("branch"))
 	if err != nil {
-		return Reply{Refused: err.Error()}
+		return before(Reply{Refused: err.Error()})
 	}
 	tok, err := tk.Credential(t.Repo)
 	if err != nil {
-		return Reply{Error: err.Error()}
+		return before(Reply{Error: err.Error()})
 	}
 	auth := workspace.TokenAuth(tok)(t.Repo.Remote)
 	// The branch's state at the forge comes BEFORE the decision, because two of the step's
@@ -239,84 +455,83 @@ func (s *Server) push(ctx context.Context, tk Task, req Request) Reply {
 	// tip is this task's. A row that keeps a task to branches it makes (`exists: false`) or
 	// made (`own: true`) is decided on what the forge says now, never on what the task said,
 	// and a delete is decided on the same facts as a write.
-	st, tip, err := s.state(ctx, tk, t, req.Branch, auth)
+	st, tip, err := s.state(ctx, tk, t, req.Field("branch"), auth)
 	if err != nil {
-		return Reply{Error: err.Error()}
+		return before(Reply{Error: err.Error()})
 	}
-	if why := s.refused(tk, req.Decision, task.NewStep(task.StepGitPush, pushFields(t, ref, req.Delete, req.Force, st))); why != "" {
-		return Reply{Refused: why}
-	}
-	// A branch this run created is its own to rewrite; any other is rewritten only when the
-	// push says so, which the autonomy saw. A branch not there yet is created, never forced:
-	// there is nothing to rewrite, and a create is the same act whatever the push said.
-	force := st.Created || (req.Force && st.Exists)
-	key := t.Repo.Name() + " " + ref
-	if req.Delete {
-		// Nothing staged: a retirement removes something rather than sending something, so
-		// there is no copy for the mirror to hold and nothing that could be lost by it failing.
-		fmt.Fprintf(s.Log, "delivery: %s: deleting %s at %s\n", tk.ID, ref, t.Repo.Remote)
-		if err := s.Mirrors.DeleteRef(ctx, t.Repo.Remote, ref, auth); err != nil {
-			if why := workspace.Refusal(err); why != "" {
-				return Reply{Refused: "the remote refused it: " + why}
+	return asking(task.NewStep(task.StepGitPush, pushFields(t, ref, req.Flag("delete"), req.Flag("force"), st)), func() Reply {
+		// A branch this run created is its own to rewrite; any other is rewritten only when the
+		// push says so, which the autonomy saw. A branch not there yet is created, never forced:
+		// there is nothing to rewrite, and a create is the same act whatever the push said.
+		force := st.Created || (req.Flag("force") && st.Exists)
+		key := t.Repo.Name() + " " + ref
+		if req.Flag("delete") {
+			// Nothing staged: a retirement removes something rather than sending something, so
+			// there is no copy for the mirror to hold and nothing that could be lost by it failing.
+			fmt.Fprintf(s.Log, "delivery: %s: deleting %s at %s\n", tk.ID, ref, t.Repo.Remote)
+			if err := s.Mirrors.DeleteRef(ctx, t.Repo.Remote, ref, auth); err != nil {
+				if why := workspace.Refusal(err); why != "" {
+					return Reply{Refused: "the remote refused it: " + why}
+				}
+				return Reply{Error: err.Error()}
 			}
-			return Reply{Error: err.Error()}
+			delete(tk.created, key)
+			delete(tk.pushed, key)
+			return Reply{OK: true, Out: "deleted " + t.Repo.Name() + " " + ref}
 		}
-		delete(tk.created, key)
-		delete(tk.pushed, key)
-		return Reply{OK: true, Out: "deleted " + t.Repo.Name() + " " + ref}
-	}
-	ok, refusal, head, err := t.AuthoredWork(tk.Launch)
-	// NOTHING OF ITS OWN IS NOT NOTHING TO PUSH. A task that moved its branch onto commits already
-	// upstream (a fast-forward onto another branch's work, a rebase that was a no-op) wrote
-	// nothing for the trailers to vouch for, but the target is still to be moved there, as git
-	// moves it. Only a target already at the head is up to date, and a task still at its base has
-	// delivered nothing at all.
-	switch {
-	case err != nil:
-		return Reply{Error: err.Error()}
-	case !ok && head.String() == t.Head:
-		return Reply{OK: true, Out: "nothing to push: " + t.Repo.Name() + " has no commits beyond the base it " +
-			"started from; commit what you want delivered, then push"}
-	case !ok && st.Exists && head == tip:
-		// Up to date is a push that succeeded: the branch is where this run would put it, so a
-		// pull request from it is this run's to open.
+		ok, refusal, head, err := t.AuthoredWork(tk.Launch)
+		// NOTHING OF ITS OWN IS NOT NOTHING TO PUSH. A task that moved its branch onto commits already
+		// upstream (a fast-forward onto another branch's work, a rebase that was a no-op) wrote
+		// nothing for the trailers to vouch for, but the target is still to be moved there, as git
+		// moves it. Only a target already at the head is up to date, and a task still at its base has
+		// delivered nothing at all.
+		switch {
+		case err != nil:
+			return Reply{Error: err.Error()}
+		case !ok && head.String() == t.Head:
+			return Reply{OK: true, Out: "nothing to push: " + t.Repo.Name() + " has no commits beyond the base it " +
+				"started from; commit what you want delivered, then push"}
+		case !ok && st.Exists && head == tip:
+			// Up to date is a push that succeeded: the branch is where this run would put it, so a
+			// pull request from it is this run's to open.
+			tk.pushed[key] = true
+			return Reply{OK: true, Out: "nothing to push: " + t.Repo.Name() + " " + ref + " is already at " +
+				workspace.ShortSha(head.String())}
+		case refusal != "":
+			return Reply{Refused: refusal}
+		}
+		d := tk.Workspace.Stage(ctx, tk.ID, t, ref, force, head) // what was checked
+		if d.Err != nil {
+			// Staging is the local hop, so this is the disk rather than the network — and nothing is
+			// pushed, because the one copy of the work is a directory this runner is about to be
+			// asked to remove.
+			fmt.Fprintf(s.Log, "delivery: %s: staging before a push to %s: %v\n", tk.ID, ref, d.Err)
+			return Reply{Error: d.Err.Error()}
+		}
+		staged := d.Staged[0]
+		if !st.Exists {
+			// Recorded now, not when it lands: if this push fails and the sweep lands it, the branch
+			// is still the one this task made.
+			tk.created[key] = true
+		}
+		fmt.Fprintf(s.Log, "delivery: %s: staged in the mirror at %s, pushing to %s\n", tk.ID, staged, ref)
+		why, err := s.Mirrors.Deliver(ctx, t.Repo.Remote, staged, ref, force, auth)
+		switch {
+		case err != nil:
+			// Not landed, and not a decision: the ref stays pending, and the sweep tries again. The
+			// task hears that, rather than a success it would plan on.
+			return Reply{Error: fmt.Sprintf("push to %s did not land (%v); the runner holds the work and retries", ref, err)}
+		case why != "":
+			return Reply{Refused: "the remote refused it: " + why}
+		}
 		tk.pushed[key] = true
-		return Reply{OK: true, Out: "nothing to push: " + t.Repo.Name() + " " + ref + " is already at " +
-			workspace.ShortSha(head.String())}
-	case refusal != "":
-		return Reply{Refused: refusal}
-	}
-	d := tk.Workspace.Stage(ctx, tk.ID, t, ref, force, head) // what was checked
-	if d.Err != nil {
-		// Staging is the local hop, so this is the disk rather than the network — and nothing is
-		// pushed, because the one copy of the work is a directory this runner is about to be
-		// asked to remove.
-		fmt.Fprintf(s.Log, "delivery: %s: staging before a push to %s: %v\n", tk.ID, ref, d.Err)
-		return Reply{Error: d.Err.Error()}
-	}
-	staged := d.Staged[0]
-	if !st.Exists {
-		// Recorded now, not when it lands: if this push fails and the sweep lands it, the branch
-		// is still the one this task made.
-		tk.created[key] = true
-	}
-	fmt.Fprintf(s.Log, "delivery: %s: staged in the mirror at %s, pushing to %s\n", tk.ID, staged, ref)
-	why, err := s.Mirrors.Deliver(ctx, t.Repo.Remote, staged, ref, force, auth)
-	switch {
-	case err != nil:
-		// Not landed, and not a decision: the ref stays pending, and the sweep tries again. The
-		// task hears that, rather than a success it would plan on.
-		return Reply{Error: fmt.Sprintf("push to %s did not land (%v); the runner holds the work and retries", ref, err)}
-	case why != "":
-		return Reply{Refused: "the remote refused it: " + why}
-	}
-	tk.pushed[key] = true
-	out := "pushed " + t.Repo.Name() + " -> " + ref
-	// Said, because an agent that edited and did not commit may believe it delivered.
-	if n := len(t.Changed()); n > 0 {
-		out += fmt.Sprintf(" (%d uncommitted change(s) stayed in the workspace, not delivered)", n)
-	}
-	return Reply{OK: true, Out: out}
+		out := "pushed " + t.Repo.Name() + " -> " + ref
+		// Said, because an agent that edited and did not commit may believe it delivered.
+		if n := len(t.Changed()); n > 0 {
+			out += fmt.Sprintf(" (%d uncommitted change(s) stayed in the workspace, not delivered)", n)
+		}
+		return Reply{OK: true, Out: out}
+	})
 }
 
 // The pull request ops: one for each tool, as the step each is.
@@ -328,33 +543,33 @@ const (
 // pullRequest answers a `create-pr` or an `update-pr`: a pull request from a branch the task has
 // pushed into a base, opened or updated with this runner's token at GitHub, as the launch's
 // autonomy decides it.
-func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
-	t := tk.Workspace.Tree(req.Repo)
+func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) (asked, Reply) {
+	t := tk.Workspace.Tree(req.Field("repo"))
 	if t == nil {
-		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
+		return before(Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Field("repo"))})
 	}
-	head, err := runner.BranchRef(req.Branch)
+	head, err := runner.BranchRef(req.Field("branch"))
 	if err != nil {
-		return Reply{Refused: err.Error()}
+		return before(Reply{Refused: err.Error()})
 	}
 	step := task.StepGitHubCreatePR
 	if req.Op == OpUpdatePR {
 		step = task.StepGitHubUpdatePR
 	}
 	// The base as a branch's name, as the tool spells it and a row's `base` is written.
-	base := strings.TrimPrefix(strings.TrimSpace(req.Base), "refs/heads/")
+	base := strings.TrimPrefix(strings.TrimSpace(req.Field("base")), "refs/heads/")
 	if strings.HasPrefix(base, "refs/") {
-		return Reply{Refused: fmt.Sprintf("the base %q is not a branch", req.Base)}
+		return before(Reply{Refused: fmt.Sprintf("the base %q is not a branch", req.Field("base"))})
 	}
 	tok, err := tk.Credential(t.Repo)
 	if err != nil {
-		return Reply{Error: err.Error()}
+		return before(Reply{Error: err.Error()})
 	}
 	// Whether the head is this task's is the runner's word, read before the decision as a
 	// push's facts are.
-	st, _, err := s.state(ctx, tk, t, req.Branch, workspace.TokenAuth(tok)(t.Repo.Remote))
+	st, _, err := s.state(ctx, tk, t, req.Field("branch"), workspace.TokenAuth(tok)(t.Repo.Remote))
 	if err != nil {
-		return Reply{Error: err.Error()}
+		return before(Reply{Error: err.Error()})
 	}
 	fields := map[string]string{"repo": t.Repo.Repo.Canonical(), "head": strings.TrimPrefix(head, "refs/heads/"),
 		"own": strconv.FormatBool(st.Own)}
@@ -362,48 +577,48 @@ func (s *Server) pullRequest(ctx context.Context, tk Task, req Request) Reply {
 		fields["base"] = base // an update that names none keeps the base
 	}
 	if req.Op != OpUpdatePR {
-		fields["draft"] = strconv.FormatBool(req.Draft)
+		fields["draft"] = strconv.FormatBool(req.Flag("draft"))
 	}
-	if why := s.refused(tk, req.Decision, task.NewStep(step, fields)); why != "" {
-		return Reply{Refused: why}
-	}
-	if _, has := s.Ceilings["github"]; !has {
-		return Reply{Refused: "this runner performs nothing at GitHub for its tasks: it has no `github` system"}
-	}
-	owner, repo, err := RepoPath(t.Repo.Remote)
-	if err != nil {
-		return Reply{Refused: err.Error()}
-	}
-	api := s.Services.GitHubAPI
-	if !st.Exists {
-		return Reply{Refused: fmt.Sprintf("%s isn't at the forge: push it first, then open a pull request from it", req.Branch)}
-	}
-	if !tk.pushed[t.Repo.Name()+" "+head] && !st.Created {
-		return Reply{Refused: fmt.Sprintf("a proposal is from a branch this run pushed, and %q of %s isn't one",
-			strings.TrimPrefix(head, "refs/heads/"), t.Repo.Repo.Repo)}
-	}
-	spec := GitHubPR{API: api, Owner: owner, Repo: repo, Head: req.Branch, Base: base, Title: req.Title, Body: req.Body, Draft: req.Draft}
-	hc := s.HTTP
-	if hc == nil {
-		hc = http.DefaultClient
-	}
-	var out string
-	if req.Op == OpUpdatePR {
-		out, err = UpdateGitHubPR(ctx, hc, tok, spec)
-	} else {
-		out, err = OpenGitHubPR(ctx, hc, tok, spec)
-	}
-	if err != nil {
-		return Reply{Error: err.Error()}
-	}
-	fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
-	return Reply{OK: true, Out: out}
+	return asking(task.NewStep(step, fields), func() Reply {
+		if _, has := s.Ceilings["github"]; !has {
+			return Reply{Refused: "this runner performs nothing at GitHub for its tasks: it has no `github` system"}
+		}
+		owner, repo, err := RepoPath(t.Repo.Remote)
+		if err != nil {
+			return Reply{Refused: err.Error()}
+		}
+		api := s.Services.GitHubAPI
+		if !st.Exists {
+			return Reply{Refused: fmt.Sprintf("%s isn't at the forge: push it first, then open a pull request from it", req.Field("branch"))}
+		}
+		if !tk.pushed[t.Repo.Name()+" "+head] && !st.Created {
+			return Reply{Refused: fmt.Sprintf("a proposal is from a branch this run pushed, and %q of %s isn't one",
+				strings.TrimPrefix(head, "refs/heads/"), t.Repo.Repo.Repo)}
+		}
+		spec := GitHubPR{API: api, Owner: owner, Repo: repo, Head: req.Field("branch"), Base: base, Title: req.Field("title"), Body: req.Body, Draft: req.Flag("draft")}
+		hc := s.HTTP
+		if hc == nil {
+			hc = http.DefaultClient
+		}
+		var out string
+		if req.Op == OpUpdatePR {
+			out, err = UpdateGitHubPR(ctx, hc, tok, spec)
+		} else {
+			out, err = OpenGitHubPR(ctx, hc, tok, spec)
+		}
+		if err != nil {
+			return Reply{Error: err.Error()}
+		}
+		fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
+		return Reply{OK: true, Out: out}
+	})
 }
 
 // refused is why the task's environment, its autonomy or the runner's ceiling refuses a step, or ""
 // where none does: a step outside the environment, saying what it gives (on the fields the runner
 // filled, `exists` and `own` among them, as the task's own check saw them), the `deny` row that
-// matches it, by name, or an `ask` row whose question this runner saw no answer to. An `allow` needs nobody. An `ask` is decided
+// matches it, by name, or an `ask` row whose question this runner saw no answer to, or saw
+// answered about another call, naming the fields it differs in. An `allow` needs nobody. An `ask` is decided
 // in the task's process, which holds the model and says what it likes, so the answer is taken
 // from what the runner itself relayed to that process (Task.Answered), once per act, and never
 // from the process's word. The ceiling is read after the autonomy, and is the operator's: a task's
@@ -419,10 +634,17 @@ func (s *Server) refused(tk Task, decision string, st task.Step) string {
 		case task.ThenDeny:
 			return fmt.Sprintf("refused by the autonomy's row %s: %s", p.NameOf(i), st)
 		case task.ThenAsk:
-			by := ""
-			answered := false
+			by, answered := "", false
+			var differ []string
 			if tk.Answered != nil {
-				by, answered = tk.Answered(st, decision)
+				by, differ, answered = tk.Answered(st, decision)
+			}
+			if differ != nil {
+				fmt.Fprintf(s.Log, "delivery: %s: %s names %s, whose answer is about another call (it differs in %s): refused, the answer kept\n",
+					tk.ID, st.Name, decision, strings.Join(differ, ", "))
+				return fmt.Sprintf("refused: the autonomy's row %s asks about %s, and the answer to %s is about another call: "+
+					"this one differs in %s. Nothing was done; ask about this call, or perform the one that was answered",
+					p.NameOf(i), st.Name, decision, strings.Join(differ, ", "))
 			}
 			if !answered {
 				return fmt.Sprintf("refused: the autonomy's row %s asks about %s, and this runner relayed no answer to "+
@@ -502,21 +724,21 @@ func pushFields(t *workspace.Tree, ref string, del, force bool, st runner.Branch
 const OpState = "state"
 
 // branchState answers a `state`.
-func (s *Server) branchState(ctx context.Context, tk Task, req Request) Reply {
-	t := tk.Workspace.Tree(req.Repo)
+func (s *Server) branchState(ctx context.Context, tk Task, req Request) (asked, Reply) {
+	t := tk.Workspace.Tree(req.Field("repo"))
 	if t == nil {
-		return Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Repo)}
+		return before(Reply{Error: fmt.Sprintf("no repository %q in this workspace", req.Field("repo"))})
 	}
 	if !tk.environment().Gives(task.StepGitPush) {
-		return Reply{Refused: "refused: the environment gives no git.push, so there is no push to decide"}
+		return before(Reply{Refused: "refused: the environment gives no git.push, so there is no push to decide"})
 	}
 	tok, err := tk.Credential(t.Repo)
 	if err != nil {
-		return Reply{Error: err.Error()}
+		return before(Reply{Error: err.Error()})
 	}
-	st, _, err := s.state(ctx, tk, t, req.Branch, workspace.TokenAuth(tok)(t.Repo.Remote))
+	st, _, err := s.state(ctx, tk, t, req.Field("branch"), workspace.TokenAuth(tok)(t.Repo.Remote))
 	if err != nil {
-		return Reply{Error: err.Error()}
+		return before(Reply{Error: err.Error()})
 	}
-	return Reply{OK: true, Exists: st.Exists, Own: st.Own}
+	return before(Reply{OK: true, Exists: st.Exists, Own: st.Own})
 }

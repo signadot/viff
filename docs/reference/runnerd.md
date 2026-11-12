@@ -68,6 +68,7 @@ maps the caller to itself, and in the same pid namespace, so it can see that pro
 | `/proc/<pid>/mem`, `/proc/<pid>/environ`, and ptrace | the task's process makes itself non-dumpable (`PR_SET_DUMPABLE`) before it serves, so a same-uid process without `CAP_SYS_PTRACE` is refused them. Without it, only the node's `kernel.yama.ptrace_scope` would decide, and its default, 0, allows reading another process's memory. bwrap also drops every capability (`--cap-drop ALL`), which it would otherwise leave to a runner run as root. With `-sandbox none`, a task of a runner run as root keeps its capabilities: its memory is still refused, its `environ`, which holds no secret, is not. |
 | a separate uid for the task | **not done**: the task runs as the runner's uid. A uid boundary would not depend on dumpability. |
 | the codex and claude agents' model keys | **not covered**: each agent reads its key where the commands it runs can too, codex from a login file and Claude from its environment, so the key is the task's ([Codex](#codex-gated-inside-the-run), [Claude](#claude-gated-inside-the-run)). |
+| the runner's [secret store](#the-secret-store) | no sandbox binds its directory, and the runner refuses to start with a store where one would (`secrets.dir`). The runner reads a secret in its own process, which a task's sandbox cannot see (`--unshare-pid`). |
 
 On a platform without procfs (macOS, with `-sandbox none`), nothing makes the process
 non-dumpable.
@@ -99,7 +100,9 @@ a file: `#!/bin/sh`, `#!/usr/bin/env python3`, `#!/usr/bin/env node`. The line i
 the kernel reads it: the program, and at most one argument. A script with no `#!` line runs with
 `bash`. A script calls the task's tools from its shell with `verse-call-tool`. The runner finds
 it beside its own binary or on its `PATH`, binds it read-only into the sandbox at the same path,
-and puts its directory first on the script's `PATH`.
+and puts its directory first on the script's `PATH`. `verse-secret-exec`, where it is beside it,
+is bound and found the same way: [one command run with a secret](../systems/secret.md#from-a-shell),
+as if in place.
 
 Each task runs in a directory of its own, in a process of its own ([the sandbox](#the-sandbox)).
 A launch whose environment gives repositories (its `git` blocks) gets them checked out there,
@@ -127,6 +130,10 @@ listen: ":9802"
 verse: {url: http://verse:9797}            # the one verse this runner serves; required
 repos:
   mirrors: /var/lib/verse-runner/mirrors
+secrets: {dir: /secrets}                   # the secret store; `secret` is performed only with one
+mcp:                                       # remote MCP servers the runner calls for its tasks (mcp)
+  servers:
+    linear: {url: "https://mcp.linear.app/mcp/readonly", auth: {secret: linear}}   # Bearer <the store's linear>
 agents:
   claude:
     bin: /usr/local/bin/claude             # `claude` on PATH when absent
@@ -142,7 +149,13 @@ agents:
           push: [{ref: !regexp "^refs/heads/verse/"}, {ref: !glob "refs/heads/release/*", force: false}]
       git-issue: {ceiling: {repo: !regexp "^github\\.com/acme/"}}
       linear-issue: {ceiling: {create: {team: ENG}, comment: {}, close: {}}}   # closed without LINEAR_API_KEY
-      network: {ceiling: {mode: !or [none, allow], tcp-client: [{host: !glob "*.github.com"}, {host: pypi.org}]}}
+      secret:                              # one command with one secret of the store (secrets.dir)
+        ceiling:
+        - name: npm-token                  # left out where the store has no npm-token
+          as: NPM_TOKEN
+          exec: {argv: !regexp "^npm (publish --ignore-scripts|view )", dir: !glob "packages/*"}   # no variables
+      mcp: {ceiling: {server: linear, call: {tool: !glob "get_*"}}}   # left out where the store has no linear
+      network: {ceiling: {mode: !or [none, allow], tcp-client: [{host: !glob "*.github.com"}, {host: pypi.org}, {host: registry.npmjs.org}]}}
       files: {ceiling: {}}
       commands: {ceiling: {}}
 script:                                    # scripts are offered only with this section
@@ -163,11 +176,14 @@ script:                                    # scripts are offered only with this 
 | `repos.forge` | where the host's `owner/name` is fetched from. A directory holding `owner/name` repositories serves a runner with no network. | `https://<host>` |
 | `repos.api` | where the forge's GitHub API is. A GitHub Enterprise Server is this one line: `https://<host>/api/v3`, with `repos.host` naming the host. | `https://api.github.com` where the forge is github.com |
 | `readOnly` | host paths every task's sandbox has read only, at the same path: what the operator fills ahead of time for tasks to read and none to change, as a Go module cache or a pnpm store, so a task builds and tests private dependencies with no network and no credential. For Go, give the doer's `shellEnv` `GOMODCACHE` naming the path and `GOPROXY=off`, and leave `GOFLAGS` alone: the default `-mod=readonly` reads a filled cache, where `-mod=mod` would let `go` rewrite the checkout's `go.mod` and `go.sum`. The build cache needs no setting, since `GOCACHE` defaults under the task's `HOME`, which the task may write. Absolute and below `/`. The runner refuses to start with one that holds or lies in its work, mirrors or control directory: the control directory holds every task's socket, and a read-only mount still lets a task connect to a socket on it. Never list a path holding the runner's own secrets, or its home. Each path is looked for, and checked again, at every launch: one not there, or one that has since come to reach those directories (a cache turned into a link to `$TMPDIR`, where runnerd makes its work and control directories), is said in that task's log and left out of it. Under `-sandbox none` the task sees the whole machine anyway. | none |
+| `secrets.dir` | the directory of the runner's [secret store](#the-secret-store): one file to a secret, the file's name the secret's. Absolute and below `/`. No task's sandbox has it, and the runner holds it to that: it refuses to start with a store under a directory every sandbox has (`/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`, `/etc`, `/opt`), with one that holds or lies in its work, mirrors or control directory, and with a `readOnly` path that reaches it. A `readOnly` path that comes to reach it after the start is left out of the launch. | none: the runner has no store, and reads each credential from its environment |
+| `secrets.systems.<system>` | the secret a system acts with, by name: `secrets: {dir: /secrets, systems: {slack: slack-bot}}`. `linear-issue` and `slack` may name one. A system that does acts with the store, and its variable is not read. `secret` names its secret in each block of a doer's ceiling instead, and an MCP server its own under `mcp.servers`. | none: the system reads its variable |
+| `mcp.servers.<name>` | a remote MCP server the runner calls for its tasks ([mcp](../systems/mcp.md)), by the name a doer's ceiling and a spawn's environment call it: lowercase letters, digits and `_`, a letter first, no `-`. `url`, its streamable HTTP endpoint, `https` (or `http` on a loopback host, for a test), with no user and no query, since the task's process is sent the configuration and a key in a url would reach it; `auth`, how the runner signs a request, `{secret: <name in the store>}` sent as `Authorization: Bearer <value>`, or with `header: <name>` as that header, the value as it is, and absent for a server called with no credential; `timeout`, how long one call has, a duration (`90s`), `60s` by default and at most `10m`. A server whose secret is not in the store at the start is left out, with every ceiling block naming it, and said. The runner follows no redirect and declares no capability. With `servers`, `mcp` is performed where a section's ceiling names it. | none: the runner calls no server |
 | `agents.<name>` | one agent the process runs: `verse`, `codex` or `claude`; another name is refused. Its value holds the program's own keys, which are the agent's: codex `bin`, `sandbox` and `config` ([Codex](#codex-gated-inside-the-run)); claude `bin` ([Claude](#claude-gated-inside-the-run)); verse none. A key the agent's program does not take is refused, naming the ones it does; a `bin` that is not there is refused when the runner starts. Beside them, the four keys every agent takes, below. | none |
 | `agents.<name>.settings.<setting>` | the operator's say over one setting the agent takes: `values`, what a launch may set, as patterns (`model: {values: ["gpt-6*"]}`), which is what the offer publishes for the setting; and `default`, what the runner uses where a launch sets none, which then goes on the task's record. A setting not named takes any value the agent takes, and the agent's own default. Where the agent lists its own values (Claude's efforts), the ones named are among them; a default is within both. A setting the agent does not take, or an empty `values`, is refused. | any value, the agent's own default |
 | `agents.verse.annotations.<name>` | an annotation a launch may set, with the `type` of its value and the `default` used where a launch sets none. The verse agent knows one, `verse.portkey/virtual-key`, a Portkey virtual key: a routing label, not a secret. Only the verse agent takes annotations. | none |
 | `agents.<name>.shellEnv`, `script.shellEnv` | the variables of the runner's environment the doer's task shell is given, by name: the process's values of those names and nothing else. With the proxy's variables, they are the whole environment of the doer's task process too ([the sandbox](#the-sandbox)), and a launch's `with.env` may not name one of its own doer's. No variable the runner reads a credential from may be named (`GITHUB_TOKEN`, `LINEAR_API_KEY`, `SLACK_BOT_TOKEN`, `PORTKEY_API_KEY`, `PORTKEY_BASE_URL`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`), and an empty list is refused: leave it out for the default. A declaration, not a wall: exactly as strong as the sandbox, and with `-sandbox none` no stronger than the task's good manners. | `task.DefaultShellEnv`: enough for a shell to find its tools, and no secret |
-| `agents.<name>.systems.<system>`, `script.systems.<system>` | the doer's ceiling over one system, `{ceiling: …}`. The runner performs `git` and `git-issue` with `repos`, `github` and `github-issue` where the forge is GitHub, and `linear-issue` and `slack` where a section's ceiling names them and their credential is set: where it is not, the runner starts with the system closed to every doer, says so, and no offer holds it, so a spawn that needs it is refused where it is written. It performs [`verse`](../systems/verse.md) too, carried to its verse with the runner's own token. A section for a system the runner does not perform is refused, but for `verse`'s, taken on every doer. Every doer's offer holds each system the runner performs, closed where the doer's section names none. `files`, `commands`, `agent` and `question`, which the runner stops inside a run, are a doer's where the runner stops that doer on them: the verse agent all four, codex and claude `files`, `commands` and `question`, a script `question` alone; another is refused. `network` is every doer's. | closed: nothing of the system. For `network`, no bound beyond what the sandbox builds |
+| `agents.<name>.systems.<system>`, `script.systems.<system>` | the doer's ceiling over one system, `{ceiling: …}`. The runner performs `git` and `git-issue` with `repos`, `github` and `github-issue` where the forge is GitHub, and `linear-issue` and `slack` where a section's ceiling names them and their credential is set: where it is not, the runner starts with the system closed to every doer, says so, and no offer holds it, so a spawn that needs it is refused where it is written. It performs [`secret`](../systems/secret.md) where it has a [secret store](#the-secret-store) and a section's ceiling names it: each block names one secret of the store as a literal (`name`), never a pattern, since a name is what a doer is trusted with, and may pattern or leave out the variable (`as`); a block whose secret is not in the store at the start is left out, and said, and the system is closed whole under `-sandbox none`. It performs [`mcp`](../systems/mcp.md) where `mcp.servers` names servers and a section's ceiling names it: each block names one server as a literal (`server`), and its `call` shapes the tools and arguments; a block whose server's secret is not in the store at the start is left out, and said. It performs [`verse`](../systems/verse.md) too, carried to its verse with the runner's own token. A section for a system the runner does not perform is refused, but for `verse`'s, taken on every doer. Every doer's offer holds each system the runner performs, closed where the doer's section names none. `files`, `commands`, `agent` and `question`, which the runner stops inside a run, are a doer's where the runner stops that doer on them: the verse agent all four, codex and claude `files`, `commands` and `question`, a script `question` alone; another is refused. `network` is every doer's. | closed: nothing of the system. For `network`, no bound beyond what the sandbox builds |
 | `….ceiling` | the ceiling over what the doer's tasks may do with the system: blocks written as a spawn's environment writes the system, a block or a list of them, each attribute one pattern, with `!or` for several (`repo: !regexp "^github\\.com/acme/"`, `mode: !or [none, allow]`), each verb its shapes. A ceiling lists what it allows: a spawn's environment must lie within it, every block within one of its blocks and every shape within one of its shapes, and there is no "all but". A block naming no verb (`files: {ceiling: {}}`) allows every verb of its system, any call; a section with no ceiling at all is refused, since it would close the system as leaving it out does. An attribute a block names bounds every environment block it holds: one that leaves it unsaid stands for its default (network's `mode`, none), or, with none (git's `from`), is beyond the block. A `git` ceiling names its repositories, on the runner's forge. A `network` ceiling naming a mode the runner's sandbox can't build is refused when the runner starts. A runner whose ceilings can't give what an agent requires (codex's and claude's `commands.run` and `files.write`) does not start. | |
 
 #### Layouts
@@ -184,7 +200,8 @@ claude each on its own.
 #### The variables it reads
 
 Secrets are never in the file. The runner reads them from its environment, where a deployment
-puts a Kubernetes Secret, under fixed names: no configuration names a variable.
+puts a Kubernetes Secret, under fixed names: no configuration names a variable. A system may
+read its credential from the [secret store](#the-secret-store) instead.
 
 | Variable | What it holds | Absent |
 |---|---|---|
@@ -194,8 +211,8 @@ puts a Kubernetes Secret, under fixed names: no configuration names a variable.
 | `PORTKEY_BASE_URL` | the Portkey endpoint | Portkey's own |
 | `PORTKEY_VIRTUAL_KEY` | the Portkey virtual key, where neither a launch nor the annotation's `default` names one | Portkey's routing for the account key |
 | `GITHUB_TOKEN` | the runner's token for its forge: what it fetches and pushes with, and acts at GitHub with. It stays in the runner; a task's process never has it. | logged; a forge on this filesystem needs none, and a fetch or push over the network is refused |
-| `LINEAR_API_KEY` | the Linear credential, the `Authorization` header verbatim: a personal key bare, an OAuth token as `Bearer …`. It stays in the runner. | logged; `linear-issue` is closed to every doer, and a spawn naming it is refused where it is written |
-| `SLACK_BOT_TOKEN` | the Slack bot token, with the scopes `chat:write`, `channels:read`, `groups:read`, `channels:history`, `groups:history` and `reactions:write` ([slack](../systems/slack.md#where-the-credential-lives)). It stays in the runner. | logged; `slack` is closed to every doer, and a spawn naming it is refused where it is written |
+| `LINEAR_API_KEY` | the Linear credential, the `Authorization` header verbatim: a personal key bare, an OAuth token as `Bearer …`. It stays in the runner. Not read where `secrets.systems.linear-issue` names a secret. | logged; `linear-issue` is closed to every doer, and a spawn naming it is refused where it is written |
+| `SLACK_BOT_TOKEN` | the Slack bot token, with the scopes `chat:write`, `channels:read`, `groups:read`, `channels:history`, `groups:history` and `reactions:write` ([slack](../systems/slack.md#where-the-credential-lives)). It stays in the runner. Not read where `secrets.systems.slack` names a secret. | logged; `slack` is closed to every doer, and a spawn naming it is refused where it is written |
 | `OPENAI_API_KEY` | the OpenAI API key the codex agent runs under, handed to the codex process as a login file | logged; codex's own login under the task's `HOME` |
 | `CLAUDE_CODE_OAUTH_TOKEN`, else `ANTHROPIC_API_KEY` | the credential the claude agent runs under, put in the claude process's environment under the name it was read from: a subscription's token (`claude setup-token`), which is a person's, or an API key, which is what a shared runner holds. Where both are set, the token is used, and that is logged at start. | logged; Claude's own login under the task's `HOME` |
 
@@ -207,6 +224,46 @@ The flags: `-config <file>` (default `runner.tony`), `-sandbox bwrap|none`,
 port plus one; `off` disables it). `-task` is how the runner starts each task's process, with the
 configuration on stdin, and is not for a person to run. `runnerd` takes no arguments beyond its
 flags.
+
+#### The secret store
+
+The store is a directory the deployment mounts, as a Kubernetes Secret volume is. Each file is
+one secret, and the file's name is the secret's name: lower case letters, digits, `-`, `_` and
+`.`, not starting with a `.`.
+
+```
+secrets:
+  dir: /secrets
+  systems: {slack: slack-bot, linear-issue: linear}
+```
+
+- **It holds what a task never holds.** The runner acts with a secret for a task. The task's
+  process has neither the value nor the directory. The model keys are not in the store: the
+  task's process holds those, and they come on its stdin.
+- **A value is read at each act.** A secret that is rotated is the next act's, with no restart.
+  The newline a file ends with is not part of the value.
+- **A secret is there where its file reads and is not empty.** An empty file is an absent
+  secret, and so is one the runner cannot read.
+- **A system that names a secret acts with the store alone.** Its variable is not read. Where
+  the variable is set as well, the runner says so when it starts.
+- **A system whose secret is absent at the start is closed** to every doer, and the runner says
+  which secret and where. It stays closed until a restart, since what a runner offers is fixed
+  when it starts. A secret that goes missing later fails the act, with an error that names the
+  secret and never a value.
+- **A `secret` ceiling block names one secret of the store,** for a doer's tasks to run a
+  command with ([secret](../systems/secret.md)). The block is left out, and said, where its
+  secret is absent at the start; a doer with no block left has the system closed.
+- **An MCP server's credential is a secret of the store too** (`mcp.servers.<name>.auth.secret`,
+  [mcp](../systems/mcp.md)), read at each request. A server whose secret is absent at the start
+  is left out, with every `mcp` ceiling block naming it, and said; a server with no `auth` is
+  never left out.
+- **With `-sandbox none` a task sees the whole machine,** the store with it. A runner started
+  so with a store says so, and starts; `secret` it closes to every doer, since a command run
+  with a secret runs in a sandbox of its own.
+
+Mount a Secret volume without `subPath`: a `subPath` mount does not follow a Secret that
+changes. A Secret's keys are the files' names, so a key in upper case (`SLACK_BOT_TOKEN`) needs
+an `items` entry that gives it its name in the store.
 
 ### What it offers
 
@@ -237,6 +294,7 @@ offers:
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
     slack: {ceiling: {post: {channel: deploys}, read: {channel: deploys}}}
+    secret: {ceiling: {name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm (publish --ignore-scripts|view )", dir: !glob "packages/*"}}}
     verse: {}
     files: {ceiling: {}}
     commands: {ceiling: {}}
@@ -257,6 +315,7 @@ offers:
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
     slack: {ceiling: {post: {channel: deploys}, read: {channel: deploys}}}
+    secret: {ceiling: {name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm (publish --ignore-scripts|view )", dir: !glob "packages/*"}}}
     verse: {}
     question: {}
 ```

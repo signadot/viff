@@ -164,12 +164,12 @@ func TestASlackToolsStepNamesTheChannel(t *testing.T) {
 		if tl.Step != w.step {
 			t.Errorf("%s is the step %q, want %q", tl.Name, tl.Step, w.step)
 		}
-		in := map[string]any{"channel": " #Deploys", "text": "t", "thread": "17.1", "message": "17.2", "emoji": ":rocket:"}
+		in := asTaken(tl.Params, map[string]any{"channel": " #Deploys", "text": "t", "thread": "17.1", "message": "17.2", "emoji": ":rocket:"})
 		if got, ok := tl.Fields(in); !ok || !maps.Equal(got, w.fields) {
 			t.Errorf("%s derives %v (%v), want %v", tl.Name, got, ok, w.fields)
 		}
 		for _, bad := range []string{"", "#", "dé-ploys", "deploys now"} {
-			if _, ok := tl.Fields(map[string]any{"channel": bad, "text": "t", "thread": "17.1", "message": "17.2", "emoji": "x"}); ok {
+			if _, ok := tl.Fields(asTaken(tl.Params, map[string]any{"channel": bad, "text": "t", "thread": "17.1", "message": "17.2", "emoji": "x"})); ok {
 				t.Errorf("%s derives fields for the channel %q", tl.Name, bad)
 			}
 		}
@@ -180,7 +180,8 @@ func TestASlackToolsStepNamesTheChannel(t *testing.T) {
 	// A call with no fields is refused by the tool too, and never reaches the runner: the
 	// client here has no connection to reach it by.
 	for _, tl := range tools {
-		out, blocked, err := tl.Do(t.Context(), task.ToolUse{Name: tl.Name, Input: map[string]any{"channel": "deploys now", "text": "t", "thread": "17.1", "message": "17.2", "emoji": "x"}})
+		out, blocked, err := tl.Do(t.Context(), task.ToolUse{Name: tl.Name, Input: asTaken(tl.Params,
+			map[string]any{"channel": "deploys now", "text": "t", "thread": "17.1", "message": "17.2", "emoji": "x"})})
 		if err != nil || !blocked || !strings.HasPrefix(out, "not sent:") {
 			t.Errorf("%s with no channel's name: %q, %v, %v", tl.Name, out, blocked, err)
 		}

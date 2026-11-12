@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,10 @@ type Channel struct {
 
 	near net.Conn
 	far  *os.File
+	// network is the task's network as the sandbox built it (SetNetwork), and env the
+	// environment its process was started with (SetEnv), each set before Serve.
+	network Network
+	env     []string
 
 	// autonomy is the task's CURRENT autonomy: the launch's until a replacement is set (SetPolicy),
 	// and what the server decides each act by and settle reads. The launch's own copy (l) never
@@ -111,7 +116,13 @@ func (c *Channel) Answers() int {
 // again. The act names its decision (Request.Decision) and that is matched first; an act that
 // names none is matched to an answer about the same call, by step and fields. False where the
 // runner relayed no such answer, whatever the task's process says.
-func (c *Channel) answered(st task.Step, decision string) (string, bool) {
+//
+// An answer is to the call its question showed, and to no other: an act naming the decision of
+// an answer about another call (another command, another branch, another channel) is not
+// performed on it, and differ is what the act says otherwise, by field. The answer is kept for
+// the act it is about, which the task's process may still ask for. An answer about no call the
+// runner read (gateAbout) is matched by its decision alone.
+func (c *Channel) answered(st task.Step, decision string) (by string, differ []string, ok bool) {
 	c.answersMu.Lock()
 	defer c.answersMu.Unlock()
 	for c.relaying > 0 {
@@ -121,25 +132,31 @@ func (c *Channel) answered(st task.Step, decision string) (string, bool) {
 		<-landed
 		c.answersMu.Lock()
 	}
-	take := func(i int) (string, bool) {
+	take := func(i int) (string, []string, bool) {
 		by := c.answers[i].by
 		c.answers = append(c.answers[:i], c.answers[i+1:]...)
-		return by, true
+		return by, nil, true
 	}
 	if decision != "" {
 		for i, a := range c.answers {
-			if a.decision == decision && a.choice == task.Proceed {
-				return take(i)
+			if a.decision != decision || a.choice != task.Proceed {
+				continue
 			}
+			if a.step.Name != "" {
+				if differ := a.step.Differs(st); differ != nil {
+					return "", differ, false
+				}
+			}
+			return take(i)
 		}
-		return "", false
+		return "", nil, false
 	}
 	for i, a := range c.answers {
 		if a.step.Same(st) && a.choice == task.Proceed {
 			return take(i)
 		}
 	}
-	return "", false
+	return "", nil, false
 }
 
 // SetAutonomy is the task's autonomy from the next act on, as PUT /tasks/{id}/autonomy replaced it.
@@ -183,11 +200,25 @@ func Open(id string, ws *workspace.Workspace, mirrors *workspace.Mirrors,
 // Child is the end the task's process inherits, as an extra descriptor.
 func (c *Channel) Child() *os.File { return c.far }
 
+// SetNetwork is the task's network as the sandbox built it, which a command run for the task
+// apart from its process is held to (Task.Network). Set it before Serve, once the egress
+// socket is there.
+func (c *Channel) SetNetwork(n Network) { c.network = n }
+
+// SetEnv is the environment the task's process was started with (Task.Env): what a command run
+// for the task is given, under the call's own variables and the secret. Set it before Serve.
+func (c *Channel) SetEnv(env []string) { c.env = slices.Clone(env) }
+
 // Serve answers the task's requests for as long as its process lives.
 func (c *Channel) Serve() {
 	c.serving.Store(true)
 	defer close(c.served)
-	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Launch: c.l, Policy: c.Autonomy, Answered: c.answered, Credential: c.cred}, c.near)
+	var root string
+	if c.ws != nil {
+		root = c.ws.Root
+	}
+	c.srv.Serve(Task{ID: c.id, Workspace: c.ws, Root: root, Network: c.network, Env: c.env, Launch: c.l, Policy: c.Autonomy,
+		Answered: c.answered, Credential: c.cred}, c.near)
 }
 
 // Close shuts the near end. The far end is the handler's to close once the process has it.
@@ -211,7 +242,8 @@ func (c *Channel) Settle(ctx context.Context, l *runner.Launch, keep bool) bool 
 	// A push the process asked for before it died is finished first — staged, and delivered or
 	// not — because what Salvage decides about a tree is read off what delivery did with it,
 	// and a push half-performed is not an answer. Closing the near end is what ends Serve, so
-	// the wait is bounded by the one request in flight.
+	// the wait is bounded by the one request in turn that was begun: those behind it are not
+	// begun once the end is closed, and one performed apart is given up (Server.Serve).
 	if c.serving.Load() {
 		<-c.served
 	}

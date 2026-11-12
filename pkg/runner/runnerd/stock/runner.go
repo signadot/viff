@@ -85,6 +85,10 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	var programs []string
 	if tool != "" {
 		programs = []string{tool}
+		// And the command a script runs a command with a secret by, where it is beside it.
+		if se := FindSecretExec(tool); se != "" {
+			programs = append(programs, se)
+		}
 	} else {
 		fmt.Fprintf(log, "runnerd: no %s beside %s or on PATH: a script reaches its tools only by "+
 			"the socket $%s names\n", CallToolBinary, command[0], calltool.Env)
@@ -98,7 +102,30 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	if c.Repos != nil {
 		mirrors = c.Repos.Mirrors
 	}
-	if err := runnerd.CheckReadOnly(c.ReadOnly, runnerd.KeptDirs(work, control, mirrors)); err != nil {
+	// The secret store is the runner's own too, and is where no sandbox binds it: apart from
+	// the directories above, and reached by no readOnly path.
+	secrets := c.secretsDir()
+	if secrets != "" {
+		if err := runnerd.CheckSecretStore(secrets, runnerd.KeptDirs(work, control, mirrors, "", "")); err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(secrets); err != nil {
+			fmt.Fprintf(log, "runnerd: secrets.dir %s: %v; no secret is there while it is not\n", secrets, err)
+		}
+		if sb.Name() == (runnerd.Unconfined{}).Name() {
+			fmt.Fprintf(log, "runnerd: secrets.dir %s: this runner runs its tasks unconfined (-sandbox none), so a task "+
+				"sees the whole machine, the secret store with it\n", secrets)
+			// And a command run with a secret, unconfined, would run as the runner's user on the
+			// whole machine, the secret in its environment: the system is closed, before the
+			// task's configuration is marshalled, so the task's process offers nothing of it either.
+			if naming := c.naming("secret"); len(naming) > 0 {
+				fmt.Fprintf(log, "runnerd: -sandbox none: secret is closed to every doer, though %s names it, since a command "+
+					"run with a secret runs in a sandbox of its own; a spawn that names it is refused at install\n", strings.Join(naming, ", "))
+				c = c.without("secret")
+			}
+		}
+	}
+	if err := runnerd.CheckReadOnly(c.ReadOnly, runnerd.KeptDirs(work, control, mirrors, secrets, "")); err != nil {
 		return nil, err
 	}
 	for _, p := range c.ReadOnly {
@@ -125,11 +152,15 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	if repos != nil {
 		repos.Services = c.services(tokens)
 		repos.Services.Verse = toVerse
+		// A command run with a secret is confined as the task's process is, over the task's
+		// root and under its network, with what the operator keeps read only.
+		repos.Services.Confine = runnerd.Confiner{Sandbox: sb, ReadOnly: c.ReadOnly,
+			Kept: runnerd.KeptDirs(work, control, mirrors, secrets, "")}
 		repos.Ceilings = func(l *runner.Launch) map[string]systems.Ceiling { return c.ceilings(c.doer(l)) }
 	}
 	h := runnerd.NewSubprocessHandler(runnerd.SubprocessConfig{
 		Command: command, Env: func(l *runner.Launch) []string { return task.ShellEnv(c.shellEnv(c.doer(l))) }, Config: blob,
-		Sandbox: sb, Programs: programs, ReadOnly: c.ReadOnly, Mirrors: mirrors, Repos: repos, AgentHosts: hosts,
+		Sandbox: sb, Programs: programs, ReadOnly: c.ReadOnly, Mirrors: mirrors, Secrets: secrets, Repos: repos, AgentHosts: hosts,
 		Work: work, Control: control, Log: log,
 	})
 	h.Describe(c.Describe(nets))
@@ -244,8 +275,21 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		if slices.Contains(performs, "slack") {
 			tools = append(tools, slackTools(cl)...)
 		}
+		if slices.Contains(performs, "secret") {
+			// A command with a secret ends with the task that started it.
+			secret, letGo := secretTools(cl, ws, l.Environment)
+			tools = append(tools, secret...)
+			cleanup = append(cleanup, letGo)
+		}
 		if r.cfg.reachesVerse {
 			tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)
+		}
+		// The MCP servers' tools, listed now, each server at once, as the doer takes them;
+		// the brief says what a server said of its tools, and which server did not answer.
+		var lists []serverList
+		if slices.Contains(performs, "mcp") {
+			lists = mcpLists(cl, r.cfg.mcpServers(), l.Environment)
+			tools = append(tools, mcpTools(cl, lists, takesTool(r.doerOf(l)), r.log)...)
 		}
 		tools = offered(tools, l.Environment)
 		// The brief: how to deliver, where there are repos, and what reaches the world from
@@ -260,7 +304,7 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 			// shadow them.
 			set = append(set, TrailersEnv+"="+strings.Join(trailers, "\n"))
 		}
-		prompt = toolsBrief(tools) + prompt
+		prompt = toolsBrief(tools, l.Environment) + mcpBrief(lists) + prompt
 	}
 	if l.Script != "" {
 		p, stop, err := newScriptTask(l, r.root, r.cfg.shellEnv(ScriptDoer), set, tools, r.callTool, reg, r.cfg.taskCeilings(ScriptDoer))
@@ -332,6 +376,15 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 	return ended(p)
 }
 
+// doerOf is who runs l, the script doer for a script and else Config.doer: what the tools are
+// built for, before the launch is read for its agent.
+func (r *Runner) doerOf(l runner.Launch) string {
+	if l.Script != "" {
+		return ScriptDoer
+	}
+	return r.cfg.doer(&l)
+}
+
 // doer is who runs l: a script, the agent it names, or, for a prompt naming none, the first
 // agent the runner offers (Config.agents, as Describe orders them), and the verse agent where it
 // offers none, which then refuses.
@@ -345,13 +398,13 @@ func (c Config) doer(l *runner.Launch) string {
 	return AgentName
 }
 
-// offered is the runner's tools whose verb the environment gives: a tool is its system's verb
-// (systems.SplitTool), and one the environment does not give is not offered, so the doer never
+// offered is the runner's tools whose verb the environment gives: a tool is its step
+// (verse.Tool.StepName), and one the environment does not give is not offered, so the doer never
 // sees it.
 func offered(tools []verse.Tool, env systems.Environment) []verse.Tool {
 	return slices.DeleteFunc(slices.Clone(tools), func(t verse.Tool) bool {
-		system, verb, ok := systems.SplitTool(t.Name)
-		return ok && !env.Gives(systems.StepName(system, verb))
+		st, ok := t.StepName()
+		return ok && !env.Gives(st)
 	})
 }
 

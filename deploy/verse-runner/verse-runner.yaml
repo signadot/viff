@@ -35,6 +35,18 @@ data:
     # github.com, and the token is GITHUB_TOKEN (the verse-runner Secret, below).
     repos:
       mirrors: /state/mirrors
+    # The secret store (docs/reference/runnerd.md, "The secret store"): the projected volume
+    # below, one file to a secret, read by the runner at each act and by no task. Nothing names
+    # a secret here, so each system reads its variable as before; a deployment moves one to the
+    # store by naming it (`systems: {slack: slack-bot, linear-issue: linear}`, the files the
+    # volume gives), and its variable is then not read.
+    # The store is also what the `secret` system runs a command with (docs/systems/secret.md):
+    # no doer here has a `secret` ceiling, so it is closed. A deployment opens it per doer, a
+    # secret at a time, with the commands and the one host the command needs:
+    #   systems:
+    #     secret:  {ceiling: [{name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm publish --ignore-scripts$"}}]}
+    #     network: {ceiling: {mode: allow, tcp-client: {host: registry.npmjs.org}}}
+    secrets: {dir: /secrets}
     # The operator's line over every system a doer holds for its tasks, a doer at a time: what a
     # spawn's environment may give, held at install, at launch and again at each act. A ceiling
     # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer
@@ -203,6 +215,7 @@ spec:
         volumeMounts:
         - {name: config, mountPath: /config, readOnly: true}
         - {name: state, mountPath: /state}
+        - {name: secrets, mountPath: /secrets, readOnly: true}
         readinessProbe:
           # GET /ready is the server up and nothing else (docs/reference/runnerd.md). The runner
           # announces itself to versed (VERSE_URL) with its token, and whether versed heard it
@@ -267,6 +280,29 @@ spec:
         emptyDir: {}
       # - name: state
       #   persistentVolumeClaim: {claimName: verse-runner-state}
+      # The secret store (`secrets.dir` in the ConfigMap): a directory the runner alone reads.
+      # No task's sandbox binds /secrets, and the runner refuses to start with a store where one
+      # would. Every source is optional, so the volume is there whatever Secrets are, empty
+      # where none is. The Linear and Slack Secrets lend their one key each under the store's
+      # name for it, `linear` and `slack-bot`, so a token is kept once and the iods go on
+      # reading the same Secrets; verse-runner-secrets (the `runnerStoreKey` entry) holds what
+      # has no Secret of its own, each key a file. Not a subPath mount: one does not follow a
+      # Secret that changes, and the store is read at each act so that a rotation needs no
+      # restart.
+      - name: secrets
+        projected:
+          sources:
+          - secret:
+              name: verse-slack
+              optional: true
+              items: [{key: SLACK_BOT_TOKEN, path: slack-bot}]
+          - secret:
+              name: verse-linear
+              optional: true
+              items: [{key: LINEAR_API_KEY, path: linear}]
+          - secret:
+              name: verse-runner-secrets
+              optional: true
 ---
 apiVersion: v1
 kind: Service

@@ -68,19 +68,19 @@ func TestTheRunnerActsOnWhatTheTaskAsks(t *testing.T) {
 
 	// A branch a row of the policy denies: refused here too, whatever the task decided, and
 	// nothing reaches the remote.
-	rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: "main"})
+	rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "main"}})
 	if err != nil || rep.Refused == "" || !strings.Contains(rep.Refused, "refused by the autonomy's row no-main") {
 		t.Fatalf("a push to main: %+v %v", rep, err)
 	}
 	// And one beyond the runner's ceiling, which the environment and the policy allowed: the
 	// operator's line holds at the act, as a check that missed.
-	rep, err = cl.Ask(Request{Op: "push", Repo: "svc", Branch: "release/1.0"})
+	rep, err = cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "release/1.0"}})
 	if err != nil || rep.Refused == "" || !strings.Contains(rep.Refused, "beyond the runner's ceiling for git") ||
 		!strings.Contains(rep.Refused, "{ref: refs/heads/main}, {ref: !regexp ^refs/heads/verse/}") {
 		t.Fatalf("a push to release/1.0: %+v %v", rep, err)
 	}
 	// Its own branch: pushed.
-	rep, err = cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch})
+	rep, err = cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}})
 	if err != nil || !rep.OK {
 		t.Fatalf("a push to its own branch: %+v %v", rep, err)
 	}
@@ -89,19 +89,19 @@ func TestTheRunnerActsOnWhatTheTaskAsks(t *testing.T) {
 	}
 	// A commit without the trailers: refused, with what is missing.
 	commit(t, dir, "more work\n")
-	rep, err = cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch})
+	rep, err = cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}})
 	if err != nil || !strings.Contains(rep.Refused, "Verse-Task") {
 		t.Fatalf("a commit without trailers: %+v %v", rep, err)
 	}
 	// Upstream moves; a fetch says so, its own pushed branch included.
 	advance(t, origin)
-	rep, err = cl.Ask(Request{Op: "fetch", Repo: "svc"})
+	rep, err = cl.Ask(Request{Op: "fetch", Fields: map[string]string{"repo": "svc"}})
 	if err != nil || !rep.OK || len(rep.Updated) != 2 || !strings.HasPrefix(rep.Updated[0], "mirror/main ") ||
 		!strings.HasPrefix(rep.Updated[1], "mirror/"+ws.Branch+" new..") {
 		t.Fatalf("a fetch after upstream moved: %+v %v", rep, err)
 	}
 	// A repository the workspace does not have.
-	if rep, err := cl.Ask(Request{Op: "push", Repo: "other"}); err != nil || rep.Error == "" {
+	if rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "other"}}); err != nil || rep.Error == "" {
 		t.Fatalf("a push to a repository not here: %+v %v", rep, err)
 	}
 
@@ -370,7 +370,7 @@ func TestABranchIsTheTasksOwnWhenItMadeIt(t *testing.T) {
 		})
 	}
 	chmodDirs(0o555)
-	rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch})
+	rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}})
 	chmodDirs(0o755)
 	if err != nil || rep.Error == "" {
 		t.Fatalf("the first push should have failed at the forge: %+v %v", rep, err)
@@ -381,7 +381,7 @@ func TestABranchIsTheTasksOwnWhenItMadeIt(t *testing.T) {
 	}
 	// Pushed again after more work: the task's own.
 	commit(t, dir, "more\n\nVerse-Task: t1\n")
-	if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK {
+	if rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}}); err != nil || !rep.OK {
 		t.Fatalf("a push to the branch the task made, which the sweep landed: %+v %v", rep, err)
 	}
 	if msg := message(t, origin, "refs/heads/"+ws.Branch); !strings.HasPrefix(msg, "more") {
@@ -402,10 +402,10 @@ func TestABranchIsTheTasksOwnWhenItMadeIt(t *testing.T) {
 	if err := r.Storer.SetReference(plumbing.NewHashReference("refs/heads/verse/auto/t0", seed.Hash())); err != nil {
 		t.Fatal(err)
 	}
-	if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: "verse/auto/t0", Force: true}); err != nil || !strings.Contains(rep.Refused, "no-rewrite") {
+	if rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "verse/auto/t0", "force": "true"}}); err != nil || !strings.Contains(rep.Refused, "no-rewrite") {
 		t.Errorf("a forced push to another run's branch: %+v %v, want the autonomy's row to refuse it", rep, err)
 	}
-	if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK {
+	if rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}}); err != nil || !rep.OK {
 		t.Errorf("the task's own branch, pushed again: %+v %v", rep, err)
 	}
 }
@@ -444,9 +444,9 @@ func TestAnotherTasksBranchIsNotThisTasksToPush(t *testing.T) {
 	commit(t, filepath.Join(ws.Root, "svc"), "work\n\nVerse-Task: t1\n")
 
 	for _, req := range []Request{
-		{Op: "push", Repo: "svc", Branch: "verse/auto/t0"},
-		{Op: "push", Repo: "svc", Branch: "verse/auto/t0", Force: true},
-		{Op: "push", Repo: "svc", Branch: "verse/auto/t0", Delete: true},
+		{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "verse/auto/t0"}},
+		{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "verse/auto/t0", "force": "true"}},
+		{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "verse/auto/t0", "delete": "true"}},
 	} {
 		if rep, err := cl.Ask(req); err != nil || !strings.Contains(rep.Refused, "rest") {
 			t.Errorf("%+v onto another task's branch: %+v %v, want the row after the task's own to refuse it", req, rep, err)
@@ -455,16 +455,16 @@ func TestAnotherTasksBranchIsNotThisTasksToPush(t *testing.T) {
 	if got, err := r.Reference("refs/heads/verse/auto/t0", true); err != nil || got.Hash() != seed.Hash() {
 		t.Fatalf("t0's branch moved: %v %v", got, err)
 	}
-	if rep, err := cl.Ask(Request{Op: OpState, Repo: "svc", Branch: "verse/auto/t0"}); err != nil || !rep.OK || !rep.Exists || rep.Own {
+	if rep, err := cl.Ask(Request{Op: OpState, Fields: map[string]string{"repo": "svc", "branch": "verse/auto/t0"}}); err != nil || !rep.OK || !rep.Exists || rep.Own {
 		t.Errorf("state of another task's branch = %+v %v, want exists and not own", rep, err)
 	}
 
 	// The task's own: made, then made again.
-	if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK {
+	if rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}}); err != nil || !rep.OK {
 		t.Fatalf("the task's own branch, created: %+v %v", rep, err)
 	}
 	commit(t, filepath.Join(ws.Root, "svc"), "more\n\nVerse-Task: t1\n")
-	if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK {
+	if rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}}); err != nil || !rep.OK {
 		t.Fatalf("the task's own branch, updated: %+v %v", rep, err)
 	}
 	if msg := message(t, origin, "refs/heads/"+ws.Branch); !strings.HasPrefix(msg, "more") {
@@ -473,7 +473,7 @@ func TestAnotherTasksBranchIsNotThisTasksToPush(t *testing.T) {
 	// …and it is the task's own on a channel that remembers nothing, as a resumed task's is:
 	// `own` is read off the tip's trailers, not off this channel.
 	if _, _, again := openTaskUnder(t, forge, runner.Repo{}, own); true {
-		if rep, err := again.Ask(Request{Op: OpState, Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK || !rep.Exists || !rep.Own {
+		if rep, err := again.Ask(Request{Op: OpState, Fields: map[string]string{"repo": "svc", "branch": ws.Branch}}); err != nil || !rep.OK || !rep.Exists || !rep.Own {
 			t.Errorf("state of the task's own branch, from a fresh channel = %+v %v, want exists and own", rep, err)
 		}
 	}
@@ -493,7 +493,7 @@ func TestTheRunnerDecidesByTheTasksCurrentPolicy(t *testing.T) {
 	rest := task.Autonomy{{Match: &task.Match{System: "git"}, Then: allow}, {Then: allow}}
 	ws, _, ch, cl := openChannel(t, forge, runner.Repo{}, append(task.Autonomy{row("launched", deny)}, rest...))
 	commit(t, filepath.Join(ws.Root, "svc"), "work\n\nVerse-Task: t1\n")
-	push := Request{Op: "push", Repo: "svc", Branch: ws.Branch}
+	push := Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}}
 	if rep, err := cl.Ask(push); err != nil || !strings.Contains(rep.Refused, "launched") {
 		t.Fatalf("under the launch's rows: %+v %v, want its deny row to refuse", rep, err)
 	}
@@ -523,7 +523,7 @@ func TestAnAskedPushIsPerformedOnTheAnswerTheRunnerRelayed(t *testing.T) {
 	}
 	ws, _, ch, cl := openChannel(t, forge, runner.Repo{}, asked)
 	commit(t, filepath.Join(ws.Root, "svc"), "work\n\nVerse-Task: t1\n")
-	push := Request{Op: "push", Repo: "svc", Branch: ws.Branch}
+	push := Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}}
 	about := task.NewStep(task.StepGitPush, map[string]string{
 		"repo": "github.com/acme/svc", "from": "main", "ref": "refs/heads/" + ws.Branch, "delete": "false", "force": "false",
 		"exists": "false", "own": "false"})
@@ -568,6 +568,17 @@ func TestAnAskedPushIsPerformedOnTheAnswerTheRunnerRelayed(t *testing.T) {
 	}
 	if n := ch.Answers(); n != 1 {
 		t.Errorf("%d answer(s) left, want the deny alone", n)
+	}
+	// An answer is to the call it was about: one about a push to main does not push the task's
+	// branch, whatever decision the act names, and is kept.
+	commit(t, filepath.Join(ws.Root, "svc"), "last\n\nVerse-Task: t1\n")
+	ch.Answer("t1~d6", about.With("ref", ir.FromString("refs/heads/main")), task.Proceed, "user:di")
+	named.Decision = "t1~d6"
+	if rep, err := cl.Ask(named); err != nil || !strings.Contains(rep.Refused, "about another call: this one differs in ref") {
+		t.Fatalf("a push on the answer about another branch: %+v %v, want it refused naming the ref", rep, err)
+	}
+	if n := ch.Answers(); n != 2 {
+		t.Errorf("%d answer(s) left, want the deny and the unspent answer", n)
 	}
 }
 
@@ -624,7 +635,7 @@ func TestTwoRefusedPushesAreBothHeld(t *testing.T) {
 	dir := filepath.Join(ws.Root, "svc")
 	for _, msg := range []string{"first\n\nVerse-Task: t1\n", "second\n\nVerse-Task: t1\n"} {
 		commit(t, dir, msg)
-		if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: "main"}); err != nil || rep.Refused == "" {
+		if rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "main"}}); err != nil || rep.Refused == "" {
 			t.Fatalf("a push to main that can't fast-forward: %+v %v", rep, err)
 		}
 	}
@@ -667,7 +678,7 @@ func TestThePushIsWhatTheTaskHasCheckedOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	commit(t, dir, "on my-work\n\nVerse-Task: t1\n")
-	if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK || strings.Contains(rep.Out, "nothing to push") {
+	if rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}}); err != nil || !rep.OK || strings.Contains(rep.Out, "nothing to push") {
 		t.Fatalf("a push from my-work: %+v %v", rep, err)
 	}
 	if msg := message(t, origin, "refs/heads/"+ws.Branch); !strings.HasPrefix(msg, "on my-work") {
@@ -708,14 +719,14 @@ func TestAPushOfUpstreamCommitsMovesTheTarget(t *testing.T) {
 	if err := wt.Reset(&git.ResetOptions{Commit: car.Hash(), Mode: git.HardReset}); err != nil {
 		t.Fatal(err)
 	}
-	rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: "verse/train"})
+	rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "verse/train"}})
 	if err != nil || !rep.OK || strings.Contains(rep.Out, "nothing to push") {
 		t.Fatalf("a push of another task's commit to a new branch: %+v %v", rep, err)
 	}
 	if msg := message(t, origin, "refs/heads/verse/train"); !strings.HasPrefix(msg, "a car") {
 		t.Fatalf("the forge's verse/train is %q, want the car", msg)
 	}
-	rep, err = cl.Ask(Request{Op: "push", Repo: "svc", Branch: "verse/train"})
+	rep, err = cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "verse/train"}})
 	if err != nil || !rep.OK || !strings.Contains(rep.Out, "already at") {
 		t.Fatalf("a push to a target already at the head: %+v %v", rep, err)
 	}
