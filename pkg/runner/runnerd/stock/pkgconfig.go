@@ -149,7 +149,9 @@ func (i *installer) Install(ctx context.Context, inst, pkg, version, as string) 
 	var renamed string
 	var landed []string
 	err = i.cellar.Holding(pkg, r.Version, func(h cellar.Held) error {
-		if err := h.Install(i.wrap.Build(ctx, r)); err != nil {
+		// A prefix holds what the image lacked when it was built, and the cellar may outlive
+		// the image: a held one serves only where its closure covers this resolution's.
+		if err := h.InstallFor(r.Record(), r.Fits, i.wrap.Build(ctx, r)); err != nil {
 			return err
 		}
 		cmds, err := h.Commands()

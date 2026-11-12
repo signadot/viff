@@ -27,6 +27,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -78,6 +79,35 @@ type Resolution struct {
 	Name, Version string
 	Closure       []Pkg
 	Provided      bool
+}
+
+// Record is the closure as a prefix built from it keeps it: a line per package, its name and
+// version, sorted.
+func (r Resolution) Record() []byte {
+	lines := make([]string, len(r.Closure))
+	for i, p := range r.Closure {
+		lines[i] = p.Name + " " + p.Version + "\n"
+	}
+	slices.Sort(lines)
+	return []byte(strings.Join(lines, ""))
+}
+
+// Fits is whether a prefix built from the closure held records serves this resolution: every
+// package this closure brings, at its version, is one that one brought. A closure is what the
+// image lacks, so a prefix built over an image that provided a library this one does not is
+// short of it, and does not fit; one that bundles more than is needed now runs on its own copy.
+// A prefix with no record fits nothing.
+func (r Resolution) Fits(held []byte) bool {
+	has := map[string]bool{}
+	for line := range strings.Lines(string(held)) {
+		has[line] = true
+	}
+	for _, p := range r.Closure {
+		if !has[p.Name+" "+p.Version+"\n"] {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *Apt) status() string {

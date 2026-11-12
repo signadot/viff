@@ -7,6 +7,8 @@
 //
 // The cellar lays files out and nothing else: what a prefix holds, and whether it may be
 // installed at all, are its caller's (the wrapper that resolves and fetches, and the ceiling).
+// So is whether a held prefix still serves: a prefix carries a record its builder wrote, opaque
+// here, and an install hands the cellar the question to put to it (Held.InstallFor).
 package cellar
 
 import (
@@ -128,9 +130,30 @@ func (c *Cellar) Install(name, version string, build func(stage string) error) e
 
 // Install is Cellar.Install under the held lock.
 func (h Held) Install(build func(stage string) error) error {
+	return h.InstallFor(nil, nil, build)
+}
+
+// recordName is the file a prefix's record lies in, at its top: staged and renamed in with the
+// prefix, so the two are never apart, and left out of a task's copy (linkTree).
+const recordName = ".record"
+
+// InstallFor is Install for a builder whose prefixes depend on more than the package and the
+// version: record is what this build is built from, kept with the prefix, and fits is whether a
+// held prefix's record (nil where it has none) serves this install. A held prefix that does not
+// fit is built again and, the build done, discarded as an eviction discards one — a task holding
+// it keeps its inodes by its hardlinks. A nil fits takes whatever is held.
+func (h Held) InstallFor(record []byte, fits func(held []byte) bool, build func(stage string) error) error {
 	prefix := h.c.Prefix(h.name, h.version)
+	stale := false
 	if _, err := os.Stat(prefix); err == nil {
-		return touch(prefix)
+		held, err := os.ReadFile(filepath.Join(prefix, recordName))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if fits == nil || fits(held) {
+			return touch(prefix)
+		}
+		stale = true
 	}
 	stage, err := os.MkdirTemp(h.c.root, ".stage-")
 	if err != nil {
@@ -139,6 +162,17 @@ func (h Held) Install(build func(stage string) error) error {
 	defer os.RemoveAll(stage)
 	if err := build(stage); err != nil {
 		return err
+	}
+	if record != nil {
+		if err := os.WriteFile(filepath.Join(stage, recordName), record, 0o644); err != nil {
+			return err
+		}
+	}
+	// The held prefix goes only once its replacement is built: a build that fails leaves it.
+	if stale {
+		if err := h.c.discard(h.name, h.version); err != nil {
+			return err
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(prefix), 0o755); err != nil {
 		return err
@@ -248,6 +282,9 @@ func linkTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
+		if rel == recordName {
+			return nil // the cellar's own, about the prefix and no part of the tool
+		}
 		to := filepath.Join(dst, rel)
 		switch {
 		case d.IsDir():
@@ -335,24 +372,10 @@ func (c *Cellar) collect() error {
 		lock.Lock()
 		err := func() error {
 			defer lock.Unlock()
-			prefix := c.Prefix(e.name, e.version)
-			if _, err := os.Stat(prefix); err != nil {
+			if _, err := os.Stat(c.Prefix(e.name, e.version)); err != nil {
 				return nil // gone already
 			}
-			trash, err := os.MkdirTemp(c.root, ".rm-")
-			if err != nil {
-				return err
-			}
-			if err := os.Rename(prefix, filepath.Join(trash, "x")); err != nil {
-				os.RemoveAll(trash)
-				return err
-			}
-			// The size entry goes under the same lock as the rename: past the lock, a
-			// reinstall measures its own prefix, never reads this one's.
-			c.mu.Lock()
-			delete(c.sizes, e.name+"/"+e.version)
-			c.mu.Unlock()
-			return os.RemoveAll(trash)
+			return c.discard(e.name, e.version)
 		}()
 		if err != nil {
 			return err
@@ -360,6 +383,25 @@ func (c *Cellar) collect() error {
 		total -= e.size
 	}
 	return nil
+}
+
+// discard removes a held prefix, its lock held by the caller: renamed out of its place first, so
+// no reader sees it half-removed, and a task that materialised it keeps its inodes.
+func (c *Cellar) discard(name, version string) error {
+	trash, err := os.MkdirTemp(c.root, ".rm-")
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(c.Prefix(name, version), filepath.Join(trash, "x")); err != nil {
+		os.RemoveAll(trash)
+		return err
+	}
+	// The size entry goes under the same lock as the rename: past the lock, a reinstall
+	// measures its own prefix, never reads this one's.
+	c.mu.Lock()
+	delete(c.sizes, name+"/"+version)
+	c.mu.Unlock()
+	return os.RemoveAll(trash)
 }
 
 // size is the bytes under an installed prefix, read once and kept: immutable from its rename in.

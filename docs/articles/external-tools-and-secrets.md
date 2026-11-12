@@ -661,7 +661,8 @@ sequenceDiagram
   staged and renamed into place, then **hardlinked** into each task's install root: a second
   task's install of the same version is a link, not a download. Past `collect-above` the oldest
   prefixes are evicted, and a running task keeps what it holds, since its links keep the inodes
-  alive.
+  alive. A prefix holds only what the image lacked, so it keeps the closure it was built from,
+  and one a new image no longer fits is built again rather than reused.
 - **The task can write none of it.** `/inst` is one `--ro-bind`, and the cellar lies outside
   every sandbox. Under `-sandbox none`, or in an image without the toolchain (`apt-get`,
   `apt-cache`, `dpkg-deb`, `patchelf`), the runner closes `pkg` and says so at start.

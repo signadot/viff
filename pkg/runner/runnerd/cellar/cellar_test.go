@@ -244,3 +244,74 @@ func TestHoldingSpansInstallAndMaterialise(t *testing.T) {
 		t.Fatalf("the held materialise: %v", err)
 	}
 }
+
+// A HELD PREFIX SERVES AN INSTALL ONLY WHERE ITS RECORD FITS: the record is staged in with the
+// prefix, an install whose question the held record answers builds nothing, one it does not
+// answer discards the prefix and builds again with its own record, a prefix with no record is put
+// the question with nil, and a task's copy carries no record — while a task that held the
+// discarded prefix keeps its files.
+func TestAHeldPrefixIsRebuiltWhereItsRecordDoesNotFit(t *testing.T) {
+	c, err := New(t.TempDir(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	is := func(want string) func([]byte) bool {
+		return func(held []byte) bool { return string(held) == want }
+	}
+	install := func(record string, fits func([]byte) bool, content string) {
+		t.Helper()
+		err := c.Holding("psql", "15", func(h Held) error { return h.InstallFor([]byte(record), fits, fill("psql", content)) })
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	bin := filepath.Join(c.Prefix("psql", "15"), "bin", "psql")
+	read := func(path string) string {
+		t.Helper()
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	install("a", is("a"), "one")
+	install("a", is("a"), "two")
+	if got := read(bin); got != "one" {
+		t.Fatalf("a prefix whose record fits was rebuilt: %q", got)
+	}
+	inst := t.TempDir()
+	if err := c.Materialise(inst, "psql", "15", "psql", "psql"); err != nil {
+		t.Fatal(err)
+	}
+	copied := filepath.Join(inst, "opt", "psql-15")
+	if _, err := os.Stat(filepath.Join(copied, recordName)); err == nil {
+		t.Fatal("a task's copy carries the cellar's record")
+	}
+
+	install("a b", is("a b"), "three")
+	if got := read(bin); got != "three" {
+		t.Fatalf("a prefix whose record does not fit was kept: %q", got)
+	}
+	if got := read(filepath.Join(c.Prefix("psql", "15"), recordName)); got != "a b" {
+		t.Fatalf("the rebuilt prefix's record: %q", got)
+	}
+	if got := read(filepath.Join(copied, "bin", "psql")); got != "one" {
+		t.Fatalf("the task's copy of the discarded prefix: %q", got)
+	}
+
+	// A prefix built with no record is asked with nil.
+	if err := c.Install("rg", "14", fill("rg", "old")); err != nil {
+		t.Fatal(err)
+	}
+	var asked []byte = []byte("unasked")
+	err = c.Holding("rg", "14", func(h Held) error {
+		return h.InstallFor([]byte("r"), func(held []byte) bool { asked = held; return false }, fill("rg", "new"))
+	})
+	if err != nil || asked != nil {
+		t.Fatalf("a prefix with no record: %v, asked with %q", err, asked)
+	}
+	if got := read(filepath.Join(c.Prefix("rg", "14"), "bin", "rg")); got != "new" {
+		t.Fatalf("a prefix with no record was kept: %q", got)
+	}
+}

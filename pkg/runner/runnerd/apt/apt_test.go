@@ -529,3 +529,38 @@ func TestAPrivateTreeRefusesTheBuildAndSbinLands(t *testing.T) {
 		t.Fatalf("a dangling bin symlink: %v", err)
 	}
 }
+
+// A PREFIX FITS A RESOLUTION WHERE ITS CLOSURE COVERS THE RESOLUTION'S: built over an image that
+// provided a library this image lacks it is short of it, one that bundles more than is needed
+// now serves, a dependency at another version is another package, and no record fits nothing.
+func TestAHeldClosureFitsWhereItCoversTheResolution(t *testing.T) {
+	closure := func(pkgs ...string) Resolution {
+		r := Resolution{Name: "postgresql-client-15", Version: "15.8"}
+		for _, p := range pkgs {
+			name, version, _ := strings.Cut(p, " ")
+			r.Closure = append(r.Closure, Pkg{Name: name, Version: version})
+		}
+		return r
+	}
+	client, common, libpq := "postgresql-client-15 15.8", "postgresql-client-common 248", "libpq5 15.8"
+	built := closure(common, client)
+	if got := string(built.Record()); got != client+"\n"+common+"\n" {
+		t.Fatalf("the record: %q", got)
+	}
+	for _, c := range []struct {
+		name string
+		now  Resolution
+		held []byte
+		fits bool
+	}{
+		{"the same closure", closure(client, common), built.Record(), true},
+		{"the image dropped a library the prefix leaned on", closure(client, common, libpq), built.Record(), false},
+		{"the image gained a package the prefix bundles", closure(client), built.Record(), true},
+		{"a dependency moved", closure(client, "postgresql-client-common 250"), built.Record(), false},
+		{"no record", closure(client), nil, false},
+	} {
+		if got := c.now.Fits(c.held); got != c.fits {
+			t.Errorf("%s: fits %v, want %v", c.name, got, c.fits)
+		}
+	}
+}

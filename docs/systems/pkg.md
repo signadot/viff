@@ -70,7 +70,7 @@ command to rename.
 ## How an install lands
 
 The runner keeps a **cellar**, one immutable prefix per package and version, shared across tasks
-and filled once:
+and filled once per image:
 
 - **Resolution is the manager's own, non-root.** The closure is resolved against the index
   `apt-get update` fetched and signature-checked with the image's keyrings, with the image's own
@@ -93,6 +93,13 @@ and filled once:
 - **Each prefix is self-contained by its runpaths:** `$ORIGIN/../lib` on each executable,
   `$ORIGIN` on each bundled library (a runpath does not reach a transitive dependency, so a
   library carries its own). A prefix runs with no `LD_LIBRARY_PATH` and collides with nothing.
+- **A prefix serves the image it fits.** A prefix holds what the image lacked when it was built,
+  and a cellar on a volume outlives the image. So each prefix keeps the closure it was built
+  from, and every install resolves first: a held prefix is used where its closure covers the
+  one resolved now, and is built again where it does not — the image dropped a library the
+  prefix leaned on, or the index moved a dependency. A package the image now provides and the
+  prefix bundles is no mismatch: the prefix runs on its own copy. What this cannot see is an
+  image whose package changed with its version unchanged, which Debian's versions do not do.
 - **A task's root is hardlinked from the cellar,** near-free on one volume, with `bin` a farm of
   relative links. Above the operator's bound the least recently used prefixes are evicted; a
   running task keeps an evicted prefix by its root's hardlinks until it ends, so eviction never
