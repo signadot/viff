@@ -835,7 +835,7 @@ func TestAnExistingBranchFastForwardsUnlessForced(t *testing.T) {
 // person.
 func TestTheWorkspaceCommitsAsThePersonWhoLaunchedIt(t *testing.T) {
 	forAna := entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request")
-	cases := []struct{ principal, driver, name, email string }{
+	cases := []struct{ principal, doer, name, email string }{
 		{"user:ana@example.com", "codex", "ana@example.com (verse codex)", "ana+verse-codex-runner@example.com"},
 		{"user:ana@example.com", "llm", "ana@example.com (verse llm)", "ana+verse-llm-runner@example.com"},
 		{"user:ana@example.com", "", "ana@example.com (verse code)", "ana+verse-code-runner@example.com"},
@@ -851,8 +851,8 @@ func TestTheWorkspaceCommitsAsThePersonWhoLaunchedIt(t *testing.T) {
 		{entity.Pair(entity.Pair("user:ana@example.com", "via:a"), "via:b"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
 	}
 	for _, c := range cases {
-		if got := AuthorFor(c.principal, c.driver); got.Name != c.name || got.Email != c.email {
-			t.Errorf("AuthorFor(%q, %q) = %q <%s>, want %q <%s>", c.principal, c.driver, got.Name, got.Email, c.name, c.email)
+		if got := AuthorFor(c.principal, c.doer); got.Name != c.name || got.Email != c.email {
+			t.Errorf("AuthorFor(%q, %q) = %q <%s>, want %q <%s>", c.principal, c.doer, got.Name, got.Email, c.name, c.email)
 		}
 	}
 
@@ -949,7 +949,7 @@ func TestIdentityForIsWhatTheCheckoutIsGiven(t *testing.T) {
 	}
 	noAgent := &runner.Launch{ID: "p1", Provenance: runner.Provenance{Principal: "user:ana@example.com"}}
 	if got := IdentityFor(noAgent); got.Email != "ana+verse-agent-runner@example.com" {
-		t.Errorf("a person's launch with no agent named: %v, want the driver \"agent\"", got)
+		t.Errorf("a person's launch with no agent named: %v, want the doer \"agent\"", got)
 	}
 	forAna := &runner.Launch{ID: "r1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{
 		Principal: entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request")}}
