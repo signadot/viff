@@ -76,7 +76,11 @@ the signed index the image's own system directories are built from ([`pkg`](pkg.
 task cannot write it — so a tool `pkg` installed is one a command with a secret may start from,
 which is how a CLI the image does not carry (`signadot`, `gh`) gets to run with a key.
 `/inst/bin` is first on the task's `PATH`, so where the name is in the install root and in a
-system directory both, the installed one is what runs. That bounds `argv[0]` and no
+system directory both, the installed one is what runs. The task cannot write the root, but its
+installs say what is in it, so where an environment gives `pkg` beside a secret, **which program
+a name is, is the `pkg` shapes' to bound**: a pinned package and version is that program, a
+pattern on the package is any of the index's that ships the name, and a rename (`as`) is
+admitted only by a shape that names it. That bounds `argv[0]` and no
 more. What the program then runs runs with the secret too, and it may be the workspace's: `npm
 publish` runs the package's lifecycle scripts, `node x.js` and `sh -c` run what they are given,
 and a program reads its configuration from the task's `HOME`, which is the workspace. So the

@@ -575,7 +575,7 @@ agents:
   claude:
     systems:
       pkg:
-        ceiling: {install: {pkg: !glob "*"}} # what a spawn may give: here, any install
+        ceiling: {install: {pkg: !glob "*", as: null}} # what a spawn may give: any install, under any name
         base: [jq]                        # what every claude task starts with
 
 # a spawn's environment
@@ -611,6 +611,10 @@ one knob over their names:
   beside `{pkg: jq, version: "1.7.1-1", as: jq-v2}` is two installs, two names, one task.
 - A package the image already **provides** is answered "on `PATH` already", and an `as` on it is
   refused: the runner won't pretend to rename a command it didn't install.
+- **A shape that says nothing of `as` renames nothing**, an environment's and a ceiling's alike:
+  `{pkg: !glob "*"}` is any package under its own commands' names. A rename is admitted by a
+  shape that names it (`as: jq-v2`, a pattern, or `null` for any), because a name is how a
+  program is found, by a person reading a step and by a command run with a secret.
 
 The step carries what the call asked: a call naming no version means the newest the index names,
 resolution happens in the act, and the reply says what landed, name and version.
@@ -663,14 +667,17 @@ sequenceDiagram
   `apt-cache`, `dpkg-deb`, `patchelf`), the runner closes `pkg` and says so at start.
 - **A command with a secret starts from it too.** `secret.exec`'s sandbox binds the task's
   install root as the task's own sandbox does, and holds `argv[0]` to a system directory, a
-  `readOnly` path **or** that root. The three facts above are why this is no weakening: the root
-  is the runner's writing, from the same signed index the image's own `/usr` was built from, and
-  the task cannot write it — so an installed tool is the runner's program in exactly the sense
-  the check means. It is how a CLI the image doesn't carry gets to run with a key, instead of
-  waiting for a new image. `/inst/bin` is first on the task's `PATH`, so an installed name wins
-  over the image's where both have it.
+  `readOnly` path **or** that root. The root is the runner's writing, from the same signed index
+  the image's own `/usr` was built from, and the task cannot write it. It is how a CLI the image
+  doesn't carry gets to run with a key, instead of waiting for a new image. What the task does
+  have is the choice of what is installed: `/inst/bin` is first on its `PATH`, so an installed
+  name wins over the image's where both have it. So beside a secret, **the `pkg` shapes bound
+  which program a name is**: a pinned package and version is that program; a pattern on the
+  package is any of the index's that ships the name; and a name of the task's own choosing
+  (`as`) is admitted only by a shape that says so, which is what keeps `make` from being
+  installed as `npm` under a shape written for `npm view`.
 
-**Why apt, and not nix.** The nix plan ([`2b5art3x`]) got packages in at the start, and its
+**Why apt, and not nix.** The nix plan (`2b5art3x`) got packages in at the start, and its
 limitations table was long: a separate single-user store to defend, flake code evaluated on the
 runner's side, about 2,900 store paths at most under bwrap's argument limit, a bwrap no Debian
 ships, and installing during a run still open at the end of it. The stone-age model spends all

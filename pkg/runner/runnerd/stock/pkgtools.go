@@ -34,7 +34,8 @@ func pkgTools(cl *delivery.Client) []verse.Tool {
 			"yourself, and nothing outside your own prefix changes. `version` pins one as the index spells it; absent is " +
 			"the index's candidate, and the answer says exactly what landed. `as` renames the package's one command " +
 			"(`jq-v1`), so two versions sit side by side; absent, every command the package ships lands under its own " +
-			"name. A package the image already provides is answered as on PATH already.",
+			"name. A rename is refused unless your environment's shape names `as`. A package the image already " +
+			"provides is answered as on PATH already.",
 		Params: pkgParams, Required: []string{"pkg"},
 		Step: task.StepPkgInstall,
 		Build: func(in map[string]any) (task.Step, bool) {

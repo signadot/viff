@@ -21,7 +21,8 @@ import (
 // the index's candidate, and the answer says what landed), and `as` names the command on the
 // task's PATH (absent is the package's own), so two versions sit side by side. The step a row
 // decides carries what the task asked and no more: a version the task did not name is the act's
-// to resolve, bound by the ceiling's shapes as every field is.
+// to resolve, bound by the ceiling's shapes as every field is. A rename is admitted only where a
+// shape names `as`: one that says nothing of it means none.
 const OpPkgInstall = "pkg.install"
 
 // How long an install has: the resolve, the fetches and the layout; and what the op has past it.
@@ -79,7 +80,9 @@ func ReadInstall(pkg, version, as string) (Install, string) {
 }
 
 // Step is the step the install is, as the autonomy and the ceiling see it: what the call asked,
-// a field it did not give absent, which a shape that pins it then refuses.
+// a field it did not give absent. A shape that pins the version then refuses it; an absent `as`
+// is no rename, which a shape that says nothing of `as` means too (the system's document's
+// default).
 func (i Install) Step() task.Step {
 	fields := map[string]string{"pkg": i.Pkg}
 	if i.Version != "" {

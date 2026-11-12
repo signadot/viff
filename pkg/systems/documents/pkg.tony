@@ -6,4 +6,4 @@ verbs:
   fields:
   - {name: pkg, form: lower, required: true, description: "the package's name as the index spells it (jq): lowercase. A name is public, as the index is"}
   - {name: version, form: text, description: "the version to install, as the index spells it (1.6-2.1+deb12u2); absent is the index's candidate"}
-  - {name: as, form: lower, description: "the command's name on the task's PATH (jq-v1), so two versions sit side by side; absent is the package's own command. A name, never a path"}
+  - {name: as, form: lower, default: '""', description: "the command's name on the task's PATH (jq-v1), so two versions sit side by side; absent is the package's own command. A name, never a path. Empty, the default, is what a shape and a step that say nothing of it mean, and renames nothing: a renamed command is a name the task chose for a program, and a program is found by its name, so a shape says `as: jq-v2` (or `null`) where it means to"}

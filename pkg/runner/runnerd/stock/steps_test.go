@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
 	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
@@ -98,9 +99,11 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	for _, name := range []string{"github", "github-issue", "git-issue"} {
 		env.Systems[name] = []systems.Block{{Attributes: map[string]string{"repo": "acme/svc"}, Verbs: everyVerb(name)}}
 	}
-	for _, name := range []string{"linear-issue", "slack", "verse", "pkg"} {
+	for _, name := range []string{"linear-issue", "slack", "verse"} {
 		env.Systems[name] = []systems.Block{{Verbs: everyVerb(name)}}
 	}
+	// pkg's shape names `as`: one that says nothing of it renames nothing, and the use renames.
+	env.Systems["pkg"] = []systems.Block{{Verbs: map[string][]systems.Shape{"install": {{"as": ir.Null()}}}}}
 	env.Systems["mcp"] = []systems.Block{{Attributes: map[string]string{"server": "linear"}, Verbs: everyVerb("mcp")}}
 	mcpURL, _ := mcpTestServer(t, "")
 	l := &runner.Launch{ID: "t1", Prompt: "p", Environment: env, Autonomy: task.Autonomy{{Name: "every", Then: task.Then{Mode: task.ThenAsk}}}}

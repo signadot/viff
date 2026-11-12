@@ -247,12 +247,13 @@ func pinned(shape systems.Shape) (delivery.Install, bool) {
 }
 
 // pkgBuilds is what the runner builds of pkg, by its nature: an install from the repositories it
-// trusts, any package of their index, as an offer's `builds` says it. The ceiling, not the
-// index, is the operator's bound. The shape names `pkg`, null, since every shape of install
-// says it; a shape without it fails the description's own check, and verse would refuse the
-// runner's announcement.
+// trusts, any package of their index under any name, as an offer's `builds` says it. The
+// ceiling, not the index, is the operator's bound. The shape names `pkg`, null, since every shape
+// of install says it; a shape without it fails the description's own check, and verse would
+// refuse the runner's announcement. It names `as`, null, too: a shape that says nothing of it
+// means no rename, and a runner builds renames.
 func (c Config) pkgBuilds() systems.Ceiling {
-	return systems.Ceiling{{Verbs: map[string][]systems.Shape{"install": {{"pkg": ir.Null()}}}}}
+	return systems.Ceiling{{Verbs: map[string][]systems.Shape{"install": {{"pkg": ir.Null(), "as": ir.Null()}}}}}
 }
 
 // withInstPath is env with the install root's bin first on PATH, so the task's shell finds what

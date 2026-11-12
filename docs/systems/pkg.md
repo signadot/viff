@@ -56,6 +56,12 @@ are its own. With no `as`, every command the package ships lands under its own n
 lands `rg`). A package of several commands refuses an `as`, naming them: it renames exactly one —
 the one named as the package, or the only one.
 
+**A shape that says nothing of `as` renames nothing.** A rename is a name the task chose for a
+program, and a program is found by its name, so a rename is admitted only where a shape names it:
+`as: jq-v2` for that name, a pattern for the names it matches, `as: null` for any. This holds of
+an environment's shape and of a ceiling's alike, so `{install: {pkg: !glob "*"}}` is every package
+of the index under its own commands' names, and no other name.
+
 **A package the image provides is answered as on PATH already.** The base image's packages are
 the resolver's base, so `install {pkg: git}` on an image that ships git installs nothing and says
 so; its libraries are never bundled twice. An `as` on one is refused: there is no installed
@@ -116,7 +122,7 @@ agents:
     systems:
       pkg:
         base: [ripgrep, jq]      # installed into every claude task's root at start
-        ceiling: {install: {pkg: !glob "*"}}   # a pattern over the index, not a list
+        ceiling: {install: {pkg: !glob "*", as: null}}   # a pattern over the index, under any name
 ```
 
 - **The index is the catalog.** The operator names a manager and repositories, never a list of
@@ -124,7 +130,8 @@ agents:
   "*"}}` over a signed repository is every tool in it, bounded by the autonomy asking. (Every
   shape of `install` names `pkg`.) A wide ceiling is
   defensible because an install runs non-root, extract-only, and lands only in the asking task's
-  own read-only prefix.
+  own read-only prefix. `as: null` beside it gives the spawns their renames; without it the
+  ceiling gives none.
 - **`base` is the operator's installs,** laid into every task's root before its process starts,
   each at the index's candidate under its own commands' names; the ceiling does not bound them
   and no row is asked. It is `pkg`'s key alone.
@@ -140,6 +147,11 @@ It closes whole, and the runner says so, where tasks run unconfined (`-sandbox n
 bind to make the root read-only through) and where the toolchain (`apt-get`, `apt-cache`,
 `dpkg-deb`, `patchelf`) is not in the image. A command run with a secret ([`secret`](secret.md))
 is confined with the task's install root bound as the task's own sandbox has it, so an installed
-tool is one such a command may start from: the root is the runner's writing from the signed
-index, and the task cannot write it. An installed tool otherwise runs inside the task, as the
-task's own; a remote service's tools stay outside, called by the runner ([`mcp`](mcp.md)).
+tool is one such a command may start from. The task cannot write the root, but it says what goes
+there: an installed command is first on the `PATH`, ahead of the image's of the same name. So
+where a spawn gives both systems, **the `pkg` shapes are what bound which program a name is**. A
+shape that pins the package and the version says exactly which; `{pkg: !glob "*"}` lets the task
+choose any package of the index that ships a command of that name; and a shape that names `as`
+lets it choose the name too, which is why none does unless it says so. An installed tool
+otherwise runs inside the task, as the task's own; a remote service's tools stay outside, called
+by the runner ([`mcp`](mcp.md)).

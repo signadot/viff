@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
 	"github.com/signadot/verse/pkg/systems"
@@ -31,7 +32,8 @@ func (echoInstaller) Install(_ context.Context, _, pkg, version, as string) (del
 // ceiling, with the autonomy and the environment of l.
 func pkgChannel(t *testing.T, l *runner.Launch) *delivery.Client {
 	t.Helper()
-	s := &delivery.Server{Log: io.Discard, Ceilings: map[string]systems.Ceiling{"pkg": systems.Open()},
+	anyName := systems.Ceiling{{Verbs: map[string][]systems.Shape{"install": {{"as": ir.Null()}}}}}
+	s := &delivery.Server{Log: io.Discard, Ceilings: map[string]systems.Ceiling{"pkg": anyName},
 		Services: delivery.Services{Installer: echoInstaller{}}}
 	near, far, err := delivery.SocketPair()
 	if err != nil {
@@ -57,7 +59,7 @@ func pkgChannel(t *testing.T, l *runner.Launch) *delivery.Client {
 // that is a path is refused before the runner hears of it, and the runner's answer — what landed
 // — is the tool's.
 func TestThePkgToolAsksAndRelaysWhatLanded(t *testing.T) {
-	env := systems.Environment{Systems: systems.Systems{"pkg": {{Verbs: map[string][]systems.Shape{"install": {{}}}}}}}
+	env := systems.Environment{Systems: systems.Systems{"pkg": {{Verbs: map[string][]systems.Shape{"install": {{"as": ir.Null()}}}}}}}
 	l := &runner.Launch{ID: "t1", Prompt: "p", Environment: env, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}}
 	cl := pkgChannel(t, l)
 	tools := pkgTools(cl)

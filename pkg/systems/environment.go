@@ -454,10 +454,19 @@ func (s Shape) Meets(step string, params map[string]*ir.Node) bool {
 }
 
 // Matches is whether a step's fields are of the shape, a field the shape leaves out that has a
-// default read as the default (filled).
+// default read as the default (filled). A field the step leaves out is read as its default too,
+// where the default is a value (a literal): what the step means by saying nothing of it. So a
+// step carries such a field only where the call gave it, and a shape that names it with `null`
+// admits the step either way.
 func (s Shape) Matches(step string, fields *ir.Node) bool {
 	for name, pattern := range filled(step, s) {
-		if !MatchField(FormOf(step, name), pattern, stepValue(fields, name)) {
+		value := stepValue(fields, name)
+		if value == nil {
+			if f, ok := FieldOf(step, name); ok && isLiteral(f.defaulted) {
+				value = f.defaulted
+			}
+		}
+		if !MatchField(FormOf(step, name), pattern, value) {
 			return false
 		}
 	}
