@@ -310,10 +310,10 @@ type Author struct{ Name, Email string }
 // and the runner's own commits.
 var RunnerAuthor = Author{Name: "verse runner", Email: "runner@invalid"}
 
-// AuthorFor derives the identity from the launch's principal and the driver that works for it.
+// AuthorFor derives the identity from the launch's principal and the doer that works for it.
 //
 // A person's launch commits as that person, at a tagged address: `user:u@h` becomes
-// `u+verse-<driver>-runner@h`, with the principal and the driver as the name. The tag says in
+// `u+verse-<doer>-runner@h`, with the principal and the doer as the name. The tag says in
 // the address what the Verse-Principal trailer says in the message — that verse made this on
 // their behalf — so a forge's view of the commit and the trailer agree, and the person's mail
 // is where a reply to the commit goes. Any other principal is the runner's identity: an agent
@@ -324,7 +324,7 @@ var RunnerAuthor = Author{Name: "verse runner", Email: "runner@invalid"}
 // person on whose authority the work was done is on the commit, as their own launch would put
 // them, and the rule is said by the Verse-Principal trailer, which carries the whole pair. A pair
 // whose asker is no person is the runner's.
-func AuthorFor(principal, driver string) Author {
+func AuthorFor(principal, doer string) Author {
 	if asker, _, ok := entity.PairOf(principal); ok {
 		principal = asker
 	}
@@ -333,12 +333,12 @@ func AuthorFor(principal, driver string) Author {
 	if !ok || !at || user == "" || host == "" {
 		return RunnerAuthor
 	}
-	if driver == "" {
-		driver = "code"
+	if doer == "" {
+		doer = "code"
 	}
 	return Author{
-		Name:  addr + " (verse " + driver + ")",
-		Email: user + "+verse-" + driver + "-runner@" + host,
+		Name:  addr + " (verse " + doer + ")",
+		Email: user + "+verse-" + doer + "-runner@" + host,
 	}
 }
 
