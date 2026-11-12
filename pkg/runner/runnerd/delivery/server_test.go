@@ -262,7 +262,7 @@ func TestAPushAsAnotherIdentityIsRefusedAndNothingLeaves(t *testing.T) {
 			for _, other := range others {
 				toBase()
 				commitAs(t, dir, msg, other)
-				rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch})
+				rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -288,7 +288,7 @@ func TestAPushAsAnotherIdentityIsRefusedAndNothingLeaves(t *testing.T) {
 			// Back to the base and committed again as the checkout's identity: delivered.
 			toBase()
 			commitAs(t, dir, msg, id)
-			if rep, err := cl.Ask(Request{Op: "push", Repo: "svc", Branch: ws.Branch}); err != nil || !rep.OK {
+			if rep, err := cl.Ask(Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": ws.Branch}}); err != nil || !rep.OK {
 				t.Fatalf("a push as the checkout's identity: %+v %v", rep, err)
 			}
 			tip, err := forgeRepo.Reference(plumbing.ReferenceName("refs/heads/"+ws.Branch), true)
