@@ -114,6 +114,12 @@ version, the commands' names — is the answer's to report, not the row's to dec
 
 ## The runner's configuration
 
+`pkg.install` is the system; how it is performed is the runner's. The stock runner performs it
+with `apt`, on a Debian or Ubuntu image (glibc), so a package's name and version are that
+index's, and a spawn that pins `postgresql-client` at `15.8-0+deb12u1` is written for a bookworm
+runner. Another runner may perform `pkg` with another manager, or not at all. It is Linux's: the
+sandbox and the packages both are, so on a Mac the runner that performs it runs in a Linux VM.
+
 The runner names the manager and the repositories under `pkg:`, and a doer's `pkg` ceiling
 bounds what its tasks may install, with `base` the packages every task of the doer starts with
 ([the verse runner](../reference/runnerd.md#configuration)):
@@ -123,7 +129,7 @@ pkg:
   cellar: /state/cellar          # the prefixes and the tasks' roots, on a volume
   manager: apt                   # the manager the runner wraps
   repos: ["deb http://deb.debian.org/debian bookworm main"]
-  collect-above: 50Gi            # evict least recently used past this; absent, never
+  collect-above: 50Gi            # evict least recently used past this; absent, half the volume
 agents:
   claude:
     systems:

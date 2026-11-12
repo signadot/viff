@@ -155,7 +155,19 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 				"names it is refused at install\n", missing, naming)
 			c = c.without("pkg")
 		} else {
-			store, err := cellar.New(cellarDir, c.Pkg.collectAbove())
+			if err := os.MkdirAll(cellarDir, 0o755); err != nil {
+				return nil, fmt.Errorf("pkg.cellar: %w", err)
+			}
+			bound, said := c.Pkg.collectAbove(cellarDir)
+			switch {
+			case bound == 0:
+				fmt.Fprintf(log, "runnerd: pkg.collect-above is not set and the size of the volume under %s cannot be "+
+					"read: the cellar is never collected\n", cellarDir)
+			case !said:
+				fmt.Fprintf(log, "runnerd: pkg.collect-above is not set: the cellar is collected past %dMi, half the "+
+					"volume under %s\n", bound>>20, cellarDir)
+			}
+			store, err := cellar.New(cellarDir, bound)
 			if err != nil {
 				return nil, fmt.Errorf("pkg.cellar: %w", err)
 			}

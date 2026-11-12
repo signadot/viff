@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -35,7 +36,9 @@ type Pkg struct {
 	// signature with the image's keyrings, and a package is fetched by that index's hash.
 	Repos []string `tony:"field=repos"`
 	// CollectAbove is the cellar's size past which the least recently used prefixes are evicted
-	// (`50Gi`); absent, never. A running task keeps an evicted prefix by its root's hardlinks.
+	// (`50Gi`); absent, half the size of the volume the cellar is on, since the cellar shares it
+	// (the mirrors, with their undelivered commits) and a cellar with no bound fills it. A
+	// running task keeps an evicted prefix by its root's hardlinks.
 	CollectAbove string `tony:"field=collect-above,omitzero"`
 }
 
@@ -75,13 +78,19 @@ func (c *Config) checkPkg() error {
 	return nil
 }
 
-// collectAbove is the cellar's bound in bytes, 0 for never; checkPkg held it to parsing.
-func (p *Pkg) collectAbove() int64 {
-	if p == nil || p.CollectAbove == "" {
-		return 0
+// collectAbove is the cellar's bound in bytes, and whether the configuration said it: the size
+// written, which checkPkg held to parsing, or half the size of the volume dir is on. It is 0,
+// never, only where the volume's size cannot be read.
+func (p *Pkg) collectAbove(dir string) (n int64, said bool) {
+	if p != nil && p.CollectAbove != "" {
+		n, _ = parseBytes(p.CollectAbove)
+		return n, true
 	}
-	n, _ := parseBytes(p.CollectAbove)
-	return n
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(dir, &st); err != nil {
+		return 0, false
+	}
+	return int64(st.Blocks) * int64(st.Bsize) / 2, false
 }
 
 // parseBytes reads a size: a whole number of bytes, or one with a binary unit (`512Mi`, `50Gi`).

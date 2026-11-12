@@ -214,7 +214,7 @@ kubectl -n verse patch pvc verse-runner-state -p '{"spec":{"resources":{"request
 ```
 
 **Size it over the cellar's own ceiling.** `pkg.collect-above` in a runner's config is an LRU
-high-water mark — evict least recently used past this, and absent, never. A threshold larger than
+high-water mark — evict least recently used past this, and absent, half the volume. A threshold larger than
 the volume can never fire, and a full disk collects instead. So `collect-above` sits under
 `runnerStateSize`, with the mirrors taking the rest; the mirrors are usually the smaller half.
 

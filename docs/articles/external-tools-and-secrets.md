@@ -265,7 +265,7 @@ sequenceDiagram
   `.verse/exec/e1.out` and `.err` in the workspace, plus two sockets a shell can read along from
   while the command runs.
 - With `stdin: true` — a field of the step, false where a shape says nothing of it — the same
-  socket carries input back ([`hnp7jgfk`]): the task writes the command's stdin at
+  socket carries input back (`hnp7jgfk`): the task writes the command's stdin at
   `.verse/exec/e1.in.sock`, its close is the command's EOF, and the output still flows. Nothing
   is redacted on the way in; the input goes to the process that already holds the secret.
 - It answers `e1: exited 0` and the tail of each stream. `timeout` bounds the run, which is an
@@ -358,7 +358,7 @@ general case; nothing narrower covers it.
 
 ## MCP servers: tools another server offers
 
-> **Status:** built, on `verse/mcp` over `verse/secret-exec` ([`1v5art3x`]), through six review
+> **Status:** built, on `verse/mcp` over `verse/secret-exec` (`1v5art3x`), through six review
 > rounds: the document and the step, the configuration, the client, the two requests the task
 > makes (`mcp.list`, `mcp.call`), the tools in the task's process, and the words, in eight
 > commits (ae114ac9 to f9c91b54), and run on staging against Linear's `/mcp/readonly` and
@@ -478,12 +478,12 @@ named. Worth deciding once a few tasks have run on both; not decided here.
 | Limitation | Why | What lifts it |
 |---|---|---|
 | **Remote servers only** (streamable HTTP) | the runner would start a stdio server outside any sandbox, as the runner's user, next to its own tokens | `secret-exec`'s sandbox (below) |
-| **The approver is asked about the arguments, but not shown them yet** | the arguments are now a field of the step (`arguments`), so rows match on them and an answer performs only the call it was given about ([`275art3x`]); a question shows only the tool and the verb today | the question showing a step's fields ([`q3k89kva`]) |
+| **The approver is asked about the arguments, but not shown them yet** | the arguments are now a field of the step (`arguments`), so rows match on them and an answer performs only the call it was given about (`275art3x`); a question shows only the tool and the verb today | the question showing a step's fields (`q3k89kva`) |
 | **Very long arguments are refused** | the step is carried whole, in the task's events, its snapshot and a question's record, so arguments past 64 KiB are refused | a digest of long values in the step, open |
 | **Responses are bounded** | the runner reads 8 MiB of a response at most, and passes 256 KiB of a result on; a response past the bound fails the call | |
 | **A cut response is a failed call** | the current protocol (2026-07-28) dropped resumption by event id; the call fails rather than being sent again, and whether the server did it isn't known. Only a server still on the older protocol resumes | |
 | **No sampling, no elicitation, no roots** | the client declares no capability; a server that asks for input gets a refusal, and the call fails in the server's words | later, if a server needs it |
-| **One identity per runner** | every spawner's call uses the runner's secret | credentials a gate mints for the task ([`hfh7km3t`]) |
+| **One identity per runner** | every spawner's call uses the runner's secret | credentials a gate mints for the task (`hfh7km3t`) |
 | **No interactive OAuth** | the secret is a token the operator already has | later |
 | **Tools only** | no resources, no prompts | later |
 | **Some schemas are left out** | `verse.Tool` carries properties and required names; a `$ref`, or `oneOf` at the top level, doesn't fit, so the tool is left out and logged | a whole schema on `verse.Tool` |
@@ -503,20 +503,22 @@ sandbox**: as the runner's user, on the runner's filesystem, next to the runner'
 task's workspace, under the task's network, with one secret in its environment and the program
 held to one the runner keeps. A stdio server is exactly that kind of command — and since a
 command with a secret may start from the install root (`pkg`, below), the program it starts from
-no longer has to be in the image: `npx`, `uvx` or a server's own package is an install away. It
-can be reached in two ways:
+no longer has to be in the image where the server is a self-contained program its distribution
+packages. A runtime is not that: `nodejs`, `npm` and `python3` carry install scripts and trees of
+their own, which `pkg` refuses, so `npx` and `uvx` still come with the image. It can be reached
+in two ways:
 
 | | The runner is the client (the `mcp` system) | The task is the client (`secret-exec`) |
 |---|---|---|
 | **How** | the operator names a stdio server (`command`, plus `secret` and `as`); the runner starts it in the `secret-exec` sandbox and speaks MCP to it over its stdio | the spawn admits the server's command in a `secret` block; the task starts it with `secret-exec` and speaks MCP over the run's I/O socket |
 | **What's decided** | **each call**: `mcp.call` with the server, the tool and the arguments | **the session**: one `secret.exec` that starts the server, after which every call is the task's |
 | **Who holds the secret** | the server process, in its sandbox; neither the task nor the runner's own process | the server process, in its sandbox; not the task |
-| **What it needs** | a `command` kind of server in `mcp`'s configuration, using the `Confiner` | **input on the I/O socket** — built since ([`hnp7jgfk`]): `stdin: true` on the call, admitted shape by shape, the task writing the command's stdin and its half-close the command's EOF |
+| **What it needs** | a `command` kind of server in `mcp`'s configuration, using the `Confiner` | **input on the I/O socket** — built since (`hnp7jgfk`): `stdin: true` on the call, admitted shape by shape, the task writing the command's stdin and its half-close the command's EOF |
 | **When to use it** | the server's tools should be gated one by one, like any performed system | the server is trusted as a whole, like an admitted command, and the shapes are the bound |
 
 The first is the one still to build: it keeps per-call decisions, and it lifts the "remote only"
 limitation without a second kind of tool. The second is available now — the socket accepts input
-([`hnp7jgfk`]): the call says `stdin: true`, a shape of the environment and the ceiling must
+(`hnp7jgfk`): the call says `stdin: true`, a shape of the environment and the ceiling must
 admit it, and the step says which kind of run it is — and it is honest about what it is.
 Approving the command approves everything the server then does. That's the same promise
 `secret-exec` makes for any command, and no more.
@@ -540,11 +542,11 @@ flowchart LR
 
 ## Debian packages: tools the image doesn't carry (`pkg`)
 
-> **Status:** built, on `verse/pkg` over `verse/mcp` ([`2k5art3x`]): the document and the step,
+> **Status:** built, on `verse/pkg` over `verse/mcp` (`2k5art3x`): the document and the step,
 > the cellar, the apt wrapper, the delivery op, the stock wiring, the pinned installs and the
 > operator's `base`, the words, and what a review of the stack found in the installer. The
 > sandbox's `/inst` is `verse/secret-exec`'s, where a command run with a secret starts from a
-> program in that root; what fills one is here. It supersedes the nix plan ([`2b5art3x`]), and
+> program in that root; what fills one is here. It supersedes the nix plan (`2b5art3x`), and
 > it has run on staging: a script had jq-v1 on PATH before its first line
 > (the pinned shape), was asked about `jq-v2` and saw it land mid-run through the read-only
 > bind, installed ripgrep under its own `rg`, computed with what landed, and had
@@ -692,9 +694,9 @@ nothing built from source. Those are the limitations below, and they are the che
 | Limitation | Why | What lifts it |
 |---|---|---|
 | **The index is the catalog** | a `version` names one today's index names; Debian's archive moves, and a version the index dropped can't be fetched | a frozen-manifest resolve mode, open |
-| **One libc family** | prefixes are built against the image's glibc; musl is another world | an `apk` wrapper, if a musl image earns one ([`2k5art3x`], open question 4) |
+| **One libc family** | prefixes are built against the image's glibc; musl is another world | an `apk` wrapper, if a musl image earns one (`2k5art3x`, open question 4) |
 | **Binaries and libraries, not services** | nothing is started, no user is made, no system path is written; a package that only works installed as root doesn't work here | |
-| **No `list` verb** | what's installed is what the environment and the replies already say | [`2k5art3x`]'s open question 2, if it earns its keep |
+| **No `list` verb** | what's installed is what the environment and the replies already say | `2k5art3x`'s open question 2, if it earns its keep |
 
 ---
 
@@ -717,21 +719,10 @@ pull request carries its own.
 
 | Piece | State | Issue |
 |---|---|---|
-| The channel's table of ops, one step per request, a deadline per op | built, on `main` | [`1k5art3x`] |
-| The secret store, with Slack and Linear reading from it | built, on `verse/secret-store` | [`1q5art3x`] |
-| An answer performs only the act it was given about | built, on `verse/secret-exec` | [`275art3x`] |
-| `secret-exec` | built, on `verse/secret-exec`; the first pull request. Its I/O socket now carries stdin too (`stdin: true`, [`hnp7jgfk`]), and the sandbox's read-only `/inst` is here as well, so a command with a secret may start from a program the runner installed for the task — what the limitations table below used to defer | [`pa35grmz`] |
-| `mcp` | built, on `verse/mcp` over `verse/secret-exec`, every step reviewed and committed, and run on staging against Linear and Signadot's production server; the staging server waits on a server-side fix | [`1v5art3x`] |
-| `pkg`, installs during the run | built, on `verse/pkg` over `verse/mcp`, in ten commits, and run on staging: jq twice under two names (one pinned at launch, one asked mid-run), ripgrep as its own `rg`, a claude task answered "on PATH already", `/inst` refusing a write. The run found the offer failing verse's shape check, fixed at c3f777a5. It fills the install root `secret-exec` opened to a command with a secret | [`2k5art3x`] |
-| `pkg-nix` | superseded by `pkg`: the image's own apt in place of a nix store, and installs as the task runs | [`2b5art3x`] |
-
-[`1k5art3x`]: #
-[`hnp7jgfk`]: #
-[`1q5art3x`]: #
-[`pa35grmz`]: #
-[`1v5art3x`]: #
-[`hfh7km3t`]: #
-[`275art3x`]: #
-[`q3k89kva`]: #
-[`2b5art3x`]: #
-[`2k5art3x`]: #
+| The channel's table of ops, one step per request, a deadline per op | built, on `main` | `1k5art3x` |
+| The secret store, with Slack and Linear reading from it | built, on `verse/secret-store` | `1q5art3x` |
+| An answer performs only the act it was given about | built, on `verse/secret-exec` | `275art3x` |
+| `secret-exec` | built, on `verse/secret-exec`; the first pull request. Its I/O socket now carries stdin too (`stdin: true`, `hnp7jgfk`), and the sandbox's read-only `/inst` is here as well, so a command with a secret may start from a program the runner installed for the task — what the limitations table below used to defer | `pa35grmz` |
+| `mcp` | built, on `verse/mcp` over `verse/secret-exec`, every step reviewed and committed, and run on staging against Linear and Signadot's production server; the staging server waits on a server-side fix | `1v5art3x` |
+| `pkg`, installs during the run | built, on `verse/pkg` over `verse/mcp`, in ten commits, and run on staging: jq twice under two names (one pinned at launch, one asked mid-run), ripgrep as its own `rg`, a claude task answered "on PATH already", `/inst` refusing a write. The run found the offer failing verse's shape check, fixed at c3f777a5. It fills the install root `secret-exec` opened to a command with a secret | `2k5art3x` |
+| `pkg-nix` | superseded by `pkg`: the image's own apt in place of a nix store, and installs as the task runs | `2b5art3x` |
