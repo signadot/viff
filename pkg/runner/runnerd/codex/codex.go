@@ -1088,3 +1088,9 @@ func (d *driver) askPerson(ctx context.Context, tu task.ToolUse, question, heade
 		return res.Choice, nil
 	}
 }
+
+// TakesTool is why codex cannot be offered a tool of this name, nil where it can: a dynamic
+// tool's name goes to the model as a function's, bounded in length and in letters — the one
+// bound every doer takes (verse.TakesToolNamed). A runtime offering tools it did not write (an
+// MCP server's) asks before offering one.
+func TakesTool(name string) error { return verse.TakesToolNamed("codex", name, name) }

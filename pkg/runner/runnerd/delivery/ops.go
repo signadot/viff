@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
+	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
 	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
 	"github.com/signadot/verse/pkg/systems"
 	"github.com/signadot/verse/pkg/task"
@@ -122,6 +123,16 @@ var ops = map[string]op{
 	// waits on it; the deadline is the longest run and the kill and the wait after it.
 	OpSecretExec: named(OpSecretExec, (*Server).secretExec, "name", "dir").withFlags("stdin").
 		withNumbers("timeout").withBody().performedApart().withDeadline(ExecTimeoutMost + execGrace),
+
+	// A tool of a remote MCP server called with the server's credential, and the list of one
+	// server's tools: apart, since a server may take minutes and neither reads the checkout. The
+	// client's own timeouts (the server's for a call, ListTimeout for a list) fire first and say
+	// why; the deadline is each with a grace past it.
+	OpMCPCall: named(OpMCPCall, (*Server).mcpCall, "server", "tool").withBody().
+		performedApart().withDeadline(mcpclient.TimeoutMost + mcpGrace),
+	OpMCPList: {unasked: "it lists what an `mcp.call` would be decided on: one server's tools, less those no shape of the " +
+		"environment's or the ceiling's admits a call of, for a task whose environment gives the server",
+		takes: []string{"server"}, apart: true, deadline: mcpclient.ListTimeout + mcpGrace, ask: (*Server).mcpList},
 }
 
 // named is an op whose word on the wire is its step's name, with the deadline of a call to a

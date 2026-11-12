@@ -33,6 +33,13 @@ data:
     # runner at each act and by no task. A deployment moves a system to it by naming its secret
     # (`systems: {slack: slack-bot, linear-issue: linear}`), and its variable is then not read.
     secrets: {dir: /secrets}
+    # Remote MCP servers the runner calls for its tasks, each with its credential a secret of the
+    # store (`auth: {secret: linear}`, sent as `Authorization: Bearer`, or under `header`), and a
+    # `mcp` ceiling below naming the servers a doer may call. None here: a deployment names its
+    # own, as
+    #   mcp: {servers: {linear: {url: "https://mcp.linear.app/mcp/readonly", auth: {secret: linear}}}}
+    # and under the doer's systems
+    #   mcp: {ceiling: {server: linear}}
     # The operator's line over every system a doer holds for its tasks, a doer at a time: what a
     # spawn's environment may give, held at install, at launch and again at each act. A ceiling
     # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer

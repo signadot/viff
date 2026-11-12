@@ -839,8 +839,9 @@ func PathText(names []string) string {
 }
 
 // Plain is a pattern as its author wrote it, less the tags a parser attaches to record how it
-// was spelled (`!bracket`, `!literal`), at every depth: an untagged pattern is then a literal,
-// and an operator the first tag it carries. n is not changed.
+// was spelled (`!bracket`, `!literal`, a number's notation such as `!exp` or `!hex`), at every
+// depth: an untagged pattern is then a literal, and an operator the first tag it carries. n is
+// not changed.
 func Plain(n *ir.Node) *ir.Node {
 	if n == nil {
 		return nil
@@ -855,7 +856,7 @@ func stripLayout(n *ir.Node) {
 	if n == nil {
 		return
 	}
-	n.Tag = ir.TagRemove(ir.TagRemove(n.Tag, "!bracket"), "!literal")
+	n.Tag = ir.StripPresentation(n.Tag)
 	for _, f := range n.Fields {
 		stripLayout(f)
 	}

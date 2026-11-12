@@ -164,9 +164,11 @@ func TestThePerformedSystemsAreOneTable(t *testing.T) {
 		}
 	}
 	// What the table says is what the runner said before there was one.
-	everything := Config{Repos: &Repos{Mirrors: "/m"}, reachesVerse: true, SecretStore: &SecretStore{Dir: "/secrets"}, Script: &Script{Systems: map[string]System{
-		"slack": {Ceiling: systems.Open()}, "linear-issue": {Ceiling: systems.Open()}, "secret": {Ceiling: ceiling(t, `{name: npm-token}`)}}}}
-	if got := everything.performs(); !slices.Equal(got, []string{"git", "git-issue", "github", "github-issue", "linear-issue", "slack", "secret", "verse"}) {
+	everything := Config{Repos: &Repos{Mirrors: "/m"}, reachesVerse: true, SecretStore: &SecretStore{Dir: "/secrets"},
+		MCP: &MCP{Servers: map[string]MCPServer{"linear": {URL: "https://mcp.linear.app/mcp"}}}, Script: &Script{Systems: map[string]System{
+			"slack": {Ceiling: systems.Open()}, "linear-issue": {Ceiling: systems.Open()}, "secret": {Ceiling: ceiling(t, `{name: npm-token}`)},
+			"mcp": {Ceiling: ceiling(t, `{server: linear}`)}}}}
+	if got := everything.performs(); !slices.Equal(got, []string{"git", "git-issue", "github", "github-issue", "linear-issue", "slack", "secret", "mcp", "verse"}) {
 		t.Errorf("a runner that performs everything performs %v", got)
 	}
 	// A secret ceiling with no store to read from performs nothing.
@@ -186,6 +188,7 @@ func TestThePerformedSystemsAreOneTable(t *testing.T) {
 		"github": "whose forge is github.com", "github-issue": "whose forge is github.com",
 		"slack": "performs none of its verbs", "network": "performs none of its verbs",
 		"secret": "a secret store (`secrets.dir`) and a sandbox",
+		"mcp":    "an `mcp.servers` section names the servers",
 	} {
 		if got := needsFor(system); !strings.Contains(got, want) {
 			t.Errorf("needsFor(%s) = %q, want it to say %q", system, got, want)
@@ -204,14 +207,15 @@ func TestASystemNamesItsSecretInOneMap(t *testing.T) {
 		return &Config{Script: &Script{}, SecretStore: &SecretStore{Dir: "/secrets", Systems: systems}}
 	}
 	for says, c := range map[string]*Config{
-		"secrets.systems.mcp: the runner performs no system called that (those that may name a secret: linear-issue, slack)": with(map[string]string{"mcp": "x"}),
-		"secrets.systems.git: git acts with the forge's token (GITHUB_TOKEN), which is not the store's":                      with(map[string]string{"git": "git-token"}),
-		"secrets.systems.github-issue: github-issue acts with the forge's token":                                             with(map[string]string{"github-issue": "t"}),
-		"secrets.systems.verse: verse acts with no credential of its own to name":                                            with(map[string]string{"verse": "t"}),
-		"secrets.systems.slack: \"SLACK_BOT_TOKEN\" is no secret's name":                                                     with(map[string]string{"slack": "SLACK_BOT_TOKEN"}),
-		"secrets.systems.slack: \"../slack\" is no secret's name":                                                            with(map[string]string{"slack": "../slack"}),
-		"secrets.systems.slack: a secret's name is not empty":                                                                with(map[string]string{"slack": ""}),
-		"secrets: `dir` names the directory":                                                                                 {Script: &Script{}, SecretStore: &SecretStore{Systems: map[string]string{"slack": "slack-bot"}}},
+		"secrets.systems.jira: the runner performs no system called that (those that may name a secret: linear-issue, slack)": with(map[string]string{"jira": "x"}),
+		"secrets.systems.mcp: mcp names each server's secret with the server (`mcp.servers.<name>.auth.secret`)":              with(map[string]string{"mcp": "x"}),
+		"secrets.systems.git: git acts with the forge's token (GITHUB_TOKEN), which is not the store's":                       with(map[string]string{"git": "git-token"}),
+		"secrets.systems.github-issue: github-issue acts with the forge's token":                                              with(map[string]string{"github-issue": "t"}),
+		"secrets.systems.verse: verse acts with no credential of its own to name":                                             with(map[string]string{"verse": "t"}),
+		"secrets.systems.slack: \"SLACK_BOT_TOKEN\" is no secret's name":                                                      with(map[string]string{"slack": "SLACK_BOT_TOKEN"}),
+		"secrets.systems.slack: \"../slack\" is no secret's name":                                                             with(map[string]string{"slack": "../slack"}),
+		"secrets.systems.slack: a secret's name is not empty":                                                                 with(map[string]string{"slack": ""}),
+		"secrets: `dir` names the directory":                                                                                  {Script: &Script{}, SecretStore: &SecretStore{Systems: map[string]string{"slack": "slack-bot"}}},
 	} {
 		if err := c.Check(); err == nil || !strings.Contains(err.Error(), says) {
 			t.Errorf("%v: %v, want refused: %s", c.SecretStore, err, says)

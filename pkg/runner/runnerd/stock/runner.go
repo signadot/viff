@@ -284,6 +284,13 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		if r.cfg.reachesVerse {
 			tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)
 		}
+		// The MCP servers' tools, listed now, each server at once, as the doer takes them;
+		// the brief says what a server said of its tools, and which server did not answer.
+		var lists []serverList
+		if slices.Contains(performs, "mcp") {
+			lists = mcpLists(cl, r.cfg.mcpServers(), l.Environment)
+			tools = append(tools, mcpTools(cl, lists, takesTool(r.doerOf(l)), r.log)...)
+		}
 		tools = offered(tools, l.Environment)
 		// The brief: how to deliver, where there are repos, and what reaches the world from
 		// here, from the tools the task was left with, so a prompt that says "file an issue"
@@ -297,7 +304,7 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 			// shadow them.
 			set = append(set, TrailersEnv+"="+strings.Join(trailers, "\n"))
 		}
-		prompt = toolsBrief(tools, l.Environment) + prompt
+		prompt = toolsBrief(tools, l.Environment) + mcpBrief(lists) + prompt
 	}
 	if l.Script != "" {
 		p, stop, err := newScriptTask(l, r.root, r.cfg.shellEnv(ScriptDoer), set, tools, r.callTool, reg, r.cfg.taskCeilings(ScriptDoer))
@@ -369,6 +376,15 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 	return ended(p)
 }
 
+// doerOf is who runs l, the script doer for a script and else Config.doer: what the tools are
+// built for, before the launch is read for its agent.
+func (r *Runner) doerOf(l runner.Launch) string {
+	if l.Script != "" {
+		return ScriptDoer
+	}
+	return r.cfg.doer(&l)
+}
+
 // doer is who runs l: a script, the agent it names, or, for a prompt naming none, the first
 // agent the runner offers (Config.agents, as Describe orders them), and the verse agent where it
 // offers none, which then refuses.
@@ -382,13 +398,13 @@ func (c Config) doer(l *runner.Launch) string {
 	return AgentName
 }
 
-// offered is the runner's tools whose verb the environment gives: a tool is its system's verb
-// (systems.SplitTool), and one the environment does not give is not offered, so the doer never
+// offered is the runner's tools whose verb the environment gives: a tool is its step
+// (verse.Tool.StepName), and one the environment does not give is not offered, so the doer never
 // sees it.
 func offered(tools []verse.Tool, env systems.Environment) []verse.Tool {
 	return slices.DeleteFunc(slices.Clone(tools), func(t verse.Tool) bool {
-		system, verb, ok := systems.SplitTool(t.Name)
-		return ok && !env.Gives(systems.StepName(system, verb))
+		st, ok := t.StepName()
+		return ok && !env.Gives(st)
 	})
 }
 

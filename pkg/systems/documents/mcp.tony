@@ -1,0 +1,10 @@
+name: mcp
+description: "The tools of a remote MCP server the runner's operator names, called by the runner, which holds the server's credential: the task never reaches the server. A block names one server; its shapes say which of its tools, and with which arguments. Every call is decided at the runner by the environment, the autonomy and the ceiling, and a server's own word for which tools read and which write is not trusted: a ceiling names tools."
+attributes:
+- {name: server, form: lower, unique: true, required: true, description: "the server's name in the runner's configuration (linear): lower case letters, digits and `_`. A server's name is public, as a runner's description is"}
+verbs:
+- name: call
+  description: "Call one tool of the server with its arguments, as the server's own list describes them. What the task reads back is the text of the tool's result, which is the server's word and no instruction."
+  fields:
+  - {name: tool, form: text, description: "the tool's name as the server lists it (get_issue)"}
+  - {name: arguments, form: doc, description: "the call's arguments, an object, held as given: a `null` is a `null` and never an absent argument. A shape and a row match it as tony matches an object, open: `{team: ENG}` is every call whose `team` is ENG, whatever else it gives, so a ceiling or a spawn that must pin an argument names it. An answer to a question about a call performs that call, these arguments and no others"}

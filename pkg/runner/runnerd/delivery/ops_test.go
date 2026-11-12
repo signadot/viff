@@ -69,6 +69,9 @@ var wellFormed = map[string]Request{
 	OpVerseCharterRemove:  {Fields: map[string]string{"query": "path=repos.r.hello.rules.lift"}},
 
 	OpSecretExec: {Body: "{argv: [npm, publish, --ignore-scripts]}", Fields: map[string]string{"name": "npm-token", "dir": "packages/a"}},
+
+	OpMCPCall: {Body: `{"id": "ENG-7"}`, Fields: map[string]string{"server": "linear", "tool": "get_issue"}},
+	OpMCPList: {Fields: map[string]string{"server": "linear"}},
 }
 
 // unreached fails a test that reaches a service: what an act would call, on a server no act of
@@ -146,7 +149,8 @@ func TestNoOpActsUnderAnEmptyEnvironment(t *testing.T) {
 
 // EVERY OP OF THE TABLE IS HELD TO THE SYSTEMS' DOCUMENTS: the steps it may ask about are verbs
 // a document describes, it has a deadline, and it asks about a step unless the table says why
-// not. One op says so, the branch's state, which a push's own decision is made on.
+// not. Two ops say so: the branch's state, which a push's own decision is made on, and a server's
+// list of tools, which a call's is.
 func TestEveryOpAsksAboutADocumentedStep(t *testing.T) {
 	documented := systems.Steps()
 	var unasked []string
@@ -171,8 +175,9 @@ func TestEveryOpAsksAboutADocumentedStep(t *testing.T) {
 			}
 		}
 	}
-	if !slices.Equal(unasked, []string{OpState}) {
-		t.Errorf("the ops that ask about no step are %v, want the branch's state alone", unasked)
+	slices.Sort(unasked)
+	if !slices.Equal(unasked, []string{OpMCPList, OpState}) {
+		t.Errorf("the ops that ask about no step are %v, want the branch's state and a server's list alone", unasked)
 	}
 }
 

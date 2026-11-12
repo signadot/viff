@@ -9,9 +9,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
+	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
 	"github.com/signadot/verse/pkg/runner/runnerd/verse"
 	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
 	"github.com/signadot/verse/pkg/systems"
@@ -50,6 +52,19 @@ var stepInputs = map[string]map[string]any{
 
 	"secret-exec": {"name": "npm-token", "argv": []any{"npm", "publish", "--tag", "a b"}, "dir": "./packages/a/", "env": map[string]any{"NODE_ENV": "production"}},
 
+	// The tools of a server's list (mcpTestServer), as a doer's wire hands a use: every number
+	// a float, a `null` a nil.
+	"mcp-linear-get_issue": {"id": "ENG-7"},
+	"mcp-linear-create_issue": {"team": "ENG", "title": "the roof leaks", "labels": []any{"bug", "roof"}, "estimate": float64(3), "assignee": nil,
+		"draft": true, "meta": map[string]any{"ref": "007", "ratio": 0.5, "none": map[string]any{}, "list": []any{}}, "note": "héllo ☃"},
+	"mcp-linear-delete_issue": {"id": "ENG-7"},
+	"mcp-linear-with_input":   {"input": "x"},
+	"mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once": {},
+	"mcp-linear-any_args":   {"k": "v"},
+	"mcp-linear-no_args":    {},
+	"mcp-linear-set_fields": {"id": "ENG-7", "k": "v"},
+	"mcp-linear-needs_more": {"id": "ENG-7", "team": "ENG"},
+
 	"verse-ask-create":      {"name": "land", "question": "Land it?", "to": "user:ana@example.com, group:leads", "label": "team=payments", "on": "[{match: {verdict: proceed}, then: {spawn: {script: \"true\"}}}]"},
 	"verse-ask-get":         {"name_or_id": "land"},
 	"verse-ask-list":        {},
@@ -84,6 +99,8 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	for _, name := range []string{"linear-issue", "slack", "verse"} {
 		env.Systems[name] = []systems.Block{{Verbs: everyVerb(name)}}
 	}
+	env.Systems["mcp"] = []systems.Block{{Attributes: map[string]string{"server": "linear"}, Verbs: everyVerb("mcp")}}
+	mcpURL, _ := mcpTestServer(t, "")
 	l := &runner.Launch{ID: "t1", Prompt: "p", Environment: env, Autonomy: task.Autonomy{{Name: "every", Then: task.Then{Mode: task.ThenAsk}}}}
 	repos, err := workspace.FromLaunch(l.Repos(), forge)
 	if err != nil {
@@ -102,6 +119,7 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	s := &delivery.Server{Mirrors: mirrors, Log: io.Discard, Ceilings: ceilings, HTTP: &http.Client{Transport: unreached{t}},
 		Services: delivery.Services{LinearAuth: delivery.Holds("a-key"), SlackToken: delivery.Holds("xoxb-a-token"),
 			GitHubAPI: "https://api.github.invalid",
+			MCP:       mcpclient.Servers{"linear": {URL: mcpURL, Timeout: 5 * time.Second}},
 			Verse: func(_ context.Context, _, method, path string, _ []byte) (int, string, error) {
 				t.Errorf("a request reached verse: %s %s", method, path)
 				return http.StatusInternalServerError, "", nil
@@ -136,12 +154,25 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	secret, _ := secretTools(cl, ws, env)
 	tools = append(append(tools, slackTools(cl)...), secret...)
 	tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)
+	// The tools of a server's list, as the task builds them, for a doer that takes any name.
+	tools = append(tools, mcpTools(cl, mcpLists(cl, []string{"linear"}, env), nil, io.Discard)...)
 	seen := map[string]bool{}
 	for _, tl := range tools {
 		if tl.Step == "" || slices.Contains(inTheCheckout, tl.Name) {
 			continue
 		}
 		seen[tl.Name] = true
+		// A stock tool's name is its step's (git-push, git.push): the tools are filtered by their
+		// step (verse.Tool.StepName), and one whose name said another step would read otherwise
+		// wherever a name is read. An MCP tool's name is `mcp-<server>-<tool>`, its step's system
+		// first, and its Step says the rest.
+		if tl.Step == task.StepMCPCall {
+			if !strings.HasPrefix(tl.Name, "mcp-linear-") {
+				t.Errorf("%s is the step %s, and its name is not mcp-<server>-<tool>", tl.Name, tl.Step)
+			}
+		} else if system, verb, ok := systems.SplitTool(tl.Name); !ok || systems.StepName(system, verb) != tl.Step {
+			t.Errorf("%s is the step %s, and its name is not that step's", tl.Name, tl.Step)
+		}
 		in, ok := stepInputs[tl.Name]
 		if !ok {
 			t.Errorf("%s is the step %s, and stepInputs has no use of it", tl.Name, tl.Step)

@@ -43,6 +43,12 @@ func (c Config) Describe(networks []string) runner.Description {
 		}
 		doer := d.Offers[i].Name()
 		d.Offers[i].Systems["network"] = runner.System{Builds: networkBuilds(networks), Ceiling: c.systemsOf(doer)["network"].Ceiling}
+		// The servers the runner calls are its nature, as the networks its sandbox builds are: a
+		// spawn naming another is refused at install as one the runner cannot build.
+		if sys, ok := d.Offers[i].Systems["mcp"]; ok {
+			sys.Builds = c.mcpBuilds()
+			d.Offers[i].Systems["mcp"] = sys
+		}
 	}
 	return d
 }
