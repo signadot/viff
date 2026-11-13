@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -111,10 +113,44 @@ const modelCallTimeout = 5 * time.Minute
 // side said "not now". The distinction is the whole of the retry policy — a bad key, a malformed
 // request and a refused tool schema are all permanent, and retrying them spends a task's budget
 // on a result that cannot change.
-type transient struct{ err error }
+//
+// after is how long the far side asked to be left alone, its Retry-After, and zero where it named
+// no time.
+type transient struct {
+	err   error
+	after time.Duration
+}
 
 func (t transient) Error() string { return t.err.Error() }
 func (t transient) Unwrap() error { return t.err }
+
+// answered classifies a failure the far side answered with, by its status and nothing else. 429
+// and 5xx are the far side saying "not now" and "not me"; everything else is this request being
+// wrong, and asking again will not fix it. What the body holds does not enter into it: a rate
+// limit comes with an error object, and a gateway's 502 with a page that is not JSON, and each is
+// as much "not now" as a bare status is.
+func answered(resp *http.Response, err error) error {
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		return transient{err: err, after: retryAfter(resp.Header.Get("Retry-After"), time.Now())}
+	}
+	return err
+}
+
+// retryAfter reads a Retry-After header, which is a number of seconds or an HTTP date. Absent,
+// unreadable or already past is zero.
+func retryAfter(v string, now time.Time) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(v); err == nil {
+		return max(0, time.Duration(secs)*time.Second)
+	}
+	if at, err := http.ParseTime(v); err == nil {
+		return max(0, at.Sub(now))
+	}
+	return 0
+}
 
 func (c *llmClient) complete(ctx context.Context, msgs []chatMessage, tools []toolDef) (chatMessage, string, error) {
 	body, _ := json.Marshal(chatRequest{Model: c.model, Messages: msgs, Tools: tools, ToolChoice: "auto"})
@@ -131,33 +167,43 @@ func (c *llmClient) complete(ctx context.Context, msgs []chatMessage, tools []to
 	if err != nil {
 		// Nothing came back: a timeout, a reset, a DNS failure. None of them says the request
 		// was wrong, which is what makes them worth repeating.
-		return chatMessage{}, "", transient{err}
+		return chatMessage{}, "", transient{err: err}
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	var out chatResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return chatMessage{}, "", fmt.Errorf("decode (http %d): %s", resp.StatusCode, truncate(string(raw), 300))
+		return chatMessage{}, "", answered(resp,
+			fmt.Errorf("decode (http %d): %s", resp.StatusCode, truncate(string(raw), 300)))
 	}
 	if out.Error != nil {
-		return chatMessage{}, "", fmt.Errorf("api: %s", out.Error.Message)
+		return chatMessage{}, "", answered(resp,
+			fmt.Errorf("api (http %d): %s", resp.StatusCode, out.Error.Message))
 	}
 	if resp.StatusCode >= 300 || len(out.Choices) == 0 {
-		err := fmt.Errorf("http %d: %s", resp.StatusCode, truncate(string(raw), 300))
-		// 429 and 5xx are the far side saying "not now" and "not me"; everything else in the
-		// 4xx range is this request being wrong, and asking again will not fix it.
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			return chatMessage{}, "", transient{err}
-		}
-		return chatMessage{}, "", err
+		return chatMessage{}, "", answered(resp,
+			fmt.Errorf("http %d: %s", resp.StatusCode, truncate(string(raw), 300)))
 	}
 	return out.Choices[0].Message, out.Choices[0].FinishReason, nil
 }
 
-// modelRetries is how many EXTRA attempts a transient model failure gets, and the backoff before
-// each. Small on purpose: this covers a hiccup, not an outage, and a task that keeps failing
-// should fail while somebody still has the context to care.
-var modelBackoff = []time.Duration{2 * time.Second, 8 * time.Second}
+// modelBackoff is how many EXTRA attempts a transient model failure gets, and the least wait
+// before each. The first two cover a hiccup. The last two together outlast a minute, which is the
+// window a provider counts a rate limit over: a wait shorter than the window asks again inside
+// it, and is refused again. It stops there: this covers a limit and a hiccup, not an outage, and
+// a task that keeps failing should fail while somebody still has the context to care.
+var modelBackoff = []time.Duration{2 * time.Second, 8 * time.Second, 30 * time.Second, 60 * time.Second}
+
+// modelWait is the wait before the retry after attempt, for a failure that asked for after.
+//
+// Up to a quarter is added to the schedule's wait, at random. A rate limit is an organisation's,
+// so the tasks that meet it meet it together, and tasks that wait the same time ask again
+// together. What the far side asked for is the least the wait is.
+func modelWait(attempt int, after time.Duration) time.Duration {
+	wait := modelBackoff[attempt]
+	wait += time.Duration(rand.Int64N(int64(wait)/4 + 1))
+	return max(wait, after)
+}
 
 // modelWaitNotice is how often a call still in flight says so on the read plane, and
 // modelTotalBudget bounds the whole retried sequence.
@@ -180,33 +226,36 @@ var (
 //
 // It exists because one slow response used to be terminal for the whole task. Forty-three
 // boundaries of work — reads, reasoning, a finding half-written — ended on a client timeout, and
-// the run was not resumable because a task's conversation lives in its driver. Against that, two
-// retries costing ten seconds are free.
+// the run was not resumable because a task's conversation lives in its driver. Against that, a
+// few retries inside the budget are free.
 //
-// Each attempt is announced on the read plane. A run that pauses for ten seconds and says nothing
+// Each attempt is announced on the read plane. A run that pauses for a minute and says nothing
 // is indistinguishable from one that has hung, which is the complaint findings 6 and 7 of the
 // drive make about everything else.
 func (d *llmDriver) completeWithRetry(ctx context.Context) (chatMessage, string, error) {
 	var last error
+	tries := 0
 	started := time.Now()
 	for attempt := 0; ; attempt++ {
 		msg, finish, err := d.completeAloud(ctx)
 		if err == nil {
 			return msg, finish, nil
 		}
-		last = err
+		last, tries = err, attempt+1
 		var t transient
 		if !errors.As(err, &t) || attempt >= len(modelBackoff) {
 			break
 		}
-		if spent := time.Since(started); spent > modelTotalBudget {
-			last = fmt.Errorf("%w (giving up after %s of retrying: this is not a hiccup)", err,
-				spent.Round(time.Second))
+		// A wait the budget cannot cover is not begun: the sequence would end in it anyway, and
+		// a far side that asks for an hour is answered now rather than after eight minutes.
+		wait := modelWait(attempt, t.after)
+		if spent := time.Since(started); spent+wait > modelTotalBudget {
+			last = fmt.Errorf("%w (giving up after %s of retrying, with the next attempt %s away: "+
+				"this is not a hiccup)", err, spent.Round(time.Second), wait.Round(time.Second))
 			break
 		}
-		wait := modelBackoff[attempt]
 		note := fmt.Sprintf("the model call failed and is being retried in %s (attempt %d of %d): %v",
-			wait, attempt+2, len(modelBackoff)+1, err)
+			wait.Round(time.Millisecond), attempt+2, len(modelBackoff)+1, err)
 		fmt.Fprintf(d.log, "   ↻ %s\n", note)
 		if d.emit != nil {
 			d.emit(task.Event{Kind: task.EventSay, Text: note})
@@ -220,7 +269,7 @@ func (d *llmDriver) completeWithRetry(ctx context.Context) (chatMessage, string,
 		}
 	}
 	return chatMessage{}, "", fmt.Errorf("the model call failed %d time(s) and this task cannot "+
-		"continue without it: %w", len(modelBackoff)+1, last)
+		"continue without it: %w", tries, last)
 }
 
 // completeAloud is one attempt, saying so periodically while it is still in flight.

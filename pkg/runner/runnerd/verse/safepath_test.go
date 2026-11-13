@@ -196,7 +196,7 @@ func TestTheModelCallIsRetriedWhenTheFailureSaysNothingAboutTheRequest(t *testin
 	defer func() { modelBackoff = saved }()
 
 	// Two transient failures, then an answer: the task survives.
-	f := &flakyCompleter{fails: 2, err: transient{errors.New("context deadline exceeded")}}
+	f := &flakyCompleter{fails: 2, err: transient{err: errors.New("context deadline exceeded")}}
 	d := &llmDriver{client: f, log: io.Discard}
 	msg, _, err := d.completeWithRetry(context.Background())
 	if err != nil {
@@ -218,7 +218,7 @@ func TestTheModelCallIsRetriedWhenTheFailureSaysNothingAboutTheRequest(t *testin
 	}
 
 	// Exhausted retries say how many attempts, and carry the last failure.
-	f = &flakyCompleter{fails: 99, err: transient{errors.New("boom")}}
+	f = &flakyCompleter{fails: 99, err: transient{err: errors.New("boom")}}
 	d = &llmDriver{client: f, log: io.Discard}
 	_, _, err = d.completeWithRetry(context.Background())
 	if f.calls != 3 {
@@ -232,7 +232,7 @@ func TestTheModelCallIsRetriedWhenTheFailureSaysNothingAboutTheRequest(t *testin
 	// retrying — the cancel is the better account of why the run ended.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	f = &flakyCompleter{fails: 99, err: transient{errors.New("boom")}}
+	f = &flakyCompleter{fails: 99, err: transient{err: errors.New("boom")}}
 	d = &llmDriver{client: f, log: io.Discard}
 	if _, _, err = d.completeWithRetry(ctx); !errors.Is(err, context.Canceled) {
 		t.Errorf("a cancelled task kept retrying: %v", err)
@@ -284,7 +284,7 @@ func TestALongModelCallSaysSoAndARetriedSequenceIsBounded(t *testing.T) {
 	// Budget: a sequence that keeps failing stops asking rather than spending every attempt.
 	modelBackoff = []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
 	modelTotalBudget = 0 // anything already spent is over budget
-	f := &flakyCompleter{fails: 99, err: transient{errors.New("boom")}}
+	f := &flakyCompleter{fails: 99, err: transient{err: errors.New("boom")}}
 	d = &llmDriver{client: f, log: io.Discard}
 	_, _, err := d.completeWithRetry(context.Background())
 	if err == nil {
