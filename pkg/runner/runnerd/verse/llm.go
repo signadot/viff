@@ -137,20 +137,26 @@ func answered(resp *http.Response, err error) error {
 }
 
 // retryAfter reads a Retry-After header, which is a number of seconds or an HTTP date. Absent,
-// unreadable or already past is zero.
+// unreadable or already past is zero, and nothing is longer than maxRetryAfter: past it the
+// number says "not soon" and no more, and a count of seconds large enough overflows a Duration.
 func retryAfter(v string, now time.Time) time.Duration {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return 0
 	}
-	if secs, err := strconv.Atoi(v); err == nil {
+	if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
+		if secs > int64(maxRetryAfter/time.Second) {
+			return maxRetryAfter
+		}
 		return max(0, time.Duration(secs)*time.Second)
 	}
 	if at, err := http.ParseTime(v); err == nil {
-		return max(0, at.Sub(now))
+		return min(max(0, at.Sub(now)), maxRetryAfter)
 	}
 	return 0
 }
+
+const maxRetryAfter = 24 * time.Hour
 
 func (c *llmClient) complete(ctx context.Context, msgs []chatMessage, tools []toolDef) (chatMessage, string, error) {
 	body, _ := json.Marshal(chatRequest{Model: c.model, Messages: msgs, Tools: tools, ToolChoice: "auto"})
@@ -170,7 +176,12 @@ func (c *llmClient) complete(ctx context.Context, msgs []chatMessage, tools []to
 		return chatMessage{}, "", transient{err: err}
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		// The answer stopped part way: a reset, or the client's timeout during the body. What
+		// arrived decides nothing, whatever status came ahead of it.
+		return chatMessage{}, "", transient{err: fmt.Errorf("reading the answer (http %d): %w", resp.StatusCode, err)}
+	}
 	var out chatResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return chatMessage{}, "", answered(resp,
@@ -196,21 +207,25 @@ var modelBackoff = []time.Duration{2 * time.Second, 8 * time.Second, 30 * time.S
 
 // modelWait is the wait before the retry after attempt, for a failure that asked for after.
 //
-// Up to a quarter is added to the schedule's wait, at random. A rate limit is an organisation's,
-// so the tasks that meet it meet it together, and tasks that wait the same time ask again
-// together. What the far side asked for is the least the wait is.
+// What the far side asked for is the least the wait is, up to the schedule's longest wait. Past
+// that it is advice: a gateway's 503 names ten minutes as a matter of form, and a retry at the
+// schedule's pace finds out sooner whether it meant it, with the budget bounding the whole.
+//
+// Up to a quarter is then added, at random, whichever of the two set the wait. A rate limit is an
+// organisation's, so the tasks that meet it meet it together and are told the same time, and
+// tasks that wait the same time ask again together.
 func modelWait(attempt int, after time.Duration) time.Duration {
-	wait := modelBackoff[attempt]
-	wait += time.Duration(rand.Int64N(int64(wait)/4 + 1))
-	return max(wait, after)
+	wait := max(modelBackoff[attempt], min(after, modelBackoff[len(modelBackoff)-1]))
+	return wait + time.Duration(rand.Int64N(int64(wait)/4+1))
 }
 
 // modelWaitNotice is how often a call still in flight says so on the read plane, and
 // modelTotalBudget bounds the whole retried sequence.
 //
-// Both exist because the retry, on its own, made a stall INVISIBLE FOR LONGER. Before it, a stuck
-// call failed in two minutes; after, three attempts at five minutes each is a quarter of an hour
-// in which a task emits nothing at all and cannot be told from one that has died. A drive watched
+// Both exist because the retry, on its own, makes a stall INVISIBLE FOR LONGER. One stuck call
+// fails in five minutes; five attempts at five minutes each, and the waits between them, are
+// most of half an hour in which a task emits nothing at all and cannot be told from one that
+// has died. A drive watched
 // exactly that and reported "it appears hung" — which was the correct reading of the evidence
 // available, and is findings 6 and 7 of that drive with a new cause.
 //
@@ -246,8 +261,7 @@ func (d *llmDriver) completeWithRetry(ctx context.Context) (chatMessage, string,
 		if !errors.As(err, &t) || attempt >= len(modelBackoff) {
 			break
 		}
-		// A wait the budget cannot cover is not begun: the sequence would end in it anyway, and
-		// a far side that asks for an hour is answered now rather than after eight minutes.
+		// A wait the budget cannot cover is not begun: the sequence would end in it anyway.
 		wait := modelWait(attempt, t.after)
 		if spent := time.Since(started); spent+wait > modelTotalBudget {
 			last = fmt.Errorf("%w (giving up after %s of retrying, with the next attempt %s away: "+
