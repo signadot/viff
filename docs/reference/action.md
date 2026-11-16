@@ -268,7 +268,7 @@ autonomy:
       answerers: [group:release]
       within: 4h
       default: deny
-      labels: {slack: C0EXAMPLE000}
+      labels: {slack: deploys}
 - {match: {system: git, verb: push}, then: allow}
 - {then: ask}
 ```
@@ -281,7 +281,7 @@ autonomy:
 | `then.ask.need` | how many approvals the step takes; absent is one |
 | `then.ask.answerers` | who is asked, in the grammar a rule's gate uses (`user:…`, `group:…`, `$principal`); absent is the docket |
 | `then.ask.within`, `then.ask.default` | how long the question stands, and what silence settles on |
-| `then.ask.labels` | what the question says about itself for whoever watches asks: `team: payments`, `slack: C…` |
+| `then.ask.labels` | what the question says about itself for whoever watches asks: `team: payments`, `slack: deploys` |
 
 The runner reads the step, the approvals, the answerers and the deadline's duration, and says
 which gate matched. Verse adds the rest when it poses the question. See

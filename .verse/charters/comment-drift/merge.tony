@@ -202,7 +202,7 @@ rules:
     # ASKED OF #verse-dev: one message there (the `slack` label, gate-ask.tony's gate-ask-channel),
     # answered in its thread by anyone whose Slack account is a verse user, as themselves.
     answerers: ["user:*"]
-    labels: {slack: C0C3KHG9B0W}
+    labels: {slack: verse-dev}
     deadline: {within: "24h", default: deny}
     onDenied:
       patch:

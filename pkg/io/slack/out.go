@@ -620,6 +620,12 @@ func (k *Sink) Keep(ctx context.Context, in verseio.Input) {
 // maintaining a table mapping one to the other, stale precisely when a gate most needs to reach
 // somebody. The lookup is Slack's own (users.lookupByEmail), and the DM it opens is written on the
 // status, so it is paid once per request rather than once per pass.
+//
+// A CHANNEL MAY BE NAMED BY ITS NAME — `verse-dev`, or `#verse-dev` — for the same reason: an id
+// is one workspace's, and a charter that carries one is that workspace's charter. The name is
+// looked up among the channels the bot is in (channelNamed), and what it resolves to is written
+// on the status as a person's DM is. Slack's names are lowercase and its ids are not, so the two
+// spellings do not meet.
 func (k *Sink) channelFor(ctx context.Context, target string) (string, error) {
 	if email := strings.TrimPrefix(target, "user:"); strings.Contains(email, "@") {
 		acct, err := k.accountOf(ctx, email)
@@ -634,8 +640,15 @@ func (k *Sink) channelFor(ctx context.Context, target string) (string, error) {
 	case strings.HasPrefix(target, "C"), strings.HasPrefix(target, "G"), strings.HasPrefix(target, "D"):
 		return target, nil
 	}
+	if name, ok := ChannelName(target); ok && name == strings.TrimPrefix(strings.TrimSpace(target), "#") {
+		c, err := k.s.api.channelNamed(ctx, name)
+		if err != nil {
+			return "", err
+		}
+		return c.ID, nil
+	}
 	return "", verseio.Permanent(fmt.Errorf("target %q is neither a Slack id (U… a person, C… or G… "+
-		"a channel) nor somebody verse knows (user:<email>)", target))
+		"a channel), a channel's name (#name) nor somebody verse knows (user:<email>)", target))
 }
 
 // fingerprint is a short, stable digest of a message, so a message that would show differently is

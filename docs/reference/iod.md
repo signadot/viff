@@ -533,12 +533,13 @@ verse data slack acme out release -put '{to: C0456, text: "v1.3 is out"}'
 verse data slack acme out 'hello~status'
 ```
 
-`to` is a Slack id, or somebody that verse knows.
+`to` is a Slack id, a channel's name, or somebody that verse knows.
 
 | `to` | Who it is | What the iod does |
 |---|---|---|
 | `U…` | a person | It opens the DM of the person. |
 | `C…` and `G…` | channels | It posts in the channel as it is, so the bot must be in the channel. |
+| `<channel>` or `#<channel>` | a channel, by its name | It finds the channel among the channels the bot is in, and posts there. A charter that names a channel this way carries no workspace's id. |
 | `user:<email>`, or the bare email | a person, named as the store names them | It finds the person with `users.lookupByEmail`, and sends a DM. |
 
 `<name>` is the choice of the writer. The out half needs the scopes `chat:write`, `im:write`
@@ -550,8 +551,9 @@ one thread, and a reply there is about the questions of all of them.
 
 The spelling `user:<email>` lets a charter address the people that a
 [question](../glossary.md#question) waits on, because the `waitingOn` of a question holds
-principals. The iod writes the DM that it opens on the status. So the iod looks up a person once
-for each request, and not once for each pass.
+principals. The iod writes the DM that it opens on the status, and the id of a channel that it
+finds by name. So the iod looks up a person or a channel once for each request, and not once for
+each pass.
 [The people are named by email](#the-people-are-named-by-email) gives the reason.
 
 **A pass is level-triggered.** A *pass* is one run of the out half, and a pass runs every

@@ -90,6 +90,30 @@ func TestOutSaysAnInputToAPersonAndWritesItsStatus(t *testing.T) {
 	}
 }
 
+// A channel is named by its name, with or without the `#`: the out half says the text in the
+// channel the bot is in by that name, and the status carries the id it resolved to. A name the
+// bot is in no channel by is refused, and says so.
+func TestOutSaysAnInputToAChannelByName(t *testing.T) {
+	r := newOutRig(t)
+	r.fake.channels = []map[string]any{{"id": "C777", "name": "deploys"}}
+	r.ask(t, "deploys", "bare", entity.Obj{"text": "staging.3 is out"})
+	r.ask(t, "#deploys", "hashed", entity.Obj{"text": "staging.4 is out"})
+	r.ask(t, "elsewhere", "absent", entity.Obj{"text": "hi"})
+	r.pass(t)
+
+	if len(r.fake.posted) != 2 {
+		t.Fatalf("posted %v, want the two messages for the channel the bot is in", r.fake.posted)
+	}
+	for _, name := range []string{"bare", "hashed"} {
+		if st := r.status(t, name); st["channel"] != "C777" || st["ts"] == nil || st["error"] != nil {
+			t.Errorf("%s: status %v, want it said in C777", name, st)
+		}
+	}
+	if st := r.status(t, "absent"); !strings.Contains(st["error"].(string), "no channel named elsewhere") {
+		t.Errorf("status %v, want the name refused", st)
+	}
+}
+
 // The next pass finds the input in step and says nothing: a restart resumes rather than repeats,
 // because the status is the whole of what is remembered.
 func TestOutIsInStepOnTheNextPass(t *testing.T) {
