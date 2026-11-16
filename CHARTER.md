@@ -56,7 +56,7 @@ The maintainers decide whether to adopt or change this charter, and the decision
 ## Changing the maintainers
 
 Adding a maintainer is a commit to main by the new maintainer whose commit message attests
-to adopting the charter. The new maintainer's silence setting starts at `no`.
+to adopting the charter. The new maintainer's silence setting starts at `yes`.
 
 Removing a maintainer follows the same path but may be proposed by any maintainer
 and there is no declaration about adopting the charter.
