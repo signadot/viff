@@ -210,7 +210,8 @@ func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems
 			"`secret` block gives it in (`as`). You never read the secret: the runner runs the command in a sandbox of " +
 			"its own over your workspace, and the secret's value is redacted from the output you read. `argv` is the " +
 			"program and its arguments as a list of strings, never a shell line; the program is a bare name found on the " +
-			"command's PATH, one the runner keeps, never a path. What that program then runs (a script of the workspace's, " +
+			"command's PATH, one the runner keeps — one of the image's, or one a `pkg-install` of yours put on your PATH — " +
+			"never a path and never a program of your workspace's. What that program then runs (a script of the workspace's, " +
 			"a package's hooks) runs with the secret too: the environment's shapes and your autonomy's rows on `argv` " +
 			"and `env` are what bound the command. `env` is plain " +
 			"variables set beside the secret, by name, and is part of what your autonomy decides; `dir` is where the " +

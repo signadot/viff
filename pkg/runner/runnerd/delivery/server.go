@@ -72,6 +72,10 @@ type Services struct {
 	// MCP is the remote MCP servers the runner calls for its tasks, by name, each credential a
 	// secret of Secrets; none, the runner calls none.
 	MCP mcpclient.Servers
+	// Installer installs packages for the tasks (`pkg.install`): it resolves against the
+	// operator's repositories, fills the cellar, and materialises into a task's install root;
+	// nil, the runner installs none.
+	Installer Installer
 }
 
 // Confine confines a command the runner runs for a task, apart from the task's own process and
@@ -133,10 +137,10 @@ type Task struct {
 	// each: what a command run for the task is given, under the call's variables and the
 	// secret. It holds no credential of the runner's, by the runner's own rule (shellEnv).
 	Env []string
-	// Inst is the task's install root on the runner's side, which its sandbox binds read only at
-	// InstPath: where the runner lays a tool it installs for the task, empty where the task has
-	// none, which is every task until something fills one. A command run with a secret may start
-	// from a program there (runSecret); nothing here writes it.
+	// Inst is the task's install root on the runner's side (Channel.SetInst), which its sandbox
+	// binds read only at InstPath: where an installed package is materialised (`pkg.install`),
+	// and what a command run with a secret may start a program from (runSecret), empty where the
+	// task has none. An op apart keeps it, as it keeps Root: nothing in turn writes it.
 	Inst   string
 	Launch *runner.Launch
 	// Autonomy is the task's current autonomy, where something holds it apart from the launch (a

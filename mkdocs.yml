@@ -80,6 +80,7 @@ nav:
   - systems/slack.md
   - systems/secret.md
   - systems/mcp.md
+  - systems/pkg.md
   - systems/question.md
   - systems/verse.md
   - systems/inside.md

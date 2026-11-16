@@ -91,8 +91,10 @@ type Field struct {
 	Required bool `tony:"field=required,omitzero"`
 	// Default is the pattern a shape that leaves the field out is read with, in tony (`{}`), where
 	// the field has one: what an environment's or a ceiling's shape means by saying nothing of
-	// it, where saying nothing would otherwise be any. A row's match is not read so: it names what
-	// it names. Empty is none, and a required field has none.
+	// it, where saying nothing would otherwise be any. Where it is a value (a literal), it is also
+	// what a step that leaves the field out means, read against a shape (Shape.Matches). A row's
+	// match is not read so: it names what it names, and a field a step leaves out meets no row's
+	// pattern. Empty is none, and a required field has none.
 	Default string `tony:"field=default,omitzero"`
 
 	// defaulted is Default as the pattern it is, put in once at load: filled reads it on every

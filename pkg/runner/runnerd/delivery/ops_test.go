@@ -72,6 +72,8 @@ var wellFormed = map[string]Request{
 
 	OpMCPCall: {Body: `{"id": "ENG-7"}`, Fields: map[string]string{"server": "linear", "tool": "get_issue"}},
 	OpMCPList: {Fields: map[string]string{"server": "linear"}},
+
+	OpPkgInstall: {Fields: map[string]string{"pkg": "jq", "version": "1.7.1-1", "as": "jq-v2"}},
 }
 
 // unreached fails a test that reaches a service: what an act would call, on a server no act of

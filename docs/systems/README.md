@@ -54,6 +54,7 @@ of any branch; a charter that ships writes its git push shapes instead.
 | [`slack`](slack.md) | `post`, `reply`, `read`, `react` | [iod slack](../reference/iod.md#slack) |
 | [`secret`](secret.md) | `exec` | none: one command the runner runs with a secret of its store, which the task never holds |
 | [`mcp`](mcp.md) | `call` | none: the tools of a remote MCP server the operator names, called by the runner with the server's credential |
+| [`pkg`](pkg.md) | `install` | none: a package the runner installs into the task's read-only prefix, from the signed repositories the operator trusts |
 | [`verse`](verse.md) | `ask-create`, `ask-get`, `ask-list`, `data-get`, `data-put`, `data-rm`, `charter-get`, `charter-check`, `charter-install`, `charter-remove` | none: verse itself, reached through the runner's own token |
 | [`question`](question.md) | `ask` | none: a question goes to the docket ([asking](../asking.md)) |
 | [`files`, `commands`, `agent`](inside.md) | `write`; `run`; `call-sub-agent` | none: these are what an agent does inside its run |
@@ -62,3 +63,17 @@ of any branch; a charter that ships writes its git push shapes instead.
 The runner performs the verbs of `git`, `git-issue`, `github`, `github-issue`, `linear-issue`,
 `slack`, `secret`, `mcp` and `verse`. It uses its own credential, and stays within the ceiling its
 configuration puts over each system ([the verse runner](../reference/runnerd.md#configuration)).
+
+## What a task lacks
+
+Three of the systems exist for what a task's image and its own hands do not give it, and they are
+one design read three ways. A tool the image does not carry is [`pkg`](pkg.md)'s: the runner
+installs it into the task's read-only prefix, and the tool then runs inside the task, as the
+task's own. A command that needs a credential is [`secret`](secret.md)'s: the runner runs it
+once, in a sandbox of its own, with one secret of its store, which the task never holds. A remote
+service's tools are [`mcp`](mcp.md)'s: the runner calls them with the server's credential, and
+the task never reaches the server. In each the task only asks; the same environment, autonomy and
+ceiling grammar decides; and the trust is the runner's, never the task's — the [secret
+store](../reference/runnerd.md#the-secret-store) under `secret` and `mcp`, and for `pkg` the
+signed index of the repositories the operator names, so that system holds no credential at all.
+None has an iod: these are what a task does, decided as it is done, not something verse watches.

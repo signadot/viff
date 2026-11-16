@@ -176,6 +176,70 @@ node-role IAM to create/attach volumes — otherwise the PVC stays `Pending`.
 
 [EBS CSI driver addon]: https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html
 
+### The runners' state volume (`runnerStateSize`)
+
+Each deployed runner mounts `/state`, which holds its **mirrors** — one bare mirror per
+repository, shared by the tasks — and, where the `pkg` system is configured, its **cellar**. The
+manifests carry an `emptyDir`, and `runnerStateSize: ""` leaves it that way. That is the default
+and it is the wrong one for anything long-lived: the mirrors hold work, not just a cache. A
+delivery that could not reach its remote leaves the commit under `refs/pending/<task>` for the
+runner to retry, and a refused one under `refs/held/...` for somebody to look at, and on an
+`emptyDir` all of it dies with the pod — along with the clone-costs-no-network property the
+mirrors exist for.
+
+A size emits one PVC per deployed runner (`verse-runner-state`, `codex-runner-state`,
+`claude-runner-state`), and `runnerStateClassName` names the class (`""` omits the field and takes
+the cluster default). `ReadWriteOnce` is right because each runner's `strategy` is `Recreate`:
+one writer, since two pods writing one mirror is a fetch racing a fetch.
+
+> ⚠️ **`fsGroup` is why this cannot be a one-line volume swap.** A freshly provisioned volume
+> mounts root-owned `0755`, and the runners run `runAsNonRoot: true`, `runAsUser: 65532` with
+> every capability dropped — so without it the runner cannot create its mirrors directory and
+> dies at its first fetch. docd needs none of this because docd runs as **root**, and the
+> `emptyDir` hides it because the kubelet gives that `0777`. The PVC patch therefore emits
+> `fsGroup: 65532` with `fsGroupChangePolicy: OnRootMismatch` (so the kubelet checks the top
+> directory instead of chowning a whole cellar on every start). These pods also set
+> `hostUsers: false`, which makes this fsGroup *through a user namespace* — worth confirming on
+> the first roll, with a root initContainer that chowns `/state` as the fallback:
+> ```sh
+> kubectl -n verse exec deploy/verse-runner -- sh -c 'ls -ld /state && touch /state/.w && rm /state/.w'
+> ```
+
+Unlike docd's, these are **standalone PVCs and not a `volumeClaimTemplate`**, so the orphan-delete
+warning above does not apply: on a class that allows expansion, growing one is an edit and the
+Deployment is never touched.
+
+```sh
+kubectl -n verse patch pvc verse-runner-state -p '{"spec":{"resources":{"requests":{"storage":"20Gi"}}}}'
+```
+
+**Size it over the cellar's own ceiling.** `pkg.collect-above` in a runner's config is an LRU
+high-water mark — evict least recently used past this, and absent, half the volume. A threshold larger than
+the volume can never fire, and a full disk collects instead. So `collect-above` sits under
+`runnerStateSize`, with the mirrors taking the rest; the mirrors are usually the smaller half.
+
+> ⚠️ **A claim and spot nodes are a bad pair, and this is what `runnerPool` is for.** A volume is
+> pinned to one AZ, so a runner that holds one can only ever schedule in its own zone. Worse, a
+> spot node reclaimed without a clean detach leaves the volume attached to an instance that no
+> longer exists, and the replacement pod waits on the attachment timing out. `runnerPool` and
+> `runnerPoolLabel` work exactly as `docdPool` does — the `nodeSelector` to go there and the
+> matching toleration to be let in — and may name the pool docd is already on, since the knob is
+> a value and not a nodegroup.
+
+**The PVC does not cover a task's workspace.** `runnerd` makes its work directory under `TMPDIR`,
+so a task's checkout, its `HOME` and its build caches are on the **container** filesystem, not on
+`/state`. That is what `runnerEphemeralRequest` / `runnerEphemeralLimit` are for, and they matter
+as much as the memory pair: with no request the kubelet ranks evictions by usage-over-request with
+nothing to rank against, and can take the neighbours instead of the offender.
+
+`runnerMemoryRequest` / `runnerMemoryLimit` bound the runner **and every task it is running**.
+`runnerd` caps nothing — no limit on how many tasks it accepts, and no per-task cgroup, since a
+task is a plain child process under bwrap — so an unbounded number of tasks sits inside a bounded
+cgroup, contending with each other, and a runaway one is OOM-killed in the runner's own cgroup
+rather than taking the node and its neighbours with it. That is what makes a runner affordable to
+put beside the stateful tier. There is no CPU knob: a CPU limit on a runner throttles the builds
+its tasks exist to run.
+
 ## A private registry (`imagePullSecret`)
 
 A private image repository needs a pull credential, and the knob **names** a Secret that
@@ -254,6 +318,9 @@ should be passed the Service name directly rather than discovering it.
 | `docdPool` | `""` | put docd on the `<docdPoolLabel>=<x>` nodes, tolerating their taint |
 | `docdPoolLabel` | `verse/pool` | the key the pool's nodes are labelled and tainted with |
 | `spotVersed` | `false` | let versed prefer `eks.amazonaws.com/capacityType: SPOT` |
+| `docdMemoryRequest` / `docdMemoryLimit` | `""` | docd's memory. `""` on both is BestEffort — right on a laptop, wrong on a cluster: a catch-up is read into memory before it is emitted, so with no request the store is first in line when the kubelet needs memory back and free to take the node with it. A limit does not prevent the read, it decides who dies of it — the container, attributably, instead of the node |
+| `docdGoMemLimit` | `""` | docd's `GOMEMLIMIT`, the soft Go heap ceiling. A cgroup limit is invisible to the collector, which targets twice the live heap and will aim past it, so the container is killed mid-collection rather than collecting harder. Set it **below** `docdMemoryLimit` with room for what is not heap — two thirds to three quarters of it |
+| `docdCompactionCutoff` | `""` | logd's compaction cutoff, emitted as a ConfigMap passed to `o sys up`. `""` is compaction **off**, which on a long-lived store keeps every root snapshot ever written — snapshots bound what a read replays, not what the volume holds. Inside the cutoff every patch is kept and a read at a commit is exact; past it history thins to logd's snapshot tiers, so the cutoff wants to be longer than any gate, hook or sequence step waits |
 | `tailscaleExpose` | `false` | put the API and docd's two faces on the tailnet |
 | `tailscaleTags` | `""` | `tailscale.com/tags` for both; `""` leaves the operator's `tag:k8s` |
 | `secretStore` | `aws-secretsmanager` | the `ClusterSecretStore` every entry below comes from |
@@ -275,6 +342,12 @@ should be passed the Service name directly rather than discovering it.
 | `claudeRunner` | `false` | deploy the claude runner beside them: the verse runner in an image with Claude Code in it, offering the claude agent |
 | `claudeRunnerImage` | `signadot/verse-runner:claude` | its image ref |
 | `claudeRunnerConfig` | `""` | as `runnerConfig`, for the claude runner |
+| `runnerStateSize` | `""` | a PVC per deployed runner for `/state` (the mirrors and the pkg cellar); `""` keeps the manifests' `emptyDir`, where both die with the pod ([The runners' state volume](#the-runners-state-volume-runnerstatesize)) |
+| `runnerStateClassName` | `""` | the class those PVCs ask for; `""` omits the field and takes the cluster default. Deliberately not `storageClassName`, which doubles as the `hostPV` switch |
+| `runnerPool` | `""` | put the runners on the `<runnerPoolLabel>=<x>` nodes, tolerating their taint, as `docdPool` does — and may name the same pool. On-demand matters once `/state` is a claim |
+| `runnerPoolLabel` | `verse/pool` | the key that pool's nodes are labelled and tainted with |
+| `runnerMemoryRequest` / `runnerMemoryLimit` | `""` | the runners' memory; a limit bounds the runner **and** its tasks, which share its cgroup |
+| `runnerEphemeralRequest` / `runnerEphemeralLimit` | `""` | the runners' `ephemeral-storage`: a task's workspace and build caches are on the container filesystem, not on the state volume |
 | the iod knobs | off | see [Iods](#iods-optional) |
 
 ## Iods (optional)

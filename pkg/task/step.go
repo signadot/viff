@@ -196,6 +196,10 @@ var (
 	// One call of a tool of an MCP server the operator names, which the runner makes with the
 	// server's credential: the server's name, the tool's, and the call's arguments whole.
 	StepMCPCall = systems.Step("mcp", "call", "server", "tool", "arguments")
+	// One package installed by the runner into the task's read-only prefix, from the repositories
+	// the operator trusts: the package, the version where the step pins one, and the command's
+	// name where it overrides the package's own.
+	StepPkgInstall = systems.Step("pkg", "install", "pkg", "version", "as")
 )
 
 // String is the step in one line: `files.write path=db/x.sql`, its fields in the order the

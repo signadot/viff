@@ -103,6 +103,7 @@ const (
 	needsGitHub = "a `repos` section whose forge is github.com, or `repos.api` naming the forge's GitHub API"
 	needsSecret = "a secret store (`secrets.dir`) and a sandbox are what runs a command with a secret"
 	needsMCP    = "an `mcp.servers` section names the servers the runner calls"
+	needsPkg    = "a `pkg` section (cellar, manager, repos) and a sandbox are what installs packages"
 )
 
 // performedSystems is the table, in the order an offer lists them.
@@ -121,6 +122,9 @@ var performedSystems = []performed{
 	// The mcp system acts with each server's own credential, which the server's entry names
 	// (`mcp.servers.<name>.auth`), read from the store at each request.
 	{system: "mcp", when: hasServers, needs: needsMCP},
+	// The pkg system acts with no credential: the trust an install rides is the repositories'
+	// signed index, which the `pkg:` section names.
+	{system: "pkg", when: hasPkg, needs: needsPkg},
 	// The verse system is carried to verse over the channel too, where the runner reaches its
 	// verse with a token of its own (Standalone's toVerse); `question`'s ask stays inside the run.
 	{system: "verse", when: reachesVerse, atStart: true},
@@ -177,6 +181,9 @@ type Config struct {
 	SecretStore *SecretStore `tony:"field=secrets,omitzero"`
 	// MCP is the remote MCP servers the runner calls for its tasks (`mcp:`), where it calls any.
 	MCP *MCP `tony:"field=mcp,omitzero"`
+	// Pkg is the packages the runner installs into its tasks' read-only prefixes (`pkg:`), where
+	// it installs any.
+	Pkg *Pkg `tony:"field=pkg,omitzero"`
 
 	// reachesVerse is whether the runner carries the verse system's verbs to the verse it serves
 	// (Standalone's toVerse): not the file's to say, since it follows from the runner's `verse:`
@@ -240,6 +247,10 @@ type System struct {
 	// published with the doer's offer, holds a launch's environment at install and at launch
 	// (every block within it), and is read again at each act.
 	Ceiling systems.Ceiling `tony:"field=ceiling,omitzero"`
+	// Base is pkg's alone: packages installed into every task's root before its process starts,
+	// each at the index's candidate under its own commands' names. The operator's installs, so
+	// the ceiling does not bound them, and no row is asked.
+	Base []string `tony:"field=base,omitzero"`
 }
 
 // SecretStore is the runner's secret store (secretstore.Store), as the file names it. The model
@@ -890,6 +901,9 @@ func (c *Config) Check() error {
 	if err := c.checkMCP(); err != nil {
 		return err
 	}
+	if err := c.checkPkg(); err != nil {
+		return err
+	}
 	if c.Script != nil {
 		if err := checkShellEnv("script", c.Script.ShellEnv); err != nil {
 			return err
@@ -1034,6 +1048,16 @@ func (c *Config) checkSystems(doer string, sections map[string]System) error {
 		if name == "mcp" {
 			if err := c.checkMCPCeiling(at, sys.Ceiling); err != nil {
 				return err
+			}
+		}
+		if len(sys.Base) > 0 && name != "pkg" {
+			return fmt.Errorf("%s.%s: `base` is pkg's alone, the packages installed into every task's root at start", at, name)
+		}
+		if name == "pkg" {
+			for i, b := range sys.Base {
+				if _, why := delivery.ReadInstall(b, "", ""); why != "" {
+					return fmt.Errorf("%s.pkg.base[%d]: %s", at, i, why)
+				}
 			}
 		}
 	}

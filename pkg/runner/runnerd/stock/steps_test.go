@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
 	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
@@ -51,6 +52,8 @@ var stepInputs = map[string]map[string]any{
 	slackReactTool: {"channel": "deploys", "message": "1700000000.000100", "emoji": ":eyes:"},
 
 	"secret-exec": {"name": "npm-token", "argv": []any{"npm", "publish", "--tag", "a b"}, "dir": "./packages/a/", "env": map[string]any{"NODE_ENV": "production"}},
+
+	"pkg-install": {"pkg": "jq", "version": "1.6-2.1+deb12u2", "as": "jq-v1"},
 
 	// The tools of a server's list (mcpTestServer), as a doer's wire hands a use: every number
 	// a float, a `null` a nil.
@@ -99,6 +102,8 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	for _, name := range []string{"linear-issue", "slack", "verse"} {
 		env.Systems[name] = []systems.Block{{Verbs: everyVerb(name)}}
 	}
+	// pkg's shape names `as`: one that says nothing of it renames nothing, and the use renames.
+	env.Systems["pkg"] = []systems.Block{{Verbs: map[string][]systems.Shape{"install": {{"as": ir.Null()}}}}}
 	env.Systems["mcp"] = []systems.Block{{Attributes: map[string]string{"server": "linear"}, Verbs: everyVerb("mcp")}}
 	mcpURL, _ := mcpTestServer(t, "")
 	l := &runner.Launch{ID: "t1", Prompt: "p", Environment: env, Autonomy: task.Autonomy{{Name: "every", Then: task.Then{Mode: task.ThenAsk}}}}
@@ -153,6 +158,7 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	tools := append(repoTools(cl, ws, true), issueTools(cl, ws, l.Trackers(), true, true)...)
 	secret, _ := secretTools(cl, ws, env)
 	tools = append(append(tools, slackTools(cl)...), secret...)
+	tools = append(tools, pkgTools(cl)...)
 	tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)
 	// The tools of a server's list, as the task builds them, for a doer that takes any name.
 	tools = append(tools, mcpTools(cl, mcpLists(cl, []string{"linear"}, env), nil, io.Discard)...)

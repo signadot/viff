@@ -7,3 +7,6 @@ read in the repository; the site does not publish this directory.
 An article is not documentation. It argues for a reader who has not installed verse, and it is
 true as of when it was written rather than kept true as the tree moves. What verse does is in
 [the docs index](../README.md).
+
+- [Making verse work with external tools and secrets](external-tools-and-secrets.md) — the
+  `secret`, `mcp` and `pkg` systems as one design, written as they landed (November 2026).

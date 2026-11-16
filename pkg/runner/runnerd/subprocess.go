@@ -80,8 +80,9 @@ type SubprocessConfig struct {
 	Mirrors string
 	// Inst makes a launch's task an install root and answers it, where the runner installs
 	// packages for its tasks (the pkg system): bound read only at InstPath inside the sandbox,
-	// removed with the task. Nil, or an empty root with no error, binds none.
-	Inst func(l *runner.Launch) (string, error)
+	// removed with the task, holding already whatever the doer's base and the launch's
+	// environment pin. Nil, or an empty root with no error, binds none.
+	Inst func(ctx context.Context, l *runner.Launch) (string, error)
 	// Cellar is the directory the runner keeps installed packages and the tasks' install roots
 	// in, which no ReadOnly path may reach, as it may not reach Work or Control.
 	Cellar string
@@ -492,10 +493,13 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 
 	var inst string
 	if h.Inst != nil {
-		if inst, err = h.Inst(l); err != nil {
+		if inst, err = h.Inst(ctx, l); err != nil {
 			return fmt.Errorf("the task's install root: %w", err)
 		}
 		p.inst = inst
+		if p.co != nil {
+			p.co.ch.SetInst(inst) // where an install the task asks for is materialised
+		}
 	}
 
 	cmd := exec.Command(h.Command[0], h.Command[1:]...)
