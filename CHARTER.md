@@ -2,7 +2,7 @@
 
 ## Scope
 
-This charter governs the viff repository: what is in it, and how that changes.
+This charter pertains to the viff repository: what is in it, and how that changes.
 
 ## Statement of purpose
 
@@ -32,14 +32,17 @@ At the time of its last adoption, viff was a small runtime that supported
 - a record of who made every write, and a permissions model over both data and control.
 - the use case of automatically deployed charters in a repository's `.viff/charters`.
 
-Its current focus is software development work.
-
 The commit that amends this charter also updates this description of viff, so that it
 describes viff as of the last adoption.
 
-## Adopting and changing this charter and the maintainers.
+Its current focus is software development work.
+
+
+## Adopting and changing this charter
 
 The maintainers decide whether to adopt or change this charter, and the decision process seeks consensus and shared understanding by principled and open-minded discussion.
+
+## Changing the maintainers
 
 Adding a maintainer is a commit to main by the new maintainer whose commit message attests
 to adopting the charter.  Prior to landing on main, the commit is placed under review
