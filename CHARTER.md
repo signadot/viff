@@ -49,14 +49,17 @@ The maintainers decide whether to adopt or change this charter, and the decision
   setting, one of `yes` or `no` in `MAINTAINERS`, which is what their silence through the
   window counts as. A maintainer changes their own setting but may not change it if they
   are the only maintainer with silence setting `no`.
-- **A change to the list of maintainers also needs every maintainer**, by the same path,
-  except a maintainer's own silence setting.
 - **All charter and maintainers changes are recorded as a commit on main.**
 
 ## Changing the maintainers
 
 Adding a maintainer is a commit to main by the new maintainer whose commit message attests
-to adopting the charter. The new maintainer's silence setting starts at `yes`.
+to adopting the charter.  Prior to landing on main, the commit is placed under review
+by all maintainers, using viff, and
+1. At least 2 maintainers approve.
+2. The number of denials is strictly less than the number of approvals.
+
+The new maintainer's silence setting starts at `yes`.
 
 Removing a maintainer follows the same path but may be proposed by any maintainer
 and there is no declaration about adopting the charter.

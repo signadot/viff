@@ -1,8 +1,7 @@
 # The viff maintainers, who own CHARTER.md. CHARTER.md says how this list changes, except
 # each maintainer's own silence setting, which is theirs.
 #
-# silence: what the maintainer's silence on a change to the charter or to this list counts
-# as, yes or no.
+# silence: what the maintainer's silence on a change to the charter counts as, yes or no.
 #
 # email                 GitHub          silence
 arjun@signadot.com      arjun-sd        yes
