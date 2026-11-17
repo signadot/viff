@@ -318,8 +318,12 @@ inside a git repository.
 | `-state` | `<dir>` | `SOURCED_STATE` | `/repos` | the directory that holds the clones of `-mirror` |
 | `-bodies` | | | `true` | The iod reflects the description body of each issue, and the text of its discussion. |
 
-`iod git-issue` needs at least one `-repo` or one `-mirror`. It needs no credential of its
-own. For a private remote, `-mirror` needs the credential that git finds, as for `iod git`.
+`iod git-issue` needs at least one `-repo` or one `-mirror`.
+
+| Credential | What it is |
+|---|---|
+| none of its own | Without the App's keys, `iod git-issue` reads no credential from the environment. For a private remote, `-mirror` needs a credential that git finds by itself, as for `iod git`. |
+| `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` | a GitHub App's installation, as `iod git` takes it. Given, the installation's token is the only credential git presents over https, minted again before it lapses, and any helper set before it is not tried. The three go together, and every repository the iod mirrors must be in the installation. |
 
 ```
 iod git-issue -repo   [<id>=]<dir>    a repository already on disk (repeatable, comma-separated)
@@ -337,8 +341,8 @@ iod git-issue -repo   [<id>=]<dir>    a repository already on disk (repeatable, 
 | `refs/git-issues/v1/closed/<xidr>` | a closed issue |
 
 Each ref names a commit, and the tree of that commit holds `meta.tony` and `description.md`.
-So the iod calls no service and holds no credential. To reflect a tracker is to read a
-directory. `iod git-issue` takes the same `-repo`/`-mirror` flags as `iod git`.
+So the iod calls no tracker's service: the only credential it can need is the one that fetches
+the repository. To reflect a tracker is to read a directory. `iod git-issue` takes the same `-repo`/`-mirror` flags as `iod git`.
 
 **The layout belongs to issuelib, and the iod takes it from there.** The `v1` is the
 generation of git-issue, and it changes when the layout changes. A client of git sees only

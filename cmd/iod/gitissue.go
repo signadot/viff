@@ -38,6 +38,9 @@ func gitIssueMain(args []string) error {
 	}
 
 	ctx := context.Background()
+	if err := gitAsApp(ctx, *state); err != nil {
+		return err
+	}
 	gi := verseio.NewGitIssue()
 	gi.SetBodies(*bodies)
 	for _, spec := range repos {

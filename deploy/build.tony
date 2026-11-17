@@ -261,11 +261,12 @@ build:
     # then.
     gitIod: false
     gitMirror: "https://github.com/signadot/verse.git"
-    # The git iod fetches and pushes AS THE GITHUB APP: its three keys, read from the github iod's
-    # Secret (verse-github), make the app's installation token the only credential git presents,
-    # in place of the `verse-git` PAT, so what it writes (refs/verse/live, the repo-charters
-    # reconciler's record) is written as the app. Needs githubSecretKey's entry to carry the app
-    # (deploy/README.md, The GitHub App).
+    # The git and git-issue iods fetch, and the git iod pushes, AS THE GITHUB APP: its three keys,
+    # read from the github iod's Secret (verse-github), make the app's installation token the
+    # only credential git presents, in place of the `verse-git` PAT, so nothing they hold can
+    # expire, and what the git iod writes (refs/verse/live, the repo-charters reconciler's
+    # record) is written as the app. Needs githubSecretKey's entry to carry the app, and every
+    # repository either iod mirrors to be in its installation (deploy/README.md, The GitHub App).
     gitAsApp: false
 
     # The issues `git issue` keeps inside a repository, reflected as `git-issue:*`.
@@ -1799,6 +1800,27 @@ build:
           spec:
             containers: !key(name)
             - name: git-iod
+              env: !key(name)
+              - name: GITHUB_APP_ID
+                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_ID}}
+              - name: GITHUB_APP_INSTALLATION_ID
+                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_INSTALLATION_ID}}
+              - name: GITHUB_APP_PRIVATE_KEY
+                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_PRIVATE_KEY}}
+
+  # The git-issue iod as the GitHub App, under the same knob and from the same Secret
+  # (cmd/iod/gitissue.go).
+  - if: '.[ gitIssueIod && gitAsApp ]'
+    match:
+      kind: Deployment
+      metadata:
+        name: git-issue-iod
+    patch:
+      spec:
+        template:
+          spec:
+            containers: !key(name)
+            - name: git-issue-iod
               env: !key(name)
               - name: GITHUB_APP_ID
                 valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_ID}}

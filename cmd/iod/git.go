@@ -45,24 +45,8 @@ func gitMain(args []string) error {
 	}
 
 	ctx := context.Background()
-	// AS AN APP, where the environment names one (GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and
-	// GITHUB_APP_PRIVATE_KEY, as the github io takes them): the app's installation token is the
-	// only credential git presents, so a fetch and a push are the app's, and what it writes
-	// (refs/verse/live, for the repo-charters reconciler) is written as the app. Before the
-	// first clone, which is the first thing that asks git for a credential.
-	app, err := githubApp()
-	if err != nil {
+	if err := gitAsApp(ctx, *state); err != nil {
 		return err
-	}
-	if app != nil {
-		tok, err := github.NewAppToken(ctx, *app, envOr("GITHUB_API_BASE", ""), nil)
-		if err != nil {
-			return err
-		}
-		if err := verseio.UseGitToken(ctx, tok.Token, filepath.Join(*state, ".credential"), time.Minute); err != nil {
-			return err
-		}
-		log.Printf("git presents app %s's installation %s", app.AppID, app.InstallationID)
 	}
 	git := verseio.NewGit()
 	for _, spec := range repos {
@@ -127,4 +111,29 @@ func split(spec string) (id, rest string, err error) {
 		return "", "", fmt.Errorf("want [<id>=]<value>")
 	}
 	return id, rest, nil
+}
+
+// gitAsApp makes git present a GitHub App's installation token, where the environment names an
+// app (GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and GITHUB_APP_PRIVATE_KEY, as the github io
+// takes them), and does nothing where it names none. The token is then the only credential git
+// presents, so a fetch and a push are the app's, and what `iod git` writes (refs/verse/live, for
+// the repo-charters reconciler) is written as the app. It is minted again before it lapses, so
+// the deployment holds no token of a person's that can expire.
+//
+// It is called before the first clone, which is the first thing that asks git for a credential.
+// The token's file lives under state, beside the clones.
+func gitAsApp(ctx context.Context, state string) error {
+	app, err := githubApp()
+	if err != nil || app == nil {
+		return err
+	}
+	tok, err := github.NewAppToken(ctx, *app, envOr("GITHUB_API_BASE", ""), nil)
+	if err != nil {
+		return err
+	}
+	if err := verseio.UseGitToken(ctx, tok.Token, filepath.Join(state, ".credential"), time.Minute); err != nil {
+		return err
+	}
+	log.Printf("git presents app %s's installation %s", app.AppID, app.InstallationID)
+	return nil
 }

@@ -565,7 +565,7 @@ cloning one it can reflect nothing from.
 | `gitMirror` | the verse repo | `[<id>=]<url>` to mirror; comma-separated for several |
 | `gitIssueIod` | `false` | deploy the git-issue connector |
 | `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
-| `gitAsApp` | `false` | the git iod fetches and pushes as the GitHub App, its keys read from `verse-github`, in place of the `verse-git` PAT |
+| `gitAsApp` | `false` | the git and git-issue iods fetch, and the git iod pushes, as the GitHub App, its keys read from `verse-github`, in place of the `verse-git` PAT |
 | `githubOut` | `false` | the github iod acts back as the App: comments, pull requests, merges, reviews, closes, checks and issues asked for under `github.<org>.<name>.out` |
 | `slackIod` | `false` | deploy the Slack connector (needs the `verse-slack` Secret) |
 | `slackIodName` | `slack` | the registration name — must match `verse iod add <name> -root slack` |

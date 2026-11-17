@@ -65,7 +65,7 @@ env:
   iodTokens: true
   runnerTokens: true
   # The iods, each off until its credential entry exists. The git iod mirrors `gitMirror`; the
-  # github iod reads `githubRepos`; `gitAsApp` and `githubOut` make both act as a GitHub App
+  # github iod reads `githubRepos`; `gitAsApp` and `githubOut` make them, and the git-issue iod, act as a GitHub App
   # (deploy/README.md, The GitHub App).
   gitIod: false
   gitMirror: "https://github.com/example/app.git"
