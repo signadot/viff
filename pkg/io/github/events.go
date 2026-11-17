@@ -137,6 +137,15 @@ func (g *GitHub) hintFor(r *http.Request, event string, d delivery, hint verseio
 			hint(r.Context(), g.RunRef(repo, id))
 			return
 		}
+	case "dependabot_alert":
+		// With -alerts off this source reflects no alert, so the delivery makes nothing stale.
+		if !g.alerts {
+			return
+		}
+		if n := d.Alert.Number; n > 0 {
+			hint(r.Context(), g.AlertRef(repo, n))
+			return
+		}
 	case "repository", "push", "check_suite", "check_run":
 		// About the repository itself, or about CI in a shape this source reads through runs
 		// rather than directly. Either way the repository is the finest thing that is stale.
@@ -185,6 +194,9 @@ type delivery struct {
 	WorkflowRun struct {
 		ID int64 `json:"id"`
 	} `json:"workflow_run"`
+	Alert struct {
+		Number int `json:"number"`
+	} `json:"alert"`
 }
 
 // verify checks a delivery's signature: `sha256=` and the hex HMAC-SHA256 of the raw body.

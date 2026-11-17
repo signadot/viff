@@ -68,7 +68,7 @@ func TestCapturedDeliveries(t *testing.T) {
 			f := newFake()
 			f.repo(repo)
 			h := &hinted{}
-			src := newSource(t, f, github.Config{Repos: []string{repo}})
+			src := newSource(t, f, github.Config{Repos: []string{repo}, Alerts: true})
 			wh := src.Webhook(hookSecret, h.hint)
 
 			req := signedRequest(t, captured.Event, captured.Request.Payload)
@@ -104,7 +104,8 @@ func TestCapturedDeliveries(t *testing.T) {
 func carriesANumber(event string) bool {
 	switch event {
 	case "issues", "issue_comment", "pull_request", "pull_request_review",
-		"pull_request_review_comment", "discussion", "discussion_comment", "workflow_run":
+		"pull_request_review_comment", "discussion", "discussion_comment", "workflow_run",
+		"dependabot_alert":
 		return true
 	}
 	return false

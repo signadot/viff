@@ -839,18 +839,19 @@ default.
 | Flag | Value | Default | What it sets |
 |---|---|---|---|
 | `-repo` | `<org>/<name>` | | a repository to reflect. The flag is repeatable, and one value may hold several, separated by commas. |
-| `-settled` | `<n>` | `50` | the number of closed issues, pull requests and discussions that the iod keeps for each repository |
+| `-settled` | `<n>` | `50` | the number of closed issues, pull requests and discussions, and of fixed or dismissed Dependabot alerts, that the iod keeps for each repository |
 | `-runs` | `<n>` | `50` | the number of workflow runs that the iod keeps for each repository |
 | `-comments` | `<n>` | `200` | the number of comments that the iod keeps for each repository |
 | `-max-open` | `<n>` | `2000` | The iod refuses a repository that has more open items than this. |
 | `-discussions` | | `false` | The iod reflects discussions. |
+| `-alerts` | | `false` | The iod reflects Dependabot alerts. |
 | `-tree` | `[<name>=]<path>` | | a directory an open pull request reports when it changes it, as `changes.<name>`: the identity of the directory's contents at the head, present where they differ from the directory at the head's merge base with the pull request's base. Against the merge base, so a pull request branched before the base's copy changed changes nothing. Read once per head and kept. The name defaults to the path's last segment. The flag is repeatable. |
 | `-out` | | `false` | The iod also acts back: see [The out half of github](#the-out-half-of-github). |
 
 | Environment | What it is |
 |---|---|
-| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, and on Discussions too with `-discussions`. With `-out` it also needs write on **Issues and Pull requests**, on **Contents** to merge, and on **Commit statuses** for a check. Required, unless the app below is set. |
-| `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` | a GitHub App's id, its installation's id, and its private key as PEM. The iod authenticates as the installation: it signs a JWT with the key, exchanges it for an installation token, and mints another shortly before that one expires. A token GitHub refuses (401), because the iod's clock runs slow or the token was revoked, is minted again and the request sent once more. A 401 a fresh token gets too is believed. What the out half does is then the app's (`<slug>[bot]`), so it can review a pull request a person opened. The three go together, and some but not all of them is refused. Given with `GITHUB_TOKEN`, the app is used and the token is ignored. The app needs the permissions the token would. |
+| `GITHUB_TOKEN` | a fine-grained PAT. It is read-only on **Contents, Metadata, Issues, Pull requests and Actions** of the repositories, on Discussions too with `-discussions`, and on **Dependabot alerts** with `-alerts`. With `-out` it also needs write on **Issues and Pull requests**, on **Contents** to merge, and on **Commit statuses** for a check. Required, unless the app below is set. |
+| `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` | a GitHub App's id, its installation's id, and its private key as PEM. The iod authenticates as the installation: it signs a JWT with the key, exchanges it for an installation token, and mints another shortly before that one expires. A token GitHub refuses (401), because the iod's clock runs slow or the token was revoked, is minted again and the request sent once more. A 401 a fresh token gets too is believed. What the out half does is then the app's (`<slug>[bot]`), so it can review a pull request a person opened. The three go together, and some but not all of them is refused. Given with `GITHUB_TOKEN`, the app is used and the token is ignored. The app needs the permissions the token would, Dependabot alerts read included with `-alerts`. |
 | `GITHUB_WEBHOOK_SECRET` | the signing secret of the webhook. Without it, `POST /github/webhook` refuses every delivery. |
 | `GITHUB_API_BASE` | the root of the API, for GitHub Enterprise Server |
 
@@ -860,11 +861,12 @@ it, a reflection fails on `git/ref/heads/<branch>` with
 
 ```
 iod github -repo <org>/<name>   a repository to reflect (repeatable, comma-separated)
-               -settled <n>         closed issues, PRs and discussions kept per repo (default 50)
+               -settled <n>         closed issues, PRs, discussions, settled alerts kept per repo (default 50)
                -runs <n>            workflow runs kept per repo (default 50)
                -comments <n>        comments kept per repo (default 200)
                -max-open <n>        refuse a repo with more open items than this (default 2000)
                -discussions         reflect discussions (default false)
+               -alerts              reflect Dependabot alerts (default false)
                -out                 also act back: comment, open, merge, review, close (default false)
 ```
 
@@ -880,6 +882,7 @@ content type `application/json`.
 | `github.<org>.<name>.pr.<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees, requestedReviewers, requestedTeams`; an open one also `changes.<name>` for each `-tree` directory it changes. `requestedReviewers` (logins) and `requestedTeams` (slugs, without the org) are whom a review is waiting on: GitHub drops a reviewer once they review, and adds them back on a re-request. |
 | `github.<org>.<name>.discussion.<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
 | `github.<org>.<name>.run.<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
+| `github.<org>.<name>.alert.<n>` | with `-alerts`, a Dependabot alert: `repo, number, state` (`open`, `fixed`, `dismissed` or `auto_dismissed`), and `severity` and `summary` (the advisory's), `ecosystem, package, manifest, relationship, scope, vulnerableRange, patched, ghsa, cve, url, createdAt, updatedAt, fixedAt, dismissedAt, dismissedReason`, each where GitHub gives it. An alert with no patched version has no `patched`, and one with no CVE no `cve`. |
 | `github.<org>.<name>.comment.<n>.<id>` | `repo, on, id, kind`, and `author, authorId, body, url, createdAt, updatedAt`. `authorId` is GitHub's number for the account, which a rename does not change, and an [account binding](perms.md#accounts-in-other-systems) keys on it. A review comment (`kind: review`, on a line of the diff) also says where it is and what it answers, each where GitHub gives it: `path`, `line`, `startLine` and `startSide` (a multi-line comment's first line and its side, which may differ from the side it ends on), `side` (`LEFT` or `RIGHT`), `commitId`, `inReplyTo` (the id of its thread's first comment, on a reply), and `diffHunk`, with `diffHunkTruncated: true` when it was cut. A conversation comment (`kind: conversation`) has none of them. |
 
 **A review comment's hunk is capped.** GitHub's `diff_hunk` runs from its hunk's `@@` header
@@ -973,6 +976,19 @@ In three cases the iod drops the covers of the discussions *with* their data:
 The iod then leaves what stands in the store. It does not read an empty answer as "there are
 none". So when you switch discussions off after the iod reflected some, what the iod wrote
 stays and does not change. Nothing covers it, so nothing tombstones it.
+
+**Dependabot alerts are two covers too, and they are off by default.** With `-alerts`, one
+cover is the open alerts, complete, and refused over `-max-open` like the other open sets. The
+other cover is the fixed, dismissed and auto-dismissed alerts, as a window of the `-settled`
+most recently updated. An alert that is fixed or dismissed stays at its address with its new
+state, and leaves the window as newer ones settle. The listing pages by cursor, the `after` of
+the `Link` header. A `dependabot_alert` delivery reconciles that alert alone.
+
+A refused read of the alerts (403: the credential lacks Dependabot alerts read, or the
+repository has the alerts switched off) is the discussions case. The iod drops the covers of
+the alerts with their data, logs why, and finishes the pass, so what stands stays. A
+repository over `-max-open` open alerts is dropped the same way. Without `-alerts` the iod asks
+GitHub nothing about alerts, covers none, and a `dependabot_alert` delivery reconciles nothing.
 
 ### The out half of github
 
