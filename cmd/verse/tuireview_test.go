@@ -319,3 +319,20 @@ func TestTheTUIClickSelectsTheLineDrawnWithAnError(t *testing.T) {
 		t.Fatalf("clicked RUNNERS, selected %s (on its line: %v)", m.tab, m.onHeader)
 	}
 }
+
+// The explorer scrolls with the cursor in the middle of the pane: at either end of the rows there
+// is nothing to scroll, and the cursor moves to the edge instead.
+func TestTheTUIExplorerKeepsTheCursorCentered(t *testing.T) {
+	for _, c := range []struct{ cur, n, h, want int }{
+		{0, 40, 11, 0},   // the top: nothing above to show
+		{5, 40, 11, 0},   // the middle line of the first screen
+		{6, 40, 11, 1},   // past it, the rows scroll and the cursor stays
+		{20, 40, 11, 15}, // five rows above, five below
+		{39, 40, 11, 29}, // the bottom: the last screen
+		{3, 8, 11, 0},    // everything fits
+	} {
+		if got := exStartAt(c.cur, c.n, c.h); got != c.want {
+			t.Errorf("exStartAt(%d, %d, %d) = %d, want %d", c.cur, c.n, c.h, got, c.want)
+		}
+	}
+}

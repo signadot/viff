@@ -191,8 +191,9 @@ func (m tuiModel) count(t tuiTab) string {
 	return tuiFaint.Render(fmt.Sprint(len(m.snap.runners)))
 }
 
-// exStart is the explorer's first line shown, so the cursor stays on screen: above the last
-// line while rows follow it, since that line then says how many more there are.
+// exStart is the explorer's first line shown: the cursor is kept in the middle of the pane while
+// there are rows to scroll on both sides, so what is around it shows above and below. That also
+// keeps it off the last line, which says how many more rows follow.
 func (m tuiModel) exStart(n, h int) int {
 	return exStartAt(m.exAt(), m.exLines(n), h)
 }
@@ -207,10 +208,10 @@ func (m tuiModel) exLines(n int) int {
 }
 
 func exStartAt(cur, n, h int) int {
-	if n <= h || cur < h-1 {
+	if n <= h {
 		return 0
 	}
-	return min(cur-h+2, n-h)
+	return max(0, min(cur-(h-1)/2, n-h))
 }
 
 // explorerLines is the explorer as drawn, h lines at most.
