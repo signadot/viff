@@ -207,13 +207,11 @@ var modelBackoff = []time.Duration{2 * time.Second, 8 * time.Second, 30 * time.S
 
 // modelWait is the wait before the retry after attempt, for a failure that asked for after.
 //
-// What the far side asked for is the least the wait is, up to the schedule's longest wait. Past
-// that it is advice: a gateway's 503 names ten minutes as a matter of form, and a retry at the
-// schedule's pace finds out sooner whether it meant it, with the budget bounding the whole.
+// What the far side asked for is the wait, however long: a gateway's 503 that names ten minutes
+// is waited out in full, and the schedule is consulted only when the far side named no time.
 //
-// Up to a quarter is then added, at random, whichever of the two set the wait. A rate limit is an
-// organisation's, so the tasks that meet it meet it together and are told the same time, and
-// tasks that wait the same time ask again together.
+// The wait is exact, with nothing added: a rate limit says when to ask again, and a task that
+// asks at that moment is the first one served.
 func modelWait(attempt int, after time.Duration) time.Duration {
 	wait := max(modelBackoff[attempt], min(after, modelBackoff[len(modelBackoff)-1]))
 	return wait + time.Duration(rand.Int64N(int64(wait)/4+1))
