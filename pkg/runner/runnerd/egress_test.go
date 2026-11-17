@@ -228,23 +228,13 @@ func serveEgress(t *testing.T, e *runnerd.Egress) *url.URL {
 	t.Cleanup(func() { _ = srv.Shutdown(context.Background()) })
 
 	// The forwarder the task process runs, exercised here rather than assumed: it is what turns
-	// a unix socket into something curl, go and npm can use. t.Setenv first, so UseEgress's own
-	// os.Setenv is undone when the test ends.
-	for _, n := range runnerd.ProxyEnv {
-		t.Setenv(n, "")
-	}
-	names, err := runnerd.UseEgress(sock)
+	// a unix socket into something curl, go and npm can use. On a port of the test's own: the
+	// fixed one is for a network namespace nothing else is in.
+	addr, err := runnerd.UseEgress(sock, "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(names) != len(runnerd.ProxyEnv) {
-		t.Fatalf("UseEgress named %v, want every proxy variable", names)
-	}
-	u, err := url.Parse(os.Getenv("HTTPS_PROXY"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return u
+	return &url.URL{Scheme: "http", Host: addr.String()}
 }
 
 // An absolute-form request is checked against the port its scheme defaults to: https:// with no

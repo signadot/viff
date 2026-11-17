@@ -389,9 +389,35 @@ func closeWrite(c net.Conn) {
 	}
 }
 
-// UseEgress, in a task's process, makes the runner's proxy at sock usable as a proxy: it sets the
-// proxy variables on this process, and returns their names for the caller to pass on to the
-// task's subprocesses.
+// EgressAddr is the loopback address a task's process serves its proxy on (UseEgress), and so
+// what the proxy variables name (EgressEnv).
+//
+// Fixed, and that is the point. The variables have to be in the process's environment when it
+// starts, so the runner has to know the address before the process exists. net/http reads the
+// proxy environment ONCE, at the first ask, and keeps the answer for the life of the program; a
+// package may ask while it initialises, before main, and one this runner links does
+// (github.com/modelcontextprotocol/go-sdk/oauthex, for a transport it builds as a package
+// variable). A variable the process set on itself after that was never seen by its own HTTP
+// clients, and its model call dialled straight into a namespace with no network.
+//
+// A fixed port is free for the reason loopback is safe (UseEgress): the network is unshared, so
+// this is the loopback of one process tree, where nothing else listens.
+const EgressAddr = "127.0.0.1:3128"
+
+// EgressEnv is the proxy variables as the runner gives them to a task's process at its start,
+// for a task whose network allows hosts: each of ProxyEnv, naming the proxy at EgressAddr. What
+// the process runs inherits them (Config.shellEnv names them for a task's shell).
+func EgressEnv() []string {
+	env := make([]string, 0, len(ProxyEnv))
+	for _, n := range ProxyEnv {
+		env = append(env, n+"=http://"+EgressAddr)
+	}
+	return env
+}
+
+// UseEgress, in a task's process, makes the runner's proxy at sock usable as a proxy, at addr:
+// EgressAddr, which the process's environment already names (EgressEnv). It answers the address
+// it listens on.
 //
 // The proxy is on the other side of a unix socket, and nothing speaks "HTTP proxy over a unix
 // socket" — not Go's transport, not curl, not go, not npm. So this process listens on its OWN
@@ -403,11 +429,14 @@ func closeWrite(c net.Conn) {
 // else on the machine. Without the unshare it would be the host's loopback and this would be a
 // proxy anything could use — which is one more reason a sandbox that cannot unshare refuses a
 // network of allow rather than approximating it.
-func UseEgress(sock string) (names []string, err error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+//
+// It sets nothing in the environment. A variable set here would be set after whatever read the
+// proxy environment while the program initialised, which is why the runner sets them (EgressAddr).
+func UseEgress(sock, addr string) (net.Addr, error) {
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("egress: no loopback to put the proxy on (%w) — with the network "+
-			"unshared this is the one interface there should be", err)
+		return nil, fmt.Errorf("egress: the proxy cannot listen on %s (%w) — with the network "+
+			"unshared this is the one interface there should be, and nothing else is on it", addr, err)
 	}
 	go func() {
 		for {
@@ -425,13 +454,5 @@ func UseEgress(sock string) (names []string, err error) {
 			}()
 		}
 	}()
-	proxy := "http://" + ln.Addr().String()
-	for _, n := range ProxyEnv {
-		// Set on this process before anything makes a request: net/http reads the proxy
-		// environment ONCE, on the first use, and caches it for the life of the program.
-		if err := os.Setenv(n, proxy); err != nil {
-			return nil, err
-		}
-	}
-	return append([]string(nil), ProxyEnv...), nil
+	return ln.Addr(), nil
 }

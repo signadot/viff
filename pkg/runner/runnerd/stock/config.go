@@ -755,7 +755,8 @@ func networks(sb runnerd.Sandbox) []string {
 }
 
 // shellEnv is the variables a doer's task shell is given, and the proxy's: a task whose network
-// allows hosts reaches them through the proxy its process announces (runnerd.UseEgress).
+// allows hosts reaches them through the proxy its process serves (runnerd.UseEgress), which the
+// runner names in that process's environment (runnerd.EgressEnv).
 func (c Config) shellEnv(doer string) []string {
 	var names []string
 	if doer == ScriptDoer {

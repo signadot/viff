@@ -512,6 +512,11 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	if p.co != nil {
 		p.co.ch.SetEnv(cmd.Env) // what a command run for the task is given too
 	}
+	if network.Mode == NetworkAllow {
+		// The proxy, named before the process exists: its HTTP clients read the proxy
+		// environment once, and something may ask before main (EgressAddr).
+		cmd.Env = append(cmd.Env, EgressEnv()...)
+	}
 	out := tagged(h.Log, p.id)
 	cmd.Stdout, cmd.Stderr = out, out
 	cmd.ExtraFiles = append([]*os.File{lf, lifeR}, extra...) // fd 3, fd 4, and fd 5

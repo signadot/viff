@@ -33,10 +33,11 @@ func ServeTask(build Builder, desc runner.Description, owned EnvOf) error {
 	}
 	syscall.CloseOnExec(lifelineFD)
 	go exitWithLifeline()
-	// A task whose network allows hosts has its runner's proxy bound in, and nothing else: made
-	// the proxy of this process and of what it runs (ProxyEnv), before anything makes a request.
+	// A task whose network allows hosts has its runner's proxy bound in, and nothing else: served
+	// here at the address this process's environment has named since its start (EgressEnv), for
+	// this process and what it runs.
 	if _, err := os.Stat(EgressPath); err == nil {
-		if _, err := UseEgress(EgressPath); err != nil {
+		if _, err := UseEgress(EgressPath, EgressAddr); err != nil {
 			return err
 		}
 	}
