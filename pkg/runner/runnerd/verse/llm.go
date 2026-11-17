@@ -199,10 +199,9 @@ func (c *llmClient) complete(ctx context.Context, msgs []chatMessage, tools []to
 }
 
 // modelBackoff is how many EXTRA attempts a transient model failure gets, and the least wait
-// before each. The first two cover a hiccup. The last two together outlast a minute, which is the
-// window a provider counts a rate limit over: a wait shorter than the window asks again inside
-// it, and is refused again. It stops there: this covers a limit and a hiccup, not an outage, and
-// a task that keeps failing should fail while somebody still has the context to care.
+// before each: two, one second apart, so a failing model call ends its task within three
+// seconds. It never waits out a rate limit: a limit is the provider's answer, and asking again
+// is not this runner's to do.
 var modelBackoff = []time.Duration{2 * time.Second, 8 * time.Second, 30 * time.Second, 60 * time.Second}
 
 // modelWait is the wait before the retry after attempt, for a failure that asked for after.
