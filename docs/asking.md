@@ -322,6 +322,20 @@ instead: what the agent says, each action it takes and what came of it, and the 
 stops on, as `verse task attach` streams them. A running task's transcript is followed; the pane
 stays on the last line until it is scrolled up.
 
+A charter under the cursor shows its record, and `tab` shows it as a graph: each place its
+rules watch, the rules on that place under it, and the places a rule derives into under the
+rule. A rule's line says what it does and names its gates, then counts its work in the
+runtime: the tasks running, the questions its gates wait on, and how its other tasks ended.
+The tasks running and the questions waiting are listed under the rule. The graph is drawn from
+what every charter says of itself and from the names the engine gives a rule's tasks
+(`<charter>:<rule>@<subject>`), so it draws any charter and knows none.
+
+`:graph`, or `tab` on the Tasks section's own line, shows everything in flight that way: each
+charter with a task running or a question waiting as its graph, then the tasks run by hand,
+the questions no rule's gate posed, and a line for each charter whose tasks have all ended.
+Another `tab` puts the tasks running, and those that ended in the last half hour, on one
+timeline.
+
 The Data section browses the verse an address at a time, and knows no charter. It lists what
 is under an address (the root, or `--at <address>`); `⏎` opens a place into what is under it,
 and `u` goes back up. The place under the cursor shows its record, the rule and subject it was

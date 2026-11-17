@@ -32,24 +32,35 @@ func (m tuiModel) tasksAbout(about func(subject string) bool) []timelineRow {
 		if !ok || !about(subj) {
 			continue
 		}
-		start, err := time.Parse(time.RFC3339, entity.Str(t.record, "started"))
-		if err != nil {
-			continue
+		if r, ok := timelineRowOf(t, now); ok {
+			out = append(out, r)
 		}
-		r := timelineRow{name: taskShortName(t.name), status: firstWord(t.state), start: start}
-		if end, err := time.Parse(time.RFC3339, entity.Str(t.record, "ended")); err == nil {
-			r.end = end
-		} else {
-			r.end, r.running = now, !isTerminalStatus(r.status)
-		}
-		out = append(out, r)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].start.Before(out[j].start) })
 	return out
 }
 
+// timelineRowOf is a task as a timeline's row; ok is false for one that does not say when it
+// started.
+func timelineRowOf(t tuiItem, now time.Time) (timelineRow, bool) {
+	start, err := time.Parse(time.RFC3339, entity.Str(t.record, "started"))
+	if err != nil {
+		return timelineRow{}, false
+	}
+	r := timelineRow{name: taskShortName(t.name), status: firstWord(t.state), start: start}
+	if end, err := time.Parse(time.RFC3339, entity.Str(t.record, "ended")); err == nil {
+		r.end = end
+	} else {
+		r.end, r.running = now, !isTerminalStatus(r.status)
+	}
+	return r, true
+}
+
 func timeline(rows []timelineRow, of string, w int) []string {
 	if len(rows) == 0 {
+		if of == "" {
+			return []string{tuiFaint.Render("no task is running, and none ended in the last " + roundDur(flightRecent))}
+		}
 		return []string{tuiFaint.Render("no tasks about " + of + " are in the runtime")}
 	}
 	t0, t1 := rows[0].start, rows[0].end

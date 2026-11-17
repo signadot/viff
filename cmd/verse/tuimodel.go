@@ -34,18 +34,31 @@ const (
 	modeHelp            // the command palette, over the content pane
 )
 
-// tuiView is what the content pane draws for a row with more than one view: a place in the
-// data's record (the default) or the tasks about it on a timeline, and a task's record or its
-// transcript.
+// tuiView is what the content pane draws where there is more than one view: a place in the
+// data's record (the default) or the tasks about it on a timeline, a task's record or its
+// transcript, a charter's record or its graph, and the Tasks section's table, the graph of
+// everything in flight, or its timeline.
 type tuiView int
 
 const (
 	viewRecord tuiView = iota
 	viewTimeline
 	viewTranscript
+	viewGraph
 )
 
-func (v tuiView) String() string { return [...]string{"record", "timeline", "transcript"}[v] }
+func (v tuiView) String() string {
+	return [...]string{"record", "timeline", "transcript", "graph"}[v]
+}
+
+// viewName is a view as the pane and the command line name it here: a section's first view is
+// its table.
+func (m tuiModel) viewName(v tuiView) string {
+	if v == viewRecord && m.onHeader {
+		return "table"
+	}
+	return v.String()
+}
 
 // The panes: the explorer on the left, the content on the right. Keys that move act on the one
 // in focus, and a click focuses the one it lands on.
@@ -91,7 +104,8 @@ type tuiModel struct {
 	input    textinput.Model
 	status   string  // the last act's outcome, or an error
 	focus    int     // paneList or paneDetail
-	dview    tuiView // a data row's content, or a task's
+	dview    tuiView // a row's content: a place's, a task's, a charter's
+	hview    tuiView // the Tasks section's own line: its table, the graph or the timeline
 	// tr is the transcript of the task under the cursor, while its view is the one shown
 	// (tuitranscript.go).
 	tr tuiTranscript
@@ -255,7 +269,7 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := msg.(transcriptMsg); !ok {
 		// A view the row under the cursor does not have is not kept: a task's transcript is not
 		// a place's, nor a place's timeline a task's.
-		if vs := n.views(); len(vs) > 0 && !slices.Contains(vs, n.dview) {
+		if vs := n.views(); !n.onHeader && len(vs) > 0 && !slices.Contains(vs, n.dview) {
 			n.dview = viewRecord
 		}
 		if open := n.syncTranscript(); open != nil {
@@ -447,6 +461,7 @@ func (m tuiModel) section(t tuiTab) (tea.Model, tea.Cmd) {
 // header goes to section t's own line: the section as a table.
 func (m tuiModel) header(t tuiTab) (tea.Model, tea.Cmd) {
 	m.focus, m.scroll, m.tab, m.onHeader = paneList, 0, t, true
+	m.hview = viewRecord
 	return m, nil
 }
 
@@ -646,7 +661,8 @@ var tuiCommands = [][2]string{
 	{"go <bookmark>", "the place in the data a bookmark names (tui.bookmarks)"},
 	{"charters", "the charters installed, and their rules"},
 	{"runners", "where work runs"},
-	{"view <record|timeline|transcript>", "what the pane shows of a place in the data, or of a task"},
+	{"view <record|table|timeline|transcript|graph>", "what the pane shows of a place in the data, a task, a charter, or the tasks"},
+	{"graph", "everything in flight: each charter at work as a graph of its rules, with what runs and what waits"},
 	{"attach", "the transcript of the task under the cursor, followed while it runs"},
 	{"answer <option>", "answer the question under the cursor with any of its options"},
 	{"find <text>", "keep the explorer's rows that hold text (/ does the same)"},
@@ -710,7 +726,7 @@ func (m tuiModel) complete(line string) string {
 		}
 	case verb == "view":
 		for _, v := range m.views() {
-			names = append(names, v.String())
+			names = append(names, m.viewName(v))
 		}
 	default:
 		return ""
@@ -773,17 +789,28 @@ func (m tuiModel) run(line string) (tea.Model, tea.Cmd) {
 		var names []string
 		for _, v := range vs {
 			// A view is named by as much of it as tells it apart: no two start alike.
-			if arg != "" && strings.HasPrefix(v.String(), arg) {
+			if arg != "" && strings.HasPrefix(m.viewName(v), arg) {
 				m.setView(v)
 				return m, m.loadRecord()
 			}
-			names = append(names, v.String())
+			names = append(names, m.viewName(v))
 		}
 		if len(vs) == 0 {
-			m.status = "✗ views are a place's or a task's: open one"
+			m.status = "✗ views are a place's, a task's, a charter's or the tasks': open one"
 		} else {
 			m.status = "✗ a view here is " + strings.Join(names, ", ")
 		}
+	case "graph":
+		for _, t := range m.order {
+			if t == tabTasks {
+				next, cmd := m.header(t)
+				n := next.(tuiModel)
+				n.setView(viewGraph)
+				n.focus = paneDetail
+				return n, cmd
+			}
+		}
+		m.status = "✗ tasks is not shown (tui.sections in the config)"
 	case "attach":
 		if m.tab != tabTasks || m.onHeader || m.rows() == 0 {
 			m.status = "✗ attach is to a task: put the cursor on one"
@@ -873,10 +900,17 @@ func addrText(at string) string {
 	return at
 }
 
-// views is the views the row under the cursor has, in the order tab cycles them: a place in
-// the data has two and so has a task, everything else is drawn one way.
+// views is the views the cursor's line has, in the order tab cycles them: a place in the data
+// has two, and so have a task and a charter; the Tasks section's own line has three; everything
+// else is drawn one way.
 func (m tuiModel) views() []tuiView {
-	if m.onHeader || m.rows() == 0 {
+	if m.onHeader {
+		if m.tab == tabTasks {
+			return []tuiView{viewRecord, viewGraph, viewTimeline}
+		}
+		return nil
+	}
+	if m.rows() == 0 {
 		return nil
 	}
 	switch m.tab {
@@ -884,14 +918,25 @@ func (m tuiModel) views() []tuiView {
 		return []tuiView{viewRecord, viewTimeline}
 	case tabTasks:
 		return []tuiView{viewRecord, viewTranscript}
+	case tabCharters:
+		return []tuiView{viewRecord, viewGraph}
 	}
 	return nil
 }
 
-// shownView is the view the content pane draws.
-func (m tuiModel) shownView() tuiView { return m.dview }
+// shownView is the view the content pane draws: the row's, or the section's on its own line.
+func (m tuiModel) shownView() tuiView {
+	if m.onHeader {
+		return m.hview
+	}
+	return m.dview
+}
 
 func (m *tuiModel) setView(v tuiView) {
+	if m.onHeader {
+		m.hview, m.scroll = v, 0
+		return
+	}
 	m.dview, m.scroll = v, 0
 }
 

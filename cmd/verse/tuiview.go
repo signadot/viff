@@ -410,7 +410,7 @@ func (m tuiModel) tabsLine() string {
 	if vs := m.views(); len(vs) > 0 {
 		var parts []string
 		for _, v := range vs {
-			name := strings.ToUpper(v.String())
+			name := strings.ToUpper(m.viewName(v))
 			if v == m.shownView() {
 				parts = append(parts, tuiBrand.Render("[ "+name+" ]"))
 			} else {
@@ -490,6 +490,14 @@ func (m tuiModel) contentText(w int) (string, bool) {
 		return m.helpText(), false
 	}
 	if m.onHeader {
+		if m.tab == tabTasks {
+			switch m.hview {
+			case viewGraph:
+				return m.flightText(w), false
+			case viewTimeline:
+				return strings.Join(timeline(m.flightTimeline(), "", w), "\n"), false
+			}
+		}
 		return m.table(w), false
 	}
 	switch m.tab {
@@ -517,6 +525,9 @@ func (m tuiModel) contentText(w int) (string, bool) {
 		return m.placeText(it, w), true
 	case tabCharters:
 		if it, ok := m.item(); ok {
+			if m.dview == viewGraph {
+				return m.charterGraphText(it, w), false
+			}
 			return charterText(it, w), true
 		}
 	default:
@@ -921,7 +932,11 @@ func (m tuiModel) footer() string {
 			keys = append(ks, keys...)
 		}
 	case m.tab == tabTasks && !m.onHeader:
-		keys = append([][2]string{{km.first("task.cancel"), "cancel"}}, keys...)
+		keys = append([][2]string{{km.first("task.cancel"), "cancel"}, {km.first("view.next"), "transcript"}}, keys...)
+	case m.tab == tabTasks:
+		keys = append([][2]string{{km.first("view.next"), "graph"}}, keys...)
+	case m.tab == tabCharters && !m.onHeader:
+		keys = append([][2]string{{km.first("view.next"), "graph"}}, keys...)
 	case m.tab == tabData && m.focus == paneList && !m.onHeader:
 		keys = append([][2]string{{km.first("open"), "in"}, {km.first("data.up"), "up"}, {km.first("view.next"), "view"}}, keys...)
 	}
