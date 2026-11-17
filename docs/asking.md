@@ -317,6 +317,11 @@ cursor is on. `:` takes a command by name (`:tasks`, `:data repos.verse`, `:view
 and tab completes it. `?` lists every command and key. A pane that holds more than it shows
 says where it is (`1-40 of 97`), and `J`/`K` scroll it.
 
+A task under the cursor shows its record, and `tab` or `:attach` shows its transcript
+instead: what the agent says, each action it takes and what came of it, and the questions it
+stops on, as `verse task attach` streams them. A running task's transcript is followed; the pane
+stays on the last line until it is scrolled up.
+
 The Data section browses the verse an address at a time, and knows no charter. It lists what
 is under an address (the root, or `--at <address>`); `⏎` opens a place into what is under it,
 and `u` goes back up. The place under the cursor shows its record, the rule and subject it was

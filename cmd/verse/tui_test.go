@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/task"
 )
 
 type fakeTUISource struct {
@@ -24,6 +26,22 @@ type fakeTUISource struct {
 	records  map[string]*ir.Node
 	fail     map[tuiTab]string // the sections whose reads fail, and how
 	reads    []tuiReads        // what each round asked for
+	// events is each task's transcript, attached is the tasks whose stream was opened, and
+	// streamErr what a stream answers instead of events.
+	events    map[string][]task.Event
+	attached  []string
+	streamErr error
+}
+
+func (f *fakeTUISource) transcript(_ context.Context, id string, fn func(task.Event)) error {
+	f.attached = append(f.attached, id)
+	if f.streamErr != nil {
+		return f.streamErr
+	}
+	for _, ev := range f.events[id] {
+		fn(ev)
+	}
+	return nil
 }
 
 func (f *fakeTUISource) snapshot(at string, reads tuiReads) tuiSnapshot {
@@ -94,6 +112,9 @@ func run(t *testing.T, m tuiModel, cmd tea.Cmd) tuiModel {
 		for _, c := range msg {
 			m = run(t, m, c)
 		}
+	case transcriptMsg:
+		next, more := m.Update(msg)
+		m = run(t, next.(tuiModel), more)
 	case actedMsg, snapMsg:
 		// What a read after the first returns is the content's read, run; the first's carries
 		// the poll's tick, which is not.

@@ -17,6 +17,7 @@ import (
 	"github.com/signadot/verse/pkg/client"
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/entity"
+	"github.com/signadot/verse/pkg/task"
 )
 
 // tuiSource is what the tui reads and does: the verse over HTTP, or a fake in the tests.
@@ -28,6 +29,9 @@ type tuiSource interface {
 	record(at string) (*ir.Node, error)
 	answer(id, choice, as, say string) (string, error)
 	cancel(id string) error
+	// transcript streams a task's events to fn, from the first one retained, until the task
+	// ends, the stream does, or ctx does.
+	transcript(ctx context.Context, id string, fn func(task.Event)) error
 }
 
 // tuiSnapshot is the verse as one round of reads found it. A read that failed leaves its

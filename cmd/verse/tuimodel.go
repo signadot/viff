@@ -34,16 +34,18 @@ const (
 	modeHelp            // the command palette, over the content pane
 )
 
-// tuiView is what the content pane draws for a place in the data: its record (the default), or
-// the tasks about it on a timeline.
+// tuiView is what the content pane draws for a row with more than one view: a place in the
+// data's record (the default) or the tasks about it on a timeline, and a task's record or its
+// transcript.
 type tuiView int
 
 const (
 	viewRecord tuiView = iota
 	viewTimeline
+	viewTranscript
 )
 
-func (v tuiView) String() string { return [...]string{"record", "timeline"}[v] }
+func (v tuiView) String() string { return [...]string{"record", "timeline", "transcript"}[v] }
 
 // The panes: the explorer on the left, the content on the right. Keys that move act on the one
 // in focus, and a click focuses the one it lands on.
@@ -89,7 +91,10 @@ type tuiModel struct {
 	input    textinput.Model
 	status   string  // the last act's outcome, or an error
 	focus    int     // paneList or paneDetail
-	dview    tuiView // a data row's content
+	dview    tuiView // a data row's content, or a task's
+	// tr is the transcript of the task under the cursor, while its view is the one shown
+	// (tuitranscript.go).
+	tr tuiTranscript
 	// dataAt is the address the Data section lists; dataSel the row to put its cursor on once
 	// the listing arrives (the place just come up from), and entering says the listing of a
 	// place just gone to has not arrived yet.
@@ -247,6 +252,16 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		n.scroll = min(n.scroll, n.maxScroll())
 	}
 	n.remember()
+	if _, ok := msg.(transcriptMsg); !ok {
+		// A view the row under the cursor does not have is not kept: a task's transcript is not
+		// a place's, nor a place's timeline a task's.
+		if vs := n.views(); len(vs) > 0 && !slices.Contains(vs, n.dview) {
+			n.dview = viewRecord
+		}
+		if open := n.syncTranscript(); open != nil {
+			cmd = tea.Batch(cmd, open)
+		}
+	}
 	return n, cmd
 }
 
@@ -331,6 +346,8 @@ func (m tuiModel) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rec, m.recErr = nil, msg.err.Error()
 		}
 		return m, nil
+	case transcriptMsg:
+		return m.transcribed(msg)
 	case tickMsg:
 		if m.polls.Load() > 0 {
 			return m, m.tick() // the last read has not come back: wait for it
@@ -629,7 +646,8 @@ var tuiCommands = [][2]string{
 	{"go <bookmark>", "the place in the data a bookmark names (tui.bookmarks)"},
 	{"charters", "the charters installed, and their rules"},
 	{"runners", "where work runs"},
-	{"view <record|timeline>", "what the pane shows of a place in the data"},
+	{"view <record|timeline|transcript>", "what the pane shows of a place in the data, or of a task"},
+	{"attach", "the transcript of the task under the cursor, followed while it runs"},
 	{"answer <option>", "answer the question under the cursor with any of its options"},
 	{"find <text>", "keep the explorer's rows that hold text (/ does the same)"},
 	{"top", "the content pane's first line"},
@@ -762,10 +780,22 @@ func (m tuiModel) run(line string) (tea.Model, tea.Cmd) {
 			names = append(names, v.String())
 		}
 		if len(vs) == 0 {
-			m.status = "✗ views are a place's: open one in the data"
+			m.status = "✗ views are a place's or a task's: open one"
 		} else {
 			m.status = "✗ a view here is " + strings.Join(names, ", ")
 		}
+	case "attach":
+		if m.tab != tabTasks || m.onHeader || m.rows() == 0 {
+			m.status = "✗ attach is to a task: put the cursor on one"
+			break
+		}
+		// Asked again on a transcript already shown, it is read again from its start.
+		if m.tr.stop != nil {
+			m.tr.stop()
+		}
+		m.tr = tuiTranscript{}
+		m.setView(viewTranscript)
+		m.focus = paneDetail
 	case "answer":
 		q, ok := m.question()
 		if !ok {
@@ -844,10 +874,16 @@ func addrText(at string) string {
 }
 
 // views is the views the row under the cursor has, in the order tab cycles them: a place in
-// the data has two, everything else is drawn one way.
+// the data has two and so has a task, everything else is drawn one way.
 func (m tuiModel) views() []tuiView {
-	if m.tab == tabData && !m.onHeader && m.rows() > 0 {
+	if m.onHeader || m.rows() == 0 {
+		return nil
+	}
+	switch m.tab {
+	case tabData:
 		return []tuiView{viewRecord, viewTimeline}
+	case tabTasks:
+		return []tuiView{viewRecord, viewTranscript}
 	}
 	return nil
 }

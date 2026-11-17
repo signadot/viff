@@ -501,6 +501,9 @@ func (m tuiModel) contentText(w int) (string, bool) {
 		return questionText(q, m.keys), true
 	case tabTasks:
 		if it, ok := m.item(); ok {
+			if m.dview == viewTranscript {
+				return m.transcriptText(it), true
+			}
 			return tuiTitle.Render(it.name) + "\n\n" + taskText(it.record), true
 		}
 	case tabData:
