@@ -2,11 +2,12 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: 8f6a25887ab1c7835facff222db4bae8c9c67694
 commits: []
 created: "2026-11-18T23:16:10.982754+01:00"
 duplicates: []
 id: vyy6cc06h12ksah3zsn0
 labels: []
 related_issues: []
-status: open
-updated: "2026-11-18T23:16:10.982754+01:00"
+status: closed
+updated: "2026-11-18T23:26:24.146082+01:00"
