@@ -269,9 +269,12 @@ survives one only if its scope's engine also opens within its lease.
 
 ### The runner client (`pkg/runner/client`)
 
-- **Only the runner fails a task.** A 404 on the event stream means the runner has no such
-  task, and is `failed`, `orphaned: true`. Any other 4xx or 5xx is an outage: the stream
-  closes with no frame, and the mirror's wait covers it.
+- **Only the runner fails a task, and on both answers.** The event stream and the task's
+  snapshot are two requests. The runner has no such task when it answers 404 to both; that is
+  `failed`, `orphaned: true`. A 404 on the stream alone is two answers that disagree, asked a
+  moment apart, and concludes nothing. Any other 4xx or 5xx, or no answer, is an outage. In
+  both of those the stream closes with no frame, and the mirror asks again until its wait
+  runs out. A snapshot that shows the task ended is that end, whatever the stream answered.
 - **A subscribe that gets no answer fails.** The stream's transport times out waiting for
   response headers, so a request into a dead network counts as not accepted.
 
