@@ -30,9 +30,9 @@ func pushing(repos ...string) systems.Environment {
 
 // A fetch must not prune staged work.
 //
-// This is the property the whole ref layout is chosen for. `ensure` fetches `+refs/heads/*` and
-// `+refs/tags/*` with Prune set, and go-git's pruneRemotes removes local refs matching the REVERSE
-// of a configured refspec — so a namespace outside those two is untouchable. Put staged work under
+// This is the property the whole ref layout is chosen for. `ensure` fetches `refs/heads/*` and
+// `refs/tags/*` with Prune set, and go-git's pruneRemotes removes local refs matching the REVERSE
+// of a refspec it was given — so a namespace outside those two is untouchable. Put staged work under
 // refs/heads and the next launch deletes it, silently, which is the exact failure this runner
 // already had once with task branches in a shared mirror.
 func TestFetchDoesNotPruneStagedWork(t *testing.T) {

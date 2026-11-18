@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -183,21 +184,21 @@ func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
 		if r, err = git.PlainInit(dir, true); err != nil {
 			return "", fmt.Errorf("mirror %s: %w", remote, err)
 		}
-		// `refs/heads/*` here mirrors upstream exactly — task branches live in each task's own
-		// clone — so this refspec is unambiguous.
-		//
-		// It is also what makes the STAGED namespaces safe, and that is now the load-bearing
-		// half. go-git's pruneRemotes removes only refs matching the reverse of a configured
-		// refspec, so `refs/pending/*` and `refs/held/*` (stage.go) are outside everything this
-		// prunes. Put work under `refs/heads/` instead and the next launch deletes it without a
-		// word — which has happened once, to the task branches of every running task.
 		if _, err = r.CreateRemote(&config.RemoteConfig{
-			Name: "origin", URLs: []string{remote},
-			Fetch: []config.RefSpec{"+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"},
+			Name: "origin", URLs: []string{remote}, Fetch: mirrorSpecs,
 		}); err != nil {
 			return "", fmt.Errorf("mirror %s: %w", remote, err)
 		}
 	} else if err != nil {
+		return "", fmt.Errorf("mirror %s: %w", remote, err)
+	}
+
+	// Before anything removes a ref: the mirror packs nothing on its own, and what it holds
+	// packed carries no peel lines (tidy).
+	if err := noAutoGC(r); err != nil {
+		return "", fmt.Errorf("mirror %s: %w", remote, err)
+	}
+	if err := stripPeels(dir); err != nil {
 		return "", fmt.Errorf("mirror %s: %w", remote, err)
 	}
 
@@ -213,7 +214,17 @@ func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
 	if fresh {
 		fetchCtx = context.WithoutCancel(ctx)
 	}
-	err = r.FetchContext(fetchCtx, &git.FetchOptions{RemoteName: "origin", Prune: true, Auth: auth})
+	err = r.FetchContext(fetchCtx, &git.FetchOptions{RemoteName: "origin", RefSpecs: mirrorSpecs,
+		Force: true, Prune: true, Auth: auth})
+	// Whatever the fetch said, short of leaving no mirror: a mirror used past a failed fetch is as
+	// much in need of it. A mirror it could not tidy is still the mirror, so this is reported
+	// beside a fetch that had nothing worse to say.
+	var tidyErr error
+	if !fresh || err == nil || errors.Is(err, git.NoErrAlreadyUpToDate) {
+		if tidyErr = tidy(fetchCtx, dir); tidyErr != nil {
+			tidyErr = fmt.Errorf("mirror %s: %w", remote, tidyErr)
+		}
+	}
 	if fresh && err == nil && ctx.Err() != nil {
 		// The mirror is complete and the task is gone: a workspace made now would start a task
 		// nobody is waiting for. Refused with what happened, so the retry — the same launch
@@ -232,7 +243,7 @@ func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
 		if err := fixHead(r); err != nil {
 			return dir, fmt.Errorf("mirror %s: %w", remote, err)
 		}
-		return dir, nil
+		return dir, tidyErr
 	case fresh:
 		// A first fetch that failed leaves a mirror with nothing in it, and nothing to use past:
 		// the repo isn't there, or can't be reached. Removed, so the next launch tries afresh.
@@ -249,6 +260,109 @@ func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
 		// the surprise worth naming.
 		return dir, fmt.Errorf("fetch %s (using what the mirror already had): %w", remote, err)
 	}
+}
+
+// mirrorSpecs is what a mirror holds of its remote: every branch and every tag, under their own
+// names. `refs/heads/*` here mirrors upstream exactly, since task branches live in each task's
+// own clone, so the refspec is unambiguous.
+//
+// It is also what makes the STAGED namespaces safe. A pruning fetch removes only refs matching the
+// reverse of a refspec it was given, so `refs/pending/*` and `refs/held/*` (stage.go) are outside
+// everything this prunes. Put work under `refs/heads/` instead and the next launch deletes it
+// without a word — which has happened once, to the task branches of every running task.
+//
+// No `+`, and the fetch forces instead (FetchOptions.Force). go-git reverses a refspec by
+// swapping the two sides as written, so a forced one reverses to a destination of
+// `+refs/heads/<name>`, which no remote has: prune then removes every ref the refspec covers, and
+// the fetch writes them all back.
+var mirrorSpecs = []config.RefSpec{"refs/heads/*:refs/heads/*", "refs/tags/*:refs/tags/*"}
+
+// Two programs write a mirror's refs: go-git, in this process, and the git binary, which go-git's
+// local transport runs as `git-receive-pack` when a checkout's work is staged (stage.go). They do
+// not share a lock on `packed-refs` — git takes `packed-refs.lock`, go-git locks the file itself —
+// and go-git removes a ref from it by dropping the ref's line and keeping the `^` line under it,
+// the peeled value of an annotated tag. So `packed-refs` is written by git only while the
+// mirror's own lock is held, and holds no peel lines when go-git next removes a ref:
+//
+//   - noAutoGC: git packs refs when it collects garbage, and a receive-pack starts that on its
+//     own, detached, to finish after the push that held the lock has returned. A mirror is
+//     configured never to.
+//   - tidy: the runner collects the garbage instead, in the foreground, under the lock, and then
+//     takes the peel lines out of what that packed.
+//
+// A peel line left without its ref is read by git as the peeled value of whichever ref is now
+// above it, or, with none above it, as a file it refuses: `unexpected line in ./packed-refs`, from
+// every command in the mirror.
+
+// noAutoGC configures a mirror so no git command in it collects garbage on its own.
+func noAutoGC(r *git.Repository) error {
+	cfg, err := r.Config()
+	if err != nil {
+		return err
+	}
+	want := [][3]string{{"receive", "autogc", "false"}, {"gc", "auto", "0"}}
+	set := false
+	for _, w := range want {
+		if sec := cfg.Raw.Section(w[0]); sec.Option(w[1]) != w[2] {
+			sec.SetOption(w[1], w[2])
+			set = true
+		}
+	}
+	if !set {
+		return nil
+	}
+	return r.SetConfig(cfg)
+}
+
+// tidy collects a mirror's garbage when git judges there is enough of it, as a receive-pack
+// would have, and leaves `packed-refs` without peel lines. The caller holds the mirror's lock.
+//
+// This is the one place the runner runs the git binary itself. It is given no credential and
+// reaches no remote, and it reads the mirror's configuration and no other: not the machine's, and
+// not the account's.
+func tidy(ctx context.Context, dir string) error {
+	cmd := exec.CommandContext(ctx, "git", "-C", dir,
+		"-c", "gc.auto=6700", "-c", "gc.autoDetach=false", "gc", "--auto", "--quiet")
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
+	out, gcErr := cmd.CombinedOutput()
+	if gcErr != nil {
+		gcErr = fmt.Errorf("git gc: %w: %s", gcErr, strings.TrimSpace(string(out)))
+	}
+	// Whether or not it ran to the end: it may have packed the refs before it stopped.
+	return errors.Join(gcErr, stripPeels(dir))
+}
+
+// stripPeels rewrites a bare repository's `packed-refs` without its peel lines, and without the
+// header that claims them: no traits, so git peels an annotated tag as it needs, as in a checkout
+// (packTags). A file with none is left as it is.
+func stripPeels(dir string) error {
+	path := filepath.Join(dir, "packed-refs")
+	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var keep []string
+	peeled := false
+	for line := range strings.Lines(string(b)) {
+		switch {
+		case strings.HasPrefix(line, "^"):
+			peeled = true
+		case strings.HasPrefix(line, "#"):
+		default:
+			keep = append(keep, line)
+		}
+	}
+	if !peeled {
+		return nil
+	}
+	tmp := path + ".tidy"
+	if err := os.WriteFile(tmp, []byte(strings.Join(keep, "")), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // refused reports whether a fetch failed because the forge refused its credentials, as against

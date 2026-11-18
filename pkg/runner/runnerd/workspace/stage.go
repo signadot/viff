@@ -48,7 +48,7 @@ import (
 // objects — so the push is thin. A separate outbox would need alternates to be, and would be a
 // second store to reason about.
 //
-// Prune cannot reach these. `ensure` fetches `+refs/heads/*` and `+refs/tags/*` with Prune set,
+// Prune cannot reach these. `ensure` fetches `refs/heads/*` and `refs/tags/*` with Prune set,
 // and go-git's pruneRemotes only removes refs matching the REVERSE of a configured refspec, so a
 // namespace outside those two is untouched. That is the whole reason the layout is what it is,
 // and it is pinned by a test.
