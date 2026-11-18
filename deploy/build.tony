@@ -261,6 +261,12 @@ build:
     # then.
     gitIod: false
     gitMirror: "https://github.com/signadot/verse.git"
+    # The charters directories the git iod reflects on every ref and the github iod reports a
+    # pull request changing, each as [<name>=]<path>, comma-separated (both iods' `-tree`; the
+    # name defaults to the path's last segment). A `repoCharters` entry names the one it
+    # reconciles by that name (`tree`, `charters` by default), so a repository that keeps its
+    # charters somewhere else is one more here: `.verse/charters,live=charters/live`.
+    charterTrees: ".verse/charters"
     # The git and git-issue iods fetch, and the git iod pushes, AS THE GITHUB APP: its three keys,
     # read from the github iod's Secret (verse-github), make the app's installation token the
     # only credential git presents, in place of the `verse-git` PAT, so nothing they hold can
@@ -1629,7 +1635,7 @@ build:
               # makes the tags and moves the branches the repo-charters reconciler asks for
               # (deploy/git-iod). VERSE_ADDR in the source manifest says where it reads them.
               - -tree
-              - .verse/charters
+              - $[charterTrees]
               - -out
 
   # TWO BLOCKS, one knob: a set of its own when gitIssueMirror names one, and gitMirror's when
@@ -1925,7 +1931,7 @@ build:
               # The charters directory an open pull request changes, against its merge base: the
               # repo-charters reconciler asks about that change on the pull request to main.
               - -tree
-              - .verse/charters
+              - $[charterTrees]
 
   - if: '.[ linearIod && linearTeams != "" ]'
     match:
