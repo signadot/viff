@@ -58,8 +58,8 @@ func githubMain(args []string) error {
 			"still costs nothing")
 	alerts := fs.Bool("alerts", false,
 		"reflect Dependabot alerts: the open ones, and the newest -settled fixed or dismissed. "+
-			"The token then needs Dependabot alerts read; a repository that refuses the read "+
-			"keeps what was reflected")
+			"The token then needs Dependabot alerts read; a repository whose alerts cannot be "+
+			"read (refused, or any other failure) keeps what was reflected")
 	var trees strs
 	fs.Var(&trees, "tree", "a directory an open pull request reports when it changes it, as "+
 		"[<name>=]<path> (repeatable): changes.<name> is the identity of its contents at the head, "+

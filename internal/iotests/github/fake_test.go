@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -537,7 +538,10 @@ func (f *fakeGitHub) dependabot(w http.ResponseWriter, r *http.Request, repo *fa
 	from = min(from, len(picked))
 	to := min(from+per, len(picked))
 	if to < len(picked) {
-		next := q
+		next := url.Values{}
+		for k, v := range q {
+			next[k] = v
+		}
 		next.Set("after", "c"+strconv.Itoa(to))
 		w.Header().Set("Link", fmt.Sprintf(`<http://%s/repositories/1/dependabot/alerts?%s>; rel="next"`,
 			r.Host, next.Encode()))

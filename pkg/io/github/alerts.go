@@ -78,8 +78,10 @@ func (g *GitHub) targetAlert(ref entity.Ref) (repo string, number int, ok bool) 
 // cover while carrying one alert would tombstone every other open alert. An alert GitHub no
 // longer has (404) is covered and absent, which tombstones it.
 //
-// With alerts switched off it answers nothing and asks nothing, and a refusal (403) answers
-// nothing too: no cover, so what stands is left alone, as the repository pass leaves it.
+// With alerts switched off it answers nothing and asks nothing, and a refusal (a 4xx other than
+// the 404, most often a 403) answers nothing too: no cover, so what stands is left alone, as the
+// repository pass leaves it. A failure that may pass (a 5xx, a rate limit) is an error, as for a
+// targeted run, so the hint is tried again rather than dropped.
 func (g *GitHub) reflectAlert(ctx context.Context, repo string, number int) (verseio.Reflection, error) {
 	if !g.alerts {
 		return verseio.Reflection{}, nil
@@ -98,12 +100,6 @@ func (g *GitHub) reflectAlert(ctx context.Context, repo string, number int) (ver
 	}
 	rn.Add(g.AlertRef(repo, a.Number), alertPayload(repo, a))
 	return rn, nil
-}
-
-// refused is whether err is GitHub refusing the request itself (httpError.refusal).
-func refused(err error) bool {
-	var he *httpError
-	return asHTTPError(err, &he) && he.refusal()
 }
 
 // alert is one item of `GET /repos/{o}/{r}/dependabot/alerts`, and the single read's answer.
@@ -191,7 +187,7 @@ func (a *api) listAlerts(ctx context.Context, repo, state string, refuseOver, wi
 		if window > 0 && window-len(out) < per {
 			per = window - len(out)
 		}
-		v := url.Values{"per_page": {strconv.Itoa(max(per, 1))}, "state": {state}}
+		v := url.Values{"per_page": {strconv.Itoa(per)}, "state": {state}}
 		if window > 0 {
 			v.Set("sort", "updated")
 			v.Set("direction", "desc")
@@ -214,15 +210,19 @@ func (a *api) listAlerts(ctx context.Context, repo, state string, refuseOver, wi
 		if window > 0 && len(out) >= window {
 			return out[:window], nil // the window is full, which is what a window means
 		}
-		after = nextCursor(link)
+		if after, err = nextCursor(link); err != nil {
+			return nil, fmt.Errorf("github: %s: Dependabot alerts: %w", repo, err)
+		}
 		if after == "" || len(batch) == 0 {
 			return out, nil
 		}
 	}
 }
 
-// nextCursor is the `after` of a Link header's `rel="next"`, or "" where there is none.
-func nextCursor(link string) string {
+// nextCursor is the `after` of a Link header's `rel="next"`, or "" where there is no such link.
+// A next link it cannot read a cursor from is an error, not the last page: taken as the end, it
+// would cut the open set short under a cover that says it is complete.
+func nextCursor(link string) (string, error) {
 	for _, part := range strings.Split(link, ",") {
 		target, params, ok := strings.Cut(part, ";")
 		if !ok || !strings.Contains(params, `rel="next"`) {
@@ -230,9 +230,13 @@ func nextCursor(link string) string {
 		}
 		u, err := url.Parse(strings.Trim(strings.TrimSpace(target), "<>"))
 		if err != nil {
-			return ""
+			return "", fmt.Errorf("a next page link that does not parse: %w", err)
 		}
-		return u.Query().Get("after")
+		after := u.Query().Get("after")
+		if after == "" {
+			return "", fmt.Errorf("a next page link with no cursor: %s", strings.TrimSpace(target))
+		}
+		return after, nil
 	}
-	return ""
+	return "", nil
 }

@@ -844,7 +844,7 @@ default.
 | `-comments` | `<n>` | `200` | the number of comments that the iod keeps for each repository |
 | `-max-open` | `<n>` | `2000` | The iod refuses a repository that has more open items than this. |
 | `-discussions` | | `false` | The iod reflects discussions. |
-| `-alerts` | | `false` | The iod reflects Dependabot alerts. Anyone who can read the repository's entities can then read them, which GitHub shows only to admins and security managers. |
+| `-alerts` | | `false` | The iod reflects Dependabot alerts. GitHub shows them only to admins and security managers, but once reflected anyone who can read the repository's entities can read them. |
 | `-tree` | `[<name>=]<path>` | | a directory an open pull request reports when it changes it, as `changes.<name>`: the identity of the directory's contents at the head, present where they differ from the directory at the head's merge base with the pull request's base. Against the merge base, so a pull request branched before the base's copy changed changes nothing. Read once per head and kept. The name defaults to the path's last segment. The flag is repeatable. |
 | `-out` | | `false` | The iod also acts back: see [The out half of github](#the-out-half-of-github). |
 

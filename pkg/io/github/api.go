@@ -505,6 +505,12 @@ func NotFound(err error) bool {
 	return he.status == http.StatusNotFound
 }
 
+// refused is whether err is GitHub refusing the request itself (httpError.refusal).
+func refused(err error) bool {
+	var he *httpError
+	return asHTTPError(err, &he) && he.refusal()
+}
+
 func asHTTPError(err error, target **httpError) bool {
 	for err != nil {
 		if he, ok := err.(*httpError); ok {
