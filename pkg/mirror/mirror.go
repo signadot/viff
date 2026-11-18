@@ -10,6 +10,8 @@ package mirror
 
 import (
 	"cmp"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -401,8 +403,18 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 				attempt = 0 // it worked for a while; the next outage starts its own count
 			}
 			if attempt >= reconnectAttempts {
-				// Gave up, and says so. The entity keeps `observed: false` rather than
-				// reverting to a confident `running` nobody is watching.
+				// Gave up, and ends the task on its record, as failed: the record is what
+				// ends a task, and one nobody is watching would otherwise hold its subject
+				// for good.
+				st["status"] = string(task.Failed)
+				st["ended"] = nowStamp()
+				st["err"] = "its runner could not be reached, and verse stopped watching it"
+				landEnd(store, asPrincipal(store, entity.SystemMirror), id, st, m)
+				writeRun(store, id, occurrenceOf(st), st)
+				OrphanQuestions(asPrincipal(store, entity.SystemDocket), id)
+				if m.Ended != nil {
+					m.Ended()
+				}
 				return
 			}
 			// Said BEFORE the wait, not after it: a reader asking during the outage is
@@ -924,7 +936,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						// And which agent ran and with what, the runner's defaults filled in,
 						// said by the runner that ran it.
 						resolved(h, st)
-						project(store, id, st, m)
+						landEnd(store, projector, id, st, m)
 						// And the run's own record, which the next run does not overwrite.
 						writeRun(store, id, occurrenceOf(st), st)
 						// Whatever it was still asking, it will never hear the answer to.
@@ -1031,6 +1043,12 @@ func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) int64
 // project is write for a live task's record, with who holds the task asked as it is written:
 // the record is replaced whole, so a hold not carried on every write is a hold forgotten.
 func project(store entity.Store, id string, st entity.Obj, m Meta) int64 {
+	held(st, m)
+	return write(store, id, st)
+}
+
+// held puts who holds the task on the record about to be written, or takes it off.
+func held(st entity.Obj, m Meta) {
 	if m.HeldBy != nil {
 		if by := m.HeldBy(); len(by) > 0 {
 			st[HeldByField] = by
@@ -1038,7 +1056,80 @@ func project(store entity.Store, id string, st entity.Obj, m Meta) int64 {
 			delete(st, HeldByField)
 		}
 	}
-	return write(store, id, st)
+}
+
+// landEnd writes a task's terminal record, and returns when it stands there, when the record has
+// become another run's, or when the store has closed.
+//
+// THE ONE WRITE THAT IS NOT DROPPED. A task ends when its record says so and only then: the
+// engine retires it, runs its completion hook and lets go of its subject on the record's
+// terminal status, and on nothing else (trigger.Engine.reap). Every other write of a live
+// record is replaceable, since the next one carries the whole document; nothing follows this
+// one, so a terminal that did not land is a task that never ends.
+//
+// A store that did not answer is asked again, with the reflect loop's backoff, for as long as
+// the store is open. A store that REFUSED is asked as the mirror itself (system): the record is
+// written as the party working the task, and that party's hold on it can be taken away while the
+// task runs, which says nothing about whether the task ended. And a document the store's own
+// check will not take (entity.CheckPatchable) goes without `data`, the one part of the record
+// that is whatever a task answered: how the task ended is owed, and what it said stays readable
+// as `result`.
+//
+// AN ASKING AGAIN IS OF THIS RUN'S RECORD ONLY. A write the store did not answer may have landed,
+// and the engine may have acted on it: by the next attempt the id can name another run, whose
+// record this would replace with an end that is not its own. So every attempt after the first is
+// conditional on what stands there, which is read first: nothing, the record this run opened, or
+// the record of a run that started before this one, which this run's opening write did not
+// replace. A record of a run that started after this one is left as it is.
+func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
+	held(st, m)
+	at := Ref(id)
+	if _, said := st["data"]; said {
+		if err := entity.CheckPatchable(entity.Raw(st.Payload())); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: task %s: its end is recorded without `data`, which the store will not take: %v\n", id, err)
+			delete(st, "data")
+		}
+	}
+	started, _ := st["started"].(string)
+	var when []entity.Require
+	asSystem, said := false, false
+	for attempt := 0; ; attempt++ {
+		if attempt > 0 {
+			time.Sleep(backoff(attempt - 1))
+		}
+		committed, _, err := store.Write(entity.Write{At: at.At(), Value: entity.Raw(st.Payload()), When: when})
+		if err == nil && committed {
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			return // the store is closed: nothing reads the record from here on
+		}
+		if errors.Is(err, entity.ErrForbidden) && !asSystem {
+			store, asSystem = system, true
+		}
+		if err != nil && !said {
+			said = true
+			fmt.Fprintf(os.Stderr, "verse: task %s: its end is not on its record yet, and is being written again: %v\n", id, err)
+		}
+		// What stands there now decides what the next attempt may replace.
+		ent, ok, rerr := system.Get(at)
+		switch {
+		case errors.Is(rerr, context.Canceled):
+			return
+		case rerr != nil:
+			if when == nil {
+				when = []entity.Require{{Pattern: entity.Obj{"started": started}.Payload()}}
+			}
+		case !ok:
+			when = []entity.Require{entity.Created()}
+		case entity.Str(ent.Payload, "started") > started:
+			return // another run's record
+		case entity.Str(ent.Payload, "started") == started && task.TerminalStatus(entity.Str(ent.Payload, "status")):
+			return // it landed
+		default:
+			when = []entity.Require{{Pattern: entity.Unchanged(ent.Payload)}}
+		}
+	}
 }
 
 // ParseResult is the structured face of a driver's final answer: the answer document
@@ -1058,12 +1149,9 @@ func project(store entity.Store, id string, st entity.Obj, m Meta) int64 {
 // the patch, declares an answer contract (launch.Spec.Answer) — and the two agree by
 // construction, because the contract validates exactly the document this returns.
 //
-// It is exported because the mirror is not the only writer that has to answer this question:
-// the trigger engine synthesizes a completed task's payload when it beats the mirror to
-// the terminal (see trigger.Engine.taskEvent), and if the two derived `data` differently a
-// hook would deref against a different document than the one the store ends up holding. The
-// answer contract's check is a third such reader, which is why the extraction itself lives
-// in one place rather than being written out again here.
+// It is exported because the mirror is not the only reader that has to answer this question:
+// the answer contract's check is another, which is why the extraction itself lives in one
+// place rather than being written out again there.
 // It comes back AS DATA, escaped, and that is not a detail of this function — it is the
 // whole reason a projection may hold an agent's document at all.
 //

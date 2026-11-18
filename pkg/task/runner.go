@@ -102,6 +102,14 @@ func FailedHandle(reason string) Handle { return failedHandle{reason} }
 
 type failedHandle struct{ err string }
 
+// NeverStarted reports whether h is the Handle for work that never started (FailedHandle), and
+// the reason it did not. Such work has ended already, as failed: there is no task to wait on, and
+// whoever holds the handle takes its end from here.
+func NeverStarted(h Handle) (reason string, ok bool) {
+	f, ok := h.(failedHandle)
+	return f.err, ok
+}
+
 func (f failedHandle) Subscribe() (<-chan Event, func()) {
 	ch := make(chan Event, 1)
 	ch <- Event{Kind: EventStatus, Text: string(Failed), Err: f.err}

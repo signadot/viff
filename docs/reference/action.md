@@ -433,10 +433,10 @@ change that fired was a task's and not the PR's. `stage` is the stage of that PR
 not of the task.
 
 **A completion hook reads the payload of the finished task.** So does an element of a sequence
-that a hook drives. `status`, `result`, `data` and `err` are the facts it exists to read. The
-engine makes that payload itself, and does not read it from the store. The mirror may not have
-written the terminal facts yet. This is why those bindings resolve at all, and why they are
-flat. They are facts about a run, and no address holds them.
+that a hook drives. `status`, `result`, `data` and `err` are the facts it exists to read. That
+payload is the task's record as it ended: a task ends when its record says so, and the hook
+runs on that. A launch that was refused before anything ran has ended already, as `failed`
+with the refusal as its `err`. This is why those bindings are flat. They are facts about a run.
 
 Each of the four is there whatever the task said. `result` and `err` are empty where it said
 nothing, and `data` is null where its result is no document. So a hook that an `onDone` and an

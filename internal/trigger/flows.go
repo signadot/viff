@@ -2,7 +2,9 @@ package trigger
 
 import (
 	"context"
+	"errors"
 	"sort"
+	"time"
 
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/launch"
@@ -10,7 +12,7 @@ import (
 	"github.com/signadot/verse/pkg/task"
 )
 
-// flowTask is one LIVE task: its id (for store-driven reap by ref), the subject it is
+// flowTask is one LIVE task: its id (for reap, by its record's ref), the subject it is
 // about, and its governing handle (the control target — a *Task locally, a remote handle
 // behind a runner URL later). The engine holds handles, not concrete tasks.
 type flowTask struct {
@@ -29,9 +31,10 @@ type flowTask struct {
 	chain string
 	// occurrence is the commit that caused the firing this task belongs to (launch.Spec's
 	// Occurrence), 0 where none did. It names the firing a run was about, on the record and in a
-	// hook's trouble (recordHookTrouble); this is the engine's own copy for a task whose record
-	// does not say, because nothing mirrored one before the hook ran — a launch the engine
-	// refused, whose task never reached a runner.
+	// hook's trouble (recordHookTrouble). The engine's own copy says which run a record at the
+	// task's id is about (reapEnded), and stands in for a record that does not say, because
+	// nothing mirrored one before the hook ran — a launch the engine refused, whose task never
+	// reached a runner.
 	occurrence int64
 	// WHOSE HOLD it is at its boundary, since a pause is one bool in the runtime and two parties
 	// take it: an operator's `flow suspend --task` (operator), and the suspensions that paused it
@@ -61,10 +64,25 @@ func (e *Engine) Spawn(id string, spec launch.Spec) task.Handle {
 // cancelled it, for the record. The engine is verse's own, so it is the system's.
 const engineActor = "system:trigger"
 
-// track registers a live task and arms its lifecycle-driven reaper. A task a suspension covers
+// track registers a live task. Its record ends it: reap retires it and runs its completion hook
+// when the record reaches a terminal status, and nothing else does. A task a suspension covers
 // is held as it is tracked — a task re-attached after a restart, or one run by hand about a
 // suspended subject — since nothing else will pause it.
+//
+// WORK THAT NEVER STARTED IS NOT TRACKED. A launch refused before anything ran (task.NeverStarted)
+// has already ended, and it may have no record for reap to see: a spawn refused because its id
+// stands as another party's is deliberately not mirrored. So its end is taken here, as `failed`
+// with the refusal for its reason, and its hook runs as a started task's would.
 func (e *Engine) track(fp flowTask) {
+	if why, never := task.NeverStarted(fp.h); never {
+		e.liveMu.Lock()
+		dropped := e.dropped != ""
+		e.liveMu.Unlock()
+		if !dropped { // dropped work runs no hooks (CancelLive)
+			go e.applyHook(fp, task.Failed, e.neverStarted(fp, why))
+		}
+		return
+	}
 	held := e.settled(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
 	fp.suspended = held
 	e.liveMu.Lock()
@@ -81,7 +99,56 @@ func (e *Engine) track(fp flowTask) {
 		fp.h.Pause(engineActor)
 		e.recordHold(fp)
 	}
-	go e.reapOnDone(fp) // retire it when it ends
+	go e.reapEnded(fp)
+}
+
+// reapEnded takes the end of a task whose record was terminal before the task was tracked. The
+// task's mirror is attached before the task is handed to track, so a task that ends at once can
+// have its terminal record pass reap ahead of the registration reap looks for, and nothing
+// would write that record again. One read of the record, after the registration, closes that.
+//
+// The record must be this run's: an id names the work, and the run before left its terminal
+// record at the same address. A run's mirror replaces that record before the task is tracked
+// (mirror.Reflect), and where the firing's commit is known the record has to name it too. A task
+// tracked with no firing behind it has only the first of the two, and a mirror whose opening
+// write did not land leaves the earlier run's record to be taken for this one's.
+//
+// A read the store did not answer is asked again, for as long as the engine runs.
+func (e *Engine) reapEnded(fp flowTask) {
+	ref := mirror.Ref(fp.id)
+	var ent entity.Entity
+	for wait := 250 * time.Millisecond; ; wait = min(2*wait, 8*time.Second) {
+		got, ok, err := e.store.Get(ref)
+		if err == nil {
+			if !ok {
+				return
+			}
+			ent = got
+			break
+		}
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		ctx := e.bgctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+	}
+	status := entity.Str(ent.Payload, "status")
+	if !task.TerminalStatus(status) {
+		return
+	}
+	if fp.occurrence != 0 && mirror.OccurrenceOf(ent.Payload) != fp.occurrence {
+		return
+	}
+	if got, ok := e.retireHandle(fp.id, fp.h); ok {
+		e.applyHook(got, task.Status(status), entity.Event{Ref: ref, To: ent.Payload})
+	}
 }
 
 // Adopt registers an already-running task (id + governing handle) under a flow — the
@@ -126,36 +193,9 @@ func (e *Engine) AdoptChain(subject, id, chain string, h task.Handle) {
 	e.track(fp)
 }
 
-// reapOnDone retires a task from its flow's tracking once it reaches a terminal
-// status — the lifecycle-driven reaper for scoped (subtree) mode, where no root dispatch
-// loop runs so the store-driven reap never fires. Reaping is purely task bookkeeping,
-// so it hangs off the task's own completion (its handle's bus). NOTE: it can race a
-// fast task that finishes before this subscribes (Subscribe is live-from-now, no ring
-// replay) — in baseline mode reap (store-driven, via the root watch) is the race-free
-// path; this is the backstop and the scoped-mode path. The range also exits if the
-// task closes its bus, so this cannot outlive p.
-func (e *Engine) reapOnDone(fp flowTask) {
-	ch, unsub := fp.h.Subscribe()
-	defer unsub()
-	var status string
-	for ev := range ch {
-		if ev.Kind == task.EventStatus && task.TerminalStatus(ev.Text) {
-			status = ev.Text
-			break
-		}
-	}
-	// Retire whether or not we saw a terminal status (a closed bus means the task is gone).
-	// Apply the completion hook only when we both observed a terminal status AND won the retire
-	// (retireHandle is atomic, so the store-driven reapLoop/reap and this can't double-fire).
-	got, ok := e.retireHandle(fp.id, fp.h)
-	if ok && status != "" {
-		e.applyHook(got, task.Status(status), e.taskEvent(got, task.Status(status)))
-	}
-}
-
 // retire atomically removes a live task by id, returning its flowTask. Whoever retires it
-// first (the store-driven reapLoop/reap, or the bus-driven reapOnDone) is the one that applies
-// its completion hook — the once-guard for exactly-once hook application.
+// (reap, or reapEnded for a record terminal before the task was tracked) is the one that
+// applies its completion hook — the once-guard for it.
 func (e *Engine) retire(id string) (flowTask, bool) {
 	e.liveMu.Lock()
 	defer e.liveMu.Unlock()
@@ -167,7 +207,7 @@ func (e *Engine) retire(id string) (flowTask, bool) {
 }
 
 // retireHandle is retire scoped to a specific handle: it removes the entry only if the tracked
-// handle still matches (not a successor that reused the id). The reapOnDone path uses it.
+// handle still matches, and not a successor that took the id.
 func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 	e.liveMu.Lock()
 	defer e.liveMu.Unlock()
@@ -306,10 +346,9 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 // one standing at the stage the rule set with nothing on it saying why. Not in a field the author
 // owns: `stage` and the rest are untouched, so `value: {stage: X}` matches as it did.
 //
-// Writing to the task entity is safe despite the mirror owning that payload, because a
-// store write MERGES: a field the mirror never names survives its re-Put (see mirror.go,
-// which relies on the same property for `pending`). That also makes it ordering-independent,
-// which matters — this can run before the mirror's own terminal write, since the two race.
+// Writing to the task entity is safe despite the mirror owning that payload: the hook runs on
+// the record's end, which is the last thing the mirror writes there, and this write merges
+// `hook` into it.
 //
 // `hook` is one reserved name on an entity the engine and the mirror already co-own, the way
 // `verse` is one reserved root on a subject. status is the mirror's field and is left alone.
@@ -388,46 +427,21 @@ func (e *Engine) clearHookFailure(subj entity.Ref, chain string) {
 	}
 }
 
-// taskEvent synthesizes the store event for a completed task — the bus-driven reapOnDone
-// path has no entity.Event, so it reads the task:instance payload to give the hook the
-// same bindings the store-driven path has.
-//
-// The mirror entity is NOT authoritative for the terminal facts. reapOnDone and
-// mirror.Reflect are two independent subscribers to the same task bus, so when this path
-// wins the retire — which for a fast task it reliably does, the engine's reader getting
-// there first — the store still holds the PRE-terminal projection. The hook then bound
-// status to "running" and found no result at all, which is exactly the payload a
-// completion hook exists to read. The store-driven path never had this problem: mirror
-// writes status and result in one commit (see mirror.go), so the event it dispatches on
-// already carries both.
-//
-// So the facts this path knows first-hand are overlaid on whatever the mirror has managed to
-// write: the terminal status this reap just observed, and the handle's final answer. flow and
-// chain come from the engine's own record for the same reason — a hook must bind them even
-// when the mirror has written nothing about this task yet.
-func (e *Engine) taskEvent(fp flowTask, status task.Status) entity.Event {
+// neverStarted is the event a completion hook reads for work that never started (track): the
+// facts the engine holds itself, over whatever record stands at the task's id. A refused launch
+// may have no record, or one its mirror has not written yet, and a hook must bind `status`,
+// `err`, `flow` and `chain` either way.
+func (e *Engine) neverStarted(fp flowTask, why string) entity.Event {
 	ref := mirror.Ref(fp.id)
-	ev := entity.Event{Ref: ref}
 	st := entity.Obj{}
 	if ent, ok, _ := e.store.Get(ref); ok {
 		if o := entity.ToObj(ent.Payload); o != nil {
 			st = o
 		}
 	}
-	st["status"] = string(status)
-	if fp.h != nil {
-		if r := fp.h.Result(); r != "" {
-			st["result"] = r
-			// Derive `data` here too, with the mirror's own function: a hook that derefs
-			// .[data.x] must resolve against the same document the store ends up holding,
-			// and this path can run before the mirror has written anything.
-			if d := mirror.ParseResult(r); d != nil {
-				st["data"] = d
-			}
-		}
-		if er := fp.h.Err(); er != "" {
-			st["err"] = er
-		}
+	st["status"] = string(task.Failed)
+	if why != "" {
+		st["err"] = why
 	}
 	if fp.subject != "" {
 		st["flow"] = fp.subject
@@ -435,15 +449,12 @@ func (e *Engine) taskEvent(fp flowTask, status task.Status) entity.Event {
 	if fp.chain != "" {
 		st["chain"] = fp.chain
 	}
-	// And the commit the firing was about, where the record does not say it yet, for the same
-	// reason: applyHook reads at it. A launch the engine refused fails before anything has
-	// mirrored its task, so without this the hook read at revision 0, and a hook reading
-	// `subject.value` failed saying a task the charter started was one nothing started.
+	// And the commit the firing was about, where the record does not say it: applyHook names the
+	// firing by it, and a launch the engine refused fails before anything has mirrored its task.
 	if _, ok := st["occurrence"]; !ok && fp.occurrence != 0 {
 		st["occurrence"] = fp.occurrence
 	}
-	ev.To = st.Payload()
-	return ev
+	return entity.Event{Ref: ref, To: st.Payload()}
 }
 
 // SubjectOf returns the subject a live task is about, or "" if the engine does not know
@@ -630,11 +641,9 @@ func (e *Engine) HeldBy(id string) []string {
 }
 
 // reap retires a task when its reflected entity reaches a terminal status, so
-// Flows()/matchFlow see only in-flight work — no lingering completed handles. It is
-// store-driven: the same task:instance change a completion trigger reacts to also
-// releases the handle. Keyed by task id, so this is one delete — no scan of subjects, and
-// none of the "never filter in place" hazard the per-subject slices used to carry (the
-// control ops copied a slice header under the lock and iterated it unlocked).
+// Flows()/matchFlow see only in-flight work — no lingering completed handles. The same
+// task:instance change a completion trigger reacts to also releases the handle. Keyed by task
+// id, so this is one delete, with no scan of subjects.
 func (e *Engine) reap(ev entity.Event) {
 	if !mirror.IsTaskish(ev.Ref) {
 		return
@@ -643,17 +652,18 @@ func (e *Engine) reap(ev entity.Event) {
 	if !task.TerminalStatus(status) {
 		return
 	}
+	// Retired here, in the order the records ended; the hook runs beside the loop, since a hook
+	// can launch a task and one task's launch should not hold up another task's end.
 	if fp, ok := e.retire(ev.Ref.Name()); ok {
-		e.applyHook(fp, task.Status(status), ev)
+		go e.applyHook(fp, task.Status(status), ev)
 	}
 }
 
-// reapLoop is the store-driven completion path for scoped (subtree) mode: it watches the
-// task:instance mirror subtree and, on each terminal status, retires the task and fires its
-// completion hook. Opened in ObserveScoped BEFORE any spawn (WatchSubtree replays then edges), so
-// it is race-free for a fast task — the property reapOnDone's live-from-now bus lacks. The
-// atomic retire makes it and the reapOnDone backstop exactly-once. Replayed old terminals are
-// harmless: retire finds no live entry for a task this engine never tracked.
+// reapLoop is the completion path: it watches the task records and, on each terminal status,
+// retires the task and fires its completion hook. A task ends when its record says so and only
+// then, so a task whose event stream drops stays live until its mirror has written how it
+// ended. Replayed old terminals are harmless: retire finds no live entry for a task this engine
+// never tracked.
 func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub func()) {
 	defer unsub()
 	for {

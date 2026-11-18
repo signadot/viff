@@ -11,6 +11,7 @@ import (
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/entity/entitytest"
 	"github.com/signadot/verse/pkg/launch"
+	"github.com/signadot/verse/pkg/mirror"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/task"
 )
@@ -53,6 +54,7 @@ func TestASpawnCarriesTheGatesItsFiringPassed(t *testing.T) {
 				specs <- spec
 				sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 				p := task.NewTask(id, sup, answering{r: "done"}, noExec{})
+				mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Occurrence: spec.Occurrence})
 				go p.Run(context.Background())
 				return p
 			})
@@ -105,6 +107,7 @@ func TestASequencesStepsCarryNoGate(t *testing.T) {
 		specs <- spec
 		sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 		p := task.NewTask(id, sup, answering{r: "done"}, noExec{})
+		mirror.Reflect(store, id, p, mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Occurrence: spec.Occurrence})
 		go p.Run(context.Background())
 		return p
 	})

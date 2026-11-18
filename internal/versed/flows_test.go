@@ -19,7 +19,7 @@ import (
 )
 
 // idleHandle is a task that is running and does nothing: the engine holds a flow open around
-// it until its bus closes, which is what makes "there is live work about this subject" a state
+// it until its record ends, which is what makes "there is live work about this subject" a state
 // a test can stand in rather than race against. It counts each control verb it is sent, so a
 // test can say WHICH task a steer reached rather than only how many.
 type idleHandle struct {
@@ -30,7 +30,7 @@ type idleHandle struct {
 
 func newIdleHandle(t *testing.T) *idleHandle {
 	h := &idleHandle{ch: make(chan task.Event), verbs: map[string]int{}}
-	t.Cleanup(func() { close(h.ch) }) // the reaper exits with the test rather than the process
+	t.Cleanup(func() { close(h.ch) })
 	return h
 }
 
@@ -299,15 +299,18 @@ func TestFlowSteeringActsOnItsOwn(t *testing.T) {
 	// And baseline may not steer the scope's: once baseline's own work is gone, its say about
 	// the subject is refused naming the scope rather than answering zero, and its suspend of
 	// the scope's run is refused the same way.
-	close(base.ch)
-	close(packaged.ch)
-	base.ch, packaged.ch = make(chan task.Event), make(chan task.Event) // the cleanups close these
+	// Ended on their records, which is what ends a task for an engine.
+	for _, id := range []string{"baseline-run", "note-the-head-run"} {
+		if _, _, err := srv.Store.Write(entity.Write{At: mirror.Ref(id).At(), Value: entity.Obj{"status": string(task.Done)}.Payload()}); err != nil {
+			t.Fatalf("ending %s: %v", id, err)
+		}
+	}
 	for i := 0; ; i++ {
 		if len(srv.Eng.Flows()) == 0 && len(pkg.Flows()) == 0 {
 			break
 		}
 		if i > 200 {
-			t.Fatal("baseline's tasks were not reaped after their buses closed")
+			t.Fatal("baseline's tasks were not reaped after their records ended")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

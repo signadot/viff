@@ -109,7 +109,7 @@ func TestMachineryWritesCarryNoChain(t *testing.T) {
 }
 
 // A firing with no engine-caused cause starts a fresh chain rather than inheriting a stale one.
-// A completion hook is the case that matters — taskEvent leaves Rev unset, because the cause is
+// A completion hook is the case that matters — it has no causing commit, because the cause is
 // a task finishing, which is the world coming back — and this pins the arithmetic that makes
 // "no parent" and "parent 0" the same answer.
 func TestUncausedFiringStartsAFreshChain(t *testing.T) {

@@ -76,7 +76,7 @@ func waitField(t *testing.T, store entity.Store, ref entity.Ref, key string, wan
 
 // A spawn's onDone fires when its task completes — advancing the subject in ONE trigger,
 // with no separate completion trigger. Runs under ObserveScoped (versed's mode) with the
-// immediate (fast) driver, so it also exercises the race-free store-driven reapLoop path.
+// immediate (fast) driver, so the task has ended before anything waits on it.
 func TestOnDoneFiresUnderScoped(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})

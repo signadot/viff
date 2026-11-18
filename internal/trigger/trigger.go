@@ -1133,9 +1133,9 @@ func (a Action) applyClaimed(chain string, oc occasion, subj entity.Ref, e *Engi
 	if a.Patch != nil {
 		// ev.Rev is the commit that woke this firing, and carrying it into the write is what
 		// makes the resulting commit a HOP rather than a fresh cause. It is 0 for a firing with
-		// no engine-caused cause — a completion hook, whose event comes off a task finishing
-		// (taskEvent leaves Rev unset) — and 0 is exactly right there: the world came back, so
-		// the chain starts again. See causal.go.
+		// no engine-caused cause — a completion hook, whose event comes off a task finishing —
+		// and 0 is exactly right there: the world came back, so the chain starts again. See
+		// causal.go.
 		if err := e.patchEntity(chain, oc.parent, subj, subj, patch); err != nil {
 			// Fail the firing rather than continuing into the spawn: a task started about
 			// a state the trigger FAILED to establish is worse than no task at all, and it

@@ -534,8 +534,10 @@ func TestATaskKnowsWhoseHoldItIs(t *testing.T) {
 	if code, msg := runVerb(t, ts, "resume", "first"); code != http.StatusOK || first.count("resume") != 1 {
 		t.Fatalf("flow resume --task once nothing suspends it = %d %s, resumed %d", code, msg, first.count("resume"))
 	}
-	close(first.ch)
-	first.ch = make(chan task.Event)
+	// Ended on its record, which is what ends a task for the engine.
+	if _, _, err := srv.Store.Write(entity.Write{At: mirror.Ref("first").At(), Value: entity.Obj{"status": string(task.Done)}.Payload()}); err != nil {
+		t.Fatalf("ending first: %v", err)
+	}
 
 	// suspend, the runtime's task pause, lift → still held: `/tasks/{id}/pause` is the operator's
 	// hold too.

@@ -1,9 +1,11 @@
 package trigger
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/verse/pkg/codec"
@@ -490,7 +492,9 @@ func chainUnder(prefix, target string) bool {
 // the mark adds.
 func (e *Engine) claimRun(chain string, subj entity.Ref, more entity.Obj) bool {
 	ref := mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj))
-	payload := entity.Obj{"flow": subj.String(), "chain": chain}
+	// `taken` is which claim this is: a claim's address is the same from one run to the next, and
+	// a release is of the claim it read (releaseRun).
+	payload := entity.Obj{"flow": subj.String(), "chain": chain, takenField: time.Now().UTC().Format(time.RFC3339Nano)}
 	for k, v := range more {
 		payload[k] = v
 	}
@@ -504,6 +508,70 @@ func (e *Engine) claimRun(chain string, subj entity.Ref, more entity.Obj) bool {
 
 // releaseRun drops the claim when a sequence ends, however it ends. A claim that outlives its
 // run would block the next one forever, so every exit path releases.
-func (e *Engine) releaseRun(chain string, subj entity.Ref) {
-	e.write(mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj)).At(), nil) // nil removes it
+//
+// THE RELEASE ALWAYS LANDS, AND TAKES ONLY THE CLAIM IT READ. The claim is read first and removed
+// on the condition that it is still what was read, which `taken` makes this claim and no other. So a release may be asked
+// again: where the store did not answer, the removal may or may not have landed, and by the next
+// attempt another run may hold a claim at the same address, which the condition leaves alone.
+//
+// It is tried here, so that a caller finds the claim gone when this returns, which is the
+// ordinary case and what the result reports. Where the store did not take it, it is asked again
+// in the background for as long as the engine runs, and late runs once it has landed: nothing
+// else removes a claim while versed is up, so a release that was dropped is a subject the rule
+// never fires about again.
+func (e *Engine) releaseRun(chain string, subj entity.Ref, late ...func()) bool {
+	ref := mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj))
+	var when []entity.Require
+	read := false
+	release := func() error {
+		if !read {
+			ent, ok, err := e.store.Get(ref)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil // nothing stands there
+			}
+			when = []entity.Require{{Pattern: entity.Unchanged(ent.Payload)}}
+			read = true
+		}
+		// Not committed is released too: the claim this read is no longer the one standing.
+		_, _, err := e.store.Write(entity.Write{At: ref.At(), Value: nil, When: when}) // nil removes it
+		return err
+	}
+	err := release()
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, context.Canceled) {
+		return false // the store is closed
+	}
+	e.logger.Warn("a claim's release did not land; it is being asked again", "at", ref.String(), "err", err)
+	go func() {
+		ctx := e.bgctx
+		if ctx == nil {
+			ctx = context.Background() // not started (a direct call in a test)
+		}
+		for wait := 250 * time.Millisecond; ; wait = min(2*wait, 8*time.Second) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
+			err := release()
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			if err == nil {
+				for _, f := range late {
+					f()
+				}
+				return
+			}
+		}
+	}()
+	return false
 }
+
+// takenField is the field of a claim that says when it was taken.
+const takenField = "taken"

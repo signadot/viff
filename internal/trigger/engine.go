@@ -343,24 +343,24 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	e.startReconciler(ctx)
 	e.follow(ctx)
 	// Watch the task:instance mirror subtree directly, independent of any charter trigger:
-	// this drives store-driven reaping AND completion-hook (onX) application in scoped mode,
-	// where no root dispatch loop runs. Store-driven means race-free for a fast task (unlike
-	// the reapOnDone bus); reapOnDone remains the backstop, and the atomic retire dedupes.
+	// this drives reaping and completion-hook (onX) application in scoped mode, where no root
+	// dispatch loop runs.
 	// Where the records are, and at their own length: a run's record is `mirror.Ref(id)`, so the
 	// watch is on the place above it and reports each record whole.
 	e.watchTaskRecords(ctx)
 }
 
 // watchTaskRecords opens the watch the completion path reads: the task records, at their own
-// length, wherever the engine runs. Store-driven means race-free for a fast task — the property
-// reapOnDone's live-from-now bus lacks — and the atomic retire makes the two exactly-once.
+// length, wherever the engine runs (reapLoop).
 func (e *Engine) watchTaskRecords(ctx context.Context) {
 	at := mirror.Ref("").Segs() // verse.task.instance.<id>, without the id
 	at = at[:len(at)-1]         // …and without the kind: a run record is taskish too
 	if ch, unsub, err := e.store.WatchSubtree(len(at)+2, at...); err == nil {
 		go e.reapLoop(ctx, ch, unsub)
 	} else {
-		e.tracef("task record watch: %v", err)
+		// A task's record reaching its end is what retires the task and runs its hook, and this
+		// watch is where the engine sees that.
+		e.logger.Error("the task records cannot be watched; tasks this engine tracks will not end", "err", err)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/entity/entitytest"
 	"github.com/signadot/verse/pkg/launch"
+	"github.com/signadot/verse/pkg/mirror"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/task"
 )
@@ -363,17 +364,23 @@ func (h *heldHandle) finish() {
 	h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Done)}
 }
 
-// spawned is a spawner of heldHandles that remembers them by id.
+// spawned is a spawner of heldHandles that remembers them by id. With a store it mirrors each
+// one, as versed's spawner does, so that a task's end reaches its record: a test that ends a
+// task and waits on what follows gives it one.
 type spawned struct {
-	mu sync.Mutex
-	by map[string]*heldHandle
+	mu    sync.Mutex
+	by    map[string]*heldHandle
+	store entity.Store
 }
 
-func (s *spawned) spawn(id string, _ launch.Spec) task.Handle {
+func (s *spawned) spawn(id string, spec launch.Spec) task.Handle {
 	h := &heldHandle{ch: make(chan task.Event, 1)}
 	s.mu.Lock()
 	s.by[id] = h
 	s.mu.Unlock()
+	if s.store != nil {
+		mirror.Reflect(s.store, id, h, mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Occurrence: spec.Occurrence})
+	}
 	return h
 }
 
@@ -399,13 +406,12 @@ func (s *spawned) wait(t *testing.T, id string) *heldHandle {
 }
 
 // A task finishing under a suspension lands its hook — the hook's patch is on the subject — and
-// parks what the hook would start, without a selection posed for it and without the engine's reap
-// loop waiting on it: another task in the engine finishes and hooks meanwhile. The lift starts the
-// parked launch.
+// parks what the hook would start, without a selection posed for it: another task in the engine
+// finishes and hooks meanwhile. The lift starts the parked launch.
 func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 	store := entitytest.Store(t)
 	eng, tbl := suspending(t, store, "user:tester")
-	sp := &spawned{by: map[string]*heldHandle{}}
+	sp := &spawned{by: map[string]*heldHandle{}, store: store}
 	eng.SetSpawner(sp.spawn)
 	reg := eng.resolver.(*task.Registry)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -537,11 +543,13 @@ func TestDrainingRefusesAFiringWhileAParkedLaunchStarts(t *testing.T) {
 	}
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
-	review := sp.wait(t, "review@demo.pr.1")
+	sp.wait(t, "review@demo.pr.1")
 	s, _ := NewSuspension("*", "", "demo.pr.1", false)
 	s.Held = map[string]Holder{"user:tester": {Why: "hold"}}
 	tbl.Put(s)
-	review.finish()
+	// Ended on its record, which is what ends a task for the engine. By hand: these tasks have
+	// no mirror, whose own writes during the lift would move the head the lift arms at.
+	entitytest.Set(t, store, mirror.Ref("review@demo.pr.1"), entity.Obj{"status": string(task.Done)}.Payload())
 	waitStage(t, store, prRef("1"), "reviewed")
 	stays(t, store, prRef("1"), "stage", "reviewed") // merge is refused about it while suspended
 
