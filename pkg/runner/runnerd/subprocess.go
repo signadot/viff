@@ -27,6 +27,7 @@ import (
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/client"
 	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
+	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
 	"github.com/signadot/verse/pkg/systems"
 	"github.com/signadot/verse/pkg/task"
 )
@@ -419,7 +420,7 @@ func (h *SubprocessHandler) run(ctx context.Context, p *proc, l *runner.Launch, 
 	if p.co != nil {
 		p.co.abandon()
 	}
-	os.RemoveAll(p.dir)
+	workspace.RemoveTree(p.dir)
 	p.removeInst()
 	if ctx.Err() != nil {
 		p.remember(p.as(task.Cancelled, context.Cause(ctx).Error()))
@@ -634,7 +635,7 @@ func (h *SubprocessHandler) supervise(p *proc) {
 	if p.co != nil && h.Repos.settle(p.co, h.Log) {
 		return // the workspace is the only copy of work that could not be staged: kept
 	}
-	os.RemoveAll(p.dir)
+	workspace.RemoveTree(p.dir)
 }
 
 // removeInst removes the task's install root, where it has one: installed tools are the cellar's

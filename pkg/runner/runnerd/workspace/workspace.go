@@ -923,7 +923,30 @@ func (w *Workspace) Deliverable(l *runner.Launch) bool {
 // One directory tree and nothing else — no worktree to unregister and no branch to delete out
 // of a shared mirror, because a clone per task keeps every task's refs inside the directory
 // being removed.
-func (w *Workspace) Remove(_ context.Context) error { return os.RemoveAll(w.Root) }
+func (w *Workspace) Remove(_ context.Context) error { return RemoveTree(w.Root) }
+
+// RemoveTree removes a directory a task wrote in, whatever modes the task left on it. A task's
+// tools make read-only trees as a matter of course — Go's module cache is one, every directory
+// of it 0555 — and `os.RemoveAll` cannot unlink out of a directory it may not write, so the
+// modes a task chose would decide whether its directory goes. Where the plain removal is
+// refused, every directory is made the owner's to read, write and search, and it is removed
+// again.
+//
+// Directories only, and never through a symlink: a file's own mode does not hold it in place,
+// and a link is removed as a name, wherever it points.
+func RemoveTree(root string) error {
+	err := os.RemoveAll(root)
+	if !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			_ = os.Chmod(p, 0o700)
+		}
+		return nil
+	})
+	return os.RemoveAll(root)
+}
 
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
