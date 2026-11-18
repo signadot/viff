@@ -86,7 +86,7 @@ func hooksOf(a *Action) []hookHere {
 		act  *Action
 	}{
 		{"onDone", a.OnDone}, {"onFailed", a.OnFailed},
-		{"onCancelled", a.OnCancelled}, {"onOrphaned", a.OnOrphaned},
+		{"onCancelled", a.OnCancelled},
 	} {
 		if h.act != nil {
 			out = append(out, hookHere{chain: h.name, act: h.act})

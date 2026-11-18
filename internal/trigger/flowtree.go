@@ -428,7 +428,6 @@ func (e *Engine) node(chain, kind string, run map[string]entity.Entity, act *Act
 		{"onDone", act.OnDone},
 		{"onFailed", act.OnFailed},
 		{"onCancelled", act.OnCancelled},
-		{"onOrphaned", act.OnOrphaned},
 	} {
 		if h.act == nil {
 			continue
@@ -487,8 +486,6 @@ func hookAction(act *Action, field string) *Action {
 		return act.OnFailed
 	case "onCancelled":
 		return act.OnCancelled
-	case "onOrphaned":
-		return act.OnOrphaned
 	}
 	return nil
 }

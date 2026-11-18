@@ -34,9 +34,9 @@ import (
 // of any default/ambient trigger match set.
 const System = "task"
 
-// The reflected status vocabulary is task.Status (running/completed/cancelled/
-// failed/orphaned), carried on the entity payload as the "status" field; its
-// Terminal() decides when to stop projecting.
+// The reflected status vocabulary is task.Status (running/done/cancelled/failed),
+// carried on the entity payload as the "status" field; its Terminal() decides when to stop
+// projecting.
 
 // InstanceKind is the kind a mirrored task lives under. Named, because a reader selecting
 // instances has to say so — the system also holds claims, which carry no status and would fall
@@ -247,7 +247,7 @@ func TriggerOf(chain string) string {
 var RecordFields = map[string]bool{
 	"actsFor": true, "answerers": true, "chain": true, "credential": true, "cursor": true, "data": true,
 	"agent": true, "ended": true, "err": true, "flow": true, "git": true, "hook": true,
-	"environment": true, "lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
+	"environment": true, "lastAction": true, "lastOutput": true, "observed": true, "occurrence": true, OrphanedField: true,
 	"paused": true, "pending": true, "autonomy": true, "autonomyBy": true, "prompt": true, "refused": true, "result": true, "script": true,
 	"runner": true, "runnerName": true, "runnerSubject": true, "say": true, "started": true, "startedAt": true,
 	"status": true, "trigger": true, "virtualKey": true,
@@ -403,12 +403,12 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 				attempt = 0 // it worked for a while; the next outage starts its own count
 			}
 			if attempt >= reconnectAttempts {
-				// Gave up, and ends the task on its record, as failed: the record is what
-				// ends a task, and one nobody is watching would otherwise hold its subject
-				// for good.
-				st["status"] = string(task.Failed)
-				st["ended"] = nowStamp()
-				st["err"] = "its runner could not be reached, and verse stopped watching it"
+				// Gave up, and ends the task on its record, as failed and orphaned: the
+				// record is what ends a task, and one nobody is watching would otherwise hold
+				// its subject for good.
+				for k, v := range Orphaned(OrphanedUnanswered) {
+					st[k] = v
+				}
 				landEnd(store, asPrincipal(store, entity.SystemMirror), id, st, m)
 				writeRun(store, id, occurrenceOf(st), st)
 				OrphanQuestions(asPrincipal(store, entity.SystemDocket), id)
@@ -928,6 +928,11 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						if e != "" {
 							st["err"] = e
 						}
+						// And whether it ended for a reason of its own, or because verse and
+						// its runner lost each other.
+						if ev.Orphaned {
+							st[OrphanedField] = true
+						}
 						// What its proxy turned away, by destination and how often: the runner's
 						// account, which no frame carries.
 						if r := h.Refused(); len(r) > 0 {
@@ -1056,6 +1061,25 @@ func held(st entity.Obj, m Meta) {
 			delete(st, HeldByField)
 		}
 	}
+}
+
+// OrphanedField is the field of a task's record that says the task ended because verse and its
+// runner lost each other, and not for a reason of its own. Such a task is `failed`, so it reaches
+// `onFailed`, which reads the field. Absent on every other end.
+const OrphanedField = "orphaned"
+
+// Why an orphaned task ended, as its record's `err` says it, by who ended it.
+const (
+	// OrphanedUnanswered: the mirror stopped waiting on a runner that did not answer.
+	OrphanedUnanswered = "the runner did not answer, and verse stopped waiting on it"
+	// OrphanedWithVerse: the task ran in verse's own process, which ended.
+	OrphanedWithVerse = "its runtime ended with verse"
+)
+
+// Orphaned is the end of an orphaned task, as fields of its record: failed, orphaned, why, and
+// when.
+func Orphaned(why string) entity.Obj {
+	return entity.Obj{"status": string(task.Failed), OrphanedField: true, "err": why, "ended": nowStamp()}
 }
 
 // landEnd writes a task's terminal record, and returns when it stands there, when the record has

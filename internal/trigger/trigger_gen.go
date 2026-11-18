@@ -1105,15 +1105,6 @@ func (s *Action) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["onCancelled"] = node
 	}
 
-	// Field: OnOrphaned (optional)
-	if s.OnOrphaned != nil {
-		node, err = s.OnOrphaned.ToTonyIR(opts...)
-		if err != nil {
-			return nil, err
-		}
-		irMap["onOrphaned"] = node
-	}
-
 	res := ir.FromMap(irMap)
 	if len(s.Note) > 0 {
 		res.Comment = &ir.Node{Type: ir.CommentType, Lines: s.Note, Parent: res}
@@ -1217,12 +1208,6 @@ func (s *Action) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 			// Field: OnCancelled
 			s.OnCancelled = &Action{}
 			if err := s.OnCancelled.FromTonyIR(fieldNode, opts...); err != nil {
-				return err
-			}
-		case "onOrphaned":
-			// Field: OnOrphaned
-			s.OnOrphaned = &Action{}
-			if err := s.OnOrphaned.FromTonyIR(fieldNode, opts...); err != nil {
 				return err
 			}
 		default:

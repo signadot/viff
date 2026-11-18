@@ -165,10 +165,7 @@ func (e *Engine) Adopt(subject, id string, h task.Handle) {
 // action and re-attaches its completion hooks, so a resumed task finishes the way it
 // would have — its onDone fires, and a sequence it belongs to advances.
 //
-// This is what a chain being a LOOKUP KEY into the charter is for. Before it, resume tracked
-// a task with no hooks at all, which meant a completion after a restart silently ended a
-// chain: docs/trigger-model.md records that as a limitation, and it is why `onOrphaned`
-// never fires (the only orphan is written by this very reconcile, on a fresh engine).
+// This is what a chain being a LOOKUP KEY into the charter is for.
 //
 // Rehydration is best-effort by nature, and the failures are ordinary rather than alarming:
 // a trigger removed while its task ran, or a charter edited so the chain no longer
@@ -229,7 +226,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// A hook is woken by a task finishing rather than by a write, so it has no cause of its
 	// own — and for a while that was taken to mean it had no revision to read at either, which
 	// left `$subject.value`, `$subject.commit`, `!get-path` and `!list-paths` unresolvable in
-	// every onDone/onFailed/onCancelled/onOrphaned there has ever been (git-issue hjxd56jy).
+	// every onDone/onFailed/onCancelled there has ever been (git-issue hjxd56jy).
 	// It then read at the commit its rule fired at, off the record's `occurrence`, so that a
 	// rule was one statement about one moment. That moment is history, and the store keeps
 	// history for its compaction cutoff only: a task that ran past it lost its hook to a read
@@ -440,6 +437,7 @@ func (e *Engine) neverStarted(fp flowTask, why string) entity.Event {
 		}
 	}
 	st["status"] = string(task.Failed)
+	delete(st, mirror.OrphanedField) // the run before may have ended so; this one was refused
 	if why != "" {
 		st["err"] = why
 	}
@@ -679,29 +677,4 @@ func (e *Engine) reapLoop(ctx context.Context, ch <-chan entity.Commit, unsub fu
 			}
 		}
 	}
-}
-
-// ReconcileOrphans retires task:instance entities that a previous run left
-// non-terminal: a fresh runtime holds no handle for them (runnerd is in-memory, so
-// a restart kills every task), so their last durable state is marked orphaned
-// rather than left claiming to run. Returns how many were reconciled.
-//
-// Call it once at monolith startup, before Start. Do NOT call it in a split
-// deployment where the task runtime outlives the engine — there the tasks are
-// real and reconnectable, not orphans.
-func (e *Engine) ReconcileOrphans() int {
-	n := 0
-	// Every kind the task system holds, deliberately — instances AND run records (see
-	// mirror.RunKind). A run whose runtime died IS orphaned, and its record is the only place
-	// that fact can still be told; leaving it saying `running` forever would make the history
-	// less honest than the live view beside it. Claims carry no status and fall through.
-	for _, ent := range entity.Below(e.store, mirror.IsTaskish, 2, entity.VerseRoot, mirror.System) {
-		status := entity.Str(ent.Payload, "status")
-		if status == "" || task.TerminalStatus(status) {
-			continue
-		}
-		e.write(ent.Ref.At("status"), entity.Val(string(task.Orphaned)))
-		n++
-	}
-	return n
 }

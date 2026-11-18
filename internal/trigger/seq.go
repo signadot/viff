@@ -421,7 +421,6 @@ func collectShapes(chain string, a *Action, into map[string]string) {
 		{"onDone", a.OnDone},
 		{"onFailed", a.OnFailed},
 		{"onCancelled", a.OnCancelled},
-		{"onOrphaned", a.OnOrphaned},
 	} {
 		if h.act != nil {
 			collectShapes(chain+"."+h.field, h.act, into)

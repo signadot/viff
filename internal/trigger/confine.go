@@ -285,7 +285,7 @@ func (a Action) writesSubject() bool {
 			return true
 		}
 	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled} {
 		if h != nil && h.writesSubject() {
 			return true
 		}

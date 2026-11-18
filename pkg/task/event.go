@@ -40,7 +40,10 @@ type Event struct {
 	Answerers []string `tony:"field=answerers,omitzero"`
 	Text      string   `tony:"field=text,omitzero"` // reason / detail / result
 	Err       string   `tony:"field=err,omitzero"`
-	Dropped   int      `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
+	// Orphaned, on a terminal status: the task ended because verse and its runner lost each
+	// other, and not for a reason of its own. Its status is failed.
+	Orphaned bool `tony:"field=orphaned,omitzero"`
+	Dropped  int  `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
 }
 
 // The kinds of Event, its `kind`.

@@ -778,12 +778,10 @@ func withAnnotation(m map[string]string, k, v string) map[string]string {
 	return out
 }
 
-// reconcileTasks runs on Start: for each non-terminal task:instance, either RESUME
-// (a remote runner still running the work — re-attach and re-mirror from the entity's
-// runner + cursor) or ORPHAN (a local in-process runtime that died with the previous
-// run). This refines the old orphan-only reconcile now that a task can outlive verse
-// behind a remote runner. Control re-tracking (cancel/say a resumed task) is a
-// follow-on; this keeps the entity truthful.
+// reconcileTasks runs on Start: for each non-terminal task:instance, either RESUME (the
+// record names a runner's url — re-attach and re-mirror from the record's runner and cursor,
+// and let the mirror hear how the task stands) or END it as failed and orphaned (its runtime
+// was this process, which died with the previous run).
 func (s *Server) reconcileTasks() error {
 	if err := s.awaiting(phaseSuspensions); err != nil {
 		return err
@@ -892,10 +890,10 @@ func (s *Server) reconcileTasks() error {
 				continue
 			}
 		}
-		// local (or unresolvable): the in-process runtime is gone → orphan. Only the status
-		// changes, so only the status is written — the rest of what the task recorded is
-		// none of this reconcile's business.
-		s.write(ent.Ref.At("status"), entity.Val(string(task.Orphaned)))
+		// Its runtime was this process: the task ended with the verse that ran it, and its
+		// record says so. Only how it ended is written;
+		// the rest of what the task recorded stands.
+		s.write(ent.Ref.At(), mirror.Orphaned(mirror.OrphanedWithVerse).Payload())
 	}
 	s.reconcileClaims(resumed)
 	s.reconcileQuestions() // AFTER the above: it reads the statuses this just settled

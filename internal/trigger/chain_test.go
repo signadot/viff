@@ -96,13 +96,11 @@ func TestHookFieldPairsWithHookFor(t *testing.T) {
 		OnDone:      &Action{},
 		OnFailed:    &Action{},
 		OnCancelled: &Action{},
-		OnOrphaned:  &Action{},
 	}
 	want := map[task.Status]string{
 		task.Done:      "onDone",
 		task.Failed:    "onFailed",
 		task.Cancelled: "onCancelled",
-		task.Orphaned:  "onOrphaned",
 	}
 	for st, field := range want {
 		if got := hookField(st); got != field {

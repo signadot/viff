@@ -8,7 +8,6 @@ define:
   onCancelled: .[nullable(verse-action)]
   onDone: .[nullable(verse-action)]
   onFailed: .[nullable(verse-action)]
-  onOrphaned: .[nullable(verse-action)]
   patch: .[tony-base:ir]
   seq: .[array(verse-action)]
   spawn: .[nullable(launch:verse-launch-spec)]

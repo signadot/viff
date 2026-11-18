@@ -47,12 +47,12 @@ is *which* text, and leaves that do not change matter more than the feature.
 
 ## The hooks are named fields
 
-The four hooks are named fields, and not an `on map[status]*Action`. So an unknown status cannot
-be written, and nothing needs validating. The cost is that a fifth terminal status is a change of
+The three hooks are named fields, and not an `on map[status]*Action`. So an unknown status cannot
+be written, and nothing needs validating. The cost is that a fourth terminal status is a change of
 schema, and a misspelled `onDoen` is dropped like any other unknown field.
 
-`onOrphaned` is inert, and restoring hooks at resume would not change that. Reconcile either
-adopts a task or orphans it, never both.
+Orphaned is not a status and has no hook. A task that verse and its runner lost is `failed` with
+`orphaned: true` on its record, so one hook covers every failure and reads which kind it was.
 
 ## A sequence, and no `par`
 

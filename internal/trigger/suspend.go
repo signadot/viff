@@ -643,7 +643,7 @@ func recordsCompletion(chain string) bool {
 	segs := strings.FieldsFunc(chain, func(r rune) bool { return r == '.' || r == '[' || r == ']' })
 	for _, seg := range segs[min(1, len(segs)):] { // past the rule's own name
 		switch seg {
-		case "onDone", "onFailed", "onCancelled", "onOrphaned", seqField:
+		case "onDone", "onFailed", "onCancelled", seqField:
 			return true
 		}
 	}

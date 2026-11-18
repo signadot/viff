@@ -401,6 +401,11 @@ func (s *Event) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["err"] = ir.FromString(string(s.Err))
 	}
 
+	// Field: Orphaned
+	if s.Orphaned {
+		irMap["orphaned"] = ir.FromBool(bool(s.Orphaned))
+	}
+
 	// Field: Dropped
 	if s.Dropped != 0 {
 		irMap["dropped"] = ir.FromInt(int64(s.Dropped))
@@ -567,6 +572,12 @@ func (s *Event) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "err", fieldNodeUnwrapped.Type)
 			}
 			s.Err = string(fieldNodeUnwrapped.String)
+		case "orphaned":
+			// Field: Orphaned
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "orphaned", fieldNodeUnwrapped.Type)
+			}
+			s.Orphaned = bool(fieldNodeUnwrapped.Bool)
 		case "dropped":
 			// Field: Dropped
 			if fieldNodeUnwrapped.Int64 == nil {
@@ -889,6 +900,11 @@ func (s *Snapshot) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["err"] = ir.FromString(string(s.Err))
 	}
 
+	// Field: Orphaned
+	if s.Orphaned {
+		irMap["orphaned"] = ir.FromBool(bool(s.Orphaned))
+	}
+
 	// Field: Pending
 	if len(s.Pending) > 0 {
 		slice := make([]*ir.Node, len(s.Pending))
@@ -1014,6 +1030,12 @@ func (s *Snapshot) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "err", fieldNodeUnwrapped.Type)
 			}
 			s.Err = string(fieldNodeUnwrapped.String)
+		case "orphaned":
+			// Field: Orphaned
+			if fieldNodeUnwrapped.Type != ir.BoolType {
+				return fmt.Errorf("field %q: expected bool, got %v", "orphaned", fieldNodeUnwrapped.Type)
+			}
+			s.Orphaned = bool(fieldNodeUnwrapped.Bool)
 		case "pending":
 			// Field: Pending
 			if fieldNodeUnwrapped.Type == ir.ArrayType {

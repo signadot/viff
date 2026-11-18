@@ -42,8 +42,11 @@ func TestReconcileStillOrphansAndIgnoresClaims(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("task entity lost: ok=%v err=%v", ok, err)
 	}
-	if got := entity.Str(e.Payload, "status"); got != string(task.Orphaned) {
-		t.Errorf("status = %q; want orphaned — a local task cannot outlive verse", got)
+	if got := entity.Str(e.Payload, "status"); got != string(task.Failed) {
+		t.Errorf("status = %q; want failed — a local task cannot outlive verse", got)
+	}
+	if o, _ := entity.ToObj(e.Payload)[mirror.OrphanedField].(bool); !o || entity.Str(e.Payload, "err") != mirror.OrphanedWithVerse {
+		t.Errorf("record = %v; want it orphaned, saying its runtime ended with verse", entity.ToObj(e.Payload))
 	}
 	if _, ok, _ := srv.Store.Get(claim); ok {
 		t.Error("claim survived alongside the orphaned task it guarded")

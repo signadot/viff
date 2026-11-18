@@ -333,7 +333,7 @@ func walk(a Action, in *post) (through *post, ended []*post) {
 		// states are terminal here rather than the ground the next element stands on.
 		ended = append(ended, offRamps...)
 	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled} {
 		if h == nil {
 			continue
 		}

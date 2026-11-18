@@ -59,7 +59,7 @@ func asSubject(a *Action) bool {
 			return true
 		}
 	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled} {
 		if asSubject(h) {
 			return true
 		}

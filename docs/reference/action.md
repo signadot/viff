@@ -24,7 +24,6 @@ its own. It acts on the [subject](../glossary.md#subject) of the condition.
 | `onDone` | an action that fires when the task ends `done` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 | `onFailed` | an action that fires when the task ends `failed` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 | `onCancelled` | an action that fires when the task ends `cancelled` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
-| `onOrphaned` | an action for a task that ends `orphaned`, which no tracked task does ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 
 An action writes to the store, and it can also act on a system outside verse. A `patch` or a
 `derive` that writes to an [iod](../glossary.md#iod)'s out place asks the iod to act: to post a
@@ -438,8 +437,9 @@ payload is the task's record as it ended: a task ends when its record says so, a
 runs on that. A launch that was refused before anything ran has ended already, as `failed`
 with the refusal as its `err`. This is why those bindings are flat. They are facts about a run.
 
-Each of the four is there whatever the task said. `result` and `err` are empty where it said
-nothing, and `data` is null where its result is no document. So a hook that an `onDone` and an
+Each of them is there whatever the task said. `result` and `err` are empty where it said
+nothing, and `data` is null where its result is no document. `orphaned` is there too, `false`
+unless the task ended because verse and its runner lost each other. So a hook that an `onDone` and an
 `onFailed` share can say `.[err]` in both, and `report: .[data]` writes null for a task that gave
 no document. Reading into a null is not reading a null: `.[data.findings]` there refuses the
 firing, as any absent path does.
@@ -801,7 +801,9 @@ An `Action` carries one [hook](../glossary.md#hook) for each terminal status:
 | `onDone` | `done` |
 | `onFailed` | `failed` |
 | `onCancelled` | `cancelled` |
-| `onOrphaned` | `orphaned` |
+
+A task that ended because verse and its runner lost each other is `failed`, and its record says
+`orphaned: true`. `onFailed` reads `.[orphaned]`, which is `false` on every other end.
 
 Each hook is itself a full `Action` (`patch` + `spawn` + its own hooks). So a chain
 (`review → merge → approve`) nests `onDone`s, and reads from top to bottom in one rule.
@@ -816,7 +818,7 @@ about that subject again until the hook has run. The hook reads the subject as i
 task ends ([Bindings](#bindings)), so what the firing wrote beside its spawn is what the hook
 finds, and no firing in between has written over it. The claim is a record in the store, as a
 sequence's run claim is, so a restart keeps it for a task that resumes and drops it for one that
-is orphaned. It comes off once the hook has written, whether the hook ran cleanly or failed, and
+does not. It comes off once the hook has written, whether the hook ran cleanly or failed, and
 whether or not the action still carries the hook. A completion the engine missed leaves the
 subject held until a restart, whose reconcile drops the claim of a task that did not resume. A
 firing about the subject that the hold refused is not lost: once the hook has run, the rule is
@@ -845,16 +847,17 @@ change to `verse.task.instance` and names the PR by pattern. Use it when a compl
 out into several reactions, advance a different subject, or be written separately. Use the hook
 for a linear chain that one rule owns, with the task step visible in the rule.
 
-The four hooks are named fields. So an unknown status cannot be written: no field exists to write
+The three hooks are named fields. So an unknown status cannot be written: no field exists to write
 it in. Verse refuses a misspelled `onDoen` at install, as it refuses any field an action does not
 have.
 
 Hooks survive a restart. Resume restores them from the chain of the task, so `done`, `failed`
 and `cancelled` still fire.
 
-`onOrphaned` never fires. Orphaning and adopting are the two alternatives in reconcile. A task
-that can be attached again is adopted, and never marked orphaned. A task that cannot is
-orphaned, and never tracked. So no tracked task reaches that status.
+A task on a runner is attached again at a restart, and what its runner says of it ends it. A
+runner that has no such task ends it `failed`, `orphaned: true`, and its `onFailed` runs. A
+task that ran in verse's own process ended with that process, and the restart writes its record
+`failed`, `orphaned: true`.
 
 ### `seq`: sequence along the chain, parallel across triggers
 
@@ -901,8 +904,8 @@ A [seq](../glossary.md#seq) follows these rules.
   patch applies, then the sequence runs.
 - The sequence owns the `done` slot of each element. So verse refuses at install an explicit
   `onDone` on any element, the last element too. The list already says what comes next.
-  `onFailed`, `onCancelled` and `onOrphaned` stay on each element as ways out, and firing one ends
-  the sequence.
+  `onFailed` and `onCancelled` stay on each element as ways out, and firing one ends the
+  sequence.
 - `onDone` on the action that *carries* the seq means "after the whole sequence". So a sequence is
   a unit with its own completion, and nesting composes.
 - An element with no spawn completes at once. So `seq: [{patch: …}, {patch: …}]` is two ordered
@@ -1043,7 +1046,7 @@ subject:
 | Field | What it says |
 |---|---|
 | `done` | the engine latches it when `step` reaches `steps` |
-| `ended` | the terminal status other than `done` at which an element stopped the sequence. Its own `onFailed`/`onCancelled`/`onOrphaned` runs, and the sequence stops there. `error` when an element after a finished task could not run. |
+| `ended` | the terminal status other than `done` at which an element stopped the sequence. Its own `onFailed`/`onCancelled` runs, and the sequence stops there. `error` when an element after a finished task could not run. |
 | `reason` | with `ended: error`, the error of the element that could not run |
 | `shape` | a hash of the declared sequence. Verse compares it at each advance. |
 

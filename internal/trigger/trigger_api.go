@@ -18,6 +18,7 @@ import (
 	"github.com/signadot/verse/internal/trigger/charter"
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/launch"
+	"github.com/signadot/verse/pkg/mirror"
 	"github.com/signadot/verse/pkg/task"
 )
 
@@ -728,7 +729,7 @@ const retiredResolver = "retired: nothing names a resolver to answer a rule's or
 func checkAction(node *ir.Node) error {
 	return checkFields(node, "action", map[string]bool{
 		"patch": true, "derive": true, "spawn": true, "seq": true,
-		"onDone": true, "onFailed": true, "onCancelled": true, "onOrphaned": true,
+		"onDone": true, "onFailed": true, "onCancelled": true,
 	}, func(field string, val *ir.Node) error {
 		switch field {
 		case "spawn":
@@ -750,7 +751,7 @@ func checkAction(node *ir.Node) error {
 					return fmt.Errorf("seq[%d]: %w", i, err)
 				}
 			}
-		case "onDone", "onFailed", "onCancelled", "onOrphaned":
+		case "onDone", "onFailed", "onCancelled":
 			if err := checkAction(val); err != nil {
 				return fmt.Errorf("%s: %w", field, err)
 			}
@@ -927,7 +928,8 @@ func bindingFor(payload entity.Payload, subject entity.Ref, value entity.Payload
 // taskFacts gives a completion hook's spawn every fact of the task that ended, whether or not
 // the task had it: `result` and `err` are "" where it said nothing, and `data` is null where its
 // result is no document. So `$[err]` in a prompt an onDone and an onFailed share reads the same
-// in both, as `$[status]` does.
+// in both, as `$[status]` does. And `orphaned` is false where the record does not say it: an
+// absent path refuses a firing, so a hook that reads it finds it on every end.
 func taskFacts(b launch.Binding) {
 	for _, k := range []string{"result", "err"} {
 		if _, ok := b[k]; !ok {
@@ -936,6 +938,9 @@ func taskFacts(b launch.Binding) {
 	}
 	if _, ok := b["data"]; !ok {
 		b["data"] = nil
+	}
+	if _, ok := b[mirror.OrphanedField]; !ok {
+		b[mirror.OrphanedField] = false
 	}
 }
 

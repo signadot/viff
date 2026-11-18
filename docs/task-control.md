@@ -297,7 +297,7 @@ Verse keeps its high-water cursor on the task's record. On a restart, it knows w
 | `decision` | `id, gate, step?, fields?, choice, proceed, by, text` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no; `gate` is the autonomy's row that decided the call, whether it allowed, denied or asked, or `environment` for a step outside it |
 | `child` | `child, status` | flow-tracking (sub-task spawn/join) |
 | `autonomy` | `text, by` | records a change of autonomy: `text` is the autonomy in one line, `2 row(s), default ask` |
-| `status` | `text: running\|paused\|done\|failed\|cancelled`, `by?`, `err?` | `status`, `paused`; on terminal `result` (CAS-once), read from `GET /tasks/{id}`, and `err`, why it ended, which the status alone never says |
+| `status` | `text: running\|paused\|done\|failed\|cancelled`, `by?`, `err?`, `orphaned?` | `status`, `paused`; on terminal `result` (CAS-once), read from `GET /tasks/{id}`, and `err`, why it ended, which the status alone never says |
 
 That table is the durable contract. It is `mirror.Reflect`, plus `autonomy`, minus the
 `gap` marker. The `gap` marker says something about the *reading*, and not about the task.

@@ -1121,7 +1121,7 @@ func (a Action) allDerives() []deriveTarget {
 	for _, el := range a.Seq {
 		out = append(out, el.allDerives()...)
 	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled} {
 		if h != nil {
 			out = append(out, h.allDerives()...)
 		}

@@ -378,7 +378,7 @@ type Gate struct {
 	//
 	// It hangs off the GATE rather than the action because a no is the gate's outcome: two
 	// gates on one rule refuse for different reasons, and each says what its own refusal
-	// means. That also keeps it clear of onDone/onFailed/onCancelled/onOrphaned, which are
+	// means. That also keeps it clear of onDone/onFailed/onCancelled, which are
 	// completion hooks for a spawn — a denied gate has no task to complete, which is why
 	// Action.validate requires a spawn for those and must not for this one.
 	OnDenied *Action `tony:"field=onDenied,omitzero"`
@@ -750,7 +750,7 @@ type Action struct {
 	// chain — which is why there is no `par`. See docs/trigger-model.md.
 	//
 	// The sequence owns the DONE slot of each element: an element may carry onFailed /
-	// onCancelled / onOrphaned as off-ramps (firing one ends the sequence), but not onDone,
+	// onCancelled as off-ramps (firing one ends the sequence), but not onDone,
 	// because the list already says what comes next. This action's own onDone fires after the
 	// WHOLE sequence, so a sequence is a unit with its own completion and nesting composes.
 	// SeqDoc/SeqNote: the list is not a struct, so the comments about `seq:` need the field.
@@ -763,16 +763,16 @@ type Action struct {
 	// Completion hooks: when this action's Spawn reaches a terminal status, the matching
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
 	// chain (review → merge → approve) reads top-to-bottom in one trigger. The engine applies
-	// it scoped to exactly this spawn's task (see Engine.applyHook / hookFor). onOrphaned is
-	// inert until resume rehydrates hooks (see docs/trigger-model.md).
+	// it scoped to exactly this spawn's task (see Engine.applyHook / hookFor). A task that
+	// ended because verse and its runner lost each other is `failed`, and its record says
+	// `orphaned: true`, which onFailed reads.
 	OnDone      *Action `tony:"field=onDone,omitzero"`      // status done (success)
 	OnFailed    *Action `tony:"field=onFailed,omitzero"`    // status failed
 	OnCancelled *Action `tony:"field=onCancelled,omitzero"` // status cancelled
-	OnOrphaned  *Action `tony:"field=onOrphaned,omitzero"`  // status orphaned
 }
 
-// hookFor returns the completion hook for a terminal status (nil if none). The four terminal
-// statuses map to the four onX fields; non-terminal statuses have no hook.
+// hookFor returns the completion hook for a terminal status (nil if none). The three terminal
+// statuses map to the three onX fields; non-terminal statuses have no hook.
 func (a *Action) hookFor(s task.Status) *Action {
 	switch s {
 	case task.Done:
@@ -781,8 +781,6 @@ func (a *Action) hookFor(s task.Status) *Action {
 		return a.OnFailed
 	case task.Cancelled:
 		return a.OnCancelled
-	case task.Orphaned:
-		return a.OnOrphaned
 	}
 	return nil
 }
@@ -799,15 +797,13 @@ func hookField(s task.Status) string {
 		return "onFailed"
 	case task.Cancelled:
 		return "onCancelled"
-	case task.Orphaned:
-		return "onOrphaned"
 	}
 	return ""
 }
 
 // hasHooks reports whether any completion hook is set — used to require a spawn for them.
 func (a *Action) hasHooks() bool {
-	return a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil || a.OnOrphaned != nil
+	return a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil
 }
 
 // does reports whether this action would do anything at all: write the subject, write another
@@ -937,7 +933,7 @@ func (a Action) validate() error {
 			return fmt.Errorf("seq[%d]: %w", i, err)
 		}
 	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled} {
 		if h == nil {
 			continue
 		}
@@ -961,7 +957,7 @@ func (a Action) credentialBeneath(at string) string {
 			return found
 		}
 	}
-	for name, h := range map[string]*Action{"onDone": a.OnDone, "onFailed": a.OnFailed, "onCancelled": a.OnCancelled, "onOrphaned": a.OnOrphaned} {
+	for name, h := range map[string]*Action{"onDone": a.OnDone, "onFailed": a.OnFailed, "onCancelled": a.OnCancelled} {
 		if h == nil {
 			continue
 		}
@@ -996,7 +992,7 @@ func (a Action) noNestedSeq(inSeq bool) error {
 			return err
 		}
 	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled} {
 		if h == nil {
 			continue
 		}
@@ -1085,7 +1081,7 @@ var errHeld = errors.New("a task of this action holds the subject until its hook
 // hooked reports whether the action spawns with a completion hook: the actions whose subject a
 // firing holds (applyOne) and whose task's end releases it (applyHook).
 func (a Action) hooked() bool {
-	return a.Spawn != nil && (a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil || a.OnOrphaned != nil)
+	return a.Spawn != nil && (a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil)
 }
 
 // applyClaimed is applyOne past the claim: the write, then the spawn.

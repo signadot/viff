@@ -569,9 +569,8 @@ See [Tasks](reference/tasks.md#one-id-many-runs).
 | `running` | the work is in progress |
 | `paused` | a hold stopped the run at a boundary, until somebody resumes it |
 | `done` | the task finished |
-| `failed` | the task ran and did not succeed |
+| `failed` | the task ran and did not succeed, or verse and its runner lost each other, which its record says as `orphaned: true` |
 | `cancelled` | an operator stopped the task |
-| `orphaned` | the process that ran the task ended, and the work did not complete |
 
 See [architecture.md](platform/architecture.md#data-and-failure-model), in the repository.
 

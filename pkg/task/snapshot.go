@@ -26,11 +26,14 @@ type Snapshot struct {
 	// question asked most often about one that is over. Empty while unknown — a runner that
 	// reports neither is not lying about a task it is genuinely hosting, it simply has not
 	// been asked to keep clocks.
-	Started string        `tony:"field=started,omitzero"`
-	Ended   string        `tony:"field=ended,omitzero"`
-	Result  string        `tony:"field=result,omitzero"`  // the driver's final answer, once completed
-	Err     string        `tony:"field=err,omitzero"`     // failure detail (e.g. "driver error: …")
-	Pending []PendingGate `tony:"field=pending,omitzero"` // open gates awaiting resolution
+	Started string `tony:"field=started,omitzero"`
+	Ended   string `tony:"field=ended,omitzero"`
+	Result  string `tony:"field=result,omitzero"` // the driver's final answer, once completed
+	Err     string `tony:"field=err,omitzero"`    // failure detail (e.g. "driver error: …")
+	// Orphaned says a failed task ended because verse and its runner lost each other, and not
+	// for a reason of its own.
+	Orphaned bool          `tony:"field=orphaned,omitzero"`
+	Pending  []PendingGate `tony:"field=pending,omitzero"` // open gates awaiting resolution
 	// Refused is the connections the task's proxy refused, by destination (`host:port`), and how
 	// often: the runner's account, since the proxy is the runner's and the task never sees the
 	// decision, only the 403. A refusal is where a run tried to reach what nobody gave it.
@@ -78,17 +81,13 @@ const (
 	// Failed: ran but did not succeed — a driver/agent error or an executor-reported
 	// failure.
 	Failed Status = "failed"
-	// Orphaned: its runtime died (e.g. a monolith restart), so the last durable state
-	// is retired rather than left claiming to run. Terminal, but the work did NOT
-	// complete — a completion trigger deliberately does not match it.
-	Orphaned Status = "orphaned"
 )
 
 // Terminal reports whether a status is an end state (no further work). Running and Paused are
 // the live states; everything else is terminal.
 func (s Status) Terminal() bool {
 	switch s {
-	case Done, Cancelled, Failed, Orphaned:
+	case Done, Cancelled, Failed:
 		return true
 	}
 	return false

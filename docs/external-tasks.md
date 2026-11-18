@@ -105,8 +105,8 @@ transport.
 Second, the durable contract holds records, and a pty and stdin exist only on the live
 connection. An exit code is a poor terminal for an agent, which wants a status and a result.
 The terminal is therefore a status and a result, and never only an integer. On the
-[instance record](glossary.md#instance-record) it is three fields: `status` (`done`, `failed`,
-`cancelled` or `orphaned`), `result` (text) and `err` (the failure detail). The terminal has no
+[instance record](glossary.md#instance-record) it is three fields: `status` (`done`, `failed`
+or `cancelled`), `result` (text) and `err` (the failure detail). The terminal has no
 field for an exit code.
 
 `stdout` and `stderr` are one output stream in the journal. Each entry is appended and tagged

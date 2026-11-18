@@ -153,7 +153,7 @@ func (a *Action) eachSpawn(chain string, fn func(string, *launch.Spec)) {
 	for _, h := range []struct {
 		name string
 		act  *Action
-	}{{"onDone", a.OnDone}, {"onFailed", a.OnFailed}, {"onCancelled", a.OnCancelled}, {"onOrphaned", a.OnOrphaned}} {
+	}{{"onDone", a.OnDone}, {"onFailed", a.OnFailed}, {"onCancelled", a.OnCancelled}} {
 		h.act.eachSpawn(chain+"."+h.name, fn)
 	}
 	for i := range a.Seq {
@@ -171,8 +171,6 @@ func (a *Action) hookNamed(field string) *Action {
 		return a.OnFailed
 	case "onCancelled":
 		return a.OnCancelled
-	case "onOrphaned":
-		return a.OnOrphaned
 	}
 	return nil
 }

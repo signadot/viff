@@ -199,6 +199,9 @@ type remoteHandle struct {
 	stream *http.Client // the event plane: unbounded, cancelled by its context
 }
 
+// noSuchTask is why a task ended whose runner answered that it has none by that id.
+const noSuchTask = "the runner has no such task"
+
 // Subscribe replays the whole retained window then streams live, so the mirror sees the
 // task from as far back as the remote still holds.
 func (h *remoteHandle) Subscribe() (<-chan task.Event, func()) {
@@ -230,41 +233,29 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Event, func()) {
 		cancel()
 		return out, func() {}
 	}
-	// A rejected subscribe is not an empty one. Subscribe cannot return an error, and the
-	// reader below keeps only frames, so a 4xx/5xx body would scan to nothing and
-	// close the channel — leaving the mirror to conclude the remote task simply had
-	// nothing to say. Report it on the plane the caller is already reading, the way a
-	// cancel does below.
+	// A rejected subscribe is answered by what the runner says of the task, where it says
+	// anything: a task that never started has no stream and no child to forward to, so 404 is
+	// the honest answer to the question that was asked, while its record says "the task
+	// process exited before it served anything (exit status 1) — its output is on this
+	// runner's log, tagged <id>", which is the account that ends an investigation (git-issue
+	// ykpt9g3eh12kss9wfhn0). Only a TERMINAL status is taken: a task the remote still considers
+	// live has no account of its end to give.
+	//
+	// ONLY THE RUNNER FAILS A TASK, AND ON BOTH ANSWERS. The stream and the task are two
+	// requests, so a 404 on the stream alone is not the runner's word on the task: asked a
+	// moment apart, the runner may hold the task by the second. It has no such task when it
+	// answers 404 for the task as well: the task is gone and nothing will ever say how it ended,
+	// so it ends here, failed and orphaned. Any other refusal, and a runner that could not be
+	// asked about the task, says nothing about it: the stream closes with no frame, as a request
+	// that got no response does, and whoever reads it asks again.
 	if resp.StatusCode >= http.StatusBadRequest {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
-		msg := strings.TrimSpace(string(body))
-		if msg == "" {
-			msg = resp.Status
-		}
 		resp.Body.Close()
-		// WHY the subscribe failed and why the TASK failed are different facts, and only
-		// one of them is worth a reader's time. A task that never started has no stream and
-		// no child to forward to, so 404 is the honest answer to the question that was
-		// asked — but reported as the run's outcome it says "404 page not found" where the
-		// record says "the task process exited before it served anything (exit status 1) —
-		// its output is on this runner's log, tagged <id>". The second is the one that ends
-		// the investigation; the first cost three trips to `kubectl logs` to get past
-		// (git-issue ykpt9g3eh12kss9wfhn0).
-		//
-		// So ask the record before reporting. Only a TERMINAL status with a reason wins:
-		// a task the remote still considers live has no better account of itself than the
-		// transport error, and overwriting a live task's frame with a stale record would
-		// be the same mistake pointed the other way.
-		if snap, ok := h.snapshot(); ok && snap.Status.Terminal() && snap.Err != "" {
-			out <- task.Event{Kind: task.EventStatus, Text: string(snap.Status), Err: snap.Err}
-			close(out)
-			cancel()
-			return out, func() {}
-		}
-		out <- task.Event{
-			Kind: task.EventStatus,
-			Text: string(task.Failed),
-			Err:  fmt.Sprintf("subscribe %s: %s", h.id, msg),
+		snap, said := h.ask()
+		switch {
+		case said == saidSnapshot && snap.Status.Terminal():
+			out <- task.Event{Kind: task.EventStatus, Text: string(snap.Status), Err: snap.Err, Orphaned: snap.Orphaned}
+		case said == saidNoTask && resp.StatusCode == http.StatusNotFound:
+			out <- task.Event{Kind: task.EventStatus, Text: string(task.Failed), Orphaned: true, Err: noSuchTask}
 		}
 		close(out)
 		cancel()
@@ -362,19 +353,36 @@ func (h *remoteHandle) Resolve(decision, choice, say, by string) error {
 // between two of those calls would have its status read from before and its reason from
 // after.
 func (h *remoteHandle) snapshot() (task.Snapshot, bool) {
+	snap, said := h.ask()
+	return snap, said == saidSnapshot
+}
+
+// What a runner said when asked for a task's snapshot.
+const (
+	saidNothing  = iota // no answer, or none that reads: the runner was not reached
+	saidSnapshot        // the task, as the runner holds it
+	saidNoTask          // 404: the runner has no task by that id
+)
+
+// ask is snapshot with the runner's answer told apart: a runner that has no such task has said
+// something about the task, and a runner that was not reached has not.
+func (h *remoteHandle) ask() (task.Snapshot, int) {
 	resp, err := h.cl.Get(h.url(""))
 	if err != nil {
-		return task.Snapshot{}, false
+		return task.Snapshot{}, saidNothing
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return task.Snapshot{}, saidNoTask
+	}
 	if resp.StatusCode >= http.StatusBadRequest {
-		return task.Snapshot{}, false
+		return task.Snapshot{}, saidNothing
 	}
 	var snap task.Snapshot
 	if err := decodeResp(resp, &snap); err != nil {
-		return task.Snapshot{}, false
+		return task.Snapshot{}, saidNothing
 	}
-	return snap, true
+	return snap, saidSnapshot
 }
 
 func (h *remoteHandle) Err() string {
