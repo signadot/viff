@@ -844,7 +844,7 @@ default.
 | `-comments` | `<n>` | `200` | the number of comments that the iod keeps for each repository |
 | `-max-open` | `<n>` | `2000` | The iod refuses a repository that has more open items than this. |
 | `-discussions` | | `false` | The iod reflects discussions. |
-| `-alerts` | | `false` | The iod reflects Dependabot alerts. |
+| `-alerts` | | `false` | The iod reflects Dependabot alerts. Anyone who can read the repository's entities can then read them, which GitHub shows only to admins and security managers. |
 | `-tree` | `[<name>=]<path>` | | a directory an open pull request reports when it changes it, as `changes.<name>`: the identity of the directory's contents at the head, present where they differ from the directory at the head's merge base with the pull request's base. Against the merge base, so a pull request branched before the base's copy changed changes nothing. Read once per head and kept. The name defaults to the path's last segment. The flag is repeatable. |
 | `-out` | | `false` | The iod also acts back: see [The out half of github](#the-out-half-of-github). |
 
@@ -882,7 +882,7 @@ content type `application/json`.
 | `github.<org>.<name>.pr.<n>` | `repo, number, title, state, draft, merged`, and `author, base, head, headSha, checks, url, …, labels, assignees, requestedReviewers, requestedTeams`; an open one also `changes.<name>` for each `-tree` directory it changes. `requestedReviewers` (logins) and `requestedTeams` (slugs, without the org) are whom a review is waiting on: GitHub drops a reviewer once they review, and adds them back on a re-request. |
 | `github.<org>.<name>.discussion.<n>` | `repo, number, title, state, answered, comments`, and `author, category, url, …` |
 | `github.<org>.<name>.run.<id>` | `repo, id, status, runNumber, attempt`, and `workflow, event, conclusion, branch, headSha, url, startedAt, updatedAt, actor` |
-| `github.<org>.<name>.alert.<n>` | with `-alerts`, a Dependabot alert: `repo, number, state` (`open`, `fixed`, `dismissed` or `auto_dismissed`), and `severity` and `summary` (the advisory's), `ecosystem, package, manifest, relationship, scope, vulnerableRange, patched, ghsa, cve, url, createdAt, updatedAt, fixedAt, dismissedAt, dismissedReason`, each where GitHub gives it. An alert with no patched version has no `patched`, and one with no CVE no `cve`. |
+| `github.<org>.<name>.alert.<n>` | with `-alerts`, a Dependabot alert: `repo, number, state` (`open`, `fixed`, `dismissed` or `auto_dismissed`), and `severity` and `summary` (the advisory's), `ecosystem, package, manifest, relationship, scope, vulnerableRange, patched, ghsa, cve, url, createdAt, updatedAt, fixedAt, dismissedAt, dismissedReason, dismissedComment, autoDismissedAt`, each where GitHub gives it. An alert with no patched version has no `patched`, and one with no CVE no `cve`. An auto-dismissed alert has `autoDismissedAt` and no `dismissedAt`. |
 | `github.<org>.<name>.comment.<n>.<id>` | `repo, on, id, kind`, and `author, authorId, body, url, createdAt, updatedAt`. `authorId` is GitHub's number for the account, which a rename does not change, and an [account binding](perms.md#accounts-in-other-systems) keys on it. A review comment (`kind: review`, on a line of the diff) also says where it is and what it answers, each where GitHub gives it: `path`, `line`, `startLine` and `startSide` (a multi-line comment's first line and its side, which may differ from the side it ends on), `side` (`LEFT` or `RIGHT`), `commitId`, `inReplyTo` (the id of its thread's first comment, on a reply), and `diffHunk`, with `diffHunkTruncated: true` when it was cut. A conversation comment (`kind: conversation`) has none of them. |
 
 **A review comment's hunk is capped.** GitHub's `diff_hunk` runs from its hunk's `@@` header
@@ -982,13 +982,21 @@ cover is the open alerts, complete, and refused over `-max-open` like the other 
 other cover is the fixed, dismissed and auto-dismissed alerts, as a window of the `-settled`
 most recently updated. An alert that is fixed or dismissed stays at its address with its new
 state, and leaves the window as newer ones settle. The listing pages by cursor, the `after` of
-the `Link` header. A `dependabot_alert` delivery reconciles that alert alone.
+the `Link` header. Only its first page is kept for a 304, because a later page's address holds
+a cursor that changes. A `dependabot_alert` delivery reconciles that alert alone.
 
-A refused read of the alerts (403: the credential lacks Dependabot alerts read, or the
-repository has the alerts switched off) is the discussions case. The iod drops the covers of
-the alerts with their data, logs why, and finishes the pass, so what stands stays. A
-repository over `-max-open` open alerts is dropped the same way. Without `-alerts` the iod asks
-GitHub nothing about alerts, covers none, and a `dependabot_alert` delivery reconciles nothing.
+A read of the alerts that fails for any reason is the discussions case. The iod drops the
+covers of the alerts with their data, logs why, and finishes the pass, so what stands stays. The
+usual reason is a 403: the credential lacks Dependabot alerts read, or the repository has the
+alerts switched off. A 5xx, a rate limit, or more than `-max-open` open alerts is handled the
+same way. Without `-alerts` the iod asks GitHub nothing about alerts, covers none, and a
+`dependabot_alert` delivery reconciles nothing.
+
+**Reflecting the alerts widens who can see them.** GitHub shows a repository's Dependabot
+alerts only to its admins and to security managers, and to whoever else they grant access.
+Once the iod reflects them, anyone who can read `github.<org>.<name>.*` in verse can read them
+too. Turn on `-alerts` only where the people who read that subtree may see the repository's
+vulnerabilities.
 
 ### The out half of github
 

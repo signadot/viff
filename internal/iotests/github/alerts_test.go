@@ -75,7 +75,8 @@ func TestAlertsAreTwoCoversAndTheSettledWindowAgesOut(t *testing.T) {
 		t.Errorf("number = %v", a["number"])
 	}
 	// No patched version is no `patched`, and an open alert says nothing of fixing or dismissing.
-	for _, k := range []string{"patched", "fixedAt", "dismissedAt", "dismissedReason"} {
+	for _, k := range []string{"patched", "fixedAt", "dismissedAt", "dismissedReason",
+		"dismissedComment", "autoDismissedAt"} {
 		if v, ok := a[k]; ok {
 			t.Errorf("an open alert with no patched version carries %s: %v", k, v)
 		}
@@ -83,6 +84,9 @@ func TestAlertsAreTwoCoversAndTheSettledWindowAgesOut(t *testing.T) {
 	d := entity.ToObj(mustGet(t, store, src.AlertRef("acme/app", 3)))
 	if d["state"] != "dismissed" || d["dismissedReason"] != "tolerable_risk" || d["dismissedAt"] != "2026-01-03T00:00:00Z" {
 		t.Errorf("a dismissed alert: %v", d)
+	}
+	if d["dismissedComment"] != "Only reachable in tests.\nNot shipped." {
+		t.Errorf("a dismissed alert's comment = %q", d["dismissedComment"])
 	}
 	if _, ok := d["cve"]; ok {
 		t.Errorf("an alert with no CVE carries cve: %v", d["cve"])
@@ -104,6 +108,14 @@ func TestAlertsAreTwoCoversAndTheSettledWindowAgesOut(t *testing.T) {
 		if _, ok, _ := store.Get(src.AlertRef("acme/app", n)); !ok {
 			t.Errorf("alert %d is missing", n)
 		}
+	}
+	// An auto-dismissed alert has no dismissed_at, so it says when it left open by its own field.
+	auto := entity.ToObj(mustGet(t, store, src.AlertRef("acme/app", 4)))
+	if auto["autoDismissedAt"] != "2026-01-04T00:00:00Z" {
+		t.Errorf("an auto-dismissed alert carries autoDismissedAt %v", auto["autoDismissedAt"])
+	}
+	if _, ok := auto["dismissedAt"]; ok {
+		t.Errorf("an auto-dismissed alert carries dismissedAt %v", auto["dismissedAt"])
 	}
 }
 
@@ -135,8 +147,9 @@ func TestAnAlertMovesOpenToFixedInPlace(t *testing.T) {
 }
 
 // The open set is read to its end BY CURSOR, past a page, and refused over -max-open rather than
-// cut short. A warm pass answers the same from the cache, where a 304 carries no Link and the
-// next page comes from the one cached with the body.
+// cut short. A warm pass answers the same: the first page from the cache, where a 304 carries no
+// Link and the next page comes from the one cached with the body, and the later pages afresh,
+// since a page keyed by a moving cursor is never cached and so never asked for conditionally.
 func TestOpenAlertsAreReadByCursorAndRefusedOverMaxOpen(t *testing.T) {
 	f := newFake()
 	r := f.repo("acme/app")
@@ -162,6 +175,16 @@ func TestOpenAlertsAreReadByCursorAndRefusedOverMaxOpen(t *testing.T) {
 		if got := count(rn); got != 150 {
 			t.Fatalf("a %s pass reflected %d of 150 open alerts", pass, got)
 		}
+	}
+	f.mu.Lock()
+	first, later := r.alertFirstETags, r.alertLaterETags
+	f.mu.Unlock()
+	if first == 0 {
+		t.Error("the warm pass revalidated no first page: the first page is not cached")
+	}
+	if later != 0 {
+		t.Errorf("a page past the first was asked for conditionally %d times, so it was cached "+
+			"under a cursor that moves, and the cache grows by a page each time it does", later)
 	}
 
 	var logged []string

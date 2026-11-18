@@ -514,10 +514,10 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 		}
 	}
 
-	// DEPENDABOT ALERTS ARE A SEPARABLE CLAIM TOO, for the discussions' reason: a credential
-	// without Dependabot alerts read, or a repository with the alerts switched off, is a 403, and
-	// that is nothing true to say about alerts rather than "there are none". With -alerts off
-	// nothing is asked and nothing is covered.
+	// DEPENDABOT ALERTS ARE A SEPARABLE CLAIM TOO, for the discussions' reason: any failed read
+	// of them (most often a 403, a credential without Dependabot alerts read or a repository with
+	// the alerts switched off) is nothing true to say about alerts rather than "there are none".
+	// With -alerts off nothing is asked and nothing is covered.
 	if g.alerts {
 		if as, err := g.readAlerts(ctx, repo); err != nil {
 			g.log("github: %s: reflecting no Dependabot alerts this pass: %v", repo, err)

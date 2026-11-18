@@ -21,10 +21,11 @@ import (
 // dismissed, auto_dismissed) as a window of the newest -settled by update. An alert that is fixed
 // appears in the settled half carrying its new state, ages, and leaves.
 //
-// THE READ IS DISCUSSIONS', a separable claim: a credential without Dependabot alerts read, or a
-// repository with the alerts switched off, answers 403, and that is this pass having nothing true
-// to say about alerts rather than there being none. So the covers go with the entities and what
-// stands is left alone (reflectRepo).
+// THE READ IS DISCUSSIONS', a separable claim: a read of the alerts that fails for any reason
+// is this pass having nothing true to say about alerts rather than there being none. The usual
+// one is a 403, a credential without Dependabot alerts read or a repository with the alerts
+// switched off, but a 5xx, a rate limit or more open alerts than -max-open go the same way. So
+// the covers go with the entities and what stands is left alone (reflectRepo).
 
 // alertSettled is the settled half's states, as the listing's `state` filter takes them.
 const alertSettled = "fixed,dismissed,auto_dismissed"
@@ -130,17 +131,21 @@ type alert struct {
 			Identifier string `json:"identifier"`
 		} `json:"first_patched_version"`
 	} `json:"security_vulnerability"`
-	HTMLURL         string `json:"html_url"`
-	CreatedAt       string `json:"created_at"`
-	UpdatedAt       string `json:"updated_at"`
-	FixedAt         string `json:"fixed_at"`
-	DismissedAt     string `json:"dismissed_at"`
-	DismissedReason string `json:"dismissed_reason"`
+	HTMLURL          string `json:"html_url"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+	FixedAt          string `json:"fixed_at"`
+	DismissedAt      string `json:"dismissed_at"`
+	DismissedReason  string `json:"dismissed_reason"`
+	DismissedComment string `json:"dismissed_comment"`
+	AutoDismissedAt  string `json:"auto_dismissed_at"`
 }
 
 // alertPayload is what a charter reads an alert as. `state` is GitHub's own word (open, fixed,
 // dismissed, auto_dismissed) and never absent; the rest is there where GitHub gives it, so an
-// alert with no patched version carries no `patched` and one with no CVE carries no `cve`.
+// alert with no patched version carries no `patched` and one with no CVE carries no `cve`. Each
+// way out of open has its timestamp: `fixedAt`, `dismissedAt` (with `dismissedReason` and
+// `dismissedComment`), and `autoDismissedAt`, since an auto-dismissed alert has no dismissed_at.
 func alertPayload(repo string, a alert) entity.Obj {
 	p := entity.Obj{"repo": repo, "number": a.Number, "state": a.State}
 	patched := ""
@@ -156,6 +161,7 @@ func alertPayload(repo string, a alert) entity.Obj {
 		"summary": text(a.SecurityAdvisory.Summary), "url": a.HTMLURL,
 		"createdAt": a.CreatedAt, "updatedAt": a.UpdatedAt, "fixedAt": a.FixedAt,
 		"dismissedAt": a.DismissedAt, "dismissedReason": a.DismissedReason,
+		"dismissedComment": text(a.DismissedComment), "autoDismissedAt": a.AutoDismissedAt,
 	} {
 		if v != "" {
 			p[k] = v
@@ -171,6 +177,12 @@ func alertPayload(repo string, a alert) entity.Obj {
 // PAGED BY CURSOR, which is the difference from every other listing here: this endpoint is
 // closing down `page`, so the next page is the `after` of the Link header's `rel="next"`, and
 // there is no next page when there is no such link.
+//
+// ONLY THE FIRST PAGE IS CACHED. The ETag cache is keyed by URL and never evicts, and a later
+// page's URL carries GitHub's opaque cursor, which moves whenever the first page's boundary does.
+// Caching those would leave an entry of up to a page of alerts behind every time it moved. The
+// first page's URL is fixed, so its entry is replaced rather than added to, and a quiet
+// repository with no more than a page of alerts still costs a 304.
 func (a *api) listAlerts(ctx context.Context, repo, state string, refuseOver, window int) ([]alert, error) {
 	var out []alert
 	after := ""
@@ -188,7 +200,7 @@ func (a *api) listAlerts(ctx context.Context, repo, state string, refuseOver, wi
 			v.Set("after", after)
 		}
 		var batch []alert
-		link, err := a.readPage(ctx, "/repos/"+repo+"/dependabot/alerts?"+v.Encode(), &batch, true)
+		link, err := a.readPage(ctx, "/repos/"+repo+"/dependabot/alerts?"+v.Encode(), &batch, after == "")
 		if err != nil {
 			return nil, err
 		}

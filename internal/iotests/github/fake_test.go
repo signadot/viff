@@ -88,6 +88,10 @@ type fakeRepo struct {
 	alerts        []*fakeAlert
 	alertsRefused bool
 	alertAsks     int
+	// alertFirstETags and alertLaterETags count conditional reads of a listing's first page and
+	// of a page past it, which a source sends only if it cached that page. A later page's entry
+	// is keyed by a cursor that moves.
+	alertFirstETags, alertLaterETags int
 }
 
 // fakeAlert is one Dependabot alert. An empty patched, cve, scope or relationship renders as
@@ -492,6 +496,15 @@ func (f *fakeGitHub) dependabot(w http.ResponseWriter, r *http.Request, repo *fa
 		return
 	}
 	q := r.URL.Query()
+	if r.Header.Get("If-None-Match") != "" {
+		f.mu.Lock()
+		if q.Has("after") {
+			repo.alertLaterETags++
+		} else {
+			repo.alertFirstETags++
+		}
+		f.mu.Unlock()
+	}
 	if q.Has("page") {
 		http.Error(w, `{"message":"Pagination using the `+"`page`"+` parameter is not supported."}`, http.StatusBadRequest)
 		return
@@ -563,13 +576,17 @@ func (a *fakeAlert) render() map[string]any {
 		"url":        "https://api.github.com/repos/x/y/dependabot/alerts/" + strconv.Itoa(a.number),
 		"html_url":   "https://github.com/x/y/security/dependabot/" + strconv.Itoa(a.number),
 		"created_at": "2026-01-01T00:00:00Z", "updated_at": a.updated,
-		"fixed_at": nil, "dismissed_at": nil, "dismissed_reason": nil,
+		"fixed_at": nil, "dismissed_at": nil, "dismissed_reason": nil, "dismissed_comment": nil,
+		"auto_dismissed_at": nil,
 	}
 	switch a.state {
 	case "fixed":
 		m["fixed_at"] = a.updated
 	case "dismissed":
 		m["dismissed_at"], m["dismissed_reason"] = a.updated, "tolerable_risk"
+		m["dismissed_comment"] = "Only reachable in tests.\r\nNot shipped."
+	case "auto_dismissed":
+		m["auto_dismissed_at"] = a.updated
 	}
 	return m
 }
