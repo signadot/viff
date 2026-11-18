@@ -19,7 +19,7 @@ import (
 )
 
 // idleHandle is a task that is running and does nothing: the engine holds a flow open around
-// it until its bus closes, which is what makes "there is live work about this subject" a state
+// it until it ends, which is what makes "there is live work about this subject" a state
 // a test can stand in rather than race against. It counts each control verb it is sent, so a
 // test can say WHICH task a steer reached rather than only how many.
 type idleHandle struct {
@@ -299,15 +299,15 @@ func TestFlowSteeringActsOnItsOwn(t *testing.T) {
 	// And baseline may not steer the scope's: once baseline's own work is gone, its say about
 	// the subject is refused naming the scope rather than answering zero, and its suspend of
 	// the scope's run is refused the same way.
-	close(base.ch)
-	close(packaged.ch)
-	base.ch, packaged.ch = make(chan task.Event), make(chan task.Event) // the cleanups close these
+	// Ended with a terminal frame: a bus that merely closes is an outage the reaper resumes from.
+	base.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Done)}
+	packaged.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Done)}
 	for i := 0; ; i++ {
 		if len(srv.Eng.Flows()) == 0 && len(pkg.Flows()) == 0 {
 			break
 		}
 		if i > 200 {
-			t.Fatal("baseline's tasks were not reaped after their buses closed")
+			t.Fatal("baseline's tasks were not reaped after they ended")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

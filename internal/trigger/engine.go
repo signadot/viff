@@ -70,6 +70,9 @@ type Engine struct {
 	// puts Warn on stderr, alongside the logd/docd records already landing there.
 	logger *slog.Logger
 	clock  func() time.Time // the system clock (injectable for tests); nil = time.Now
+	// redialWait is how long reapOnDone waits before reopening a dropped task stream
+	// (injectable for tests); nil = redialBackoff.
+	redialWait func(attempt int) time.Duration
 
 	mu    sync.Mutex
 	fired int // entities acted on, for the trace and for tests; see countFire

@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/launch"
@@ -132,25 +133,116 @@ func (e *Engine) AdoptChain(subject, id, chain string, h task.Handle) {
 // so it hangs off the task's own completion (its handle's bus). NOTE: it can race a
 // fast task that finishes before this subscribes (Subscribe is live-from-now, no ring
 // replay) — in baseline mode reap (store-driven, via the root watch) is the race-free
-// path; this is the backstop and the scoped-mode path. The range also exits if the
-// task closes its bus, so this cannot outlive p.
+// path; this is the backstop and the scoped-mode path.
+//
+// A BUS THAT CLOSES WITHOUT A TERMINAL IS AN OUTAGE, NOT THE END OF THE TASK. The terminal is
+// always the last frame (pkg/task/event.go), so a stream that ends without one ended for a
+// reason of its own: a remote task's SSE connection drops when its runner restarts. Reading
+// that as "the task is gone" retired the task with no hook, and a hooked spawn's claim on its
+// subject (applyOne) is released only by the hook path, so the rule refused that subject for
+// good. So this resumes from the last cursor, as the mirror's reflect loop does, until it
+// hears a terminal; a runner that no longer knows the task answers the resume with a failed
+// frame. It stops early if the task is retired by another path (the store-driven reap, a
+// drop) or the engine stops. If it gives up, the task is ended as orphaned and takes the hook
+// path all the same, so its onOrphaned runs and its subject is released.
 func (e *Engine) reapOnDone(fp flowTask) {
 	ch, unsub := fp.h.Subscribe()
-	defer unsub()
 	var status string
-	for ev := range ch {
-		if ev.Kind == task.EventStatus && task.TerminalStatus(ev.Text) {
-			status = ev.Text
+	var cursor int64
+	attempt := 0
+	for {
+		heard := false
+		for ev := range ch {
+			heard = true
+			if ev.Cursor > cursor {
+				cursor = ev.Cursor
+			}
+			if ev.Kind == task.EventStatus && task.TerminalStatus(ev.Text) {
+				status = ev.Text
+				break
+			}
+		}
+		unsub()
+		if status != "" {
 			break
 		}
+		if heard {
+			attempt = 0 // it worked for a while; the next outage starts its own count
+		}
+		if attempt >= redialAttempts {
+			break
+		}
+		if !e.redialWaited(fp, attempt) {
+			return // retired by another path, which owns its hook, or the engine stopped
+		}
+		attempt++
+		ch, unsub = fp.h.SubscribeSince(cursor)
 	}
-	// Retire whether or not we saw a terminal status (a closed bus means the task is gone).
-	// Apply the completion hook only when we both observed a terminal status AND won the retire
-	// (retireHandle is atomic, so the store-driven reapLoop/reap and this can't double-fire).
+	// Apply the completion hook only when this path won the retire (retireHandle is atomic, so
+	// the store-driven reapLoop/reap and this can't double-fire).
 	got, ok := e.retireHandle(fp.id, fp.h)
-	if ok && status != "" {
-		e.applyHook(got, task.Status(status), e.taskEvent(got, task.Status(status)))
+	if !ok {
+		return
 	}
+	if status == "" {
+		status = string(task.Orphaned)
+		e.markOrphaned(got.id)
+	}
+	e.applyHook(got, task.Status(status), e.taskEvent(got, task.Status(status)))
+}
+
+// redialAttempts and redialBackoff bound how long reapOnDone keeps reopening a task stream that
+// keeps dying, the same budget the mirror's reflect loop has (pkg/mirror reconnectAttempts,
+// backoff): a few minutes, long enough to outlast a runner restart. A stream that delivers
+// anything resets the count.
+const redialAttempts = 40
+
+func redialBackoff(attempt int) time.Duration {
+	d := time.Duration(1<<min(attempt, 5)) * 250 * time.Millisecond
+	return min(d, 8*time.Second)
+}
+
+// redialWaited waits out one backoff before a resubscribe, reporting whether to go on: not when
+// the engine stops, nor when the task has been retired meanwhile by another path.
+func (e *Engine) redialWaited(fp flowTask, attempt int) bool {
+	wait := redialBackoff
+	if e.redialWait != nil {
+		wait = e.redialWait
+	}
+	var done <-chan struct{}
+	if ctx := e.bgctx; ctx != nil {
+		done = ctx.Done()
+	}
+	t := time.NewTimer(wait(attempt))
+	defer t.Stop()
+	select {
+	case <-t.C:
+	case <-done:
+		return false
+	}
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	cur, ok := e.live[fp.id]
+	return ok && cur.h == fp.h
+}
+
+// markOrphaned writes a task reapOnDone gave up on as orphaned, as ReconcileOrphans does for one
+// a restart left behind, so its record does not keep saying `running` about work nobody can
+// reach. A record that already holds a terminal status keeps it.
+// A record nothing has written yet is not created here.
+func (e *Engine) markOrphaned(id string) {
+	ref := mirror.Ref(id)
+	if ent, ok, err := e.store.Get(ref); err != nil || !ok || task.TerminalStatus(entity.Str(ent.Payload, "status")) {
+		return
+	}
+	e.modify(ref, func(cur entity.Payload) entity.Payload {
+		if task.TerminalStatus(entity.Str(cur, "status")) {
+			return cur
+		}
+		p := clonePayload(cur)
+		p["status"] = string(task.Orphaned)
+		return p.Payload()
+	})
 }
 
 // retire atomically removes a live task by id, returning its flowTask. Whoever retires it
