@@ -47,6 +47,7 @@ type api struct {
 type cachedResponse struct {
 	etag string
 	body []byte
+	link string // the Link header, which a listing paged by cursor reads its next page from
 }
 
 func newAPI(token string, app *AppAuth, base string, cl *http.Client) (*api, error) {
@@ -116,6 +117,13 @@ func (a *api) getOnce(ctx context.Context, path string, out any) error {
 
 // read is get, and getOnce where keep is false.
 func (a *api) read(ctx context.Context, path string, out any, keep bool) error {
+	_, err := a.readPage(ctx, path, out, keep)
+	return err
+}
+
+// readPage is read, also answering the response's Link header: what a listing paged by cursor
+// reads its next page from. A 304 answers the Link the cached body came with.
+func (a *api) readPage(ctx context.Context, path string, out any, keep bool) (string, error) {
 	target := a.base + path
 	var prev cachedResponse
 	hadPrev := false
@@ -127,12 +135,12 @@ func (a *api) read(ctx context.Context, path string, out any, keep bool) error {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return fmt.Errorf("github: %w", err)
+		return "", fmt.Errorf("github: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if err := a.authorize(req); err != nil {
-		return err
+		return "", err
 	}
 	if hadPrev && prev.etag != "" {
 		req.Header.Set("If-None-Match", prev.etag)
@@ -140,33 +148,34 @@ func (a *api) read(ctx context.Context, path string, out any, keep bool) error {
 
 	resp, err := a.do(req, nil)
 	if err != nil {
-		return fmt.Errorf("github: GET %s: %w", path, err)
+		return "", fmt.Errorf("github: GET %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotModified && hadPrev {
-		return json.Unmarshal(prev.body, out)
+		return prev.link, json.Unmarshal(prev.body, out)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
-		return fmt.Errorf("github: GET %s: %w", path, err)
+		return "", fmt.Errorf("github: GET %s: %w", path, err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		// Said with the status and the body, because the two failures an operator actually
 		// hits are told apart by them: a 401 is the token, a 403 with a rate-limit body is the
 		// budget, and "GET failed" tells them neither.
-		return &httpError{status: resp.StatusCode, path: path, body: string(trimBody(body)),
+		return "", &httpError{status: resp.StatusCode, path: path, body: string(trimBody(body)),
 			limited: rateLimited(resp, body)}
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("github: GET %s: %w", path, err)
+		return "", fmt.Errorf("github: GET %s: %w", path, err)
 	}
+	link := resp.Header.Get("Link")
 	if etag := resp.Header.Get("ETag"); etag != "" && keep {
 		a.mu.Lock()
-		a.cached[target] = cachedResponse{etag: etag, body: body}
+		a.cached[target] = cachedResponse{etag: etag, body: body, link: link}
 		a.mu.Unlock()
 	}
-	return nil
+	return link, nil
 }
 
 // do sends req, and sends it once more with a token minted afresh where GitHub refused the one it
@@ -494,6 +503,12 @@ func NotFound(err error) bool {
 		return false
 	}
 	return he.status == http.StatusNotFound
+}
+
+// refused is whether err is GitHub refusing the request itself (httpError.refusal).
+func refused(err error) bool {
+	var he *httpError
+	return asHTTPError(err, &he) && he.refusal()
 }
 
 func asHTTPError(err error, target **httpError) bool {

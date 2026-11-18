@@ -7,12 +7,13 @@ with its credential for the repository.
 ## What a charter sees
 
 `iod github` writes a repository at GitHub into the store: its pull requests, issues,
-discussions, workflow runs and comments.
+discussions, workflow runs and comments, and with `-alerts` its Dependabot alerts.
 
 | Address | What it is |
 |---|---|
 | `github.<org>.<name>.pr.<n>` | a pull request: its state, base, head and sha, its checks, labels and assignees, and whom a review is waiting on (`requestedReviewers`, `requestedTeams`) |
 | `github.<org>.<name>.run.<id>` | a workflow run: its status, conclusion, branch and sha |
+| `github.<org>.<name>.alert.<n>` | with `-alerts`, a Dependabot alert: its `state` (`open`, `fixed`, `dismissed`, `auto_dismissed`), the advisory's `severity` and `summary`, the `package` and its `ecosystem` and `manifest`, the `vulnerableRange`, the `patched` version where there is one, and `ghsa` and `cve` |
 | `github.<org>.<name>.comment.<n>.<id>` | a comment, on the pull request or issue that `on` names. `kind` is `conversation` or `review`, one on a line of the diff, which also says where it is and what it answers: `path`, `line`, `startLine`, `startSide`, `side`, `commitId`, `inReplyTo` (its thread's first comment, on a reply), and `diffHunk`, capped and then marked `diffHunkTruncated: true` |
 
 `requestedReviewers` holds a person until they submit a review, and again when one is requested

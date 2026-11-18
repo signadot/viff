@@ -16,8 +16,8 @@ import (
 // The GitHub source: a token, a set of repositories, and a webhook it owns.
 //
 // GITHUB_TOKEN is a fine-grained personal access token with read access to the repositories'
-// metadata, CONTENTS, issues, pull requests and Actions — which is what a dogfood deployment
-// wants: it is
+// metadata, CONTENTS, issues, pull requests and Actions (and Dependabot alerts, with `-alerts`) —
+// which is what a dogfood deployment wants: it is
 // issued from Settings → Developer settings, it carries its owner's visibility, and it needs no
 // app registration or private key. A GitHub App is what an org-scale install needs, for the
 // higher ceiling and for not being tied to a person, and the measurement in
@@ -36,7 +36,8 @@ func githubMain(args []string) error {
 	var repos strs
 	fs.Var(&repos, "repo", "a repository to reflect, as <org>/<name> (repeatable, comma-separated)")
 	settled := fs.Int("settled", github.DefaultSettled,
-		"closed issues, pull requests and discussions kept per repository")
+		"closed issues, pull requests and discussions, and settled Dependabot alerts, kept per "+
+			"repository")
 	runs := fs.Int("runs", github.DefaultRuns, "workflow runs kept per repository")
 	comments := fs.Int("comments", github.DefaultComments,
 		"comments kept per repository, most recently updated first, across issues and pull "+
@@ -55,6 +56,10 @@ func githubMain(args []string) error {
 			"opt-in per repository on GitHub's side so most repositories have none. On, a "+
 			"repository that does have them costs two requests a pass and one that does not "+
 			"still costs nothing")
+	alerts := fs.Bool("alerts", false,
+		"reflect Dependabot alerts: the open ones, and the newest -settled fixed or dismissed. "+
+			"The token then needs Dependabot alerts read; a repository whose alerts cannot be "+
+			"read (refused, or any other failure) keeps what was reflected")
 	var trees strs
 	fs.Var(&trees, "tree", "a directory an open pull request reports when it changes it, as "+
 		"[<name>=]<path> (repeatable): changes.<name> is the identity of its contents at the head, "+
@@ -94,6 +99,7 @@ func githubMain(args []string) error {
 		Comments:        *comments,
 		MaxOpen:         *maxOpen,
 		SkipDiscussions: !*discussions,
+		Alerts:          *alerts,
 		Trees:           parsedTrees,
 		Base:            envOr("GITHUB_API_BASE", ""),
 		Log:             log.Printf,

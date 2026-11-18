@@ -65,9 +65,10 @@ type Config struct {
 	// segment. It is also the answer to a second GitHub instance, where `org/repo` #42 is unique
 	// within a host and not across two. See docs/reference/iod.md under `github`.
 	Root string
-	// Settled is how many recently-closed issues and pull requests each repository keeps
-	// (0 → DefaultSettled). MaxOpen refuses a repository with more open items than this
-	// (0 → DefaultMaxOpen) rather than answering partially for a slice it covers completely.
+	// Settled is how many recently-closed issues and pull requests each repository keeps, and
+	// fixed or dismissed Dependabot alerts with Alerts (0 → DefaultSettled). MaxOpen refuses a
+	// repository with more open items than this (0 → DefaultMaxOpen) rather than answering
+	// partially for a slice it covers completely.
 	Settled, MaxOpen int
 	// Runs is how many of a repository's most recent workflow runs it keeps (0 → DefaultRuns).
 	Runs int
@@ -88,6 +89,10 @@ type Config struct {
 	// does: a source that says nothing about discussions must not be read as saying there are
 	// none, or turning this on would tombstone every discussion it had reflected.
 	SkipDiscussions bool
+	// Alerts reflects each repository's Dependabot alerts (alerts.go). Off by default, and off
+	// reads nothing and costs no request: the credential needs Dependabot alerts read, which a
+	// deployment that does not want them should not have to grant.
+	Alerts bool
 	// Trees are the directories an open pull request reports when it changes them, as
 	// `changes.<name>` at its head (trees.go).
 	Trees []Tree
@@ -110,6 +115,7 @@ type GitHub struct {
 	runs      int
 	comments  int
 	noDiscus  bool
+	alerts    bool
 	trees     []Tree
 	treeCache treeCache
 	log       func(string, ...any)
@@ -143,6 +149,7 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 		runs:     cfg.Runs,
 		comments: cfg.Comments,
 		noDiscus: cfg.SkipDiscussions,
+		alerts:   cfg.Alerts,
 		trees:    cfg.Trees,
 		log:      cfg.Log,
 	}
@@ -284,6 +291,9 @@ func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (verseio.Reflectio
 	}
 	if repo, number, id, ok := g.targetComment(ref); ok {
 		return g.reflectComment(ctx, repo, number, id)
+	}
+	if repo, number, ok := g.targetAlert(ref); ok {
+		return g.reflectAlert(ctx, repo, number)
 	}
 	var out verseio.Reflection
 	for _, repo := range g.targetRepos(ref) {
@@ -501,6 +511,21 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 			half("discussion", closed))
 		for _, d := range ds {
 			rn.Add(g.ItemRef("discussion", repo, d.Number), discussionPayload(repo, d))
+		}
+	}
+
+	// DEPENDABOT ALERTS ARE A SEPARABLE CLAIM TOO, for the discussions' reason: any failed read
+	// of them (most often a 403, a credential without Dependabot alerts read or a repository with
+	// the alerts switched off) is nothing true to say about alerts rather than "there are none".
+	// With -alerts off nothing is asked and nothing is covered.
+	if g.alerts {
+		if as, err := g.readAlerts(ctx, repo); err != nil {
+			g.log("github: %s: reflecting no Dependabot alerts this pass: %v", repo, err)
+		} else {
+			rn.Covers = append(rn.Covers, g.alertCovers(repo)...)
+			for _, a := range as {
+				rn.Add(g.AlertRef(repo, a.Number), alertPayload(repo, a))
+			}
 		}
 	}
 

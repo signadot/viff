@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -82,6 +83,27 @@ type fakeRepo struct {
 	// resolve. graphqlError is the endpoint refusing, which is HTTP 200 with an errors array.
 	discussionsOff bool
 	graphqlError   string
+	// alerts are the Dependabot alerts; alertsRefused answers every alert read 403, as GitHub
+	// does for a credential without Dependabot alerts read or a repository with them off, and
+	// alertAsks counts every alert request.
+	alerts        []*fakeAlert
+	alertsRefused bool
+	alertAsks     int
+	// alertFirstETags and alertLaterETags count conditional reads of a listing's first page and
+	// of a page past it, which a source sends only if it cached that page. A later page's entry
+	// is keyed by a cursor that moves.
+	alertFirstETags, alertLaterETags int
+}
+
+// fakeAlert is one Dependabot alert. An empty patched, cve, scope or relationship renders as
+// null, which is how GitHub says it has none.
+type fakeAlert struct {
+	number              int
+	state               string // open | fixed | dismissed | auto_dismissed
+	updated             string
+	pkg                 string
+	patched, cve        string
+	scope, relationship string
 }
 
 // fakeEntry is one entry of a tree object.
@@ -220,6 +242,21 @@ func (r *fakeRepo) run(id int64, name, status, conclusion, headSHA string) *fake
 	return x
 }
 
+func (r *fakeRepo) alert(number int, state, updated string) *fakeAlert {
+	a := &fakeAlert{number: number, state: state, updated: updated, pkg: "left-pad"}
+	r.alerts = append(r.alerts, a)
+	return a
+}
+
+func (r *fakeRepo) findAlert(number int) *fakeAlert {
+	for _, a := range r.alerts {
+		if a.number == number {
+			return a
+		}
+	}
+	return nil
+}
+
 func (r *fakeRepo) discussion(number int, title string, closed bool, updated string) *fakeDiscussion {
 	d := &fakeDiscussion{number: number, title: title, closed: closed, updated: updated, category: "General"}
 	r.discussions = append(r.discussions, d)
@@ -314,6 +351,11 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	// THE WRITES THE OUT HALF MAKES: a comment on an issue or pull request, and a change to one.
 	if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodPut {
 		f.write(w, r, repo, rest)
+		return
+	}
+
+	if len(rest) >= 2 && rest[0] == "dependabot" && rest[1] == "alerts" {
+		f.dependabot(w, r, repo, rest[2:])
 		return
 	}
 
@@ -424,6 +466,133 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// dependabot answers the Dependabot alerts listing and the single read.
+//
+// The listing pages BY CURSOR, as GitHub's does: the next page is a Link header's `rel="next"`
+// carrying `after`, and a request using `page` is refused, since GitHub is closing that down on
+// this endpoint and a source still sending it would stop working the day it does.
+func (f *fakeGitHub) dependabot(w http.ResponseWriter, r *http.Request, repo *fakeRepo, rest []string) {
+	f.mu.Lock()
+	repo.alertAsks++
+	refused := repo.alertsRefused
+	f.mu.Unlock()
+	if refused {
+		http.Error(w, `{"message":"Dependabot alerts are disabled for this repository."}`, http.StatusForbidden)
+		return
+	}
+	if len(rest) == 1 {
+		n, _ := strconv.Atoi(rest[0])
+		a := repo.findAlert(n)
+		if a == nil {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		f.reply(w, r, a.render())
+		return
+	}
+	if len(rest) != 0 {
+		http.NotFound(w, r)
+		return
+	}
+	q := r.URL.Query()
+	if r.Header.Get("If-None-Match") != "" {
+		f.mu.Lock()
+		if q.Has("after") {
+			repo.alertLaterETags++
+		} else {
+			repo.alertFirstETags++
+		}
+		f.mu.Unlock()
+	}
+	if q.Has("page") {
+		http.Error(w, `{"message":"Pagination using the `+"`page`"+` parameter is not supported."}`, http.StatusBadRequest)
+		return
+	}
+	want := map[string]bool{}
+	for _, st := range strings.Split(q.Get("state"), ",") {
+		if st != "" {
+			want[st] = true
+		}
+	}
+	var picked []*fakeAlert
+	for _, a := range repo.alerts {
+		if len(want) == 0 || want[a.state] {
+			picked = append(picked, a)
+		}
+	}
+	if q.Get("sort") == "updated" && q.Get("direction") == "desc" {
+		sort.SliceStable(picked, func(i, j int) bool { return picked[i].updated > picked[j].updated })
+	} else {
+		sort.SliceStable(picked, func(i, j int) bool { return picked[i].number > picked[j].number })
+	}
+	per, _ := strconv.Atoi(q.Get("per_page"))
+	if per <= 0 {
+		per = 30
+	}
+	from := 0
+	if after := q.Get("after"); after != "" {
+		from, _ = strconv.Atoi(strings.TrimPrefix(after, "c"))
+	}
+	from = min(from, len(picked))
+	to := min(from+per, len(picked))
+	if to < len(picked) {
+		next := url.Values{}
+		for k, v := range q {
+			next[k] = v
+		}
+		next.Set("after", "c"+strconv.Itoa(to))
+		w.Header().Set("Link", fmt.Sprintf(`<http://%s/repositories/1/dependabot/alerts?%s>; rel="next"`,
+			r.Host, next.Encode()))
+	}
+	out := make([]map[string]any, 0, to-from)
+	for _, a := range picked[from:to] {
+		out = append(out, a.render())
+	}
+	f.reply(w, r, out)
+}
+
+// render is shared by the listing and the single read, so a targeted pass and a full one cannot
+// disagree about an alert's shape.
+func (a *fakeAlert) render() map[string]any {
+	null := func(s string) any {
+		if s == "" {
+			return nil
+		}
+		return s
+	}
+	var patched any
+	if a.patched != "" {
+		patched = map[string]any{"identifier": a.patched}
+	}
+	pkg := map[string]any{"ecosystem": "npm", "name": a.pkg}
+	m := map[string]any{
+		"number": a.number, "state": a.state,
+		"dependency": map[string]any{"package": pkg, "manifest_path": "package-lock.json",
+			"scope": null(a.scope), "relationship": null(a.relationship)},
+		"security_advisory": map[string]any{
+			"ghsa_id": "GHSA-0000-0000-" + strconv.Itoa(a.number), "cve_id": null(a.cve),
+			"summary": "Prototype pollution in " + a.pkg, "description": "a long description",
+			"severity": "high"},
+		"security_vulnerability": map[string]any{"package": pkg, "severity": "high",
+			"vulnerable_version_range": "< 1.3.0", "first_patched_version": patched},
+		"url":        "https://api.github.com/repos/x/y/dependabot/alerts/" + strconv.Itoa(a.number),
+		"html_url":   "https://github.com/x/y/security/dependabot/" + strconv.Itoa(a.number),
+		"created_at": "2026-01-01T00:00:00Z", "updated_at": a.updated,
+		"fixed_at": nil, "dismissed_at": nil, "dismissed_reason": nil, "dismissed_comment": nil,
+		"auto_dismissed_at": nil,
+	}
+	switch a.state {
+	case "fixed":
+		m["fixed_at"] = a.updated
+	case "dismissed":
+		m["dismissed_at"], m["dismissed_reason"] = a.updated, "tolerable_risk"
+		m["dismissed_comment"] = "Only reachable in tests.\r\nNot shipped."
+	case "auto_dismissed":
+		m["auto_dismissed_at"] = a.updated
+	}
+	return m
 }
 
 // graphql answers the discussions query, including the two ways it can decline to.
@@ -724,6 +893,9 @@ func (f *fakeGitHub) reply(w http.ResponseWriter, r *http.Request, v any) {
 		f.mu.Lock()
 		f.notModified++
 		f.mu.Unlock()
+		// No Link on a 304, so a listing paged by cursor must take its next page from the Link
+		// it cached with the body.
+		w.Header().Del("Link")
 		w.Header().Set("ETag", etag)
 		w.WriteHeader(http.StatusNotModified)
 		return
