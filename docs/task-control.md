@@ -145,6 +145,11 @@ fields and the event cursor are all on the task's record. A restart reads them a
 The work on a runner went on in the world while verse was down. Verse resumes where the
 work outlived the daemon, and orphans only what died with it.
 
+The work outlives the daemon only within the task's [lease](runners.md#a-tasks-lease). A runner
+stops a task that nobody has asked about for that long, and ends it `failed`,
+`orphaned: true`. A verse that comes back later attaches again all the same, and what it
+reads is that end.
+
 The reconcile reads baseline's tasks. A task that a [scope](glossary.md#scope) started is
 neither resumed nor orphaned at a restart: its record keeps the status it had.
 
@@ -258,6 +263,7 @@ run without what it asked for.
 | `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the launch; a script takes none. |
 | `timeout` | how long the task may run, as a duration. Time spent waiting for an answer does not count; time paused does. |
 | `converse` | the run is a conversation: when the agent goes quiet, the person gets the turn as a question, and the run ends when they end it. Only for an offer whose `converse` is true. |
+| `lease` | how long the task may run with nobody asking for its events, as a duration of `1m` or more. Absent is `4m`. The runner counts it, and ends a task whose lease runs out ([a task's lease](runners.md#a-tasks-lease)). |
 | `occurrence` | which run this is: the store revision it is about. The runner says it back on the snapshot. |
 | `provenance` | `{principal?, subject?, chain?}`: on whose account, and about what. A record, never authority. |
 | `credential` | the token verse signed for the task when its rule's gate passed ([gates](reference/gates.md#a-credential-for-what-a-gate-let-through)). It carries a secret. The runner hands it to the task as a file named by `VERSE_CREDENTIAL_FILE`, and never says it back. |

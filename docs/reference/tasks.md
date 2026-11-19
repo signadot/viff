@@ -525,7 +525,9 @@ defaults filled in. A script's record says `script: true` instead. `git` is the 
 spawn gave the task, in the spawn's words, and `refused` the connections its proxy refused.
 
 `observed: false` appears while the mirror cannot reach the runner that holds the task. The
-other fields are then the last thing the mirror heard, not the current state.
+other fields are then the last thing the mirror heard, not the current state. `lease` is there
+where the spawn named one ([`spawn`](action.md#spawn)), and a task with none has `4m`. A task verse
+cannot reach for longer than that ends `failed` with `orphaned: true`.
 
 The record outlives the task. After the task ends, it keeps the result, the last `say`, the
 last tool output and the final `status`. `verse flow show` reads them for history. The mirror is

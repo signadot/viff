@@ -39,6 +39,13 @@
 // arrives and refuses what it can't honour with `400` and the reason (runnerd.CheckLaunch), and
 // a new autonomy the same way (runnerd.CheckAutonomy).
 //
+// # The lease
+//
+// A task runs only while somebody reads it. Its lease is the launch's (Launch.Lease, LeaseOf),
+// and counts from the launch and again from each GET /tasks/{id}/events the runner answers. A
+// runner answers that route at once, and ends a task whose lease runs out as failed and
+// orphaned, on its terminal frame and its snapshot (docs/runners.md).
+//
 // Bodies are tony by default; a request's Content-Type and Accept pick the format. A refusal
 // is a status, and the client reads each as one of the errors in pkg/task/errors.go.
 package runner

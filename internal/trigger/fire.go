@@ -600,9 +600,9 @@ func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain s
 		return nil
 	}
 	// Idempotent per id: spawnID is deterministic per (trigger, subject), so a re-fire about
-	// the same subject must not start a second task. The runtime would not stop it — a
-	// runnerd Spawn overwrites its registry entry while the old task keeps running — so
-	// the engine, which owns the live registry, is where this belongs.
+	// the same subject must not start a second task. A runner answers a launch of a live id
+	// with the task that has it, and starts none; the engine, which owns the live registry,
+	// says so first, with the handle it tracks and nothing sent.
 	e.liveMu.Lock()
 	if fp, running := e.live[id]; running {
 		e.liveMu.Unlock()
