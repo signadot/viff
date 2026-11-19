@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	git "github.com/go-git/go-git/v5"
@@ -217,12 +218,12 @@ func (m *Mirrors) Ensure(ctx context.Context, remote string) (string, error) {
 	err = r.FetchContext(fetchCtx, &git.FetchOptions{RemoteName: "origin", RefSpecs: mirrorSpecs,
 		Force: true, Prune: true, Auth: auth})
 	// Whatever the fetch said, short of leaving no mirror: a mirror used past a failed fetch is as
-	// much in need of it. A mirror it could not tidy is still the mirror, so this is reported
-	// beside a fetch that had nothing worse to say.
+	// much in need of it. A mirror it could not tidy is still the mirror, fetched, so this is
+	// reported beside a fetch that had nothing worse to say, as what it is (Untidy).
 	var tidyErr error
 	if !fresh || err == nil || errors.Is(err, git.NoErrAlreadyUpToDate) {
-		if tidyErr = tidy(fetchCtx, dir); tidyErr != nil {
-			tidyErr = fmt.Errorf("mirror %s: %w", remote, tidyErr)
+		if terr := tidy(ctx, dir); terr != nil {
+			tidyErr = &Untidy{Err: fmt.Errorf("mirror %s: %w", remote, terr)}
 		}
 	}
 	if fresh && err == nil && ctx.Err() != nil {
@@ -314,16 +315,41 @@ func noAutoGC(r *git.Repository) error {
 	return r.SetConfig(cfg)
 }
 
+// Untidy is the error Ensure answers beside a mirror that is fetched and could not be tidied.
+// The mirror is as current as a fetch makes it, so a caller that would refuse a mirror whose
+// fetch failed has no reason to refuse this one: it says so somewhere a reader will see, and
+// goes on.
+type Untidy struct{ Err error }
+
+func (u *Untidy) Error() string { return u.Err.Error() }
+func (u *Untidy) Unwrap() error { return u.Err }
+
+// TidyTimeout is how long a mirror's garbage collection may take. Its own, and not the forge's
+// (ForgeTimeout): a collection reaches no forge, and one that starts after a slow fetch is owed
+// more than what the fetch left.
+const TidyTimeout = 10 * time.Minute
+
 // tidy collects a mirror's garbage when git judges there is enough of it, as a receive-pack
 // would have, and leaves `packed-refs` without peel lines. The caller holds the mirror's lock.
 //
 // This is the one place the runner runs the git binary itself. It is given no credential and
-// reaches no remote, and it reads the mirror's configuration and no other: not the machine's, and
-// not the account's.
+// reaches no remote, and of the runner's environment it is given PATH alone, so it reads the
+// mirror's configuration and no other: not the machine's, not the account's, and none carried in
+// a variable.
+//
+// A collection outlives the caller, as a first clone does: a task that ends while git is
+// repacking has no claim on the mirror every other task uses. Where it runs past its own time it
+// is asked to stop and given a moment to, since git removes its lock files on a signal it can
+// catch and leaves them, for good, on one it cannot. A `packed-refs.lock` left behind refuses
+// every collection after it.
 func tidy(ctx context.Context, dir string) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), TidyTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "-C", dir,
 		"-c", "gc.auto=6700", "-c", "gc.autoDetach=false", "gc", "--auto", "--quiet")
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_NOSYSTEM=1"}
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = 10 * time.Second
 	out, gcErr := cmd.CombinedOutput()
 	if gcErr != nil {
 		gcErr = fmt.Errorf("git gc: %w: %s", gcErr, strings.TrimSpace(string(out)))
@@ -606,9 +632,30 @@ func (m *Mirrors) open(ctx context.Context, r Repo, branch, root string, author 
 // linkObjects hardlinks every file under the mirror's object store into the checkout's, and
 // copies the one it cannot link — a workspace root on a different filesystem from the mirrors,
 // which no deployment here has but a test's temp dirs might.
+//
+// It reads the store without the mirror's lock, so a collection may run under it (tidy), and a
+// collection replaces files: the loose objects and packs it read go, and one pack holding the
+// same objects arrives. A file gone between being listed and being linked is therefore not a
+// failure, and not the end either, since what replaced it may not have been listed. The store is
+// walked again, linking what is new, until a walk finds everything it listed.
 func linkObjects(mirror, dir string) error {
+	for range 4 {
+		gone, err := linkObjectsOnce(mirror, dir)
+		if err != nil || !gone {
+			return err
+		}
+	}
+	return fmt.Errorf("the object store of %s kept changing while it was read", mirror)
+}
+
+// linkObjectsOnce is one walk of linkObjects, and reports whether a file it listed was gone.
+func linkObjectsOnce(mirror, dir string) (gone bool, err error) {
 	src, dst := filepath.Join(mirror, "objects"), filepath.Join(dir, ".git", "objects")
-	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) {
+			gone = true
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -620,10 +667,19 @@ func linkObjects(mirror, dir string) error {
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		if err := os.Link(p, target); err == nil || errors.Is(err, fs.ErrExist) {
+		err = os.Link(p, target)
+		if err == nil || errors.Is(err, fs.ErrExist) {
+			return nil
+		}
+		if errors.Is(err, fs.ErrNotExist) {
+			gone = true
 			return nil
 		}
 		in, err := os.Open(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			gone = true
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -638,6 +694,7 @@ func linkObjects(mirror, dir string) error {
 		}
 		return out.Close()
 	})
+	return gone, err
 }
 
 // syncMirrorRefs sets `refs/remotes/mirror/<branch>` in the checkout to each branch of the mirror

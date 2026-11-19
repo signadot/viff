@@ -408,6 +408,13 @@ func (s *Server) refresh(ctx context.Context, tk Task, req Request) (asked, Repl
 	}
 	return asking(task.NewStep(task.StepGitFetch, map[string]string{"repo": t.Repo.Repo.Canonical(), "from": t.Repo.From}), func() Reply {
 		mirror, err := s.Mirrors.Ensure(ctx, t.Repo.Remote)
+		// A mirror fetched and not tidied is fetched: the checkout is brought up to it, and the
+		// runner's log is where a mirror's upkeep is read.
+		var untidy *workspace.Untidy
+		if errors.As(err, &untidy) {
+			fmt.Fprintf(s.Log, "delivery: %s: fetch of %s: %v\n", tk.ID, t.Repo.Name(), err)
+			err = nil
+		}
 		if err != nil {
 			fmt.Fprintf(s.Log, "delivery: %s: fetch of %s: %v\n", tk.ID, t.Repo.Name(), err)
 			return Reply{Error: err.Error()}
