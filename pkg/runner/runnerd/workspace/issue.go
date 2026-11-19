@@ -25,8 +25,9 @@ import (
 // reaches the remote with its credential.
 
 // IssueRefs is the tracker's namespace as a refspec that brings every generation of it: open and
-// closed issues, and the reverse index.
-const IssueRefs = "+refs/git-issues/*:refs/git-issues/*"
+// closed issues, and the reverse index. No `+`: a fetch by it forces instead, for the reason a
+// mirror's own refspecs do (mirrorSpecs).
+const IssueRefs = "refs/git-issues/*:refs/git-issues/*"
 
 // CreateIssue files an issue in this checkout's tracker, as `git issue create` there would: the
 // title is the first line of its description, as a heading, and the body follows. It is a ref
@@ -79,7 +80,7 @@ func (m *Mirrors) PushIssues(ctx context.Context, dir, remote string, auth trans
 	// Pinned to the remote the spawn named, held in memory — never a name looked up in the
 	// checkout's `.git/config`, which the task writes.
 	rem := git.NewRemote(repo.Storer, &config.RemoteConfig{Name: deliveryRemote, URLs: []string{remote}})
-	specs := []config.RefSpec{config.RefSpec(strings.TrimPrefix(IssueRefs, "+"))}
+	specs := []config.RefSpec{IssueRefs}
 	left, moved, err := movedIssues(ctx, repo, rem, here, auth)
 	switch {
 	case err != nil:
@@ -170,7 +171,7 @@ func (m *Mirrors) FetchIssues(ctx context.Context, remote string) (string, error
 	// Pruned: an issue closed or reopened at the remote leaves the name it moved from, and a
 	// mirror that kept it would hand every checkout the issue under both names.
 	err = mirror.FetchContext(ctx, &git.FetchOptions{RemoteName: "origin",
-		RefSpecs: []config.RefSpec{IssueRefs}, Auth: m.auth(remote), Prune: true})
+		RefSpecs: []config.RefSpec{IssueRefs}, Auth: m.auth(remote), Force: true, Prune: true})
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) && !errors.Is(err, transport.ErrEmptyRemoteRepository) {
 		return "", fmt.Errorf("fetching the issues of %s: %w", remote, err)
 	}
