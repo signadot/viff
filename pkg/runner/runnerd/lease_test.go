@@ -6,7 +6,11 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -251,5 +255,34 @@ func TestTheRunnerEndsATaskBeforeVerseStopsWaitingOnIt(t *testing.T) {
 	}
 	if got := record(); got["status"] != string(task.Failed) || got[mirror.OrphanedField] != true || got["err"] != "no reader for 400ms" {
 		t.Fatalf("record = %v, want the runner's end: failed, orphaned, for want of a reader", got)
+	}
+}
+
+// A task's process is stopped with the commands it started: no sandbox ends them with it here,
+// and one left running would go on with the work of a task whose record says it ended.
+func TestStoppingATaskStopsTheCommandsItStarted(t *testing.T) {
+	h, rt := newSubprocess(t)
+	h.SetLease(400 * time.Millisecond)
+	said := filepath.Join(t.TempDir(), "pid")
+	launchOK(t, rt, runner.Launch{ID: "c", Agent: &runner.Agent{Name: "test"}, Environment: openNet, Prompt: "spec child\n" + said})
+	var pid int
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if b, err := os.ReadFile(said); err == nil && len(b) > 0 {
+			pid = must(strconv.Atoi(string(b)))
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the task did not start its command: %s", snapshotOf(t, rt, "c").Err)
+		}
+	}
+	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) })
+
+	if end := endOf(t, rt, "c"); !end.Orphaned {
+		t.Fatalf("the task ended %s (%s), not orphaned at its lease", end.Text, end.Err)
+	}
+	for deadline := time.Now().Add(3 * time.Second); syscall.Kill(pid, 0) == nil; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the command the task started (pid %d) is still running after the task was stopped", pid)
+		}
 	}
 }

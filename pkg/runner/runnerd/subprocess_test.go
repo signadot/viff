@@ -7,8 +7,10 @@ import (
 	"io"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +41,11 @@ func TestMain(m *testing.M) {
 				return task.NewTask(l.ID, sup, waitingDriver{}, noopExec{})
 			case "slow": // the process takes a second to host its task, which then runs until stopped
 				time.Sleep(time.Second)
+				return task.NewTask(l.ID, sup, waitingDriver{}, noopExec{})
+			case "child": // the task starts a command, says its pid in the file named, and runs until stopped
+				c := exec.Command("/bin/sleep", "600") // by path: a task's process has no PATH here
+				must(0, c.Start())
+				must(0, os.WriteFile(text, []byte(strconv.Itoa(c.Process.Pid)), 0o644))
 				return task.NewTask(l.ID, sup, waitingDriver{}, noopExec{})
 			case "exit": // the process dies under its running task
 				return task.NewTask(l.ID, sup, dyingDriver{}, noopExec{})

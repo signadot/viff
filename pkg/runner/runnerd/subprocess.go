@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/signadot/verse/pkg/codec"
@@ -559,6 +560,14 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	if err := h.Sandbox.Wrap(cmd, root, network, withReadOnly(h.Programs, h.ReadOnly, KeptDirs(h.Work, h.Control, h.Mirrors, h.Secrets, h.Cellar), out), inst); err != nil {
 		return err
 	}
+	// At the head of a process group of its own, so that the commands it started end with it
+	// where no sandbox ends them: it kills the group as its lifeline closes (exitWithLifeline),
+	// stop kills it where the process does not exit, and what is left when the process is gone
+	// is killed then (below).
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setpgid = true
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting the task's process: %w", err)
 	}
@@ -570,6 +579,9 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	}
 	go func() {
 		err := cmd.Wait()
+		// What is left of its group, where it died without ending it: a panic, a kill from
+		// outside. At once, while the group's id is still the group's if anything is in it.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		p.mu.Lock()
 		p.exit = err
 		p.mu.Unlock()
@@ -726,7 +738,8 @@ func (p *proc) settled() (task.Snapshot, bool) {
 	return last, false
 }
 
-// stop closes the lifeline, then kills the process if it hasn't exited. Idempotent.
+// stop closes the lifeline, at which the process ends itself and its process group, then kills
+// the group if the process hasn't exited. Idempotent.
 func (p *proc) stop(log io.Writer) {
 	p.mu.Lock()
 	if p.dead {
@@ -743,7 +756,7 @@ func (p *proc) stop(log io.Writer) {
 		case <-p.gone:
 		case <-time.After(stopGrace):
 			fmt.Fprintf(log, "runnerd: %s: the task's process didn't exit; killing it\n", p.id)
-			p.cmd.Process.Kill()
+			_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
 			<-p.gone
 		}
 	} else {
