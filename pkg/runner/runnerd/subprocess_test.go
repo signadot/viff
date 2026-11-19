@@ -35,6 +35,11 @@ func TestMain(m *testing.M) {
 			outcome, text, _ := strings.Cut(strings.TrimPrefix(l.Prompt, "spec "), "\n")
 			sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), workEnv)
 			switch outcome {
+			case "wait": // the task runs until it is stopped
+				return task.NewTask(l.ID, sup, waitingDriver{}, noopExec{})
+			case "slow": // the process takes a second to host its task, which then runs until stopped
+				time.Sleep(time.Second)
+				return task.NewTask(l.ID, sup, waitingDriver{}, noopExec{})
 			case "exit": // the process dies under its running task
 				return task.NewTask(l.ID, sup, dyingDriver{}, noopExec{})
 			case "pwd": // the task answers where it runs
@@ -47,6 +52,14 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	os.Exit(m.Run())
+}
+
+// waitingDriver runs until its task is stopped.
+type waitingDriver struct{}
+
+func (waitingDriver) Next(ctx context.Context, _ task.StepResult) (task.ToolUse, bool, error) {
+	<-ctx.Done()
+	return task.ToolUse{}, false, ctx.Err()
 }
 
 type dyingDriver struct{}

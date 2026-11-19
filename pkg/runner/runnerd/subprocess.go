@@ -51,8 +51,10 @@ type SubprocessHandler struct {
 	owned    EnvOf         // the variables a launch's task shell is given by the runner (CheckLaunch)
 	linger   time.Duration // lingerAfterEnd, as it was when the handler was made
 	seq      atomic.Uint64
-	mu       sync.Mutex
-	tasks    map[string]*proc
+	// lease, where set, is every task's lease whatever its launch says: a test's.
+	lease time.Duration
+	mu    sync.Mutex
+	tasks map[string]*proc
 }
 
 // SubprocessConfig is how a standalone runner starts a task's process.
@@ -172,6 +174,9 @@ type proc struct {
 	known task.Snapshot
 	// l is the launch: what a replacement of the task's autonomy is held to (replacePolicy).
 	l *runner.Launch
+	// lease is the task's lease, counted from its launch and renewed by each subscribe this
+	// handler accepts for it (lease.go).
+	lease *lease
 	// autonomy is the task's CURRENT autonomy, the launch's until a replacement lands
 	// (replacePolicy): what its proxy decides each connection by (connections).
 	autonomy atomic.Pointer[task.Autonomy]
@@ -224,6 +229,14 @@ func (p *proc) record(e task.Event) {
 	if len(p.events) > task.RingCap {
 		p.events = p.events[len(p.events)-task.RingCap:]
 	}
+}
+
+// endSeen reports whether the runner has followed the task to its terminal frame.
+func (p *proc) endSeen() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	n := len(p.events)
+	return n > 0 && p.events[n-1].Kind == task.EventStatus && task.Status(p.events[n-1].Text).Terminal()
 }
 
 // eventsSince is the followed events after the cursor since. A reader behind what is kept, or
@@ -386,9 +399,10 @@ func (h *SubprocessHandler) launch(w http.ResponseWriter, r *http.Request) {
 		p = &proc{id: body.ID, abort: abort, ready: make(chan struct{}), gone: make(chan struct{}),
 			done:  make(chan struct{}),
 			known: task.Snapshot{ID: body.ID, Prompt: body.Prompt, Agent: doerName(&body, h.describe), Occurrence: body.Occurrence},
-			l:     &body}
+			l:     &body, lease: newLease(&body, h.lease)}
 		h.tasks[body.ID] = p
 		go h.run(ctx, p, &body, raw)
+		go p.lease.keep(p.done, func() { h.orphan(p) })
 	}
 	h.mu.Unlock()
 
@@ -429,6 +443,27 @@ func (h *SubprocessHandler) run(ctx context.Context, p *proc, l *runner.Launch, 
 		p.remember(p.as(task.Failed, err.Error()))
 	}
 	close(p.ready)
+}
+
+// orphan ends a task whose lease ran out: failed and orphaned, said at once, and then its start
+// is given up or its process stopped, whichever it has reached. run does the rest, as for any
+// task that ends: its repos settled, its directory removed or kept.
+func (h *SubprocessHandler) orphan(p *proc) {
+	if _, done := p.snapshot(); done || p.endSeen() {
+		return // it ended first, and is only being kept a moment for its last readers
+	}
+	why := p.lease.noReader()
+	final := p.as(task.Failed, why)
+	final.Orphaned = true
+	p.remember(final)
+	fmt.Fprintf(h.Log, "runnerd: %s: %s; the task is ended\n", p.id, why)
+	p.abort(errors.New(why))
+	p.mu.Lock()
+	hosted := p.hosted
+	p.mu.Unlock()
+	if hosted {
+		p.stop(h.Log)
+	}
 }
 
 // start makes the task's directory, checks out its repos in it, starts its process in the
@@ -736,15 +771,24 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 		http.NotFound(w, r)
 		return
 	}
+	// A subscribe this handler accepts renews the task's lease. One that comes after the lease
+	// ran out renews nothing, and is answered with the task's end.
+	if op == "events" {
+		p.lease.renew()
+	}
 	if _, done := p.snapshot(); !done && !p.isReady() {
 		// Not hosted yet: its repos are being checked out, or its process started. A cancel is
-		// the runner's to carry out, and a look is answered from what the runner knows; the
-		// rest wait for the process.
+		// the runner's to carry out, a look is answered from what the runner knows, and a
+		// subscribe is answered at once, its frames following once there are some; the rest
+		// wait for the process.
 		switch {
 		case op == "cancel" && cancelEarly(w, r, p):
 			return
 		case op == "":
 			writeOut(w, r, http.StatusOK, p.current())
+			return
+		case op == "events":
+			h.eventsEarly(w, r, p)
 			return
 		}
 		select {
@@ -781,18 +825,7 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 			codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
-		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
-		events := p.eventsSince(since)
-		if n := len(events); n == 0 || !(events[n-1].Kind == task.EventStatus && task.Status(events[n-1].Text).Terminal()) {
-			events = append(events, task.Event{Kind: task.EventStatus, Task: id, Text: string(final.Status), Err: final.Err})
-		}
-		if r.URL.Query().Get("since") == "" {
-			events = events[len(events)-1:] // a live attach to an ended task gets its end
-		}
-		for _, e := range events {
-			_ = sse.Send(e)
-		}
-		sse.Flush()
+		p.sendEnded(sse, r, final)
 	// The rest as an InProcessHandler answers them for an ended task: a cancel, pause or resume
 	// does nothing and says so with 204, a say or a new autonomy is 410, and no question is left
 	// to resolve.
@@ -802,6 +835,59 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 		http.Error(w, fmt.Sprintf("task %s has ended (%s)", id, final.Status), http.StatusGone)
 	case "resolve":
 		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
+	}
+}
+
+// sendEnded is a finished task's stream: what the runner followed of it, from the reader's
+// cursor, ending with how it ended.
+func (p *proc) sendEnded(sse *codec.SSE, r *http.Request, final task.Snapshot) {
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	events := p.eventsSince(since)
+	if n := len(events); n == 0 || !(events[n-1].Kind == task.EventStatus && task.Status(events[n-1].Text).Terminal()) {
+		events = append(events, task.Event{Kind: task.EventStatus, Task: p.id, Text: string(final.Status), Err: final.Err, Orphaned: final.Orphaned})
+	}
+	if r.URL.Query().Get("since") == "" {
+		events = events[len(events)-1:] // a live attach to an ended task gets its end
+	}
+	for _, e := range events {
+		_ = sse.Send(e)
+	}
+	sse.Flush()
+}
+
+// eventsEarly answers a subscribe to a task its process does not host yet. The stream opens at
+// once, since a subscribe that is answered is what the task's lease is renewed by and what its
+// reader counts, and a first clone can take longer than either waits. Its frames follow once
+// the process hosts the task, or its end where it ended without one.
+func (h *SubprocessHandler) eventsEarly(w http.ResponseWriter, r *http.Request, p *proc) {
+	sse, err := codec.NewSSE(w, r)
+	if err != nil {
+		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
+		return
+	}
+	sse.Flush()
+	select {
+	case <-p.ready:
+	case <-r.Context().Done():
+		return
+	}
+	if final, done := p.snapshot(); done {
+		p.sendEnded(sse, r, final)
+		return
+	}
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	frames, stop := p.rt.Attach(p.id).SubscribeSince(since)
+	defer stop()
+	for {
+		select {
+		case f, ok := <-frames:
+			if !ok {
+				return
+			}
+			_ = sse.Send(f)
+		case <-r.Context().Done():
+			return
+		}
 	}
 }
 

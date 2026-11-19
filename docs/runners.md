@@ -248,6 +248,37 @@ spawn went to.
   work by making it impossible to rebuild.
 - A person reads the name, and `verse ps -runner` selects on it.
 
+## A task's lease
+
+A task runs only while verse can reach its runner, give or take its **lease**. The lease is the
+launch's `lease`, a duration of `1m` or more, and `4m` where the launch names none
+([a spawn's fields](reference/action.md)).
+
+This is the runner's part of the contract:
+
+- **Each subscribe the runner accepts renews the lease.** The lease counts from the launch, and
+  again from each `GET /tasks/{id}/events` the runner answers for the task. An open stream
+  renews nothing after it is answered.
+- **A task whose lease runs out is ended by its runner.** The runner stops the task and ends it
+  `failed`, with `orphaned: true` and `err: no reader for 4m` on its terminal frame and its
+  snapshot.
+- **A subscribe is answered at once**, whatever state the task is in. A task whose repositories
+  are still being cloned has a stream that is open and has no frames yet.
+- **A subscribe that comes after the lease ran out renews nothing.** It is answered with the
+  task's end. A launch of the same id after that starts the work again.
+
+Verse's part is to ask. It subscribes to each running task again four times within the lease, and
+stops waiting a minute after the lease has gone by with no subscribe the runner accepted. It then
+ends the task on its record, also as `failed` with `orphaned: true`. The lease runs out first, so
+by the time verse ends a task for a runner it cannot reach, the runner has ended it too.
+
+So a task rides out a verse restart or a partition shorter than its lease, and not a longer
+one. A longer lease rides out a longer outage, and holds the task's subject that much longer
+when the runner is really gone.
+
+A runner that does not keep the lease leaves a task running that verse has given up on: its
+rule can fire again and start a second run beside it.
+
 ## Removing one
 
 Verse cannot *move* a running task between runners. It can cancel the task, or leave it. The
