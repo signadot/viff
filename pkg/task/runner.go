@@ -87,6 +87,16 @@ type Handle interface {
 	Agent() (name string, settings map[string]string)
 }
 
+// Accepting is a Handle of a task on a runner reached by request, which says when the runner
+// accepted a subscribe: what a task's lease is renewed by (runner.DefaultLease), so what a
+// reader keeping the lease counts.
+type Accepting interface {
+	// SubscribeAccepted is SubscribeSince, with an EventAccepted frame ahead of the runner's
+	// once the runner has accepted the subscribe. A stream that closes with no such frame was
+	// not accepted: the runner did not answer, or refused.
+	SubscribeAccepted(since int64) (<-chan Event, func())
+}
+
 // *Task is the local Handle.
 var _ Handle = (*Task)(nil)
 

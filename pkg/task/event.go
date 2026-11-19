@@ -65,6 +65,10 @@ const (
 	// EventAutonomy is the task's autonomy replaced while it runs: By is who replaced it, and Text
 	// the autonomy in one line (Autonomy.Summary).
 	EventAutonomy = "autonomy"
+	// EventAccepted is a client's own frame and never a runner's: the runner accepted the
+	// subscribe this stream is. It is the first frame of a stream asked for with
+	// Accepting.SubscribeAccepted, and of no other.
+	EventAccepted = "accepted"
 )
 
 type subscriber struct {

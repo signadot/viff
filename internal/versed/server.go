@@ -167,7 +167,8 @@ type Server struct {
 	uninstalls map[string]*uninstalling
 	stopWait   time.Duration
 	// left is the tasks the verse before this one left in baseline, re-attached, each with the
-	// engine it was handed to; leftIn is closed once they are all here (reconcileTasks).
+	// engine it was handed to since (resumeLeft, handTasks); leftIn is closed once they are all
+	// here and the root package's are handed over (reconcileTasks).
 	leftMu   sync.Mutex
 	left     []*resumedRun
 	leftIn   chan struct{}
@@ -597,8 +598,8 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		// launch may do. Built once so the failure path and the running path cannot disagree
 		// about what was attempted. Where it runs is said once it is routed, below.
 		meta := mirror.Meta{
-			Subject: spec.Subject,
-			Chain:   spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
+			Subject: spec.Subject, Lease: spec.Lease,
+			Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
 			Git: (&runner.Launch{Environment: spec.Environment}).Repos(), ActsFor: spec.ActsFor,
 			Autonomy:    spec.Autonomy,
 			Environment: &spec.Environment, VirtualKey: spec.VirtualKey, // the address, before it is resolved below
@@ -753,7 +754,7 @@ func launchOf(id string, spec launch.Spec, principal string) (runner.Launch, err
 	l := runner.Launch{
 		ID: id, Prompt: spec.Prompt, Script: spec.Script, Agent: spec.Agent, Person: spec.Person,
 		Environment: spec.Environment, Autonomy: spec.Autonomy,
-		Answer: spec.Answer, Timeout: spec.Timeout,
+		Answer: spec.Answer, Timeout: spec.Timeout, Lease: spec.Lease,
 		// A firing has no launcher, so its principal is the rule that fired — the address of
 		// its record, which the runner can read back. See trigger.Engine.Principal.
 		Provenance: runner.Provenance{Principal: principal, Subject: spec.Subject, Chain: spec.Chain},
@@ -798,18 +799,15 @@ func withAnnotation(m map[string]string, k, v string) map[string]string {
 	return out
 }
 
-// reconcileTasks runs on Start: for each non-terminal task:instance, either RESUME (the
-// record names a runner's url — re-attach and re-mirror from the record's runner and cursor,
+// resumeLeft runs on Start, first: for each non-terminal task:instance of baseline, either
+// RESUME (the record names a runner's url — re-attach and re-mirror from the record's runner,
 // and let the mirror hear how the task stands) or END it as failed and orphaned (its runtime
 // was this process, which died with the previous run).
 //
-// A resumed task is handed to the engine of its rule's charter package, which does not open
-// until its tasks are in (trigger.Engine.AwaitTasks): the root package's here, and each other
-// package's when its engine is made (handTasks). What its end owes is looked up when it ends.
-func (s *Server) reconcileTasks() error {
-	if err := s.awaiting(phaseSuspensions); err != nil {
-		return err
-	}
+// A resumed task is mirrored from here and is no engine's yet: reconcileTasks hands it over
+// once the suspensions are in. An end its record takes meanwhile is taken by its engine when it
+// is handed the task (trigger's reapEnded).
+func (s *Server) resumeLeft() error {
 	resumed, err := s.resumeTasks(s.Store, "", func(string) bool { return true }, s.packageOf)
 	if err != nil {
 		return err
@@ -817,6 +815,18 @@ func (s *Server) reconcileTasks() error {
 	s.leftMu.Lock()
 	s.left = resumed
 	s.leftMu.Unlock()
+	return nil
+}
+
+// reconcileTasks hands each task resumeLeft re-attached to the engine of its rule's charter
+// package, which does not open until its tasks are in (trigger.Engine.AwaitTasks): the root
+// package's here, and each other package's when its engine is made (handTasks). What its end
+// owes is looked up when it ends. After the suspensions, since a task is held by one as it is
+// handed over, and until they have loaded they hold every task.
+func (s *Server) reconcileTasks() error {
+	if err := s.awaiting(phaseResume, phaseSuspensions); err != nil {
+		return err
+	}
 	s.handTasks(s.Eng)
 	s.leftOnce.Do(func() { close(s.leftIn) })
 	s.reconcileQuestions() // AFTER the above: it reads the statuses this just settled
@@ -984,7 +994,7 @@ func (s *Server) resumeScope(ctx context.Context, eng *trigger.Engine, scope str
 	}
 }
 
-// resumeTasks is reconcileTasks over one store, for the tasks mine selects by id: baseline's,
+// resumeTasks is resumeLeft over one store, for the tasks mine selects by id: baseline's,
 // or those of scope. engineOf is the engine a task's holds are read from, by its id.
 func (s *Server) resumeTasks(store entity.Store, scope string, mine func(id string) bool, engineOf func(id string) *trigger.Engine) ([]*resumedRun, error) {
 	var resumed []*resumedRun
@@ -1058,6 +1068,8 @@ func (s *Server) resumeTasks(store entity.Store, scope string, mine func(id stri
 					RunnerName: entity.Str(ent.Payload, "runnerName"),
 					// And the subject the door holds a relaying runner to, for the same reason.
 					RunnerSubject: entity.Str(ent.Payload, "runnerSubject"),
+					// And its lease, so its clocks are the ones it was launched with.
+					Lease: entity.Str(ent.Payload, "lease"),
 					// Carried, not re-stamped: a resumed task did not start again.
 					StartedAt: entity.Str(ent.Payload, "startedAt"),
 					Started:   entity.Str(ent.Payload, "started"),
@@ -1111,7 +1123,7 @@ func (s *Server) resumeTasks(store entity.Store, scope string, mine func(id stri
 // Two cases, and the second is the one that is easy to miss:
 //
 //   - A TASK raised it. It survives exactly as its task does, which is the distinction
-//     reconcileTasks already draws: resumed behind a runner that is still there, orphaned
+//     resumeLeft already draws: resumed behind a runner that is still there, orphaned
 //     when the runtime died with us. The question does not get its own opinion.
 //   - A FIRING raised it, before anything spawned. That waiter was in this verse, always, so
 //     a restart ends it unconditionally. If the rule still matches, its replay poses the
@@ -3434,7 +3446,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// two facts a reader of this task wants beside its status, and for a task on a named
 		// runner the record is the only place they can be read without that runner.
 		Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "",
-		Subject: spec.Subject, Autonomy: spec.Autonomy, ActsFor: actsFor, Git: l.Repos(),
+		Subject: spec.Subject, Autonomy: spec.Autonomy, ActsFor: actsFor, Git: l.Repos(), Lease: spec.Lease,
 		Environment: &spec.Environment, VirtualKey: named,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 		// No Occurrence: nothing caused this one, so there is no commit to name and the

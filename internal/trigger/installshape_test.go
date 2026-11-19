@@ -25,6 +25,8 @@ func TestASpawnsShapeIsCheckedAtInstall(t *testing.T) {
 		{"a row the environment gives nothing to", `{script: "true", environment: {systems: {commands: {run: {}}}}, autonomy: [{match: {system: files, verb: write}, then: deny}, {then: ask}]}`, "autonomy[0]: matches nothing the environment gives (system=files verb=write)"},
 		{"a row no shape has a value in common with", `{script: "true", environment: {systems: {git: {repo: acme/app, push: {ref: !glob "refs/heads/verse/*"}}}}, autonomy: [{match: {system: git, verb: push, ref: !glob "refs/tags/*"}, then: allow}, {then: ask}]}`, "matches nothing the environment gives"},
 		{"a timeout that is no duration", `{script: "true", timeout: soon}`, "is not a duration"},
+		{"a lease that is no duration", `{script: "true", lease: long}`, "is not a duration"},
+		{"a lease under a minute", `{script: "true", lease: 30s}`, "the shortest a lease may be"},
 		{"a variable name that is no name", `{script: "true", environment: {vars: {"A-B": x}}}`, "a variable's name"},
 		{"a host the proxy cannot take", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: "**.example.com"}]}}}}`, "a pattern is written `!glob` or `!regexp`"},
 		{"a wildcard over a top-level domain", `{script: "true", environment: {systems: {network: {mode: allow, tcp-client: [{host: !glob "*.com"}]}}}}`, "matches too much"},

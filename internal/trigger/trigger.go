@@ -1436,6 +1436,7 @@ func installLaunch(spec launch.Spec) (l runner.Launch, known bool) {
 	l = runner.Launch{
 		ID: "install", Prompt: spec.Prompt, Script: spec.Script, Person: spec.Person,
 		Environment: templatedEnvironment(spec.Environment), Autonomy: spec.Autonomy, Timeout: spec.Timeout,
+		Lease: spec.Lease,
 	}
 	known = true
 	if spec.Agent != nil {

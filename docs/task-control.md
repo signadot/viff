@@ -345,7 +345,9 @@ answer.
 **A stream that ends without a terminal did not end because the task ended.** The terminal is
 always the last frame. If it is absent, the connection broke. Resume from the last cursor, and
 conclude nothing about the work. `mirror.Reflect` does exactly that. It backs off between
-attempts, and publishes `observed: false` on the record while it is disconnected.
+attempts, and publishes `observed: false` on the record while it is disconnected. It stops a
+minute after the task's lease has gone by with no subscribe the runner accepted, and ends the
+task on its record as `failed`, `orphaned: true`.
 
 An index that looks confident while it is only stale is worse than one that says it is stale.
 

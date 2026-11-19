@@ -32,6 +32,7 @@ define:
   chain: .[string]
   credential: .[nullable(verse-launch-credential)]
   environment: !irtype {}
+  lease: .[string]
   occurrence: .[int]
   passed: .[array(verse-launch-passed)]
   person: .[string]

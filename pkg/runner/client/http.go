@@ -213,6 +213,21 @@ func (h *remoteHandle) Subscribe() (<-chan task.Event, func()) {
 // asking for everything and discarding — the remote is the one that knows what it still has,
 // and it is the one that can say EventGap when the cursor is below its window.
 func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Event, func()) {
+	return h.subscribe(since, false)
+}
+
+// SubscribeAccepted is SubscribeSince, saying first that the runner accepted the subscribe
+// (task.Accepting): the runner answered the request, and with a stream.
+func (h *remoteHandle) SubscribeAccepted(since int64) (<-chan task.Event, func()) {
+	return h.subscribe(since, true)
+}
+
+// subscribe opens the task's stream from a cursor. FOR A READER COUNTING ACCEPTED SUBSCRIBES, A
+// REQUEST THAT GETS NO ANSWER FAILS: the stream itself has no deadline, and its response does,
+// so a subscribe into a network that takes the request and answers nothing closes as one that
+// was refused does, for its reader to ask again. Any other reader waits for the answer as long
+// as it likes, and ends the wait itself.
+func (h *remoteHandle) subscribe(since int64, sayAccepted bool) (<-chan task.Event, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	out := make(chan task.Event, 256)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
@@ -226,6 +241,10 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Event, func()) {
 		close(out)
 		cancel()
 		return out, func() {}
+	}
+	if sayAccepted {
+		unanswered := time.AfterFunc(ControlTimeout, cancel)
+		defer unanswered.Stop()
 	}
 	resp, err := h.stream.Do(req)
 	if err != nil {
@@ -266,6 +285,9 @@ func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Event, func()) {
 	// frame fail to parse the moment the remote's default changed, and because an
 	// unparseable frame is skipped rather than reported, the symptom was a stream that
 	// simply never delivered anything.
+	if sayAccepted {
+		out <- task.Event{Kind: task.EventAccepted}
+	}
 	frameFmt := codec.Tony
 	if f, err := codec.Parse(resp.Header.Get(codec.HeaderFormat)); err == nil &&
 		resp.Header.Get(codec.HeaderFormat) != "" {
@@ -489,6 +511,8 @@ func statusErr(resp *http.Response) error {
 var (
 	_ task.Runner = (*httpRunner)(nil)
 	_ task.Handle = (*remoteHandle)(nil)
+	// The handle a mirror keeps a task's lease through.
+	_ task.Accepting = (*remoteHandle)(nil)
 	// Asserted here so a change to Lister is a compile error in this file rather than a
 	// type assertion that quietly starts reporting false in versed.
 	_ task.Lister = (*httpRunner)(nil)

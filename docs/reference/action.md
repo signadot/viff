@@ -301,6 +301,7 @@ Verse does not fall back to a default, and it drops nothing.
 | Field | What it names |
 |---|---|
 | `timeout` | how long the run may take, as a duration. Verse cancels it after that, on every runner. |
+| `lease` | how long the task runs on with verse out of reach, as a duration of `1m` or more. Absent is `4m`. Verse asks the runner for the task's events four times within it, and a minute after it has gone by with no answer verse ends the task as `failed` with `orphaned: true`. A longer lease rides out a longer outage, and holds the subject that much longer when the runner is really gone. |
 | `credential` | `{audience: <name>}` asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule that writes a gate, `mode: auto` included. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
 | `virtualKey` | the address of the model credential the run spends, such as `acme.keys.review`. Verse reads it as whoever installed the rule, so a rule cannot name a key its owner may not read. Absent is the runner's default ([virtual key](../glossary.md#virtual-key)). |
 | `retain` | how many of the task's events verse keeps for a reader who attaches late. Absent is the default. |

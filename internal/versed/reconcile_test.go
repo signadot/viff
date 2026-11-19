@@ -91,6 +91,9 @@ func TestReconcileKeepsClaimsForResumedRuns(t *testing.T) {
 func reconcile(t *testing.T, srv *Server) {
 	t.Helper()
 	srv.Eng.AwaitTasks()
+	if err := srv.resumeLeft(); err != nil {
+		t.Fatalf("resumeLeft: %v", err)
+	}
 	if err := srv.reconcileTasks(); err != nil {
 		t.Fatalf("reconcileTasks: %v", err)
 	}

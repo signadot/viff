@@ -24,6 +24,7 @@ const (
 // follows another names it (awaiting), and status lists them.
 const (
 	phasePerms       = "loaded the perms mirror"
+	phaseResume      = "re-attached tasks"
 	phaseSuspensions = "loaded the suspensions"
 	phaseTasks       = "reconciled tasks"
 	phaseCharter     = "restored the charter"
@@ -217,15 +218,21 @@ func (s *Server) Start(ctx context.Context) {
 	// The perms mirror, loaded and watched, so the check every write and read makes costs no
 	// round trip: on a busy store the per-write read hit its deadline and refused the write.
 	phase(phasePerms, func() error { return entity.Track(ctx, s.Store) })
-	// The suspensions before anything they could hold is re-attached or restored: until they
-	// have loaded they hold everything, and a store that cannot serve them holds every rule and
-	// task, since a suspension that failed open on a restart would resume what somebody stopped.
-	phase(phaseSuspensions, s.restoreSuspensions)
 	// The root package's engine is shut until the tasks the last verse left are handed to it
 	// (reconcileTasks), however long that takes: no rule of it arms ahead of them.
 	s.Eng.AwaitTasks()
 	s.resuming.Store(true)
-	phase(phaseTasks, s.reconcileTasks) // resume remote-hosted tasks; orphan local-dead ones
+	// THE TASKS THE LAST VERSE LEFT ARE SUBSCRIBED TO FIRST. Each one's lease has been running
+	// since the last verse stopped asking for its events, and a subscribe is what renews it, so
+	// nothing that can wait goes ahead of this. It is the subscribing alone: no engine has the
+	// tasks yet.
+	phase(phaseResume, s.resumeLeft)
+	// The suspensions before anything they could hold is handed to an engine or restored:
+	// until they have loaded they hold everything, and a store that cannot serve them holds
+	// every rule and task, since a suspension that failed open on a restart would resume what
+	// somebody stopped.
+	phase(phaseSuspensions, s.restoreSuspensions)
+	phase(phaseTasks, s.reconcileTasks) // the re-attached tasks, each to its engine
 	// Per-trigger subtree observation — no root watch. The baseline engine watches
 	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned
 	// model the scoped engines use; a mount under verse no longer collides with (and

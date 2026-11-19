@@ -129,7 +129,7 @@ func (s *Server) stopWork(owner string, st *stopState, tasks []stopTask, why str
 	}()
 }
 
-// leftAreIn reports whether the tasks the last verse left are all re-attached (reconcileTasks):
+// leftAreIn reports whether the tasks the last verse left are all re-attached and the root package's handed over (reconcileTasks):
 // true for a server nobody started, which re-attaches none.
 func (s *Server) leftAreIn() bool {
 	if !s.resuming.Load() {

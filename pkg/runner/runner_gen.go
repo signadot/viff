@@ -1347,6 +1347,11 @@ func (s *Launch) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["timeout"] = ir.FromString(string(s.Timeout))
 	}
 
+	// Field: Lease
+	if s.Lease != "" {
+		irMap["lease"] = ir.FromString(string(s.Lease))
+	}
+
 	// Field: Converse
 	if s.Converse {
 		irMap["converse"] = ir.FromBool(bool(s.Converse))
@@ -1456,6 +1461,12 @@ func (s *Launch) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "timeout", fieldNodeUnwrapped.Type)
 			}
 			s.Timeout = string(fieldNodeUnwrapped.String)
+		case "lease":
+			// Field: Lease
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "lease", fieldNodeUnwrapped.Type)
+			}
+			s.Lease = string(fieldNodeUnwrapped.String)
 		case "converse":
 			// Field: Converse
 			if fieldNodeUnwrapped.Type != ir.BoolType {

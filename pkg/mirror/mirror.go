@@ -134,6 +134,10 @@ type Meta struct {
 	// relayTask), so a registration rewritten under the same name with another subject relays
 	// nothing of a task it did not host. Empty where the registration names none.
 	RunnerSubject string
+	// Lease is the task's lease as its spawn wrote it, a duration; empty is runner.DefaultLease.
+	// The mirror subscribes again four times within it, and stops waiting on the runner a
+	// minute after it (follow.go). On the record as `lease`, so a re-attach carries it back.
+	Lease string
 	// StartedAt is when the task began, RFC3339. Empty on a fresh spawn — Reflect stamps
 	// the clock — and carried back verbatim by a re-attach, which is the only caller that
 	// knows this task is older than this verse.
@@ -247,7 +251,7 @@ func TriggerOf(chain string) string {
 var RecordFields = map[string]bool{
 	"actsFor": true, "answerers": true, "chain": true, "credential": true, "cursor": true, "data": true,
 	"agent": true, "ended": true, "err": true, "flow": true, "git": true, "hook": true,
-	"environment": true, "lastAction": true, "lastOutput": true, "observed": true, "occurrence": true, OrphanedField: true,
+	"environment": true, "lastAction": true, "lease": true, "lastOutput": true, "observed": true, "occurrence": true, OrphanedField: true,
 	"paused": true, "pending": true, "autonomy": true, "autonomyBy": true, "prompt": true, "refused": true, "result": true, "script": true,
 	"runner": true, "runnerName": true, "runnerSubject": true, "say": true, "started": true, "startedAt": true,
 	"status": true, "trigger": true, "virtualKey": true,
@@ -255,7 +259,16 @@ var RecordFields = map[string]bool{
 }
 
 func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
-	ch, unsub := h.Subscribe()
+	// A handle of the task's own bus is subscribed to before the record is written, and before
+	// whoever called starts the task: it replays nothing that went by before the subscribe. A
+	// task on a runner is subscribed to from its first frame whenever it is asked, and the
+	// asking is a request that may go unanswered for a while, so it is follow's: nobody waits
+	// on it here, and the tasks a start re-attaches are asked for side by side.
+	var ch <-chan task.Event
+	var unsub func()
+	if _, leased := h.(task.Accepting); !leased {
+		ch, unsub = subscribe(h, true, 0)
+	}
 	// WHEN, and only twice: `started` here, `ended` at the terminal status below. A record
 	// stamped on every update would be an entity that changes whenever anything narrates,
 	// which wakes every trigger watching this slice for no fact anybody wrote — and the two
@@ -279,6 +292,11 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}
 	if m.RunnerSubject != "" {
 		st["runnerSubject"] = m.RunnerSubject
+	}
+	// The lease its spawn named, so a verse that restarts while it runs keeps the same clocks
+	// for it. One that named none says none, and has the default.
+	if m.Lease != "" {
+		st["lease"] = m.Lease
 	}
 	// When this task began, so `verse runner` can say when a runner was last used and a
 	// runner nobody names is visible as such. Written once, at the first reflection, and
@@ -382,51 +400,13 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.As != "" {
 		claimed(asPrincipal(store, entity.SystemMirror), id, st, m.As)
 	}
-	go func() {
-		// A stream ending is not the same fact as a task ending, and treating them as one
-		// is what let a mirror stop forever: the connection died, Reflect returned, and the
-		// entity kept saying `running` about work that had long since finished.
-		//
-		// The terminal is what says the task ended — always the last frame, never dropped
-		// and never absent (see pkg/task/event.go). A channel that closes without one closed
-		// for a reason of its own, and the answer is to resume from the cursor this loop has
-		// been keeping all along.
-		attempt := 0
-		claimant := m.As
-		for {
-			ended, heard := drainInto(store, id, st, m, h, ch, &claimant)
-			unsub()
-			if ended {
-				return
-			}
-			if heard {
-				attempt = 0 // it worked for a while; the next outage starts its own count
-			}
-			if attempt >= reconnectAttempts {
-				// Gave up, and ends the task on its record, as failed and orphaned: the
-				// record is what ends a task, and one nobody is watching would otherwise hold
-				// its subject for good.
-				for k, v := range Orphaned(OrphanedUnanswered) {
-					st[k] = v
-				}
-				landEnd(store, asPrincipal(store, entity.SystemMirror), id, st, m)
-				writeRun(store, id, occurrenceOf(st), st)
-				OrphanQuestions(asPrincipal(store, entity.SystemDocket), id)
-				if m.Ended != nil {
-					m.Ended()
-				}
-				return
-			}
-			// Said BEFORE the wait, not after it: a reader asking during the outage is
-			// exactly the reader who needs to know the index is not current.
-			st["observed"] = false
-			project(store, id, st, m)
-			time.Sleep(backoff(attempt))
-			attempt++
-			since, _ := st["cursor"].(int64)
-			ch, unsub = h.SubscribeSince(since)
-		}
-	}()
+	// Two parts from here: one keeps a subscription to the task's stream (follow.go), and the
+	// other writes what the stream says onto the record. They are apart so that a write the
+	// store is slow to take does not hold up the next subscribe, which is what the task's
+	// lease is renewed by.
+	q := newFrames()
+	go follow(h, q, ch, unsub, runner.LeaseOf(m.Lease))
+	go record(store, id, st, m, h, q)
 }
 
 // launchAsk is the ask of the autonomy's row a frame's question is about, by the row's name:
@@ -753,25 +733,26 @@ func claimed(system entity.Store, id string, st entity.Obj, by string) {
 	}
 }
 
-// reconnectAttempts bounds how long a mirror keeps trying to reopen a stream that keeps
-// dying. With the backoff below it is a few minutes — long enough to outlast a runner
-// restart, short enough that a task on a runner that is never coming back does not hold a
-// goroutine and a retry loop forever. A stream that delivers anything at all resets it.
-const reconnectAttempts = 40
-
-// backoff grows to a ceiling and stays there. A mirror reconnecting to a runner that is down
-// should not hammer it on the way.
+// backoff grows to a ceiling and stays there. A mirror subscribing again to a runner that is
+// down should not hammer it on the way.
 func backoff(attempt int) time.Duration {
 	d := time.Duration(1<<min(attempt, 5)) * 250 * time.Millisecond
 	return min(d, 8*time.Second)
 }
 
-// drainInto projects one subscription's frames, reporting whether the TASK ended (true) or
-// merely the stream did (false).
+// record writes what the task's stream says onto its record, frame by frame as follow hands
+// them over, until the task has ended and its record says so.
+//
+// A STREAM ENDING IS NOT A TASK ENDING. The terminal status is what says the task ended,
+// always the last frame. A stream that is lost is said on the record (`observed: false`) while
+// it is, since a reader asking during the outage is the reader who needs to know the record is
+// not current; and where follow stops waiting on the runner, the task is ended here, as failed
+// and orphaned: the record is what ends a task, and one nobody is watching would otherwise
+// hold its subject for good.
 //
 // WHO WRITES. The task's record is written as the party working the task: the spawn's
 // principal until a worker claims it, and the worker from then on — the claimant, named by the
-// runner on the claim's running frame, and remembered across a reconnect in claimant. A
+// runner on the claim's running frame. A
 // question is posed and settled as the docket (entity.SystemDocket) whoever is working the task,
 // since versed poses it and the decision that settles it travelled by the answer path, where the
 // answerer was checked; the worker's grant is on its task and must reach no question, and a
@@ -787,28 +768,46 @@ func backoff(attempt int) time.Duration {
 // all, and a worker reporting another verdict under it would leave a record saying the
 // answerer chose what they did not. So a relayed task's decision is settled from what verse
 // holds (settleRelayed), and its slide named from what verse relayed (slidBy).
-func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Event, claimant *string) (ended, heard bool) {
-	docket, projector := asPrincipal(store, entity.SystemDocket), asPrincipal(store, entity.SystemMirror)
+func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, q *frames) {
+	docket, projector := asPrincipal(base, entity.SystemDocket), asPrincipal(base, entity.SystemMirror)
 	relayed := m.Runner != ""
-	if *claimant != "" {
-		store = asPrincipal(store, *claimant)
+	store, claimant := base, m.As
+	if claimant != "" {
+		store = asPrincipal(base, claimant)
 	}
 	{
-		for ev := range ch {
-			if !heard {
-				// The first frame of a resumed stream is the only proof it is working, and
-				// nothing else can stand in for it — a channel that is merely open may be
-				// one that is about to close.
-				heard = true
+		for {
+			it, ok := q.take()
+			if !ok {
+				return
+			}
+			switch it.mark {
+			case markLost:
+				if st["observed"] != false {
+					st["observed"] = false
+					project(store, id, st, m)
+				}
+				continue
+			case markCurrent:
+				// Removed from the document, since the document is what is stored.
 				if st["observed"] == false {
-					// Gone from the document, because the document is what gets stored. This
-					// said `nil, not delete: a write MERGES`, which was true when a bare null
-					// meant removal — since baa0c459 it is data, so it was writing
-					// `observed: null` where it meant to write nothing at all.
 					delete(st, "observed")
 					project(store, id, st, m)
 				}
+				continue
+			case markGaveUp:
+				for k, v := range Orphaned(OrphanedUnanswered) {
+					st[k] = v
+				}
+				landEnd(base, projector, id, st, m)
+				writeRun(base, id, occurrenceOf(st), st)
+				OrphanQuestions(docket, id)
+				if m.Ended != nil {
+					m.Ended()
+				}
+				return
 			}
+			ev := it.ev
 			if ev.Cursor > 0 { // high-water for resume: verse re-subscribes ?since=cursor
 				st["cursor"] = ev.Cursor
 			}
@@ -863,7 +862,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				if st["pending"] == QuestionRef(ev.ID).String() {
 					res := task.Resolution{Choice: ev.Choice, Proceed: ev.Proceed, By: ev.By, Note: ev.Text}
 					if relayed {
-						settleRelayed(docket, ev.ID, res, *claimant)
+						settleRelayed(docket, ev.ID, res, claimant)
 					} else {
 						AnswerQuestion(docket, ev.ID, res)
 					}
@@ -896,9 +895,9 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 					// A CLAIM: a worker took the task and named itself. The grant a spawn makes
 					// to its runner is written now, naming the party that actually turned up,
 					// and every report from here on is written as them.
-					if ev.Text == string(task.Running) && mayClaim(ev.By) && *claimant == "" {
+					if ev.Text == string(task.Running) && mayClaim(ev.By) && claimant == "" {
 						claimed(projector, id, st, ev.By)
-						*claimant = ev.By
+						claimant = ev.By
 						store = asPrincipal(store, ev.By)
 					}
 					st["status"] = ev.Text
@@ -952,7 +951,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						if m.Ended != nil {
 							m.Ended()
 						}
-						return true, heard // the TASK ended; the entity remains, terminal
+						return // the TASK ended; the entity remains, terminal
 					}
 				}
 				project(store, id, st, m)
@@ -960,7 +959,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 			case task.EventAutonomy: // the policy replaced — project it so `entity get` shows it
 				by := ev.By
 				if relayed {
-					by = slidBy(m, ev.Text, *claimant)
+					by = slidBy(m, ev.Text, claimant)
 				}
 				if by != "" {
 					st["autonomyBy"] = by
@@ -978,7 +977,6 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 			project(store, id, st, m) // the payload is cloned on the way out; safe to reuse st
 		}
 	}
-	return false, heard
 }
 
 // write projects the accumulated state onto the task's entity. A failed write is
@@ -1018,7 +1016,7 @@ func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 // answers the commit it landed at, or 0 if it did not land.
 //
 // Replacing at every write rather than only at a run's first one, because st is the whole
-// document: the drain loop mutates it and writes it entire, so a merge was never adding
+// document: record mutates it and writes it entire, so a merge was never adding
 // anything a replace does not carry. What it was adding was fields from BEFORE — an id names
 // the work, so a new run writes where the last one left off, and `started`/`status` landed on
 // top of `ended`/`err`/`result` without displacing them. That is a record saying it began at

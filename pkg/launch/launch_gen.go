@@ -74,6 +74,11 @@ func (s *Spec) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["timeout"] = ir.FromString(string(s.Timeout))
 	}
 
+	// Field: Lease
+	if s.Lease != "" {
+		irMap["lease"] = ir.FromString(string(s.Lease))
+	}
+
 	// Field: VirtualKey
 	if s.VirtualKey != "" {
 		irMap["virtualKey"] = ir.FromString(string(s.VirtualKey))
@@ -224,6 +229,12 @@ func (s *Spec) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				return fmt.Errorf("field %q: expected string, got %v", "timeout", fieldNodeUnwrapped.Type)
 			}
 			s.Timeout = string(fieldNodeUnwrapped.String)
+		case "lease":
+			// Field: Lease
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "lease", fieldNodeUnwrapped.Type)
+			}
+			s.Lease = string(fieldNodeUnwrapped.String)
 		case "virtualKey":
 			// Field: VirtualKey
 			if fieldNodeUnwrapped.Type != ir.StringType {
