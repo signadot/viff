@@ -125,7 +125,17 @@ type Mirrors struct {
 // a first clone isn't bounded, and outlives the caller.
 const ForgeTimeout = 10 * time.Minute
 
+// NewMirrors is the mirrors under root, which one runner process has to itself.
+//
+// So a `packed-refs.lock` found in one as the runner starts is nobody's: git holds it while it
+// writes `packed-refs`, the runner is the only thing that has git do that (tidy), and no runner
+// was running. It is what a collection leaves when it is killed with the runner, and git never
+// expires it, so it is removed here, or it refuses every collection in that mirror from then on.
 func NewMirrors(root string, auth func(remote string) transport.AuthMethod) *Mirrors {
+	stale, _ := filepath.Glob(filepath.Join(root, "*", "packed-refs.lock"))
+	for _, lock := range stale {
+		_ = os.Remove(lock)
+	}
 	return &Mirrors{root: root, auth: auth, locks: map[string]*sync.Mutex{}}
 }
 
