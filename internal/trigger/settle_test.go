@@ -523,3 +523,33 @@ func TestAnElementsEndAdvancesARunWhoseStepIsBehind(t *testing.T) {
 		t.Fatalf("run facts = %v, claim stands = %v: the run did not finish", f, claimStands(t, store, id))
 	}
 }
+
+// A run starts with no conclusion. A subject that finished the sequence at an earlier shape
+// still says `done` when it runs the sequence again at a new one, and a restart that read that
+// as this run's would release the run's claim and carry nothing on.
+func TestARunAtANewShapeIsCarriedOnPastTheConclusionOfTheOneBefore(t *testing.T) {
+	store := entitytest.Store(t)
+	rule := deploy()
+	rule.Action.Seq[0].OnFailed = nil // an element with no off-ramp hook holds no claim of its own
+	eng, _, sp, stop := deploying(t, store, rule, func(sp *spawned) Spawner { return sp.spawn })
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "closed"}.Payload())
+	// What a run that finished under an earlier shape of the sequence left.
+	eng.publishSeq("deploy", 0, prRef("1"), entity.Obj{seqStep: 2, seqSteps: 2, seqShape: "0ld5hape", seqDone: true})
+	now := subjectNow(t, store)
+	now["stage"] = "open"
+	entitytest.Set(t, store, prRef("1"), entity.Obj(now).Payload())
+	build := sp.wait(t, elementID(eng, 0))
+	waitFacts(t, store, "step 0 at the new shape", func(f map[string]any) bool {
+		return f[seqStep] == int64(0) && f[seqShape] == eng.shapeOf("deploy")
+	})
+	waitFacts(t, store, "the element's task tracked", func(map[string]any) bool { _, live := eng.Live(elementID(eng, 0)); return live })
+	stop() // verse goes down
+	build.finish()
+	waitField(t, store, mirror.Ref(elementID(eng, 0)), "status", string(task.Done))
+
+	next, _, sp2, _ := deploying(t, store, rule, func(sp *spawned) Spawner { return sp.spawn })
+	sp2.wait(t, elementID(next, 2))
+	if got := subjectNow(t, store); got["built"] != "yes" {
+		t.Fatalf("the run was not carried on at the restart: %v", got)
+	}
+}

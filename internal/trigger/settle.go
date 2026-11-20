@@ -42,6 +42,14 @@ func (e *Engine) AwaitTasks() {
 	}
 	e.tasksIn = make(chan struct{})
 	e.opened = make(chan struct{}) // shut from here on, for a task handed over ahead of the start
+	e.started = make(chan struct{})
+}
+
+// sayStarted says the engine has its context.
+func (e *Engine) sayStarted() {
+	if e.started != nil {
+		e.startedOnce.Do(func() { close(e.started) })
+	}
 }
 
 // TasksIn says the tasks the last verse left this engine are all in.
@@ -71,6 +79,9 @@ func (e *Engine) isOpen() bool {
 func (e *Engine) awaitOpen() bool {
 	if e.opened == nil {
 		return true
+	}
+	if e.started != nil {
+		<-e.started // the context is the start's to set
 	}
 	ctx := e.bgctx
 	if ctx == nil {
@@ -114,39 +125,40 @@ func (e *Engine) open(ctx context.Context) {
 }
 
 // settleLeft settles every claim standing under this engine's owner prefix, spawn claims and
-// then the run claims that still stand, since an element's own claim settles its run. The
-// claims are read until the store answers, for as long as the engine runs.
+// then the run claims that still stand, since an element's own claim settles its run. A claim
+// stays unsettled only where the store did not answer for it, or for what says how to pay it,
+// and a claim left standing with nothing behind it holds its subject for as long as this verse
+// runs. So the claims are listed and settled again until the store has answered for each, for
+// as long as the engine runs, and the engine stays shut meanwhile.
 func (e *Engine) settleLeft(ctx context.Context) bool {
-	var claims []entity.Entity
 	for wait := 250 * time.Millisecond; ; wait = min(2*wait, 8*time.Second) {
-		got, err := entity.BelowErr(e.store, func(r entity.Ref) bool {
+		claims, err := entity.BelowErr(e.store, func(r entity.Ref) bool {
 			return r.ChildOf(entity.VerseRoot, mirror.System, mirror.ClaimKind)
 		}, 1, entity.VerseRoot, mirror.System, mirror.ClaimKind)
-		if err == nil {
-			claims = got
-			break
+		e.settleUnread = err != nil
+		for _, spawns := range []bool{true, false} {
+			for _, claim := range claims {
+				if ctx.Err() != nil {
+					return false
+				}
+				if OwnerOf(claim.Ref.Name()) != e.idOwner() {
+					continue
+				}
+				if (entity.Str(claim.Payload, mirror.ClaimOfField) == mirror.ClaimOfSpawn) == spawns {
+					e.settleClaim(claim)
+				}
+			}
 		}
-		e.logger.Warn("the claims the last verse left could not be read; the engine stays shut and asks again", "err", err)
+		if !e.settleUnread {
+			return true
+		}
+		e.logger.Warn("the claims the last verse left could not all be read; the engine stays shut and asks again", "err", err)
 		select {
 		case <-ctx.Done():
 			return false
 		case <-time.After(wait):
 		}
 	}
-	for _, spawns := range []bool{true, false} {
-		for _, claim := range claims {
-			if ctx.Err() != nil {
-				return false
-			}
-			if OwnerOf(claim.Ref.Name()) != e.idOwner() {
-				continue
-			}
-			if (entity.Str(claim.Payload, mirror.ClaimOfField) == mirror.ClaimOfSpawn) == spawns {
-				e.settleClaim(claim)
-			}
-		}
-	}
-	return true
 }
 
 // errRestarted is why a run stops at an element that spawns nothing: it reads the facts of the
@@ -193,6 +205,7 @@ func (e *Engine) settleClaim(claim entity.Entity) bool {
 	now, ok, err := e.store.Get(claim.Ref)
 	if err != nil {
 		e.logger.Warn("a claim could not be settled: it could not be read", "claim", id, "err", err)
+		e.settleUnread = true
 		return false
 	}
 	if !ok || entity.Str(now.Payload, takenField) != entity.Str(claim.Payload, takenField) {
@@ -235,10 +248,11 @@ func (e *Engine) settleRun(subj entity.Ref, chain string, since int64) bool {
 		return true
 	}
 	// Where the run has got to is the subject's to say, and a subject unread says nothing: the
-	// claim stands for the next start.
+	// claim stands, to be settled again (settleLeft).
 	facts, err := e.readSeqFacts(chain, subj)
 	if err != nil {
 		e.logger.Warn("a run's claim could not be settled: its subject could not be read", "chain", chain, "subject", subj.String(), "err", err)
+		e.settleUnread = true
 		return false
 	}
 	if got := entity.Str(facts, seqShape); got != "" && got != e.shapeOf(chain) {
@@ -296,6 +310,7 @@ func (e *Engine) settleTask(id string, subj entity.Ref, chain string, since int6
 	ent, ok, err := e.store.Get(ref)
 	if err != nil {
 		e.logger.Warn("a claim could not be settled: its task's record could not be read", "task", id, "err", err)
+		e.settleUnread = true
 		return false
 	}
 	if ok && mirror.OccurrenceOf(ent.Payload) < since {

@@ -784,11 +784,6 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 		http.NotFound(w, r)
 		return
 	}
-	// A subscribe this handler accepts renews the task's lease. One that comes after the lease
-	// ran out renews nothing, and is answered with the task's end.
-	if op == "events" {
-		p.lease.renew()
-	}
 	if _, done := p.snapshot(); !done && !p.isReady() {
 		// Not hosted yet: its repos are being checked out, or its process started. A cancel is
 		// the runner's to carry out, a look is answered from what the runner knows, and a
@@ -823,6 +818,12 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 			h.relayResolve(w, r, p)
 			return
 		}
+		if op == "events" {
+			// A subscribe renews the task's lease once it is answered, and here the answer is
+			// the task's process's: one it never gives renews nothing, so a task whose process
+			// has stopped answering is not kept by being asked after.
+			w = &answered{ResponseWriter: w, ok: func() { p.lease.renew() }}
+		}
 		p.prox.ServeHTTP(w, r)
 		return
 	}
@@ -850,6 +851,34 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 	}
 }
+
+// answered is a response that says when it is answered with a 200: ok is called then, once.
+type answered struct {
+	http.ResponseWriter
+	ok   func()
+	said bool
+}
+
+func (a *answered) WriteHeader(code int) {
+	if !a.said && code >= 200 { // a 1xx is not the answer
+		a.said = true
+		if code == http.StatusOK {
+			a.ok()
+		}
+	}
+	a.ResponseWriter.WriteHeader(code)
+}
+
+func (a *answered) Write(b []byte) (int, error) {
+	if !a.said {
+		a.said = true
+		a.ok()
+	}
+	return a.ResponseWriter.Write(b)
+}
+
+// Unwrap is the response under it, for what a proxy asks of one: a flush after each frame.
+func (a *answered) Unwrap() http.ResponseWriter { return a.ResponseWriter }
 
 // sendEnded is a finished task's stream: what the runner followed of it, from the reader's
 // cursor, ending with how it ended.
@@ -879,6 +908,7 @@ func (h *SubprocessHandler) eventsEarly(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	sse.Flush()
+	p.lease.renew() // answered: one that comes after the lease ran out renews nothing
 	select {
 	case <-p.ready:
 	case <-r.Context().Done():

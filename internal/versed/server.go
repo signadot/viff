@@ -1023,8 +1023,9 @@ func (s *Server) resumeTasks(store entity.Store, scope string, mine func(id stri
 			// `status`, so it would fall through the check that follows).
 			continue
 		}
-		status := entity.Str(ent.Payload, "status")
-		if status == "" || task.TerminalStatus(status) {
+		// Only a task its record says is live is one the last verse left running. A record
+		// with any other status is of a task that is over, whatever the status is.
+		if status := task.Status(entity.Str(ent.Payload, "status")); status != task.Running && status != task.Paused {
 			continue
 		}
 		runnerRef := entity.Str(ent.Payload, "runner")

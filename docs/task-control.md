@@ -150,8 +150,9 @@ stops a task that nobody has asked about for that long, and ends it `failed`,
 `orphaned: true`. A verse that comes back later attaches again all the same, and what it
 reads is that end.
 
-The reconcile reads baseline's tasks. A task that a [scope](glossary.md#scope) started is
-neither resumed nor orphaned at a restart: its record keeps the status it had.
+The reconcile reads baseline's tasks. A task that a rule in a [scope](glossary.md#scope) started
+is resumed the same way when the scope's engine is made. A task run by hand in a scope is not:
+its record keeps the status it had.
 
 An open question follows the task that asks it.
 

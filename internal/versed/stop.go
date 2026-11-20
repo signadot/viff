@@ -181,7 +181,8 @@ func (s *Server) notEnded(tasks []stopTask, why string) []stopTask {
 	return left
 }
 
-// removeClaims removes every claim whose id carries owner, each as it was read.
+// removeClaims removes every claim whose id carries owner, each as it was read. One that is no
+// longer as it was read is an error, for the caller to read them again.
 func (s *Server) removeClaims(owner string) error {
 	claims, err := entity.BelowErr(s.Store, func(r entity.Ref) bool {
 		return r.ChildOf(entity.VerseRoot, mirror.System, mirror.ClaimKind)
@@ -193,8 +194,12 @@ func (s *Server) removeClaims(owner string) error {
 		if trigger.OwnerOf(claim.Ref.Name()) != owner {
 			continue
 		}
-		if _, _, err := s.Store.Write(entity.Write{At: claim.Ref.At(), When: []entity.Require{{Pattern: entity.Unchanged(claim.Payload)}}}); err != nil {
+		took, _, err := s.Store.Write(entity.Write{At: claim.Ref.At(), When: []entity.Require{{Pattern: entity.Unchanged(claim.Payload)}}})
+		if err != nil {
 			return err
+		}
+		if !took {
+			return fmt.Errorf("claim %s changed as it was removed", claim.Ref.Name()) // read again
 		}
 	}
 	return nil

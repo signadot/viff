@@ -129,6 +129,13 @@ func (e *Engine) Stop(why string) []Running {
 	return running(live)
 }
 
+// Stopped reports whether the engine was stopped (Stop).
+func (e *Engine) Stopped() bool {
+	e.liveMu.Lock()
+	defer e.liveMu.Unlock()
+	return e.halted
+}
+
 // takeParked takes every launch a suspension parked.
 func (e *Engine) takeParked() []parkedLaunch {
 	e.parkMu.Lock()

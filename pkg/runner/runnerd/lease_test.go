@@ -7,8 +7,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -284,5 +286,48 @@ func TestStoppingATaskStopsTheCommandsItStarted(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("the command the task started (pid %d) is still running after the task was stopped", pid)
 		}
+	}
+}
+
+// A subscribe renews a task's lease when it is answered. A task whose process has stopped
+// answering is asked after and answers nothing, so its reader counts none of those subscribes:
+// the runner must count none either, and end the task at its lease.
+func TestASubscribeTheTaskNeverAnswersRenewsNothing(t *testing.T) {
+	const lease = time.Second
+	h, rt := newSubprocess(t)
+	h.SetLease(lease)
+	said := filepath.Join(t.TempDir(), "pid")
+	launchOK(t, rt, runner.Launch{ID: "s", Agent: &runner.Agent{Name: "test"}, Environment: openNet, Prompt: "spec child\n" + said})
+	var pid int
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if b, err := os.ReadFile(said); err == nil && len(b) > 0 {
+			pid = must(strconv.Atoi(string(b)))
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the task did not start its command: %s", snapshotOf(t, rt, "s").Err)
+		}
+	}
+	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) })
+	// The task's process is the parent of the command it started.
+	parent := must(strconv.Atoi(strings.TrimSpace(string(must(exec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(pid)).Output())))))
+	if err := syscall.Kill(parent, syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { syscall.Kill(parent, syscall.SIGKILL) })
+
+	// Each subscribe is given up on after a quarter of the lease, as a reader with a deadline
+	// on the answer gives up.
+	srv := httptest.NewServer(h.HTTPHandler())
+	t.Cleanup(srv.Close)
+	for until := time.Now().Add(3 * lease); time.Now().Before(until); {
+		ctx, cancel := context.WithTimeout(t.Context(), lease/4)
+		if resp, err := http.DefaultClient.Do(must(http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/tasks/s/events?since=0", nil))); err == nil {
+			resp.Body.Close()
+		}
+		cancel()
+	}
+	if snap := snapshotOf(t, rt, "s"); !snap.Orphaned {
+		t.Fatalf("the task is %s after three leases of subscribes its process answered none of, not ended as orphaned", snap.Status)
 	}
 }

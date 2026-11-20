@@ -121,11 +121,18 @@ func (s *Server) stopAndTakeDown(store entity.Store, at string) error {
 // asked again.
 func (s *Server) cancelWork(ctx context.Context, eng *trigger.Engine, at string) error {
 	// Open first: an engine takes no end until it is, and its tasks are all in by then.
-	if opened := eng.Opened(); opened != nil {
+	// One that was stopped before it opened never opens: an install at an address that had no
+	// charter made it, and was refused whole (stopPackage). Nothing is installed there then.
+	for opened, isOpen := eng.Opened(), false; opened != nil && !isOpen; {
 		select {
 		case <-opened:
+			isOpen = true
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+			if eng.Stopped() {
+				return fmt.Errorf("%s: the charter that was being installed there was refused, and nothing is installed", at)
+			}
 		}
 	}
 	eng.Close()

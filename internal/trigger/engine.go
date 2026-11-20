@@ -143,6 +143,13 @@ type Engine struct {
 	opened      chan struct{}
 	tasksIn     chan struct{}
 	tasksInOnce sync.Once
+	// started is closed once the engine has its context (Start, ObserveScoped): what a task
+	// handed over ahead of the start waits on before it reads that context (awaitOpen).
+	started     chan struct{}
+	startedOnce sync.Once
+	// settleUnread says a claim was left unsettled because the store did not answer: the
+	// settle's own, read and written by its one goroutine (settleLeft).
+	settleUnread bool
 
 	// parked is the launches a suspension stopped at launchSpawn, in the order they arrived —
 	// a hook's or a sequence step's spawn about suspended work — each started when nothing
@@ -320,7 +327,8 @@ func (e *Engine) Fired() int {
 // is dispatched, and while paused no change is dispatched at all — so control can
 // never queue behind an observation backlog. See docs/deployment-and-steering.md.
 func (e *Engine) Start(ctx context.Context) {
-	e.bgctx = ctx            // bounds what the engine starts in the background — cancelled on stop
+	e.bgctx = ctx // bounds what the engine starts in the background — cancelled on stop
+	e.sayStarted()
 	e.cursor = e.store.Rev() // start live from now; Observe() delivers rev>cursor
 	// NO PATTERNS: this loop asks each commit whether it touched what a rule reads
 	// (Trigger.touches), which the commit answers from its own delta. The task records it acts
@@ -351,6 +359,7 @@ func (e *Engine) startReconciler(ctx context.Context) {
 // Start instead. Actions still run on this engine's (scoped) store and spawner.
 func (e *Engine) ObserveScoped(ctx context.Context) {
 	e.bgctx = ctx
+	e.sayStarted()
 	e.subtree = true
 	// Any trigger added before we entered subtree mode (e.g. the baseline charter seeded at
 	// startup) has no watch: it goes back to pending, for the reconciler to arm, so entering

@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -43,6 +44,11 @@ func (s *Server) packageEngine(at string) (*trigger.Engine, error) {
 	return s.packageEngineLocked(confine, nil)
 }
 
+// errStopping is why no engine is made at an address whose last charter package is still being
+// stopped (stopWork). The address is free once its tasks have ended, so it is a refusal that
+// asking again mends (charterCode).
+var errStopping = errors.New("the charter package that was here is being stopped")
+
 // packageEngineLocked is packageEngine with the lock already held — the restore path below
 // builds several in one pass — and reads what the package declares it reads, for an engine made
 // here: set before the engine observes, since its rules are placed from their records the
@@ -56,9 +62,8 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree, reads []trigger.Su
 		return nil, fmt.Errorf("engine not started")
 	}
 	if st := s.stopping[trigger.OwnerAt(confine)]; st != nil {
-		return nil, fmt.Errorf("%s: the charter package that was here is being stopped, and its "+
-			"tasks have not ended yet (%s): a charter is installed here once they have",
-			confine.Stamp(), strings.Join(st.ids, ", "))
+		return nil, fmt.Errorf("%s: %w, and its tasks have not ended yet (%s): a charter is "+
+			"installed here once they have", confine.Stamp(), errStopping, strings.Join(st.ids, ", "))
 	}
 	eng := trigger.New(s.Store, s.Reg)
 	eng.Confine(confine)

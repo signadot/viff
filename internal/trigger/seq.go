@@ -95,10 +95,15 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 		e.releaseRun(chain, subj)
 		return
 	}
+	// A run starts with no conclusion: what a run at an earlier shape left says nothing of this
+	// one, and read as this one's it is a run that has concluded (settleRun).
 	e.publishSeq(chain, oc.parent, subj, entity.Obj{
-		seqStep:  0,
-		seqSteps: len(carrier.Seq),
-		seqShape: shape,
+		seqStep:   0,
+		seqSteps:  len(carrier.Seq),
+		seqShape:  shape,
+		seqDone:   nil,
+		seqEnded:  nil,
+		seqReason: nil,
 	})
 	e.advanceSeq(chain, carrier, 0, oc, subj, src, false)
 }

@@ -715,6 +715,9 @@ func (tx *charterTx) install(groups []charterGroup) (int, error) {
 			tx.fresh = append(tx.fresh, g.at)
 		}
 		eng, err := s.charterEngineFor(scope, g.at)
+		if errors.Is(err, errStopping) {
+			return tx.refuse(http.StatusTooManyRequests, err)
+		}
 		if err != nil {
 			return tx.refuse(http.StatusBadRequest, err)
 		}
@@ -1582,9 +1585,10 @@ func charterCode(err error) int {
 	if errors.Is(err, errActsAsNobody) {
 		return http.StatusConflict
 	}
-	// The package is being uninstalled, and the same request is taken once it is: the one
-	// refusal here that asking again mends, and the status an iod asks again on.
-	if errors.Is(err, trigger.ErrClosing) {
+	// The package is being uninstalled, or the one that was here is still being stopped, and
+	// the same request is taken once it is: the refusals here that asking again mends, and the
+	// status an iod asks again on.
+	if errors.Is(err, trigger.ErrClosing) || errors.Is(err, errStopping) {
 		return http.StatusTooManyRequests
 	}
 	if errors.Is(err, trigger.ErrCharter) {

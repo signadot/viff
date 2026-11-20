@@ -1147,8 +1147,9 @@ func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
 			}
 		case !ok:
 			when = []entity.Require{entity.Created()}
-		case entity.Str(ent.Payload, "started") > started:
-			return // another run's record
+		case entity.Str(ent.Payload, "started") > started,
+			entity.Str(ent.Payload, "started") == started && OccurrenceOf(ent.Payload) > OccurrenceOf(st.Payload()):
+			return // another run's record: one that started later, or within the same second of a later firing
 		case entity.Str(ent.Payload, "started") == started && task.TerminalStatus(entity.Str(ent.Payload, "status")):
 			return // it landed
 		default:

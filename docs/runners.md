@@ -257,11 +257,11 @@ launch's `lease`, a duration of `1m` or more, and `4m` where the launch names no
 This is the runner's part of the contract:
 
 - **Each subscribe the runner accepts renews the lease.** The lease counts from the launch, and
-  again from each `GET /tasks/{id}/events` the runner answers for the task. An open stream
-  renews nothing after it is answered.
+  again from each `GET /tasks/{id}/events` the runner answers for the task. A subscribe it
+  does not answer renews nothing, and neither does an open stream after it is answered.
 - **A task whose lease runs out is ended by its runner.** The runner stops the task and ends it
-  `failed`, with `orphaned: true` and `err: no reader for 4m` on its terminal frame and its
-  snapshot.
+  `failed`, with `orphaned: true` and `err: no reader for 4m` on its snapshot and on the
+  terminal frame a subscribe is answered with.
 - **A subscribe is answered at once**, whatever state the task is in. A task whose repositories
   are still being cloned has a stream that is open and has no frames yet.
 - **A subscribe that comes after the lease ran out renews nothing.** It is answered with the
