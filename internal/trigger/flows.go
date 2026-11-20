@@ -74,15 +74,19 @@ const engineActor = "system:trigger"
 // has already ended, and it may have no record for reap to see: a spawn refused because its id
 // stands as another party's is deliberately not mirrored. So its end is taken here, as `failed`
 // with the refusal for its reason, and its hook runs as a started task's would.
-func (e *Engine) track(fp flowTask) {
+//
+// It answers false for a task tracked after the engine's work was dropped (Stop, CancelLive),
+// which is cancelled and is not the engine's.
+func (e *Engine) track(fp flowTask) bool {
 	if why, never := task.NeverStarted(fp.h); never {
 		e.liveMu.Lock()
 		dropped := e.dropped != ""
 		e.liveMu.Unlock()
 		if !dropped { // dropped work runs no hooks (CancelLive)
+			e.owe()
 			go e.applyHook(fp, task.Failed, e.neverStarted(fp, why))
 		}
-		return
+		return true
 	}
 	held := e.settled(mirror.TriggerOf(fp.chain), subjectOf(fp.subject))
 	fp.suspended = held
@@ -92,7 +96,7 @@ func (e *Engine) track(fp flowTask) {
 		// has no program left to belong to.
 		e.liveMu.Unlock()
 		fp.h.Cancel(why, engineActor)
-		return
+		return false
 	}
 	e.live[fp.id] = fp
 	e.liveMu.Unlock()
@@ -101,6 +105,7 @@ func (e *Engine) track(fp flowTask) {
 		e.recordHold(fp)
 	}
 	go e.reapEnded(fp)
+	return true
 }
 
 // reapEnded takes the end of a task whose record was terminal before the task was tracked. The
@@ -174,11 +179,13 @@ func (e *Engine) Adopt(subject, id string, h task.Handle) {
 //
 // The lookup is made when the task ends and not here, because a task is re-attached at start
 // ahead of the charter that holds its rule.
-func (e *Engine) AdoptChain(subject, id, chain string, h task.Handle) {
+//
+// It answers whether the engine took the task: an engine that was stopped takes none (Stop).
+func (e *Engine) AdoptChain(subject, id, chain string, h task.Handle) bool {
 	if h == nil || subject == "" {
-		return
+		return false
 	}
-	e.track(flowTask{id: id, subject: subject, h: h, chain: chain})
+	return e.track(flowTask{id: id, subject: subject, h: h, chain: chain})
 }
 
 // hooksOf is the action whose completion hooks a task's end runs: the one its firing spawned it
@@ -212,6 +219,7 @@ func (e *Engine) retire(id string) (flowTask, bool) {
 	fp, ok := e.live[id]
 	if ok {
 		delete(e.live, id)
+		e.ends++ // owed from here, until applyHook has taken it (Busy)
 	}
 	return fp, ok
 }
@@ -223,6 +231,7 @@ func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 	defer e.liveMu.Unlock()
 	if fp, ok := e.live[id]; ok && fp.h == h {
 		delete(e.live, id)
+		e.ends++ // as retire
 		return fp, true
 	}
 	return flowTask{}, false
@@ -243,6 +252,10 @@ func (e *Engine) hookOccasion(rule string, ev entity.Event) occasion {
 // name descends by status, so a hook's own spawn gets a distinct deterministic id. ev carries the
 // completed task:instance payload, so the hook's expressions can read status, flow and result.
 func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
+	if !e.beginHook() {
+		return // the engine was stopped: its host takes what the task held (Stop)
+	}
+	defer e.hookDone()
 	subject, serr := entity.ParseAddr(fp.subject)
 	// WHAT COMMIT THIS READS AT: the head, the verse as it is when the task ends.
 	//

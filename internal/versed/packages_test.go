@@ -503,7 +503,7 @@ func TestAPackageCanBeUninstalled(t *testing.T) {
 		t.Fatalf("installing = %d: %s", code, msg)
 	}
 
-	if err := srv.removePackage(srv.Store, "notes", false); err != nil {
+	if err := srv.removePackage(t.Context(), srv.Store, "notes", false); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 	if _, ok, _ := srv.Store.Get(charter.RuleRef("notes", "note-the-head")); ok {
@@ -546,14 +546,14 @@ func TestUninstallingRefusesToSweepUpWhatIsUnderIt(t *testing.T) {
 			t.Fatalf("installing at %s = %d: %s", at, code, msg)
 		}
 	}
-	err := srv.removePackage(srv.Store, "demo", false)
+	err := srv.removePackage(t.Context(), srv.Store, "demo", false)
 	if err == nil {
 		t.Fatal("removing a charter swept up the one under it")
 	}
 	if !strings.Contains(err.Error(), "demo.pr") || !strings.Contains(err.Error(), "recurse") {
 		t.Errorf("the refusal does not name what is under it, or the way to mean it: %v", err)
 	}
-	if err := srv.removePackage(srv.Store, "demo", true); err != nil {
+	if err := srv.removePackage(t.Context(), srv.Store, "demo", true); err != nil {
 		t.Fatalf("--recurse: %v", err)
 	}
 	if len(srv.packagesSeen()) != 0 {
@@ -623,7 +623,7 @@ func TestAPackageWithNoRulesIsStillAPackage(t *testing.T) {
 	if got := srv.packagesSeen(); len(got) != 1 || got[0] != "notes" {
 		t.Fatalf("packagesSeen = %v, want the package its levels belong to", got)
 	}
-	if err := srv.removePackage(srv.Store, "notes", false); err != nil {
+	if err := srv.removePackage(t.Context(), srv.Store, "notes", false); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 	if got := srv.packagesSeen(); len(got) != 0 {
@@ -664,7 +664,7 @@ func TestUninstallReachesARuleTheEngineNeverInstalled(t *testing.T) {
 		t.Fatalf("packagesSeen = %v, want the package the records belong to", got)
 	}
 
-	if err := srv.removePackage(srv.Store, "notes", false); err != nil {
+	if err := srv.removePackage(t.Context(), srv.Store, "notes", false); err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
 	if _, ok, _ := srv.Store.Get(stray); ok {

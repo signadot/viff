@@ -429,9 +429,7 @@ func TestAnEngineIsShutUntilItsTasksAreIn(t *testing.T) {
 	eng.TasksIn()
 	waitField(t, store, prRef("1"), "stage", "reviewed")
 	sp.wait(t, other)
-	if claimStands(t, store, id) {
-		t.Fatal("the claim stands after its task's hook ran")
-	}
+	waitUntilGone(t, store, id) // the claim comes off once the hook has written
 }
 
 // `done` IS WRITTEN AFTER THE SEQUENCE'S onDone HAS RUN. While the hook runs, the run's facts say

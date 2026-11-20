@@ -171,6 +171,19 @@ type Engine struct {
 	// delete and spawn-dedupe a lookup. Guarded independently of the loop.
 	liveMu sync.Mutex
 	live   map[string]flowTask
+	// closing says the engine's charter is being taken down (Close): nothing is launched, and
+	// the ends of the tasks that are running are still taken. halted says the engine was stopped
+	// (Stop): nothing of its own begins. work counts what may launch and is in progress (begin),
+	// hooks the ends being taken (beginHook), and ends the tasks retired whose end is not taken
+	// yet. closeCtx ends when the engine closes: a firing waits under it. All guarded by liveMu,
+	// which work and hooks are added to under.
+	closing  bool
+	halted   bool
+	work     sync.WaitGroup
+	hooks    sync.WaitGroup
+	ends     int
+	closeCtx context.Context
+	closeNow context.CancelFunc
 	// dropped is why this engine's live work was cancelled whole (CancelLive), "" until it is:
 	// a task tracked after that is cancelled as it arrives rather than run with nothing to own it.
 	dropped string

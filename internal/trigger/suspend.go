@@ -898,6 +898,10 @@ func (e *Engine) releaseLaunches() {
 	if !e.isOpen() {
 		return
 	}
+	if !e.begin() {
+		return // the engine was stopped, and its parked launches dropped (Stop)
+	}
+	defer e.work.Done()
 	e.parkMu.Lock()
 	all := e.parked
 	e.parked = nil

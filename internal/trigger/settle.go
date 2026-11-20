@@ -98,7 +98,12 @@ func (e *Engine) open(ctx context.Context) {
 		}
 	}
 	// The launches left parked first: a claim waiting on one is in flight, and not a debt.
-	if !e.restoreParked(ctx) || !e.settleLeft(ctx) {
+	if !e.begin() {
+		return // the engine was stopped before it opened
+	}
+	settled := e.restoreParked(ctx) && e.settleLeft(ctx)
+	e.work.Done()
+	if !settled {
 		return
 	}
 	close(e.opened)
@@ -318,6 +323,7 @@ func (e *Engine) settleTask(id string, subj entity.Ref, chain string, since int6
 		}
 		status = string(task.Failed)
 	}
+	e.owe()
 	e.applyHook(flowTask{id: id, subject: subj.String(), chain: chain}, task.Status(status), entity.Event{Ref: ref, To: st.Payload()})
 	return true
 }

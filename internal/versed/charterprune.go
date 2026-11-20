@@ -103,7 +103,7 @@ func (s *Server) pruneTargets(store entity.Store, scope, root string, groups []c
 // is said as what it is: the install stands, and the prune stopped part-way.
 func (s *Server) pruneGone(store entity.Store, gone []string) (int, error) {
 	for _, at := range gone {
-		if err := s.takeDown(store, at); err != nil {
+		if err := s.takeDownStopping(store, at); err != nil {
 			return http.StatusServiceUnavailable, fmt.Errorf("the charters installed, and the "+
 				"prune stopped at %s: %w — `verse c -R %s` finishes it", at, err, at)
 		}

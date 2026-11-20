@@ -69,7 +69,7 @@ func (s *Server) pruneSystemCharters() {
 	sort.Sort(sort.Reverse(sort.StringSlice(gone)))
 	store := entity.As(s.Store, entity.SystemCharter)
 	for _, at := range gone {
-		if err := s.takeDown(store, at); err != nil {
+		if err := s.takeDownStopping(store, at); err != nil {
 			fmt.Fprintf(os.Stderr, "verse: system charter at %s, which the config no longer names: %v\n", at, err)
 			continue
 		}

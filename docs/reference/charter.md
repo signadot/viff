@@ -325,6 +325,26 @@ A package is removed whole: its rules, its levels, its schedules, its declaratio
 reads, what it sends, its ttl), the grants on its outboxes, and the engine that runs them. What
 the package *wrote* stays. `verse data -rm` removes that.
 
+Removing a package ends its work first, in this order:
+
+1. The package is locked. Its rules fire about nothing more, its open questions leave the
+   docket, and a launch a suspension had parked is dropped.
+2. Its running tasks are cancelled. Each ends as a cancelled task does: its `onCancelled` runs
+   and its claim comes off. A sequence ends `cancelled` where it stands.
+3. Its rules, levels, schedules and declaration are removed, with its engine.
+
+While a package is locked, nothing of it starts. A hook that would spawn, or that carries a
+sequence, is refused whole: its patch does not run either. An install at the address, or a
+change to one of its rules or levels, is refused with `409 Conflict`.
+
+A task whose runner does not answer the cancel is asked again until it ends, and the removal
+waits for it with the package still installed and locked. `verse c -R` waits too. If it is
+interrupted the removal goes on, and asking again joins it. If verse restarts meanwhile, the
+package comes back installed and unlocked, and the removal has to be asked again.
+
+A package removed by `--prune` as part of an install is the exception: it waits a few seconds
+for its tasks, and cancels what is left with no hook run.
+
 ```sh
 verse c -r repos.verse.merge
 verse c -R repos.verse                   # …and every charter under that address

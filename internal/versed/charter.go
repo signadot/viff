@@ -420,6 +420,10 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 	// told who is asking and refuses for them (trigger.Engine.MayRemoveTrigger): a removal
 	// nobody checked is the system deleting somebody's rule, its owner record with it, and
 	// leaving the name free for the stranger who asked.
+	if eng.Closing() {
+		http.Error(w, trigger.ErrClosing.Error(), http.StatusConflict)
+		return
+	}
 	who := entity.PrincipalOf(s.scopedStore(r))
 	if removed, err := eng.RemoveTriggerAs(r.Context(), who, name); refused(w, err) {
 		return
@@ -1284,9 +1288,10 @@ func (tx *charterTx) refuse(code int, err error) (int, error) {
 	}
 	// The ENGINE last, and only when this request is what brought the address into being: an
 	// engine left running at an address with nothing installed observes on behalf of no charter,
-	// and a later install at the same address would find it rather than make one.
+	// and a later install at the same address would find it rather than make one. What the
+	// refused rules started meanwhile is stopped with it (stopPackage).
 	for _, at := range tx.fresh {
-		tx.s.dropPackageEngine(at)
+		tx.s.stopPackage(at)
 	}
 	return code, err
 }
@@ -1334,8 +1339,15 @@ func (s *Server) deleteCharter(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := s.removePackage(s.scopedStore(r), at, r.URL.Query().Get("recurse") == "true"); err != nil {
+	// The lock is let go here: an uninstall waits on its package's tasks, and takes the lock
+	// itself for the removal (uninstall.go).
+	release()
+	if err := s.removePackage(r.Context(), s.scopedStore(r), at, r.URL.Query().Get("recurse") == "true"); err != nil {
 		if refused(w, err) {
+			return
+		}
+		if r.Context().Err() != nil {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		if entity.IsUnread(err) {
@@ -1405,6 +1417,10 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 	}
 	if eng == nil {
 		notHere() // a scope nobody has opened holds nothing — and the name may be baseline's
+		return
+	}
+	if eng.Closing() {
+		http.Error(w, at+": "+trigger.ErrClosing.Error(), http.StatusConflict)
 		return
 	}
 	who := entity.PrincipalOf(s.scopedStore(r)) // see deleteCharterItem: the engine refuses for them
@@ -1505,7 +1521,7 @@ func charterCode(err error) int {
 	if errors.Is(err, entity.ErrForbidden) {
 		return http.StatusForbidden
 	}
-	if errors.Is(err, errActsAsNobody) {
+	if errors.Is(err, errActsAsNobody) || errors.Is(err, trigger.ErrClosing) {
 		return http.StatusConflict
 	}
 	if errors.Is(err, trigger.ErrCharter) {

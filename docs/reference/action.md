@@ -865,10 +865,12 @@ So a hook can run twice: verse ended after the hook ran and before its claim cam
 hook so that running it again is harmless. A sequence's element can run twice in one case: the
 write of `step` that follows the element before it did not land, and verse then restarted.
 
-A task whose rule's charter package is gone when verse comes back is cancelled, and its claim is
-removed: no rule is there to say what its end owes. Where the cancel does not reach the task,
-it is still running, and its claim and its run's are left for the next start. Where verse could
-not read which packages there are, the task and its claim are left as they stand.
+A task whose rule's charter package is gone when verse comes back is cancelled, and no hook
+runs: no rule is there to say what its end owes. The package's claims come off once the task's
+record says it ended, and a cancel that does not reach the task is asked again until then.
+Where verse could not read which packages there are, the task and its claim are left as they
+stand. A package [removed](charter.md#a-charter-can-be-installed-at-an-address) while verse is
+up is different: its rules are still there, so its tasks' hooks run.
 
 A task on a runner is attached again at a restart, and what its runner says of it ends it. A
 runner that has no such task ends it `failed`, `orphaned: true`, and its `onFailed` runs. A

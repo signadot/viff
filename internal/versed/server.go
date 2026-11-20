@@ -159,6 +159,13 @@ type Server struct {
 	restored  atomic.Bool
 	scopeMu   sync.Mutex
 	scopeEngs map[string]*scopeEngine
+	// stopping is the charter packages being stopped, by the owner prefix of their ids, each
+	// with the tasks it still waits on: no engine is made for one (stop.go). Guarded by scopeMu.
+	stopping map[string]*stopState
+	// uninstalls is the uninstalls under way, by the engine key of their package (uninstall.go).
+	// Guarded by scopeMu.
+	uninstalls map[string]*uninstalling
+	stopWait   time.Duration
 	// left is the tasks the verse before this one left in baseline, re-attached, each with the
 	// engine it was handed to; leftIn is closed once they are all here (reconcileTasks).
 	leftMu   sync.Mutex
@@ -313,7 +320,7 @@ func NewWithStore(store entity.Store, opts ...Option) *Server {
 	s := &Server{Store: store, Reg: reg, Eng: eng, susp: susp, clock: wallClock{},
 		seedErr:   seedErr,
 		leftIn:    make(chan struct{}),
-		scopeEngs: map[string]*scopeEngine{}, ioRuns: map[string]*sourceRun{},
+		scopeEngs: map[string]*scopeEngine{}, stopping: map[string]*stopState{}, uninstalls: map[string]*uninstalling{}, stopWait: stopWait, ioRuns: map[string]*sourceRun{},
 		charterMu: make(chan struct{}, 1),
 		// Replaced by Start's, which is the real lifetime. A default here rather than a nil
 		// check at every use: a source installed on a server nobody started still needs a
@@ -835,12 +842,15 @@ func (s *Server) handTasks(eng *trigger.Engine) {
 }
 
 func (r *resumedRun) adopt(eng *trigger.Engine) {
-	r.eng = eng
 	flow := r.subject
 	if flow == "" {
 		flow = r.id
 	}
-	eng.AdoptChain(flow, r.id, r.chain, r.h)
+	// An engine stopped meanwhile takes nothing, and the task is left for what stops its
+	// package's work (stopWork).
+	if eng.AdoptChain(flow, r.id, r.chain, r.h) {
+		r.eng = eng
+	}
 }
 
 // packageOf is the engine of the charter package a task or a claim belongs to, among the
@@ -862,13 +872,12 @@ func (s *Server) packageOf(id string) *trigger.Engine {
 // settleTasks stops what the last verse left to a charter package that is not there. It follows
 // the packages' restore, which is what says which there are.
 //
-// A TASK WHOSE PACKAGE HAS NO ENGINE IS STOPPED, and the claims of that package removed: its
-// rule is not here to say what its end owes, and no other package's rules speak for it. That is
-// a package removed while verse was down, or one that could not be brought back. A task the stop
-// did not reach is still running, so the claims its work is under stand with it: the next start
-// finds both and stops it then. Where the
-// packages could not be restored at all, nothing says which packages there are, so such a task
-// is left running and its claim standing, for the next start.
+// A TASK WHOSE PACKAGE HAS NO ENGINE IS STOPPED, as the tasks of a package being uninstalled are
+// (stop.go): its rule is not here to say what its end owes, and no other package's rules speak
+// for it. That is a package removed while verse was down, or one that could not be brought back.
+// The claims of such a package come off once its tasks have ended, and at once where it left
+// none. Where the packages could not be restored at all, nothing says which packages there are,
+// so such a task is left running and its claim standing, for the next start.
 //
 // Every other claim is its engine's to settle, as the engine opens (trigger's settleLeft).
 func (s *Server) settleTasks() error {
@@ -879,35 +888,47 @@ func (s *Server) settleTasks() error {
 		return nil // stopping: the restore above ended without its charters
 	}
 	restored := s.packagesRestored.Load()
-	var running []*resumedRun // not stopped: the stop did not take
-	// The packages that have an engine, read ahead of the lock the hand-over takes.
+	// The packages with no engine that the last verse left a task of, by the owner prefix of
+	// their ids. Each is marked as stopping under the lock an engine is made under, so that an
+	// engine made meanwhile either is found here, and takes its tasks itself (handTasks), or is
+	// refused. The stop takes the tasks (stopWork).
+	gone := map[string]*stopState{}
+	s.scopeMu.Lock()
 	has := map[string]bool{s.Eng.Owner(): true}
-	for _, eng := range s.packageEngines() {
-		has[eng.Owner()] = true
+	for _, pe := range s.scopeEngs {
+		has[pe.eng.Owner()] = true
 	}
 	s.leftMu.Lock()
 	for _, r := range s.left {
+		owner := trigger.OwnerOf(r.id)
 		switch {
 		case r.eng != nil || r.stopped:
-		case r.chain == "" || has[trigger.OwnerOf(r.id)]:
+		case r.chain == "" || has[owner]:
 			// Its engine is there and has not taken it yet: an engine is handed its tasks
 			// before it opens (handTasks), which nothing orders ahead of this.
 		case restored:
-			if err := r.h.Cancel(noPackage, "system:verse"); err != nil {
-				fmt.Fprintf(os.Stderr, "verse: task %s is not stopped, and its claims stand for the next start: its charter package has no engine, and cancelling it failed: %v\n", r.id, err)
-				running = append(running, r)
-				continue
+			fmt.Fprintf(os.Stderr, "verse: task %s is being stopped: its charter package has no engine\n", r.id)
+			if s.stopping[owner] == nil { // else a stop of the package is under way, and takes it
+				gone[owner] = &stopState{done: make(chan struct{})}
+				s.stopping[owner] = gone[owner]
 			}
-			r.stopped = true
-			fmt.Fprintf(os.Stderr, "verse: task %s is stopped: its charter package has no engine\n", r.id)
 		default:
 			fmt.Fprintf(os.Stderr, "verse: task %s is watched and belongs to no engine: the charter packages were not restored\n", r.id)
 		}
 	}
 	s.leftMu.Unlock()
+	stopping := map[string]bool{}
+	for owner := range s.stopping {
+		stopping[owner] = true
+	}
+	s.scopeMu.Unlock()
 	if !restored {
 		return nil
 	}
+	for owner, st := range gone {
+		s.stopWork(owner, st, nil, noPackage)
+	}
+	// And the claims of a package that is gone and left no task.
 	claims, err := entity.BelowErr(s.Store, func(r entity.Ref) bool {
 		return r.ChildOf(entity.VerseRoot, mirror.System, mirror.ClaimKind)
 	}, 1, entity.VerseRoot, mirror.System, mirror.ClaimKind)
@@ -915,8 +936,8 @@ func (s *Server) settleTasks() error {
 		return entity.Unread(fmt.Errorf("claims could not be read, so none of a package that is gone were removed: %w", err))
 	}
 	for _, claim := range claims {
-		if s.packageOf(claim.Ref.Name()) != nil || claimOf(claim, running) {
-			continue
+		if stopping[trigger.OwnerOf(claim.Ref.Name())] || s.packageOf(claim.Ref.Name()) != nil {
+			continue // the stop's to remove, or its engine's to settle
 		}
 		fmt.Fprintf(os.Stderr, "verse: claim %s is removed: its charter package has no engine\n", claim.Ref.Name())
 		if _, _, err := s.Store.Write(entity.Write{At: claim.Ref.At(), When: []entity.Require{{Pattern: entity.Unchanged(claim.Payload)}}}); err != nil {
@@ -924,22 +945,6 @@ func (s *Server) settleTasks() error {
 		}
 	}
 	return nil
-}
-
-// claimOf reports whether a claim guards the work one of these tasks is part of: the task's own
-// claim, or the claim of its rule's run about its subject, which a sequence's element is under.
-func claimOf(claim entity.Entity, tasks []*resumedRun) bool {
-	id := claim.Ref.Name()
-	for _, r := range tasks {
-		if id == r.id {
-			return true
-		}
-		if trigger.OwnerOf(id) == trigger.OwnerOf(r.id) && entity.Str(claim.Payload, "flow") == r.subject &&
-			mirror.TriggerOf(entity.Str(claim.Payload, "chain")) == mirror.TriggerOf(r.chain) {
-			return true
-		}
-	}
-	return false
 }
 
 // noPackage is why a task resumed at start is stopped: its rule's package is not there.

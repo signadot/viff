@@ -868,7 +868,11 @@ func TestAParkedLaunchOutlivesARestart(t *testing.T) {
 	runID := spawnID(eng.idOwner(), chainID("deploy"), prRef("1"))
 	suspendPR1(t, tbl)
 	build.finish()
-	waitFacts(t, store, "its third element parked", func(map[string]any) bool { return eng.Parked() == 1 })
+	// Parked and recorded: the launch is listed a moment ahead of its record (park).
+	waitFacts(t, store, "its third element parked", func(map[string]any) bool {
+		recs, err := store.ScratchRead(entity.VerseRef(mirror.System, parkedKind))
+		return eng.Parked() == 1 && err == nil && len(entity.Fields(recs)) == 1
+	})
 	stop() // verse goes down
 
 	specs := make(chan launch.Spec, 1)
@@ -878,9 +882,9 @@ func TestAParkedLaunchOutlivesARestart(t *testing.T) {
 			return sp.spawn(id, spec)
 		}
 	}, [3]string{"*", "", "demo.pr.1"})
-	if n := next.Parked(); n != 1 {
-		t.Fatalf("%d launches parked after the restart, want the third element's", n)
-	}
+	// Once the engine has looked its parked launches over, which it does as it opens and takes
+	// them off its list to do (releaseLaunches).
+	waitFacts(t, store, "the third element's launch parked after the restart", func(map[string]any) bool { return next.Parked() == 1 })
 	if f := charterFacts(t, store); f[seqEnded] != nil || f[seqDone] != nil || !claimStands(t, store, runID) {
 		t.Fatalf("the run did not wait across the restart: facts %v, claim stands %v", f, claimStands(t, store, runID))
 	}

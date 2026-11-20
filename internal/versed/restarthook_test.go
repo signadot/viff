@@ -2,7 +2,10 @@ package versed
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -134,5 +137,155 @@ func TestATaskResumedAcrossARestartRunsItsHook(t *testing.T) {
 				return !held
 			})
 		})
+	}
+}
+
+// runningPackage is a verse with a package installed at demo whose rule has a task running on a
+// runner about demo.pr.1: the server, its url, and the task's id. While deaf is set the runner
+// answers no cancel.
+func runningPackage(t *testing.T, rule string, deaf *atomic.Bool) (*Server, string, string) {
+	t.Helper()
+	release := make(chan struct{})
+	build := func(l runner.Launch, _ *task.Registry) *task.Task {
+		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
+		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
+	}
+	srv := issuing(t, serverWith(t, runnerdtest.Scripted, entitytest.Store(t)))
+	srv.Start(t.Context())
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	released := false
+	end := func() {
+		if !released {
+			released = true
+			close(release)
+		}
+	}
+	runs := offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler()
+	face := provenFace(t, ts.URL, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if deaf.Load() && strings.HasSuffix(r.URL.Path, "/cancel") {
+			http.Error(w, "the runner is not answering", http.StatusServiceUnavailable)
+			return
+		}
+		runs.ServeHTTP(w, r)
+	}), end)
+	postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": face.Subject}).Body.Close()
+	if code, msg := installAt(t, ts.URL, "demo", rule); code != 201 {
+		t.Fatalf("installing the rule = %d: %s", code, msg)
+	}
+	pr := entity.RefAt("demo", "pr", "1")
+	testerOwns(t, srv, pr)
+	entitytest.Set(t, srv.Store, pr, entity.Obj{"stage": "open"}.Payload())
+	var id string
+	waitUntil(t, "the rule's task to be running on the runner", func() bool {
+		for _, rec := range entity.Below(srv.Store, mirror.IsTask, 2, entity.VerseRoot, mirror.System) {
+			if entity.Str(rec.Payload, "runner") == face.URL && entity.Str(rec.Payload, "status") == string(task.Running) {
+				id = rec.Ref.Name()
+			}
+		}
+		return id != ""
+	})
+	waitUntil(t, "the package's engine to track the task", func() bool {
+		_, live := srv.packageEngineIfRunning("demo").Live(id)
+		return live
+	})
+	return srv, ts.URL, id
+}
+
+const reviewAtDemo = `{
+	name: review,
+	condition: {subject: {path: "demo.pr.*", value: {stage: open}}},
+	action: {
+		patch: {stage: reviewing},
+		spawn: {agent: {name: fake}, prompt: "review it", autonomy: [{then: allow}]},
+		onDone: {patch: {stage: reviewed}},
+		onFailed: {patch: {stage: broke}},
+		onCancelled: {patch: {stage: dropped}},
+	},
+}`
+
+// recordStatus is the status on a task's record, "" where it has none.
+func recordStatus(srv *Server, id string) string {
+	e, _, _ := srv.Store.Get(mirror.Ref(id))
+	return entity.Str(e.Payload, "status")
+}
+
+// UNINSTALLING A PACKAGE CANCELS ITS TASKS, AND THEIR HOOKS RUN. A task of the package is
+// running when the package is uninstalled: the task is cancelled, its `onCancelled` runs, its
+// claim comes off, and then the package and its engine are gone. The same charter installs at
+// the address again.
+func TestUninstallingAPackageCancelsItsTasks(t *testing.T) {
+	srv, url, id := runningPackage(t, reviewAtDemo, new(atomic.Bool))
+	pr := entity.RefAt("demo", "pr", "1")
+	if err := srv.uninstall(t.Context(), srv.Store, "demo"); err != nil {
+		t.Fatalf("uninstalling the package: %v", err)
+	}
+	if got := recordStatus(srv, id); got != string(task.Cancelled) {
+		t.Fatalf("the task's record says %q once its package is uninstalled, want cancelled", got)
+	}
+	if e, _, _ := srv.Store.Get(pr); entity.Str(e.Payload, "stage") != "dropped" {
+		t.Fatalf("subject = %v, want what the rule's onCancelled writes", e.Payload)
+	}
+	if _, held, _ := srv.Store.Get(mirror.ClaimRef(id)); held {
+		t.Fatal("the claim of an uninstalled package's task stands")
+	}
+	if srv.packageEngineIfRunning("demo") != nil || srv.packagesSeenAt("demo") {
+		t.Fatal("the package stands after its uninstall")
+	}
+	if code, msg := installAt(t, url, "demo", reviewAtDemo); code != 201 {
+		t.Fatalf("installing the rule again = %d: %s", code, msg)
+	}
+}
+
+// A TASK THAT DOES NOT TAKE ITS CANCEL HOLDS THE UNINSTALL. The runner does not answer the
+// cancel: the uninstall does not finish, the package stays installed and locked, and an install
+// at the address is refused as a conflict. The request that asked may go away. The cancel is
+// asked again, and once it lands the task's hook runs and the package is removed.
+func TestATaskThatDoesNotTakeItsCancelHoldsTheUninstall(t *testing.T) {
+	deaf := new(atomic.Bool)
+	srv, url, id := runningPackage(t, reviewAtDemo, deaf)
+	pr := entity.RefAt("demo", "pr", "1")
+	deaf.Store(true)
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	if err := srv.uninstall(ctx, srv.Store, "demo"); err == nil {
+		t.Fatal("the uninstall answered as done while a task of the package was running")
+	}
+	if got := recordStatus(srv, id); got != string(task.Running) {
+		t.Fatalf("the task's record says %q, want running: its cancel did not land", got)
+	}
+	if _, held, _ := srv.Store.Get(mirror.ClaimRef(id)); !held {
+		t.Fatal("the claim of a task that is still running was removed")
+	}
+	if eng := srv.packageEngineIfRunning("demo"); eng == nil || !srv.packagesSeenAt("demo") || len(eng.Triggers()) != 1 {
+		t.Fatal("the package was removed while a task of it was running")
+	}
+	if code, msg := installAt(t, url, "demo", reviewAtDemo); code != 409 {
+		t.Fatalf("installing at a package that is being uninstalled = %d, want 409: %s", code, msg)
+	}
+	// The subject comes round again, and the locked package's rule starts nothing about it.
+	other := entity.RefAt("demo", "pr", "2")
+	testerOwns(t, srv, other)
+	entitytest.Set(t, srv.Store, other, entity.Obj{"stage": "open"}.Payload())
+	time.Sleep(300 * time.Millisecond)
+	if e, _, _ := srv.Store.Get(other); entity.Str(e.Payload, "stage") != "open" {
+		t.Fatalf("a locked package's rule fired: %v", e.Payload)
+	}
+
+	deaf.Store(false)                                                     // the runner answers again
+	if err := srv.uninstall(t.Context(), srv.Store, "demo"); err != nil { // joins the one under way
+		t.Fatalf("the uninstall, once the runner answers: %v", err)
+	}
+	if e, _, _ := srv.Store.Get(pr); entity.Str(e.Payload, "stage") != "dropped" {
+		t.Fatalf("subject = %v, want what the rule's onCancelled writes", e.Payload)
+	}
+	if _, held, _ := srv.Store.Get(mirror.ClaimRef(id)); held {
+		t.Fatal("the task's claim stands after its hook ran")
+	}
+	if srv.packageEngineIfRunning("demo") != nil || srv.packagesSeenAt("demo") {
+		t.Fatal("the package stands after its uninstall")
+	}
+	if code, msg := installAt(t, url, "demo", reviewAtDemo); code != 201 {
+		t.Fatalf("installing at the address once the uninstall is over = %d: %s", code, msg)
 	}
 }

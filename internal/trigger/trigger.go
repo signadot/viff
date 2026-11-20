@@ -1048,6 +1048,15 @@ func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engin
 // a sequence tell "this element is running" from "this element is already finished" — the
 // distinction advanceSeq turns on.
 func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, src refSource) (task.Handle, error) {
+	// AN ACTION THAT WOULD LAUNCH IS REFUSED WHOLE WHILE ITS CHARTER IS BEING TAKEN DOWN, its
+	// write with its launch: a hook's as a firing's. Asked under the lock the closing is set
+	// under and counted until this returns, so a close waits for a launch that began (Close).
+	if a.Spawn != nil || len(a.Seq) > 0 {
+		if !e.begin() {
+			return nil, ErrClosing
+		}
+		defer e.work.Done()
+	}
 	// A HOOKED SPAWN HOLDS ITS SUBJECT. An action whose spawn carries a completion hook takes a
 	// claim on (action, subject) before it writes anything, and the rule does not fire about
 	// the subject again until the hook has run: applyHook releases the claim on every path out,

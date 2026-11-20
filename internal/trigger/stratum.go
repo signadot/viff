@@ -371,6 +371,9 @@ func (e *Engine) InstallStratum(s Stratum) error {
 // memory, with the record written last so that a level the engine would not accept is not
 // one the records say. The follow finds the record saying what the ordering already does.
 func (e *Engine) InstallStratumAs(ctx context.Context, as string, s Stratum) error {
+	if e.isClosing() {
+		return ErrClosing
+	}
 	old, ok := e.stratum(s.Name)
 	if !ok {
 		return e.addStratumTaking(ctx, s, as, true)

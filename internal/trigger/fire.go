@@ -229,6 +229,17 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// refuses a second task under a live id — but together they stop a firing for work
 	// already under way from posing a question and spending budget before being told so.
 	// And again here, because a paced firing waits out the throttle before it arrives.
+	if !e.begin() {
+		return // the engine is closing, or was stopped
+	}
+	defer e.work.Done()
+	// A firing waits on its gates only while the engine is not closing (Close): its own context,
+	// which ends with the firing. What it starts as it ends outlives it, and runs under the
+	// context the firing was given (endFlight).
+	given := ctx
+	ctx, cancel := context.WithCancel(given)
+	defer cancel()
+	defer context.AfterFunc(e.closeContext(), cancel)()
 	if held := e.holding(t.Name, subj); len(held) > 0 {
 		e.tracef("%s: %s is suspended (%s); not firing", t.Name, subj, strings.Join(held, ", "))
 		return
@@ -240,7 +251,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	if !ok {
 		return
 	}
-	defer e.endFlight(ctx, t.Name, subj)
+	defer e.endFlight(given, t.Name, subj)
 
 	subjects := []entity.Ref{subj} // the gate and motion identities are over the firing's set
 	var wg sync.WaitGroup

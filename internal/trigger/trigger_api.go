@@ -51,6 +51,9 @@ func (e *Engine) InstallTrigger(t Trigger) error {
 // follows from it. Every check a rule faces is made first, with the old one still standing: a
 // file re-applied with a mistake in it is refused and leaves what stood standing.
 func (e *Engine) InstallTriggerAs(ctx context.Context, as string, t Trigger) error {
+	if e.isClosing() {
+		return ErrClosing
+	}
 	// REPLACING A RULE IS ITS OWNER'S ACT, asked before anything is touched: the record is
 	// written through the engine's own store, which is the system's, so a check made only by
 	// the write would pass for anybody.
