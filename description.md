@@ -1,9 +1,9 @@
 # task: a task ends on its record, a claim is what versed owes, and a runner keeps a lease
 
-Status: draft for discussion. Read against `main` at ee2f4ecf. Nothing here is implemented or
-tested. It replaces the approach in PR #14. The design is meant to be taken whole or dropped:
-every hole listed under "The problem" is closed by something under "What changes", and what it
-does not cover is said under "Where 'Watched' does not hold" and "Scoped tasks".
+Status: implemented, as nine commits on `task-end-5-runner-lease` over `main`, each stage
+reviewed and green on `make check` and the full suite. It replaces the approach in PR #14. The
+design is meant to be taken whole or dropped: every hole listed under "The problem" is closed by
+the four statements of "The model", and what they do not cover is said under "Beyond the model".
 
 ## The problem
 
@@ -41,7 +41,9 @@ Four statements.
 
 **1. A task ends when its record says so, and only then.**
 The record's terminal status is the one fact versed acts on. The engine does not act on the
-event stream. The mirror is the only writer of that status, and that write always lands.
+event stream. While a task is followed, the mirror is the only writer of that status, and that
+write always lands. A record found at start with no end, and with nothing running its task, is
+ended then: `failed`, `orphaned: true`.
 
 **2. A claim on a subject means versed owes it something.**
 A hooked spawn's claim is taken before the spawn starts and released after its hook has run. A
@@ -144,6 +146,24 @@ A rule `review` runs `seq: [lint, test, report]`. The subject says `step: 1`, an
 1. At start, versed finds the run claim `review@demo.pr.1` with no task resumed for it.
 2. The element in flight is the one at `step`, `test`. Its record says `done`, so the run
    advances as it would have: `step: 2`, and `report` runs.
+
+## Beyond the model
+
+**An uninstall ends a package's work.** Uninstalling a charter package locks it, cancels its
+tasks so that their hooks run, then removes its rules, its records and its engine. A change to a
+package being uninstalled is refused with `429`, to be asked again. A pruning install uninstalls
+the packages its directory leaves out first.
+
+**"Owed" has one exception.** A claim whose charter package is gone has no rule, so no hook. Its
+task is cancelled, and the claim is removed once the task's record has ended.
+
+**"Watched" holds on a runner that keeps the lease.** It does not cover a runner that froze and
+then continued, a runner that ignores the lease or a cancel, or a command that detached into a
+session of its own. A subprocess task whose lease runs out is stopped by ending its process, so
+its teardown steps do not run. "Where 'Watched' does not hold" has the table.
+
+**Deploy order.** versed first, runners after, in one tag. A runner that keeps the lease under a
+versed that subscribes once ends every task at four minutes.
 
 ## What changes
 
