@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -260,8 +261,21 @@ func TestATaskThatDoesNotTakeItsCancelHoldsTheUninstall(t *testing.T) {
 	if eng := srv.packageEngineIfRunning("demo"); eng == nil || !srv.packagesSeenAt("demo") || len(eng.Triggers()) != 1 {
 		t.Fatal("the package was removed while a task of it was running")
 	}
-	if code, msg := installAt(t, url, "demo", reviewAtDemo); code != 409 {
-		t.Fatalf("installing at a package that is being uninstalled = %d, want 409: %s", code, msg)
+	if code, msg := installAt(t, url, "demo", reviewAtDemo); code != 429 {
+		t.Fatalf("installing at a package that is being uninstalled = %d, want 429: %s", code, msg)
+	}
+	// Every change to the package asks, not a rule's alone.
+	if code, msg := installAt(t, url, "demo", `{name: hourly, every: 1h}`); code != 429 {
+		t.Fatalf("installing a schedule at a package that is being uninstalled = %d, want 429: %s", code, msg)
+	}
+	if resp := del(t, tester, url+"/charter?path=demo.schedules.hourly"); resp.StatusCode != 429 {
+		t.Fatalf("removing a schedule of a package that is being uninstalled = %d, want 429", resp.StatusCode)
+	}
+	if code, msg := pruneAt(t.Context(), t, url, "demo", "at: demo\nrules: []\n"); code != 429 {
+		t.Fatalf("a pruning install that keeps a package that is being uninstalled = %d, want 429: %s", code, msg)
+	}
+	if eng := srv.packageEngineIfRunning("demo"); eng == nil || len(eng.Triggers()) != 1 {
+		t.Fatal("a pruning install took a rule out of a package that is being uninstalled")
 	}
 	// The subject comes round again, and the locked package's rule starts nothing about it.
 	other := entity.RefAt("demo", "pr", "2")
@@ -287,5 +301,66 @@ func TestATaskThatDoesNotTakeItsCancelHoldsTheUninstall(t *testing.T) {
 	}
 	if code, msg := installAt(t, url, "demo", reviewAtDemo); code != 201 {
 		t.Fatalf("installing at the address once the uninstall is over = %d: %s", code, msg)
+	}
+}
+
+// pruneAt posts a pruning install of doc at root, as the tester: the status and the body, and 0
+// where ctx ended before it answered.
+func pruneAt(ctx context.Context, t *testing.T, url, root, doc string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url+"/charter?prune="+root, strings.NewReader(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "text/tony")
+	resp, err := sendAsTester(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return 0, err.Error()
+		}
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, strings.TrimSpace(string(body))
+}
+
+// A PRUNING INSTALL UNINSTALLS WHAT IT LEAVES OUT, FIRST. The package the directory leaves out
+// has a task running: nothing of the request is installed while the task has not ended, and once
+// it has, its onCancelled has run, the package is gone and the request's is in.
+func TestAPruningInstallUninstallsWhatItLeavesOutFirst(t *testing.T) {
+	deaf := new(atomic.Bool)
+	srv, url, id := runningPackage(t, reviewAtDemo, deaf)
+	const side = `at: demo.side
+rules:
+- name: note
+  condition: {subject: {path: "demo.side.*", value: {stage: open}}}
+  action: {patch: {stage: noted}}
+`
+	deaf.Store(true)
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	if code, msg := pruneAt(ctx, t, url, "demo", side); code != 0 {
+		t.Fatalf("the pruning install answered %d while a task of what it leaves out was running: %s", code, msg)
+	}
+	if srv.packagesSeenAt("demo.side") {
+		t.Fatal("the request's package was installed before the one it leaves out was gone")
+	}
+	if !srv.packagesSeenAt("demo") {
+		t.Fatal("the package was removed while a task of it was running")
+	}
+
+	deaf.Store(false)
+	if code, msg := pruneAt(t.Context(), t, url, "demo", side); code != 201 {
+		t.Fatalf("the pruning install, once the runner answers = %d: %s", code, msg)
+	}
+	if e, _, _ := srv.Store.Get(entity.RefAt("demo", "pr", "1")); entity.Str(e.Payload, "stage") != "dropped" {
+		t.Fatalf("subject = %v, want what the rule's onCancelled writes", e.Payload)
+	}
+	if _, held, _ := srv.Store.Get(mirror.ClaimRef(id)); held {
+		t.Fatal("the task's claim stands after its hook ran")
+	}
+	if srv.packagesSeenAt("demo") || !srv.packagesSeenAt("demo.side") {
+		t.Fatalf("after the prune: demo installed = %v, demo.side installed = %v", srv.packagesSeenAt("demo"), srv.packagesSeenAt("demo.side"))
 	}
 }

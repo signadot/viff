@@ -29,8 +29,9 @@ var ErrClosing = errors.New("the charter package is being uninstalled")
 //
 // WORK IS ASKED FOR BEFORE IT BEGINS, under the lock the closing and the stop are set under,
 // and counted until it returns. What may launch asks begin: a firing (fireOne), an action that
-// spawns or carries a sequence (applyOne), the start of what a suspension parked
-// (releaseLaunches), and the settling of what the last verse left (open). The end of a task
+// spawns or carries a sequence (Action.apply), the steps a sequence runs off an element's end
+// (resumeSeq), the start of what a suspension parked (releaseLaunches), and the settling of
+// what the last verse left (open). The end of a task
 // asks beginHook (applyHook). So a close waits for a launch that began and refuses one that
 // asks later, and a stop does the same for the ends.
 
@@ -38,8 +39,9 @@ var ErrClosing = errors.New("the charter package is being uninstalled")
 // launched and nothing will be: a firing waiting on a gate has ended, its question off the
 // docket, and the launches a suspension parked are dropped, each ended as cancelled. A hook
 // still runs when a task ends, unless it would launch: an action that spawns or carries a
-// sequence is refused whole, its write too (ErrClosing), and a sequence whose element ends is
-// ended there, cancelled. The charter takes no rule and no level (ErrClosing).
+// sequence is refused whole, its write too (ErrClosing), with nothing recorded against it, and
+// a sequence whose element ends is ended there, cancelled; one whose steps are running is
+// waited for. The charter takes no rule and no level (ErrClosing).
 func (e *Engine) Close() {
 	e.liveMu.Lock()
 	e.closing = true

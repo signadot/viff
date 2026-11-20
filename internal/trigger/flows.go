@@ -354,7 +354,14 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// `"review.onDone".onFailed`, a valid kpath naming one field with a dotted name — and
 	// a quote is not legal unescaped in a URL path. A field segment appends with '.'.
 	chain := fp.chain + "." + seg
-	if err := hook.apply(chain, oc, []entity.Ref{subj}, e, fromCause); err != nil {
+	err := hook.apply(chain, oc, []entity.Ref{subj}, e, fromCause)
+	if errors.Is(err, ErrClosing) {
+		// Refused whole, as its charter is being taken down: no fault of the hook's, and nothing
+		// is written about it on a subject that outlives the charter.
+		e.tracef("%s: %s: not run, its charter is being taken down", chain, subj)
+		return
+	}
+	if err != nil {
 		e.recordHookFailure(mirror.Ref(fp.id), subj, chain, mirror.OccurrenceOf(ev.To), err)
 		return
 	}

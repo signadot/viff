@@ -585,6 +585,9 @@ type occasion struct {
 	// applied: what the rule's own spawn carries as launch.Spec.Passed. Empty for a completion
 	// hook and for a sequence's steps, which no gate was asked about when they start.
 	passed []launch.Passed
+	// begun says the work this occasion is part of is counted as work that may launch (begin),
+	// by whoever started it, until that returns: an action applied under it does not ask again.
+	begun bool
 }
 
 // reads is the store the occasion's reads go through.
@@ -1012,6 +1015,17 @@ func (a Action) noNestedSeq(inSeq bool) error {
 // than only traced, so a caller that has somewhere to record it (a completion hook, which
 // knows the task it belongs to) can persist it instead of dropping it into the log.
 func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engine, src refSource) error {
+	// AN ACTION THAT WOULD LAUNCH IS REFUSED WHOLE WHILE ITS CHARTER IS BEING TAKEN DOWN, its
+	// write with its launch: a hook's as a firing's. Asked under the lock the closing is set
+	// under and counted until this returns, so a close waits for a launch that began (Close),
+	// and for the steps of a sequence that run off it here.
+	if (a.Spawn != nil || len(a.Seq) > 0) && !oc.begun {
+		if !e.begin() {
+			return ErrClosing
+		}
+		defer e.work.Done()
+		oc.begun = true
+	}
 	var first error
 	for _, subj := range subjects {
 		h, err := a.applyOne(chain, oc, subj, e, src)
@@ -1048,15 +1062,6 @@ func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engin
 // a sequence tell "this element is running" from "this element is already finished" — the
 // distinction advanceSeq turns on.
 func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, src refSource) (task.Handle, error) {
-	// AN ACTION THAT WOULD LAUNCH IS REFUSED WHOLE WHILE ITS CHARTER IS BEING TAKEN DOWN, its
-	// write with its launch: a hook's as a firing's. Asked under the lock the closing is set
-	// under and counted until this returns, so a close waits for a launch that began (Close).
-	if a.Spawn != nil || len(a.Seq) > 0 {
-		if !e.begin() {
-			return nil, ErrClosing
-		}
-		defer e.work.Done()
-	}
 	// A HOOKED SPAWN HOLDS ITS SUBJECT. An action whose spawn carries a completion hook takes a
 	// claim on (action, subject) before it writes anything, and the rule does not fire about
 	// the subject again until the hook has run: applyHook releases the claim on every path out,

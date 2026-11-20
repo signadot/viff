@@ -18,9 +18,11 @@ import (
 //	3. its rules, levels, schedules and records are removed, and its engine
 //	4. the lock comes off
 //
-// The lock is the package's own (trigger.Engine.Close). An install at the address meanwhile is
-// refused as a conflict, and so is a change to one rule or level of it. A hook that would
-// launch is refused whole, its write too: nothing of the package starts once it is locked.
+// The lock is the package's own, and stands from the moment the uninstall is asked for until it
+// is over (lockedAt). An install at the address meanwhile is refused, to be asked again (429),
+// and so is the removal of one rule, level or schedule of it: every change to a package asks. Its engine
+// is closed under it (trigger.Engine.Close): a hook that would launch is refused whole, its
+// write too, and nothing of the package starts.
 //
 // STEP 2 TAKES AS LONG AS THE TASKS DO, and is not done under the lock every charter operation
 // shares (charterlock.go): that one is taken for step 3 alone. A task whose runner does not
@@ -68,6 +70,25 @@ func (s *Server) uninstall(ctx context.Context, store entity.Store, at string) e
 	}
 }
 
+// lockedAt answers the refusal a change to the charter at an address is refused with while the
+// package there is being uninstalled, and nil otherwise. Only a package is ever locked: a
+// scope's charter and baseline's are not uninstalled.
+func (s *Server) lockedAt(scope, at string) error {
+	if scope != "" || at == "" {
+		return nil
+	}
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return nil // no address: whoever resolves it says so
+	}
+	s.scopeMu.Lock()
+	defer s.scopeMu.Unlock()
+	if s.uninstalls["at:"+confine.Stamp()] == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", confine.Stamp(), trigger.ErrClosing)
+}
+
 // stopAndTakeDown is one uninstall, start to end.
 func (s *Server) stopAndTakeDown(store entity.Store, at string) error {
 	ctx := s.ctxOrBackground()
@@ -75,7 +96,7 @@ func (s *Server) stopAndTakeDown(store entity.Store, at string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.cancelWork(ctx, eng, at, 0); err != nil {
+	if err := s.cancelWork(ctx, eng, at); err != nil {
 		return err // verse is stopping
 	}
 	var release func()
@@ -88,17 +109,17 @@ func (s *Server) stopAndTakeDown(store entity.Store, at string) error {
 		}
 	}
 	defer release()
-	if err := s.takeDown(store, at); err != nil {
+	if err := s.takeDown(store, at, eng); err != nil {
 		eng.Reopen() // what was not removed stands, and runs
 		return err
 	}
 	return nil
 }
 
-// cancelWork locks the engine of the package at an address and cancels its tasks, and answers
+// cancelWork closes the engine of the package at an address and cancels its tasks, and answers
 // once every one has ended and its end is taken (trigger.Engine.Busy). A cancel that fails is
-// asked again. within bounds the wait where it is not 0, and the engine stays locked past it.
-func (s *Server) cancelWork(ctx context.Context, eng *trigger.Engine, at string, within time.Duration) error {
+// asked again.
+func (s *Server) cancelWork(ctx context.Context, eng *trigger.Engine, at string) error {
 	// Open first: an engine takes no end until it is, and its tasks are all in by then.
 	if opened := eng.Opened(); opened != nil {
 		select {
@@ -109,10 +130,6 @@ func (s *Server) cancelWork(ctx context.Context, eng *trigger.Engine, at string,
 	}
 	eng.Close()
 	why := "the charter package at " + at + " is being uninstalled"
-	var bound <-chan time.Time
-	if within > 0 {
-		bound = time.After(within)
-	}
 	asked, said := map[string]bool{}, map[string]bool{}
 	for wait := 50 * time.Millisecond; ; wait = min(2*wait, 2*time.Second) {
 		for _, r := range eng.Running() {
@@ -132,28 +149,7 @@ func (s *Server) cancelWork(ctx context.Context, eng *trigger.Engine, at string,
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-bound:
-			return fmt.Errorf("%s: its tasks had not ended within %s", at, within)
 		case <-time.After(wait):
 		}
 	}
-}
-
-// takeDownStopping is takeDown for a caller that holds the charter lock and cannot let go of it:
-// a prune, inside the install it is part of. The package's tasks are cancelled and their ends
-// taken for as long as stopWait, and what has not ended by then is stopped with no hook run
-// (stopPackage).
-func (s *Server) takeDownStopping(store entity.Store, at string) error {
-	eng := s.packageEngineIfRunning(at)
-	if eng == nil {
-		return s.takeDown(store, at)
-	}
-	if err := s.cancelWork(s.ctxOrBackground(), eng, at, s.stopWait); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: uninstall %s: %v; they are stopped with no hook run\n", at, err)
-	}
-	if err := s.takeDown(store, at); err != nil {
-		eng.Reopen()
-		return err
-	}
-	return nil
 }

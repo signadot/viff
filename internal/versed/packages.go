@@ -625,14 +625,11 @@ func (s *Server) mayUninstall(store entity.Store, at string) error {
 	return nil
 }
 
-// takeDown removes the package at an address without asking (mayUninstall asks), under the
-// charter lock. It is the removal alone: uninstall ends the package's work ahead of it.
-func (s *Server) takeDown(store entity.Store, at string) error {
+// takeDown removes the package at an address, whose engine is eng, without asking (mayUninstall
+// asks), under the charter lock. It is the removal alone: uninstall ends the package's work
+// ahead of it.
+func (s *Server) takeDown(store entity.Store, at string, eng *trigger.Engine) error {
 	confine, err := trigger.ParseAt(at)
-	if err != nil {
-		return err
-	}
-	eng, err := s.packageEngine(at)
 	if err != nil {
 		return err
 	}

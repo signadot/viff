@@ -162,10 +162,11 @@ func TestAPruneLeavesWhatTheDirectoryHolds(t *testing.T) {
 	}
 }
 
-// A REFUSED PRUNE PUTS BACK THE REMOVALS AS WELL AS THE INSTALLS. The file keeps a rule that
-// derives into a level it leaves out, so the level refuses to go — after the rule the file also
-// left out has gone — and the request is refused whole: that rule, and the package with no file,
-// still stand.
+// A REFUSED PRUNE PUTS BACK WHAT IT TOOK OUT OF THE PACKAGES IT KEEPS, as well as the installs. The
+// file keeps a rule that derives into a level it leaves out, so the level refuses to go — after
+// the rule the file also left out has gone — and the request is refused: that rule still stands.
+// The package with no file was uninstalled ahead of the install, which is not undone, and the
+// refusal names it.
 func TestARefusedPrunePutsBackWhatItRemoved(t *testing.T) {
 	serve(t)
 	first := writeTree(t, map[string]string{
@@ -180,8 +181,12 @@ func TestARefusedPrunePutsBackWhatItRemoved(t *testing.T) {
   match: {path: "sync.keep.row"}
 `, "", 1)
 	bad := writeTree(t, map[string]string{"keep.tony": noRows})
-	if _, err := runCLI(t, "charter", "-a", "sync", "-d", bad, "--prune"); err == nil {
+	_, err := runCLI(t, "charter", "-a", "sync", "-d", bad, "--prune")
+	if err == nil {
 		t.Fatal("a prune taking out a level a kept rule derives into was accepted")
+	}
+	if !strings.Contains(err.Error(), "sync.gone") || !strings.Contains(err.Error(), "uninstalled") {
+		t.Errorf("the refusal does not say the package the prune leaves out was uninstalled: %v", err)
 	}
 	got, err := runCLI(t, "charter", "sync", "keep")
 	if err != nil {
@@ -192,8 +197,8 @@ func TestARefusedPrunePutsBackWhatItRemoved(t *testing.T) {
 			t.Errorf("a refused prune left %q out:\n%s", want, got)
 		}
 	}
-	if got, err := runCLI(t, "charter", "sync", "gone"); err != nil || !strings.Contains(got, "name: mark") {
-		t.Errorf("a refused prune took a package down: %v\n%s", err, got)
+	if got, _ := runCLI(t, "charter", "sync", "gone"); strings.Contains(got, "name: mark") {
+		t.Errorf("the package the prune leaves out stands after the prune uninstalled it:\n%s", got)
 	}
 }
 

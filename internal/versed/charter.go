@@ -420,8 +420,12 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 	// told who is asking and refuses for them (trigger.Engine.MayRemoveTrigger): a removal
 	// nobody checked is the system deleting somebody's rule, its owner record with it, and
 	// leaving the name free for the stranger who asked.
+	if err := s.lockedAt(r.URL.Query().Get("scope"), r.URL.Query().Get("at")); err != nil {
+		http.Error(w, err.Error(), http.StatusTooManyRequests)
+		return
+	}
 	if eng.Closing() {
-		http.Error(w, trigger.ErrClosing.Error(), http.StatusConflict)
+		http.Error(w, trigger.ErrClosing.Error(), http.StatusTooManyRequests)
 		return
 	}
 	who := entity.PrincipalOf(s.scopedStore(r))
@@ -512,8 +516,43 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		}
 		wait = d
 	}
-	in, code, err := s.installCharterPruning(r.Context(), s.scopedStore(r), q.Get("scope"), q.Get("at"), q.Get("prune"), docs, hold)
+	store, scope, at, prune := s.scopedStore(r), q.Get("scope"), q.Get("at"), q.Get("prune")
+	// A PRUNE UNINSTALLS FIRST, off the lock (charterprune.go): the packages the request leaves
+	// out are gone, their tasks ended, before anything of it is installed.
+	var gone []string
+	if prune != "" {
+		var code int
+		if gone, code, err = s.pruneLeftOut(store, scope, at, prune, docs); err != nil {
+			http.Error(w, err.Error(), code)
+			return
+		}
+		if own := hold.ownPackageAmong(gone); own != "" {
+			http.Error(w, fmt.Sprintf("prune %s: the directory leaves out %s, whose task is asking: uninstalling it "+
+				"cancels the task before the install it is making. Nothing was changed", prune, own), http.StatusBadRequest)
+			return
+		}
+	}
+	if len(gone) > 0 {
+		release()
+		for i, t := range gone {
+			if err := s.uninstall(r.Context(), store, t); err != nil {
+				http.Error(w, pruneStopped(prune, gone[:i], t, err), http.StatusServiceUnavailable)
+				return
+			}
+		}
+		again, err := s.lockCharter(r.Context())
+		if err != nil {
+			w.Header().Set("Retry-After", "5")
+			http.Error(w, pruneUninstalled(err, gone).Error(), http.StatusServiceUnavailable)
+			return
+		}
+		release = again
+	}
+	in, code, err := s.installCharterPruning(r.Context(), store, scope, at, prune, docs, hold, gone)
 	if err != nil {
+		if len(gone) > 0 {
+			err = pruneUninstalled(err, gone)
+		}
 		http.Error(w, err.Error(), code)
 		return
 	}
@@ -546,7 +585,9 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 // WHAT IT ANSWERS IS SETTLED AFTERWARDS (installed.settle), off the charter lock: a wait for
 // the rules to arm, if asked for, and then what the install has to say of each rule, which is
 // how things stand when the request ends.
-func (s *Server) installCharterPruning(ctx context.Context, store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter) (*charterInstall, int, error) {
+//
+// gone is the packages a prune uninstalled ahead of this, for what it answers.
+func (s *Server) installCharterPruning(ctx context.Context, store entity.Store, scope, at, prune string, docs []*ir.Node, hold *taskCharter, gone []string) (*charterInstall, int, error) {
 	groups, err := charterFilesPruning(docs, at, prune)
 	if err != nil {
 		return nil, http.StatusBadRequest, err
@@ -559,11 +600,16 @@ func (s *Server) installCharterPruning(ctx context.Context, store entity.Store, 
 	if entity.PrincipalOf(store) == "" {
 		return nil, http.StatusBadRequest, errors.New("a charter names who installs it: its rules act as their installer")
 	}
-	var gone []string
 	if prune != "" {
-		var code int
-		if gone, code, err = s.pruneTargets(store, scope, prune, groups); err != nil {
+		// What the request leaves out went ahead of it (pruneLeftOut). A package standing there
+		// now was installed since, and is not this request's to take down unasked.
+		left, code, err := s.pruneTargets(store, scope, prune, groups)
+		if err != nil {
 			return nil, code, err
+		}
+		if len(left) > 0 {
+			return nil, http.StatusTooManyRequests, fmt.Errorf("prune %s: a charter is installed at %s, "+
+				"which the request leaves out; ask again, to take it down too", prune, strings.Join(left, ", "))
 		}
 	}
 	tx := &charterTx{s: s, ctx: ctx, store: store, scope: scope, hold: hold, dropped: map[string][]string{}}
@@ -576,10 +622,15 @@ func (s *Server) installCharterPruning(ctx context.Context, store entity.Store, 
 			return nil, code, err
 		}
 	}
-	takePackageAddresses(store, entity.PrincipalOf(store), groups)
-	if code, err := s.pruneGone(store, gone); err != nil {
-		return nil, code, err
+	// A package an uninstall locked while this installed at it is not installed at: asked as
+	// each package's install begins, and here once every one is in.
+	for _, g := range groups {
+		if err := s.lockedAt(scope, g.at); err != nil {
+			code, err := tx.refuse(http.StatusTooManyRequests, err)
+			return nil, code, err
+		}
 	}
+	takePackageAddresses(store, entity.PrincipalOf(store), groups)
 	return &charterInstall{tx: tx, groups: groups, pruned: tx.prunedReport(gone)}, http.StatusCreated, nil
 }
 
@@ -604,7 +655,7 @@ func (in *charterInstall) settle(ctx context.Context, wait time.Duration) []char
 // acts through, the scope and the address the file is being applied at. The system's own
 // charter comes through here from a file rather than a request (installSystemCharter).
 func (s *Server) installCharterAs(store entity.Store, scope, at string, docs []*ir.Node) ([]charterGroup, int, error) {
-	in, code, err := s.installCharterPruning(s.ctxOrBackground(), store, scope, at, "", docs, nil)
+	in, code, err := s.installCharterPruning(s.ctxOrBackground(), store, scope, at, "", docs, nil, nil)
 	if err != nil {
 		return nil, code, err
 	}
@@ -657,6 +708,9 @@ func (tx *charterTx) install(groups []charterGroup) (int, error) {
 		// FRESH BEFORE THE ENGINE, because asking for one creates it: an install that is wholly
 		// refused must leave the address as it found it, and a package engine standing where
 		// nothing is installed is a charter that lists as nothing and runs as nothing.
+		if err := s.lockedAt(scope, g.at); err != nil {
+			return tx.refuse(http.StatusTooManyRequests, err)
+		}
 		if g.at != "" && !s.packagesSeenAt(g.at) {
 			tx.fresh = append(tx.fresh, g.at)
 		}
@@ -1381,6 +1435,10 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		return
 	}
 	kind, name := rest[0], rest[1]
+	if err := s.lockedAt(r.URL.Query().Get("scope"), at); err != nil {
+		http.Error(w, err.Error(), http.StatusTooManyRequests)
+		return
+	}
 	if kind == "schedules" {
 		// The daemon's record rather than the engine's, and not a scope's.
 		if r.URL.Query().Get("scope") != "" {
@@ -1420,7 +1478,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		return
 	}
 	if eng.Closing() {
-		http.Error(w, at+": "+trigger.ErrClosing.Error(), http.StatusConflict)
+		http.Error(w, at+": "+trigger.ErrClosing.Error(), http.StatusTooManyRequests)
 		return
 	}
 	who := entity.PrincipalOf(s.scopedStore(r)) // see deleteCharterItem: the engine refuses for them
@@ -1521,8 +1579,13 @@ func charterCode(err error) int {
 	if errors.Is(err, entity.ErrForbidden) {
 		return http.StatusForbidden
 	}
-	if errors.Is(err, errActsAsNobody) || errors.Is(err, trigger.ErrClosing) {
+	if errors.Is(err, errActsAsNobody) {
 		return http.StatusConflict
+	}
+	// The package is being uninstalled, and the same request is taken once it is: the one
+	// refusal here that asking again mends, and the status an iod asks again on.
+	if errors.Is(err, trigger.ErrClosing) {
+		return http.StatusTooManyRequests
 	}
 	if errors.Is(err, trigger.ErrCharter) {
 		return http.StatusServiceUnavailable

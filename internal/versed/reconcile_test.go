@@ -247,9 +247,10 @@ func TestATaskLeftToAPackageBeingUninstalledIsStopped(t *testing.T) {
 	srv.left = append(srv.left, left)
 	srv.leftMu.Unlock()
 
-	if err := srv.takeDown(srv.Store, "demo"); err != nil {
+	if err := srv.takeDown(srv.Store, "demo", eng); err != nil {
 		t.Fatalf("uninstalling the package: %v", err)
 	}
+	waitUntil(t, "the task the package was left to be cancelled", func() bool { return idle.count("cancel") >= 1 })
 	if n := idle.count("cancel"); n != 1 {
 		t.Fatalf("the task the package was left was cancelled %d times by its uninstall, want once", n)
 	}

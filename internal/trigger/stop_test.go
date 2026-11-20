@@ -193,6 +193,14 @@ func TestAClosedEnginesHookThatWouldLaunchIsRefusedWhole(t *testing.T) {
 	if sp.get(spawnID(eng.idOwner(), chainID("review.onCancelled"), prRef("1"))) != nil {
 		t.Fatal("a hook launched a task in a closed engine")
 	}
+	// And nothing is said of it as a failure: the subject outlives the charter.
+	subj, _, _ := store.Get(prRef("1"))
+	if said := entity.Get(entity.Get(entity.Get(entity.Get(subj.Payload, VerseRoot), CharterKey), "review"), hookTrouble); said != nil {
+		t.Fatalf("a hook refused by the closing was recorded on its subject as a failure: %v", said)
+	}
+	if rec, _, _ := store.Get(mirror.Ref(id)); entity.Get(rec.Payload, "hook") != nil {
+		t.Fatalf("a hook refused by the closing was recorded on its task as a failure: %v", rec.Payload)
+	}
 }
 
 // A SEQUENCE ENDS WHERE ITS ELEMENT ENDS IN A CLOSED ENGINE: cancelled, with nothing started and

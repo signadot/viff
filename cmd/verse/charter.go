@@ -78,7 +78,8 @@ type charterFlags struct {
 	// installed at its own `at:`; without, every charter at or under the path is written there.
 	Dir string `cli:"name=dir aliases=d desc='with --add, install every charter file under DIR; without, write each charter at or under the path to a file in DIR'"`
 	// Prune makes `-a -d` a sync: what stands at and under the path afterwards is what the
-	// directory holds. It is `-R <path>` then `-a -d`, as one step (internal/versed/charterprune.go).
+	// directory holds. It is `-R` of what the directory leaves out, then `-a -d`
+	// (internal/versed/charterprune.go).
 	Prune bool `cli:"name=prune desc='with --add --dir, remove what the directory leaves out at and under the path'"`
 	// Wait holds an install's answer until its rules are armed, or that long: an install answers
 	// once the charters are accepted, and a rule's watch opens at the store's pace. Without it

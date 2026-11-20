@@ -278,11 +278,15 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 	if !ok {
 		return false
 	}
-	if e.isClosing() {
-		// Its charter is being taken down: the run ends here, cancelled, and starts nothing.
+	// The run's next steps are work that may launch, counted until they have run: a close waits
+	// for them, and a run whose element ends once its charter is being taken down ends here,
+	// cancelled, and starts nothing.
+	if !e.begin() {
 		e.stopSeq(chain, subj, task.Cancelled)
 		return true
 	}
+	defer e.work.Done()
+	oc.begun = true
 	t, ok := e.Rule(mirror.TriggerOf(chain))
 	if !ok {
 		e.tracef("seq %s: trigger gone; sequence cannot continue", chain)

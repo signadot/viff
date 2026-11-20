@@ -1,6 +1,7 @@
 package versed
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
@@ -43,10 +44,10 @@ func (s *Server) pruneSystemCharters() {
 		fmt.Fprintf(os.Stderr, "verse: system charters the config dropped: %v\n", err)
 		return
 	}
-	defer release()
 	// The listing's own failure: the ActsAs reads below would otherwise set or clear the
 	// store's flag before it was asked.
 	rules, err := entity.BelowErr(s.Store, charter.IsRule, 2, entity.VerseRoot, charter.System)
+	release()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verse: system charters the config dropped: %v\n", err)
 		return
@@ -67,25 +68,45 @@ func (s *Server) pruneSystemCharters() {
 	}
 	// Deepest first, so a package is gone before the address above it is.
 	sort.Sort(sort.Reverse(sort.StringSlice(gone)))
+	// Off the start: an uninstall takes as long as the package's tasks take to end.
+	go s.dropSystemCharters(gone)
+}
+
+// dropSystemCharters uninstalls each package (uninstall.go), and removes what it kept at its
+// address.
+func (s *Server) dropSystemCharters(gone []string) {
+	ctx := s.ctxOrBackground()
 	store := entity.As(s.Store, entity.SystemCharter)
 	for _, at := range gone {
-		if err := s.takeDownStopping(store, at); err != nil {
+		if err := s.uninstall(ctx, store, at); err != nil {
 			fmt.Fprintf(os.Stderr, "verse: system charter at %s, which the config no longer names: %v\n", at, err)
 			continue
 		}
-		// Its address is its own only while no package stands under it.
-		if len(s.packagesUnder(at)) == 0 {
-			segs, err := entity.PathSegs(at)
-			if err == nil {
-				_, _, err = store.Write(entity.Write{At: entity.RefAt(segs...).At(), Value: entity.Removed()})
-			}
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "verse: system charter at %s: taken down, and what it kept there stands: %v\n", at, err)
-				continue
-			}
+		if err := s.dropSystemAddress(ctx, store, at); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: system charter at %s: taken down, and what it kept there stands: %v\n", at, err)
+			continue
 		}
 		fmt.Fprintf(os.Stderr, "verse: system charter at %s: taken down, as the config no longer names it\n", at)
 	}
+}
+
+// dropSystemAddress removes what stands at a system package's address, which is its own only
+// while no package stands at or under it: asked under the charter lock, which an install holds.
+func (s *Server) dropSystemAddress(ctx context.Context, store entity.Store, at string) error {
+	release, err := s.lockCharter(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if s.packagesSeenAt(at) || len(s.packagesUnder(at)) > 0 {
+		return nil
+	}
+	segs, err := entity.PathSegs(at)
+	if err != nil {
+		return err
+	}
+	_, _, err = store.Write(entity.Write{At: entity.RefAt(segs...).At(), Value: entity.Removed()})
+	return err
 }
 
 // systemChartersNamed is the addresses of the packages the charters the system installs at start

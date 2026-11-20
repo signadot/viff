@@ -66,12 +66,11 @@ rules:
 	// No longer named: off.
 	srv, _, stop = start(nil)
 	defer stop()
-	if stands(srv, "sys.thing") {
-		t.Error("the system charter the config dropped is still installed after a restart")
-	}
-	if _, ok, _ := srv.Store.Get(entity.RefAt("sys", "thing", "out")); ok {
-		t.Error("what the dropped system charter kept at its address outlived it")
-	}
+	waitUntil(t, "the system charter the config dropped to be uninstalled", func() bool { return !stands(srv, "sys.thing") })
+	waitUntil(t, "what the dropped system charter kept at its address to go", func() bool {
+		_, ok, _ := srv.Store.Get(entity.RefAt("sys", "thing", "out"))
+		return !ok
+	})
 	if !stands(srv, "repos.thing") {
 		t.Error("the charter installed beside it was taken down with it")
 	}

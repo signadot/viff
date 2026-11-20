@@ -159,7 +159,7 @@ them, installs at the path. A directory of charter files is several packages
 | `charter <address> rules\|strata\|schedules [<name>]` | into the node there: its rules, its levels, one by name, and on into that one (`c repos.verse.drift rules claim action`). `c rules claim` is baseline's. A name that is elsewhere is named in the refusal, with the path that reaches it. |
 | `charter -a [<address>] -f <file>\|-` | **install** one charter from one file, as one step. Applying an edited file again is how a charter changes. |
 | `charter -a -d <dir>` | every charter file under the directory, each at its own `at:`, all or none |
-| `charter -a <address> -d <dir> -prune` | the same, and **remove** what the directory leaves out at and under the address: `-R` then `-a -d`, as one step |
+| `charter -a <address> -d <dir> -prune` | the same, and **remove** what the directory leaves out at and under the address: a package with no file is uninstalled first, as `-R` does, then `-a -d` |
 | `charter -check <address> -d <dir>` · `-check <address> -f <file>` | whether the charters would install as `-a <address> -d <dir> -prune` installs them, and what would change, installing nothing. `-f` is a directory holding that one file. A refusal is the answer, so the command succeeds either way ([the charter](charter.md)). |
 | `charter -a -scope <name>` | into a scope's own charter |
 | `charter -r <path>` | **remove** what the path names: a package, or one rule or level in it (`c -r repos.verse.drift rules claim`) |

@@ -16,8 +16,8 @@ import (
 // rules are gone, and a hook is a rule's. That is a package whose records have been removed
 // (stopPackage), and one the last verse left tasks of that this verse does not have
 // (settleTasks). An uninstall cancels a package's tasks while its rules stand, so that their
-// hooks run (uninstall.go), and comes here with nothing left running; a prune that ran out of
-// time comes here with what is. One stop runs for a package at a time (stopWork), and it takes
+// hooks run (uninstall.go), and comes here with nothing left running. One stop runs for a
+// package at a time (stopWork), and it takes
 // every task of the package there is: the ones its engine tracked, and the ones the last verse
 // left that no engine took.
 //
@@ -49,8 +49,7 @@ type stopState struct {
 }
 
 // stopWait is how long taking a package down waits for tasks that are still running to have
-// ended, so that the address is free when it returns wherever they end promptly: a prune's wait
-// for its tasks' hooks (takeDownStopping), and stopPackage's for what it cancels. The stop goes
+// ended, so that the address is free when it returns wherever they end promptly. The stop goes
 // on past it.
 const stopWait = 5 * time.Second
 
