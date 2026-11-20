@@ -111,6 +111,8 @@ type Config struct {
 	// renders the repo-charters reconciler (internal/repocharters) and installs it at start as the
 	// system, beside SystemCharter. Server-side, read by `verse up`.
 	RepoCharters []RepoCharterConfig `tony:"field=repoCharters,omitzero"`
+	// TUI is how `verse tui` looks and which keys do what. Client-side; flags override it.
+	TUI TUIConfig `tony:"field=tui,omitzero"`
 }
 
 // RepoCharterConfig is one repository whose charters verse reconciles: what runs in verse is the
@@ -677,6 +679,9 @@ func Load() (*Config, error) {
 	}
 	if envErr != nil {
 		return c, fmt.Errorf("config: %w", envErr)
+	}
+	if err := tuiFields(merged); err != nil {
+		return c, fmt.Errorf("config: %w", err)
 	}
 	if err := c.Format.validate(); err != nil {
 		return c, fmt.Errorf("config: %w", err)

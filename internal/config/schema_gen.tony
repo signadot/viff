@@ -107,6 +107,26 @@ signature:
 context:
 - tony-format/context
 define:
+  recent: .[int]
+signature:
+  name: verse-tui-tasks-config
+---
+context:
+- tony-format/context
+define:
+  at: .[string]
+  bookmarks: .[object(string)]
+  every: .[string]
+  keys: .[object(array(string))]
+  sections: .[array(string)]
+  start: .[string]
+  tasks: !verse-tui-tasks-config null
+signature:
+  name: verse-tui-config
+---
+context:
+- tony-format/context
+define:
   addr: .[string]
   agent: .[string]
   auth: !verse-auth-config null
@@ -121,6 +141,7 @@ define:
   shellEnv: .[array(string)]
   systemCharter: .[string]
   tripDuration: .[string]
+  tui: !verse-tui-config null
   user: .[string]
 signature:
   name: verse-config

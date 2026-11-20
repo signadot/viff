@@ -128,6 +128,10 @@ func wireFmt() codec.Format {
 // cfg, so a command's own *upConfig receiver named cfg doesn't shadow it.)
 var appCfg = &config.Config{}
 
+// configErr is why the config file did not load, where it did not: main warns of it and goes on
+// with the environment and the defaults, and `verse tui` refuses to start on them.
+var configErr error
+
 func main() {
 	cli.MainContext(context.Background(), rootCmd())
 }
@@ -147,6 +151,7 @@ func rootCmd() *cli.Command {
 	// Config precedence: /etc ← ~/.config ← env ← CLI. Load the file+env layers, use
 	// them as the flag defaults, and let an explicit flag win.
 	c, err := config.Load()
+	configErr = err
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "verse: %v (using environment + defaults)\n", err)
 	}
@@ -210,6 +215,7 @@ func rootCmd() *cli.Command {
 			groupCmd(),
 			ioCmd(),
 			statusCmd(),
+			tuiCmd(),
 			accountCmd(),
 			whoamiCmd(),
 			schemaCmd(),

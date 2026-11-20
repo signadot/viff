@@ -979,9 +979,15 @@ func waitingOnMe(c *client.Client, id string) bool {
 	return false
 }
 
+// poseOf is what a question asks, in words: its pose, else, for a rule's gate that poses
+// nothing of its own, whether the rule may act on its subject, else its reason. `verse question
+// --watch` and `verse tui` both say it.
 func poseOf(q entity.Payload) string {
 	if p := entity.Str(q, "pose"); p != "" {
 		return p
+	}
+	if rule, subject := entity.Str(entity.Get(q, "from"), "rule"), entity.Str(q, "subject"); rule != "" && subject != "" {
+		return fmt.Sprintf("Let rule %s act on %s?", rule, subject)
 	}
 	return entity.Str(q, "reason")
 }

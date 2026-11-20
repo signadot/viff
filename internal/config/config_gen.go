@@ -129,6 +129,15 @@ func (s *Config) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
 		irMap["repoCharters"] = ir.FromSlice(slice)
 	}
 
+	// Field: TUI (optional)
+	if !isZeroValue_Config_TUI(s.TUI) {
+		node, err = s.TUI.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "TUI", err)
+		}
+		irMap["tui"] = node
+	}
+
 	return ir.FromMap(irMap), nil
 }
 
@@ -273,6 +282,11 @@ func (s *Config) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 				s.RepoCharters = slice
 			} else {
 				return fmt.Errorf("%s: expected array, got %v", "field \"repoCharters\"", fieldNodeUnwrapped.Type)
+			}
+		case "tui":
+			// Field: TUI
+			if err := s.TUI.FromTonyIR(fieldNode, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "tui", err)
 			}
 		default:
 			if gomap.IsStrict(opts...) {
@@ -1726,6 +1740,315 @@ func (s *LLMConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
 	return s.FromTonyIR(node, opts...)
 }
 
+// ToTonyIR converts TUIConfig to a Tony IR node.
+func (s *TUIConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	var node *ir.Node
+	var err error
+	_ = node // suppress unused variable error
+	_ = err  // suppress unused variable error
+
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Every
+	if s.Every != "" {
+		irMap["every"] = ir.FromString(string(s.Every))
+	}
+
+	// Field: Start
+	if s.Start != "" {
+		irMap["start"] = ir.FromString(string(s.Start))
+	}
+
+	// Field: At
+	if s.At != "" {
+		irMap["at"] = ir.FromString(string(s.At))
+	}
+
+	// Field: Sections
+	if len(s.Sections) > 0 {
+		slice := make([]*ir.Node, len(s.Sections))
+		for i, v := range s.Sections {
+			slice[i] = ir.FromString(string(v))
+		}
+		irMap["sections"] = ir.FromSlice(slice)
+	}
+
+	// Field: Tasks (optional)
+	if !isZeroValue_TUIConfig_Tasks(s.Tasks) {
+		node, err = s.Tasks.ToTonyIR(opts...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %q: %w", "Tasks", err)
+		}
+		irMap["tasks"] = node
+	}
+
+	// Field: Bookmarks
+	if len(s.Bookmarks) > 0 {
+		mapNodes := make(map[string]*ir.Node)
+		for k, v := range s.Bookmarks {
+			mapNodes[k] = ir.FromString(string(v))
+		}
+		irMap["bookmarks"] = ir.FromMap(mapNodes)
+	}
+
+	// Field: Keys
+	if len(s.Keys) > 0 {
+		var node *ir.Node
+		ns0 := make(map[string]*ir.Node)
+		for k0, e0 := range s.Keys {
+			var vn0 *ir.Node
+			ns1 := make([]*ir.Node, len(e0))
+			for i1, e1 := range e0 {
+				var en1 *ir.Node
+				en1 = ir.FromString(string(e1))
+				ns1[i1] = en1
+			}
+			vn0 = ir.FromSlice(ns1)
+			ns0[string(k0)] = vn0
+		}
+		node = ir.FromMap(ns0)
+		irMap["keys"] = node
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates TUIConfig from a Tony IR node.
+func (s *TUIConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for TUIConfig, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "every":
+			// Field: Every
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "every", fieldNodeUnwrapped.Type)
+			}
+			s.Every = string(fieldNodeUnwrapped.String)
+		case "start":
+			// Field: Start
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "start", fieldNodeUnwrapped.Type)
+			}
+			s.Start = string(fieldNodeUnwrapped.String)
+		case "at":
+			// Field: At
+			if fieldNodeUnwrapped.Type != ir.StringType {
+				return fmt.Errorf("field %q: expected string, got %v", "at", fieldNodeUnwrapped.Type)
+			}
+			s.At = string(fieldNodeUnwrapped.String)
+		case "sections":
+			// Field: Sections
+			if fieldNodeUnwrapped.Type == ir.ArrayType {
+				slice := make([]string, len(fieldNodeUnwrapped.Values))
+				for i, v := range fieldNodeUnwrapped.Values {
+					ctx := fmt.Sprintf("slice element %d", i)
+					var elem string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					elem = v.String
+					slice[i] = string(elem)
+				}
+				s.Sections = slice
+			} else {
+				return fmt.Errorf("%s: expected array, got %v", "field \"sections\"", fieldNodeUnwrapped.Type)
+			}
+		case "tasks":
+			// Field: Tasks
+			if err := s.Tasks.FromTonyIR(fieldNode, opts...); err != nil {
+				return fmt.Errorf("field %q: %w", "tasks", err)
+			}
+		case "bookmarks":
+			// Field: Bookmarks
+			if fieldNodeUnwrapped.Type == ir.ObjectType {
+				m := make(map[string]string)
+				irMap := ir.ToMap(fieldNodeUnwrapped)
+				for k, v := range irMap {
+					ctx := fmt.Sprintf("map value at key %q", k)
+					var val string
+					if v.Type != ir.StringType {
+						return fmt.Errorf("%s: expected string, got %v", ctx, v.Type)
+					}
+					val = v.String
+					m[k] = val
+				}
+				s.Bookmarks = m
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"bookmarks\"", fieldNodeUnwrapped.Type)
+			}
+		case "keys":
+			// Field: Keys
+			if fieldNodeUnwrapped.Type == ir.ObjectType {
+				m0 := make(map[string][]string)
+				for k0, v0 := range ir.ToMap(fieldNodeUnwrapped) {
+					var mv0 []string
+					if v0.Type == ir.ArrayType {
+						sl1 := make([]string, len(v0.Values))
+						for i1, v1 := range v0.Values {
+							var e1 string
+							var x2 string
+							if v1.Type != ir.StringType {
+								return fmt.Errorf("%s: expected string, got %v", fmt.Sprintf("%s: element %d", fmt.Sprintf("%s: key %q", "field \"keys\"", k0), i1), v1.Type)
+							}
+							x2 = v1.String
+							e1 = string(x2)
+							sl1[i1] = e1
+						}
+						mv0 = sl1
+					} else {
+						return fmt.Errorf("%s: expected array, got %v", fmt.Sprintf("%s: key %q", "field \"keys\"", k0), v0.Type)
+					}
+					m0[string(k0)] = mv0
+				}
+				s.Keys = m0
+			} else {
+				return fmt.Errorf("%s: expected object, got %v", "field \"keys\"", fieldNodeUnwrapped.Type)
+			}
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for TUIConfig", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts TUIConfig to Tony format bytes.
+func (s *TUIConfig) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates TUIConfig.
+func (s *TUIConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
+// ToTonyIR converts TUITasksConfig to a Tony IR node.
+func (s *TUITasksConfig) ToTonyIR(opts ...gomap.MapOption) (*ir.Node, error) {
+	if s == nil {
+		return ir.Null(), nil
+	}
+	// Create IR object map
+	irMap := make(map[string]*ir.Node)
+
+	// Field: Recent
+	if s.Recent != 0 {
+		irMap["recent"] = ir.FromInt(int64(s.Recent))
+	}
+
+	return ir.FromMap(irMap), nil
+}
+
+// FromTonyIR populates TUITasksConfig from a Tony IR node.
+func (s *TUITasksConfig) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
+	if node == nil {
+		return nil
+	}
+
+	// Unwrap CommentType nodes to get the actual data node
+	if node.Type == ir.CommentType {
+		if len(node.Values) > 0 {
+			node = node.Values[0]
+		} else {
+			return nil
+		}
+	}
+
+	if node.Type == ir.NullType {
+		return nil
+	}
+	if node.Type != ir.ObjectType {
+		return fmt.Errorf("expected map for TUITasksConfig, got %v", node.Type)
+	}
+
+	for i, fieldName := range node.Fields {
+		fieldNode := node.Values[i]
+		// Unwrap CommentType for type checking (preserve original for *ir.Node fields)
+		fieldNodeUnwrapped := fieldNode
+		if fieldNodeUnwrapped.Type == ir.CommentType && len(fieldNodeUnwrapped.Values) > 0 {
+			fieldNodeUnwrapped = fieldNodeUnwrapped.Values[0]
+		}
+		switch fieldName.String {
+		case "recent":
+			// Field: Recent
+			if fieldNodeUnwrapped.Int64 == nil {
+				return fmt.Errorf("field %q: expected number, got %v", "recent", fieldNodeUnwrapped.Type)
+			}
+			s.Recent = int(*fieldNodeUnwrapped.Int64)
+		default:
+			if gomap.IsStrict(opts...) {
+				return fmt.Errorf("unknown field %q for TUITasksConfig", fieldName.String)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ToTony converts TUITasksConfig to Tony format bytes.
+func (s *TUITasksConfig) ToTony(opts ...gomap.MapOption) ([]byte, error) {
+	node, err := s.ToTonyIR(opts...)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := encode.Encode(node, &buf, gomap.ToEncodeOptions(opts...)...); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// FromTony parses Tony format bytes and populates TUITasksConfig.
+func (s *TUITasksConfig) FromTony(data []byte, opts ...gomap.UnmapOption) error {
+	node, err := parse.Parse(data, gomap.ToParseOptions(opts...)...)
+	if err != nil {
+		return err
+	}
+	return s.FromTonyIR(node, opts...)
+}
+
 // Zero-value check helpers
 func isZeroValue_Config_Format(v FormatConfig) bool {
 	return reflect.ValueOf(v).IsZero()
@@ -1743,6 +2066,10 @@ func isZeroValue_Config_Auth(v AuthConfig) bool {
 	return reflect.ValueOf(v).IsZero()
 }
 
+func isZeroValue_Config_TUI(v TUIConfig) bool {
+	return reflect.ValueOf(v).IsZero()
+}
+
 func isZeroValue_AuthConfig_Principal(v PrincipalAuthConfig) bool {
 	return reflect.ValueOf(v).IsZero()
 }
@@ -1752,5 +2079,9 @@ func isZeroValue_AuthConfig_Iod(v IodAuthConfig) bool {
 }
 
 func isZeroValue_AuthConfig_Issuer(v IssuerConfig) bool {
+	return reflect.ValueOf(v).IsZero()
+}
+
+func isZeroValue_TUIConfig_Tasks(v TUITasksConfig) bool {
 	return reflect.ValueOf(v).IsZero()
 }
