@@ -136,9 +136,17 @@ type Engine struct {
 	refusedMu sync.Mutex
 	refused   map[string]bool
 
+	// opened is closed once the engine is open: its charter is restored, the tasks the last
+	// verse left it are in, and its claims are settled (open). Until then no rule arms and no
+	// task's end is taken. nil for an engine nobody started, which is open. tasksIn is closed
+	// when the host has handed over the tasks it resumed, nil where it hands none (AwaitTasks).
+	opened      chan struct{}
+	tasksIn     chan struct{}
+	tasksInOnce sync.Once
+
 	// parked is the launches a suspension stopped at launchSpawn, in the order they arrived —
 	// a hook's or a sequence step's spawn about suspended work — each started when nothing
-	// holds it. It does not survive a restart. Guarded by parkMu.
+	// holds it. Each is recorded, and the next verse parks it again (parked.go). Guarded by parkMu.
 	parkMu sync.Mutex
 	parked []parkedLaunch
 
@@ -340,8 +348,12 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	}
 	e.triggers = nil
 	e.trigMu.Unlock()
+	if e.opened == nil {
+		e.opened = make(chan struct{})
+	}
 	e.startReconciler(ctx)
 	e.follow(ctx)
+	go e.open(ctx)
 	// Watch the task:instance mirror subtree directly, independent of any charter trigger:
 	// this drives reaping and completion-hook (onX) application in scoped mode, where no root
 	// dispatch loop runs.
@@ -631,6 +643,13 @@ func (e *Engine) patchEntity(chain string, parent int64, subj, ref entity.Ref, p
 			return err
 		}
 	}
+	return e.patchRecord(chain, parent, ref, patch)
+}
+
+// patchRecord is patchEntity past the suspension: the write of what records, which lands whatever
+// holds the subject. A completion hook's writes and a sequence step's come here through
+// patchEntity; a run's own facts come here directly (publishSeq).
+func (e *Engine) patchRecord(chain string, parent int64, ref entity.Ref, patch entity.Payload) error {
 	// THE CONFINEMENT, at the moment of the write. A static check at install cannot be the
 	// whole answer while a derive's address can be templated, and this is the one place every
 	// charter-authored write passes through — which is what lets it be a promise rather than a

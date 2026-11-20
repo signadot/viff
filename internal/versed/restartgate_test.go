@@ -45,7 +45,7 @@ func TestARestartTakesADeadTasksQuestionWithIt(t *testing.T) {
 		Tool:     "write_file",
 	}, "run-1")
 
-	srv.reconcileTasks()
+	reconcile(t, srv)
 
 	if got := docket(t, srv); len(got) != 0 {
 		t.Fatalf("the docket kept a dead task's question: %v", got)
@@ -81,7 +81,7 @@ func TestAQuestionFollowsItsTasksFate(t *testing.T) {
 		Question: task.GateQuestion{ID: "remote-1~d1", Origin: "remote-1", Gate: "write"},
 	}, "remote-1")
 
-	srv.reconcileTasks()
+	reconcile(t, srv)
 
 	e, _, _ := srv.Store.Get(mirror.QuestionRef("remote-1~d1"))
 	if got := entity.ToObj(e.Payload); got["status"] != mirror.QuestionPending {
@@ -100,7 +100,7 @@ func TestARestartOrphansAFiringsQuestion(t *testing.T) {
 		Question: task.GateQuestion{ID: "verse.trigger.guard.approval~1", Origin: "guard", Gate: "approval"},
 	}, "") // no task: a firing posed it, before anything spawned
 
-	srv.reconcileTasks()
+	reconcile(t, srv)
 
 	e, _, _ := srv.Store.Get(mirror.QuestionRef("verse.trigger.guard.approval~1"))
 	got := entity.ToObj(e.Payload)

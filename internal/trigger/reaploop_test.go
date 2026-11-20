@@ -17,6 +17,7 @@ func TestAScopedEngineReapsFromTheTaskRecord(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
+	<-eng.Opened() // an end is taken once the engine is open
 
 	const id = "run-reaped"
 	eng.liveMu.Lock()

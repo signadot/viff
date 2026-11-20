@@ -49,7 +49,16 @@ had left.
 
 **A completion hook or a `seq` step** lands its writes, since recording what a task did is not
 progress, and parks what it would start, so a hook asks nothing while suspended and the
-engine's reap loop never waits on one.
+engine's reap loop never waits on one. A sequence waits at a parked step as at a running one: it
+keeps its claim, its facts say how far it got, and the task the lift starts carries it on. A
+parked step that starts no task at the lift ends the run with `ended: error` and the reason.
+
+**A parked launch is recorded**, in scratch at `verse.task.parked.<id>` for the task it would
+start: its chain, its subject, its occurrence, the gates its firing passed and what its spawn's
+expressions read. It is written when the launch parks and removed when the lift starts it. An
+engine reads its own as it opens, before it settles the claims the last verse left, so a claim
+waiting on a parked launch is in flight and not a debt. A record whose action is no longer in the
+charter, or whose task has a record of that occurrence, is removed and parks nothing.
 
 **A lift is ordered.** The record is deleted, and the suspension drains: new firings about its work
 are still refused while what it held is released — tasks resume, parked launches start in order,

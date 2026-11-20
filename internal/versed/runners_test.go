@@ -617,7 +617,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 
 	// "verse restart": a new server over the same store.
 	second := issuing(t, serverWith(t, runnerdtest.Scripted, store))
-	second.reconcileTasks()
+	reconcile(t, second)
 
 	rec := instanceOf(t, second, id)
 	if st, _ := rec["status"].(string); st == string(task.Failed) {

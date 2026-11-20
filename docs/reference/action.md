@@ -817,10 +817,8 @@ the rule and the subject when it fires, before it writes anything, and the rule 
 about that subject again until the hook has run. The hook reads the subject as it is when the
 task ends ([Bindings](#bindings)), so what the firing wrote beside its spawn is what the hook
 finds, and no firing in between has written over it. The claim is a record in the store, as a
-sequence's run claim is, so a restart keeps it for a task that resumes and drops it for one that
-does not. It comes off once the hook has written, whether the hook ran cleanly or failed, and
-whether or not the action still carries the hook. A completion the engine missed leaves the
-subject held until a restart, whose reconcile drops the claim of a task that did not resume. A
+sequence's run claim is, so a restart finds it. It comes off once the hook has written, whether
+the hook ran cleanly or failed, and whether or not the action still carries the hook. A
 firing about the subject that the hold refused is not lost: once the hook has run, the rule is
 evaluated about the subject again, at the head, if it still selects it. So a change made while
 the subject was held is seen then, and so is the hook's own write. A hold that refused nothing
@@ -851,8 +849,26 @@ The three hooks are named fields. So an unknown status cannot be written: no fie
 it in. Verse refuses a misspelled `onDoen` at install, as it refuses any field an action does not
 have.
 
-Hooks survive a restart. Resume restores them from the chain of the task, so `done`, `failed`
-and `cancelled` still fire.
+Hooks survive a restart. A task's hook is looked up by the chain on its record when the task
+ends, so `done`, `failed` and `cancelled` still fire for a task that was running while verse was
+down.
+
+A claim is what verse owes: the hook of a task, or the rest of a sequence. A claim found at a
+restart with no task running behind it is paid then, from the task's record, before any rule of
+its charter package fires. A record that says
+`done` runs `onDone`. A record that says another end runs that end's hook. A record that says no
+end, or no record of that run, is `failed`, `orphaned: true`, and runs `onFailed`. A sequence
+carries on from the element its `step` names, or stops there. An element that spawns nothing is
+not run again: the run ends `error` and says that verse restarted.
+
+So a hook can run twice: verse ended after the hook ran and before its claim came off. Write a
+hook so that running it again is harmless. A sequence's element can run twice in one case: the
+write of `step` that follows the element before it did not land, and verse then restarted.
+
+A task whose rule's charter package is gone when verse comes back is cancelled, and its claim is
+removed: no rule is there to say what its end owes. Where the cancel does not reach the task,
+it is still running, and its claim and its run's are left for the next start. Where verse could
+not read which packages there are, the task and its claim are left as they stand.
 
 A task on a runner is attached again at a restart, and what its runner says of it ends it. A
 runner that has no such task ends it `failed`, `orphaned: true`, and its `onFailed` runs. A
@@ -1045,7 +1061,7 @@ subject:
 
 | Field | What it says |
 |---|---|
-| `done` | the engine latches it when `step` reaches `steps` |
+| `done` | the engine latches it when `step` has reached `steps` and the sequence's `onDone` has run |
 | `ended` | the terminal status other than `done` at which an element stopped the sequence. Its own `onFailed`/`onCancelled` runs, and the sequence stops there. `error` when an element after a finished task could not run. |
 | `reason` | with `ended: error`, the error of the element that could not run |
 | `shape` | a hash of the declared sequence. Verse compares it at each advance. |

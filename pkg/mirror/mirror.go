@@ -1074,6 +1074,9 @@ const (
 	OrphanedUnanswered = "the runner did not answer, and verse stopped waiting on it"
 	// OrphanedWithVerse: the task ran in verse's own process, which ended.
 	OrphanedWithVerse = "its runtime ended with verse"
+	// OrphanedNoAccount: a rule holds its subject for a task nothing is running and no record
+	// says the end of.
+	OrphanedNoAccount = "no account of how the task ended"
 )
 
 // Orphaned is the end of an orphaned task, as fields of its record: failed, orphaned, why, and
@@ -1220,10 +1223,9 @@ const ClaimKind = "claim"
 
 // ClaimOfField and ClaimOfSpawn: a claim's payload says `of: spawn` where it is a hooked
 // spawn's hold on its subject (trigger's applyOne) rather than a sequence's run claim. A
-// sequence's claim is kept alive across a restart by any resumed task at or below its chain,
-// since every element is a task of the run; a spawn's only by the task at its own chain, since
-// the hook's own spawns are held at chains of their own and release only those (versed's
-// claimIsLive).
+// sequence's claim is explained across a restart by a resumed task that is an element of it; a
+// spawn's only by the task at its own chain, since the hook's own spawns are held at chains of
+// their own and release only those (trigger's ClaimsOf, Settle).
 const (
 	ClaimOfField = "of"
 	ClaimOfSpawn = "spawn"

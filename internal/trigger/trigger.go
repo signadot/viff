@@ -1018,6 +1018,9 @@ func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engin
 		if errors.Is(err, errHeld) {
 			continue // held, not failed: the hold's end owes the subject its evaluation (reconsider)
 		}
+		if errors.Is(err, errParked) {
+			continue // written, and its launch waits for a suspension to lift
+		}
 		if err != nil {
 			if first == nil {
 				first = err
@@ -1055,10 +1058,10 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	//
 	// It is a sequence's run claim (claimRun), at this action's own chain: create-only in the
 	// store, so two firings that race settle there, and durable, so a restart finds it and
-	// versed's reconcileClaims keeps it exactly as long as the task it guards. fireOne asks the
+	// pays what it is owed where no task is left to (Settle). fireOne asks the
 	// same question before the gates (heldForHook); this is the answer that cannot be raced.
 	hooked := a.hooked()
-	if hooked && !e.claimRun(chain, subj, entity.Obj{mirror.ClaimOfField: mirror.ClaimOfSpawn}) {
+	if hooked && !e.claimRun(chain, subj, entity.Obj{mirror.ClaimOfField: mirror.ClaimOfSpawn, "occurrence": oc.commit.Rev}) {
 		e.tracef("trigger %s: a task of this action holds %s until its hook has run; not firing", chain, subj)
 		return nil, errHeld
 	}
@@ -1066,11 +1069,16 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	// A claim outlives this call only on a task that will end: one started, or parked for a
 	// suspension to lift (launchSpawn), which starts then. Anything else — a reference that did
 	// not resolve, a write refused, no spawner — leaves no task to release it.
-	if hooked && h == nil && !e.parkedFor(chain, subj) {
+	if hooked && h == nil && !errors.Is(err, errParked) {
 		e.releaseRun(chain, subj)
 	}
 	return h, err
 }
+
+// errParked is applyOne's answer where the action's writes landed and a suspension holds what it
+// would start (launchSpawn): the launch is parked, and the lift starts it. Not a failure, and not
+// an action that started nothing: a sequence waits at a parked element as at a running one.
+var errParked = errors.New("a suspension holds the launch until it lifts")
 
 // errHeld is applyOne's answer where the action's hooked spawn is held: a task of it is still
 // running about the subject, or ending with its hook not yet written. Not a failure of the
@@ -1316,7 +1324,7 @@ func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, b launch.B
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
 		e.park(parkedLaunch{a: a, chain: chain, subj: subj, binding: b, occurrence: occurrence, passed: passed})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
-		return nil, nil
+		return nil, errParked
 	}
 	return e.launch(a, chain, subj, b, occurrence, passed)
 }
@@ -1357,7 +1365,7 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Bindin
 	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards
 	// would be clobbered. Engine-owned, like Subject above.
 	//
-	// The lookup key a resumed task's hooks are rehydrated from (AdoptChain).
+	// The lookup key a resumed task's hooks are found by when it ends (hooksOf).
 	spec.Chain = chain
 	// And WHICH RUN this is. The id names the work — chain plus subject, so a re-fire is
 	// idempotent — and nothing named the occurrence, so a second run overwrote the first

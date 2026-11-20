@@ -857,25 +857,29 @@ type parkedLaunch struct {
 	passed     []launch.Passed
 }
 
-// park holds a launch.
+// park holds a launch, and records it (recordParked).
 func (e *Engine) park(l parkedLaunch) {
 	e.parkMu.Lock()
 	e.parked = append(e.parked, l)
 	e.parkMu.Unlock()
+	e.recordParked(l)
 }
 
-// parkedFor reports whether a launch of chain about subj is parked: a hooked spawn's claim
-// stays with it (applyOne), since the lift starts the task, and the task's end releases it.
-func (e *Engine) parkedFor(chain string, subj entity.Ref) bool {
+// parkedIn reports whether an element of the sequence at chain has its launch parked about subj:
+// the run is in flight there, and the task the lift starts carries it on.
+func (e *Engine) parkedIn(chain string, subj entity.Ref) bool {
 	e.parkMu.Lock()
 	defer e.parkMu.Unlock()
 	for _, l := range e.parked {
-		if l.chain == chain && l.subj == subj {
+		if c, _, ok := seqIndexOf(l.chain); ok && c == chain && l.subj == subj {
 			return true
 		}
 	}
 	return false
 }
+
+// errNotStarted is why a run ends whose parked element the lift could not start.
+var errNotStarted = errors.New("the launch a suspension held started no task when it lifted")
 
 // Parked is how many launches this engine is holding.
 func (e *Engine) Parked() int {
@@ -887,6 +891,13 @@ func (e *Engine) Parked() int {
 // releaseLaunches starts, in the order they were parked, every launch nothing holds now, and keeps
 // the rest.
 func (e *Engine) releaseLaunches() {
+	// A SHUT ENGINE STARTS NOTHING. Until it is open its parked launches stand where a settle
+	// finds them (parkedAt, parkedIn), and a lift that comes meanwhile is caught up with as the
+	// engine opens (open): a launch taken up here would be neither parked nor live while it
+	// starts, and the claim waiting on it would be settled as a task that was lost.
+	if !e.isOpen() {
+		return
+	}
 	e.parkMu.Lock()
 	all := e.parked
 	e.parked = nil
@@ -898,6 +909,13 @@ func (e *Engine) releaseLaunches() {
 			continue
 		}
 		h, err := e.launch(l.a, l.chain, l.subj, l.binding, l.occurrence, l.passed)
+		if h == nil && err == nil && len(e.settled(mirror.TriggerOf(l.chain), l.subj)) > 0 {
+			// A suspension landed between the check above and the start, which refuses under
+			// one (startHooked): the launch is held again, and not one that started nothing.
+			kept = append(kept, l)
+			continue
+		}
+		e.forgetParked(l.id(e))
 		if err != nil {
 			e.logger.Warn("a parked launch did not start", "chain", l.chain, "subject", l.subj.String(), "err", err)
 		}
@@ -905,6 +923,17 @@ func (e *Engine) releaseLaunches() {
 		// started nothing leaves no task to release it.
 		if l.a.hooked() && h == nil {
 			e.releaseRun(l.chain, l.subj)
+		}
+		// And a sequence's element that started nothing leaves no task to carry its run on: the
+		// run ends here, with the reason, as one whose element failed off a completion does
+		// (failResumed).
+		if carrier, _, ok := seqIndexOf(l.chain); ok && h == nil {
+			if err == nil {
+				err = errNotStarted
+			}
+			e.recordHookTrouble(l.subj, l.chain, "", l.occurrence, err)
+			e.publishSeq(carrier, 0, l.subj, entity.Obj{seqEnded: seqEndedError, seqReason: err.Error()})
+			e.releaseRun(carrier, l.subj)
 		}
 	}
 	if len(kept) > 0 {

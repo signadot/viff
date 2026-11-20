@@ -4,8 +4,8 @@ package trigger
 // trigger:rule:<name> entity, and the engine follows the records (follow.go).
 //
 // Everything else a restart needs is durable — a task is mirrored, a sequence's position is a
-// fact on its subject, a claim is a lease in the store, and resume rehydrates a chain's hooks
-// from it — so the program is too: a verse comes back up with its work in progress intact and
+// fact on its subject, a claim is a debt in the store, and a task's hooks are looked up by its
+// chain when it ends — so the program is too: a verse comes back up with its work in progress intact and
 // the charter standing to react to it.
 //
 // It is one entity per rule rather than one charter document, because that is what the

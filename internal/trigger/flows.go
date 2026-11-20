@@ -21,7 +21,8 @@ type flowTask struct {
 	h       task.Handle
 	// hooks is the spawning action, carried so the engine can fire its completion hook (onX)
 	// when THIS task reaches a terminal status — scoped to this task, not every task
-	// about the subject. nil for Adopt (a resumed task has no charter action to hook).
+	// about the subject. nil for a task not spawned here: one adopted with a chain has its
+	// action looked up by it when it ends (hooksOf), and one with none has no action.
 	hooks *Action
 	// chain is this spawn's position in its trigger's action tree, as a KPATH: the trigger
 	// name at the top, then review.onDone, review.onDone.onFailed, … So it is not a private
@@ -115,6 +116,11 @@ func (e *Engine) track(fp flowTask) {
 //
 // A read the store did not answer is asked again, for as long as the engine runs.
 func (e *Engine) reapEnded(fp flowTask) {
+	// Once the engine is open, and no sooner: this is the read that takes an end reap let pass
+	// while it was not.
+	if !e.awaitOpen() {
+		return
+	}
 	ref := mirror.Ref(fp.id)
 	var ent entity.Entity
 	for wait := 250 * time.Millisecond; ; wait = min(2*wait, 8*time.Second) {
@@ -161,33 +167,40 @@ func (e *Engine) Adopt(subject, id string, h task.Handle) {
 }
 
 // AdoptChain is Adopt for a task that came from the charter: chain is the kpath of the
-// action that spawned it, read back off its task entity. The engine navigates to that
-// action and re-attaches its completion hooks, so a resumed task finishes the way it
-// would have — its onDone fires, and a sequence it belongs to advances.
+// action that spawned it, read back off its task entity. It is what the task's end is looked up
+// by: when the record ends, the engine navigates the chain to its action and runs what the status
+// calls for, so a resumed task finishes the way it would have — its onDone fires, and a sequence
+// it belongs to advances (applyHook).
 //
-// This is what a chain being a LOOKUP KEY into the charter is for.
-//
-// Rehydration is best-effort by nature, and the failures are ordinary rather than alarming:
-// a trigger removed while its task ran, or a charter edited so the chain no longer
-// resolves. Both mean there is no action left to run, which is the correct outcome — the
-// task is still adopted, so it stays steerable and is still reaped.
+// The lookup is made when the task ends and not here, because a task is re-attached at start
+// ahead of the charter that holds its rule.
 func (e *Engine) AdoptChain(subject, id, chain string, h task.Handle) {
 	if h == nil || subject == "" {
 		return
 	}
-	fp := flowTask{id: id, subject: subject, h: h, chain: chain}
-	if chain != "" {
-		if t, ok := e.triggerNamed(mirror.TriggerOf(chain)); ok {
-			if act, ok := navigate(t, chain); ok {
-				fp.hooks = act
-			} else {
-				e.tracef("adopt %s: chain %s no longer resolves; no hooks rehydrated", id, chain)
-			}
-		} else {
-			e.tracef("adopt %s: trigger %s is gone; no hooks rehydrated", id, mirror.TriggerOf(chain))
-		}
+	e.track(flowTask{id: id, subject: subject, h: h, chain: chain})
+}
+
+// hooksOf is the action whose completion hooks a task's end runs: the one its firing spawned it
+// from, or for a task this engine did not spawn — one re-attached after a restart, or one whose
+// end is settled with no task at all (Settle) — the action its chain addresses in the charter as
+// it stands. A rule removed while its task ran, or a charter edited so the chain no longer
+// resolves, leaves no action to run, which is the correct outcome and not an error.
+func (e *Engine) hooksOf(fp flowTask) *Action {
+	if fp.hooks != nil || fp.chain == "" {
+		return fp.hooks
 	}
-	e.track(fp)
+	t, ok := e.Rule(mirror.TriggerOf(fp.chain)) // armed or pending: the task ran, whatever its rule waits on
+	if !ok {
+		e.tracef("task %s: rule %s is gone; no hook runs", fp.id, mirror.TriggerOf(fp.chain))
+		return nil
+	}
+	act, ok := navigate(t, fp.chain)
+	if !ok {
+		e.tracef("task %s: chain %s no longer resolves; no hook runs", fp.id, fp.chain)
+		return nil
+	}
+	return act
 }
 
 // retire atomically removes a live task by id, returning its flowTask. Whoever retires it
@@ -215,6 +228,16 @@ func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 	return flowTask{}, false
 }
 
+// hookOccasion is the occasion a hook of rule runs at: the head, about ev (applyHook).
+func (e *Engine) hookOccasion(rule string, ev entity.Event) occasion {
+	var within [][]string
+	if t, ok := e.Trigger(rule); ok {
+		within = firingWithin(t)
+	}
+	return occasion{ev: ev, commit: entity.Commit{Rev: e.store.Head()},
+		snap: &snapCache{}, within: within, reader: e.reader(rule)}
+}
+
 // applyHook fires the completion hook for a terminated task's status (if any), scoped to
 // exactly that task: the hook (a full Action) runs about the task's own subject. The chain
 // name descends by status, so a hook's own spawn gets a distinct deterministic id. ev carries the
@@ -240,7 +263,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// firing's to write, on the subject beside its spawn, where the hook reads it back
 	// (docs/reference/action.md, Bindings); the claim the spawn took keeps the rule from
 	// writing over it in between (applyOne). What makes the hook survive a restart is as it
-	// was: the chain on the record names the action, and AdoptChain re-attaches it.
+	// was: the chain on the record names the action, which is looked up when the task ends.
 	//
 	// Head, as every read the engine makes of the verse as it stands (selectsNow, a lift's
 	// reArm): what this process has been told of, which the task's own terminal write is, with
@@ -255,21 +278,16 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// A rule that has since been removed narrows to nothing and reads whole, which is the same
 	// answer it gave before there was a narrowing to work out.
 	hookOf := mirror.TriggerOf(fp.chain)
-	var hookWithin [][]string
-	if t, ok := e.Trigger(hookOf); ok {
-		hookWithin = firingWithin(t)
-	}
-	oc := occasion{ev: ev, commit: entity.Commit{Rev: e.store.Head()},
-		snap: &snapCache{}, within: hookWithin, reader: e.reader(hookOf)}
+	oc := e.hookOccasion(hookOf, ev)
 	// THE SUBJECT IS RELEASED ONCE THE HOOK HAS RUN, however it ran: the claim the spawn took on
 	// it (applyOne) comes off on every path out of here, and the rule may fire about the subject
 	// again. After the hook's own writes, so that there is no moment in which the claim is free
 	// and what the hook had to say is unwritten (the order stopSeq keeps, for the same reason).
-	// Released whether or not the action still carries a hook: AdoptChain rehydrates the hooks
-	// from the charter as it is now, so a hook removed while its task ran and a restart in
-	// between would leave the claim standing until the next restart's reconcile, and the rule
-	// refusing the subject once the hook is added back. A claim that is not there deletes as a
-	// no-op, and a sequence's run claim lives at the carrier's chain, never at a task's.
+	// Released whether or not the action still carries a hook: a resumed task's is looked up in
+	// the charter as it is now, and a hook removed while its task ran would otherwise leave the
+	// claim standing, and the rule refusing the subject once the hook is added back. A claim
+	// that is not there deletes as a no-op, and a sequence's run claim lives at the carrier's
+	// chain, never at a task's.
 	//
 	// AND WHAT THE HOLD REFUSED IS OWED: a firing refused while the task ran, or between its end
 	// and this release — the hook's own write is one, when its commit is dispatched before the
@@ -298,10 +316,11 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	if status != task.Done && serr == nil {
 		e.stopSeq(fp.chain, subject, status)
 	}
-	if fp.hooks == nil {
+	act := e.hooksOf(fp)
+	if act == nil {
 		return
 	}
-	hook := fp.hooks.hookFor(status)
+	hook := act.hookFor(status)
 	if hook == nil {
 		return
 	}
@@ -649,6 +668,9 @@ func (e *Engine) reap(ev entity.Event) {
 	status := entity.Str(ev.To, "status")
 	if !task.TerminalStatus(status) {
 		return
+	}
+	if !e.isOpen() {
+		return // taken once the engine is open (reapEnded)
 	}
 	// Retired here, in the order the records ended; the hook runs beside the loop, since a hook
 	// can launch a task and one task's launch should not hold up another task's end.

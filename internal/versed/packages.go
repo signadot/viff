@@ -68,7 +68,22 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree, reads []trigger.Su
 	ctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation, exactly as a scope's engine has: each rule watches the subtrees
 	// it reads, which for a package is usually wider than what it may write.
+	// Shut until the tasks the last verse left it are in, which is once the start has
+	// re-attached them, whenever this engine is made. A server nobody started re-attaches none.
+	resuming := s.resuming.Load()
+	if resuming {
+		eng.AwaitTasks()
+	}
 	eng.ObserveScoped(ctx)
+	if resuming {
+		go func() {
+			select {
+			case <-s.leftIn:
+				s.handTasks(eng)
+			case <-ctx.Done():
+			}
+		}()
+	}
 	s.scopeEngs[key] = &scopeEngine{eng: eng, ctx: ctx, cancel: cancel}
 	return eng, nil
 }

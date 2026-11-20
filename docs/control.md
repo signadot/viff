@@ -159,7 +159,7 @@ covers **the work about that subject** in every form, by one test.
 | a rule about to fire | starts no firing | the rule is armed again |
 | a firing waiting at its gate | its question is withdrawn and its ballots are kept. The firing waits. | it asks the same question again, if the rule still selects the subject |
 | a live task | holds at its next boundary. Its `heldBy` names the suspension. | resumes, unless an operator's hold holds it too |
-| a completion hook, or a `seq` step | its writes land. What it would start is parked. | the parked launch starts |
+| a completion hook, or a `seq` step | its writes land. What it would start is parked. A sequence waits at a parked step, as at one whose task is running. | the parked launch starts, and a sequence goes on when that task ends |
 | a deadline on a withdrawn question | its clock stops | it has the time it had left |
 
 `-why` is required. A suspension does not expire. It ends only when somebody lifts it.
@@ -238,8 +238,13 @@ scope may not name the charter of a package, because a package belongs to baseli
 - **A step between deciding and doing.** An answer that was accepted a moment before a
   suspension lands still acts. So does a firing that had passed its checks.
 - **An `on` edge during a suspension**, for a firing that had not started.
-- **A parked launch across a restart.** A suspension parks the spawn of a hook. If verse
-  restarts before the lift, the spawn is lost.
+- **A parked launch whose record the store lost.** A parked launch is recorded, and a
+  restart finds it parked, as it finds the suspension. The store flushes the record to
+  disk just behind the write, so a store that goes down in between may come back without
+  it. Then the launch never starts. Where a claim was waiting on it, the restart settles
+  the claim as a task that was lost: a spawn with hooks runs its `onFailed`, and a
+  sequence parked at a step ends failed, with `orphaned: true`
+  ([completion hooks](reference/action.md#completion-hooks-one-trigger-chaining-visible)).
 - **Names that moved.** A suspension names an address, a rule and a subject, and keeps those
   names. When a package moves or a rule is renamed, the suspension names nothing. The listing
   marks it `covers: false`.

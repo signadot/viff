@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/entity/entitytest"
@@ -154,6 +155,16 @@ func TestFlowTreeSeqCarrierHooks(t *testing.T) {
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	waitField(t, store, prRef("1"), "stage", "built") // only the carrier's onDone writes this
+	// And the sequence says it is done once that hook has run (finishSeq), which is what the
+	// carrier's status is read from.
+	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		if d := entity.Get(eng.seqFacts("build", prRef("1")), seqDone); d != nil && d.Bool {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the sequence never said it was done")
+		}
+	}
 
 	tree := onlyTree(t, eng, `demo.pr."1"`)
 	done, ok := find(tree.Roots, "build.onDone")

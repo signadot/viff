@@ -369,7 +369,7 @@ Everything else that a restart needs is durable in the same way.
 |---|---|
 | a task | it is mirrored |
 | the position of a sequence | a fact on its subject |
-| a claim | a lease in the store |
+| a claim | a record in the store of what verse owes |
 | an open question | a record, with its ballots on it |
 | an open selection | a channel, with its ballots beside it |
 
