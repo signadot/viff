@@ -126,16 +126,20 @@ func (e *Engine) open(ctx context.Context) {
 
 // settleLeft settles every claim standing under this engine's owner prefix, spawn claims and
 // then the run claims that still stand, since an element's own claim settles its run. A claim
-// stays unsettled only where the store did not answer for it, or for what says how to pay it,
-// and a claim left standing with nothing behind it holds its subject for as long as this verse
-// runs. So the claims are listed and settled again until the store has answered for each, for
-// as long as the engine runs, and the engine stays shut meanwhile.
+// left unsettled because the store did not answer for it, or for what says how to pay it, holds
+// its subject for as long as this verse runs. So the claims are listed and settled again until
+// the store has answered for each, for as long as the engine runs, and the engine stays shut
+// meanwhile. A read the store refused is not asked again (unsettled).
 func (e *Engine) settleLeft(ctx context.Context) bool {
 	for wait := 250 * time.Millisecond; ; wait = min(2*wait, 8*time.Second) {
 		claims, err := entity.BelowErr(e.store, func(r entity.Ref) bool {
 			return r.ChildOf(entity.VerseRoot, mirror.System, mirror.ClaimKind)
 		}, 1, entity.VerseRoot, mirror.System, mirror.ClaimKind)
-		e.settleUnread = err != nil
+		e.settleUnread = false
+		if err != nil {
+			e.logger.Warn("the claims the last verse left could not be listed", "err", err)
+			e.settleUnread = true
+		}
 		for _, spawns := range []bool{true, false} {
 			for _, claim := range claims {
 				if ctx.Err() != nil {
@@ -152,12 +156,21 @@ func (e *Engine) settleLeft(ctx context.Context) bool {
 		if !e.settleUnread {
 			return true
 		}
-		e.logger.Warn("the claims the last verse left could not all be read; the engine stays shut and asks again", "err", err)
+		e.logger.Warn("the claims the last verse left could not all be read; the engine stays shut and asks again")
 		select {
 		case <-ctx.Done():
 			return false
 		case <-time.After(wait):
 		}
+	}
+}
+
+// unsettled notes a claim left unsettled for a read that failed with err. A read the store did
+// not answer is asked again (settleLeft). One it refused is not: asking again gets the same
+// answer, and the claim stands with the engine open.
+func (e *Engine) unsettled(err error) {
+	if !errors.Is(err, entity.ErrForbidden) {
+		e.settleUnread = true
 	}
 }
 
@@ -205,7 +218,7 @@ func (e *Engine) settleClaim(claim entity.Entity) bool {
 	now, ok, err := e.store.Get(claim.Ref)
 	if err != nil {
 		e.logger.Warn("a claim could not be settled: it could not be read", "claim", id, "err", err)
-		e.settleUnread = true
+		e.unsettled(err)
 		return false
 	}
 	if !ok || entity.Str(now.Payload, takenField) != entity.Str(claim.Payload, takenField) {
@@ -252,7 +265,7 @@ func (e *Engine) settleRun(subj entity.Ref, chain string, since int64) bool {
 	facts, err := e.readSeqFacts(chain, subj)
 	if err != nil {
 		e.logger.Warn("a run's claim could not be settled: its subject could not be read", "chain", chain, "subject", subj.String(), "err", err)
-		e.settleUnread = true
+		e.unsettled(err)
 		return false
 	}
 	if got := entity.Str(facts, seqShape); got != "" && got != e.shapeOf(chain) {
@@ -310,7 +323,7 @@ func (e *Engine) settleTask(id string, subj entity.Ref, chain string, since int6
 	ent, ok, err := e.store.Get(ref)
 	if err != nil {
 		e.logger.Warn("a claim could not be settled: its task's record could not be read", "task", id, "err", err)
-		e.settleUnread = true
+		e.unsettled(err)
 		return false
 	}
 	if ok && mirror.OccurrenceOf(ent.Payload) < since {

@@ -95,17 +95,31 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 		e.releaseRun(chain, subj)
 		return
 	}
-	// A run starts with no conclusion: what a run at an earlier shape left says nothing of this
-	// one, and read as this one's it is a run that has concluded (settleRun).
+	e.clearConclusion(chain, subj)
 	e.publishSeq(chain, oc.parent, subj, entity.Obj{
-		seqStep:   0,
-		seqSteps:  len(carrier.Seq),
-		seqShape:  shape,
-		seqDone:   nil,
-		seqEnded:  nil,
-		seqReason: nil,
+		seqStep:  0,
+		seqSteps: len(carrier.Seq),
+		seqShape: shape,
 	})
 	e.advanceSeq(chain, carrier, 0, oc, subj, src, false)
+}
+
+// clearConclusion removes what a run before left on the subject of how it concluded. A run
+// starts with none: what a run at an earlier shape left says nothing of this one, and read as
+// this one's it is a run that has concluded (settleRun). Each is removed at its path, where it
+// stands (clearHookFailure says why), so a subject that never ran the sequence is not written.
+func (e *Engine) clearConclusion(chain string, subj entity.Ref) {
+	facts := e.seqFacts(chain, subj)
+	trig := mirror.TriggerOf(chain)
+	for _, field := range []string{seqDone, seqEnded, seqReason} {
+		if entity.Get(facts, field) == nil {
+			continue
+		}
+		if _, _, err := e.caused(chain, 0).Write(entity.Write{At: subj.At(VerseRoot, CharterKey, trig, field)}); err != nil {
+			e.logger.Warn("a sequence's earlier conclusion could not be cleared from its subject",
+				"chain", chain, "subject", subj.String(), "field", field, "err", err.Error())
+		}
+	}
 }
 
 // advanceSeq runs elements from i onward until one SPAWNS — at which point the sequence waits
