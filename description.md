@@ -1,7 +1,7 @@
 # task: a task ends on its record, a claim is what versed owes, and a runner keeps a lease
 
-Status: implemented, as nine commits on `task-end-5-runner-lease` over `main`, each stage
-reviewed and green on `make check` and the full suite. It replaces the approach in PR #14. The
+Status: implemented, as eleven commits on `task-end-5-runner-lease` over `main`: each stage
+reviewed, then the stack reviewed whole, and green on `make check` and the full suite. It replaces the approach in PR #14. The
 design is meant to be taken whole or dropped: every hole listed under "The problem" is closed by
 the four statements of "The model", and what they do not cover is said under "Beyond the model".
 
@@ -158,8 +158,8 @@ the packages its directory leaves out first.
 task is cancelled, and the claim is removed once the task's record has ended.
 
 **"Watched" holds on a runner that keeps the lease.** It does not cover a runner that froze and
-then continued, a runner that ignores the lease or a cancel, or a command that detached into a
-session of its own. A subprocess task whose lease runs out is stopped by ending its process, so
+then continued, a runner that ignores the lease or a cancel, a runner whose answers to versed's
+subscribes are lost on the way back, or a command that detached into a session of its own. A subprocess task whose lease runs out is stopped by ending its process, so
 its teardown steps do not run. "Where 'Watched' does not hold" has the table.
 
 **Deploy order.** versed first, runners after, in one tag. A runner that keeps the lease under a
@@ -190,8 +190,10 @@ versed that subscribes once ends every task at four minutes.
   mirror's terminal write is. A release that is dropped is a subject held until a restart.
 - **`onOrphaned` is removed from the action.**
 
-A hook whose own write fails is a hook failure, recorded on the subject and the task as now.
-The claim is released either way.
+A hook that cannot be resolved, a reference with nothing behind it, is a hook failure, recorded
+on the subject and the task as now. A hook's write the store does not take is not recorded: it
+is logged as a warning and its effect is lost, since recording it needs the store that did not
+take the write. The claim is released either way.
 
 ### Sequences
 
@@ -371,8 +373,9 @@ cases that stop.
   so. A sequence's elements are still at most once.
 - **A sequence caught between elements by a restart stops.** Where the element in flight has
   no ended task to go by, the run ends `failed` or `error` and does not continue.
-- **A hook's write that fails as docd goes down is a hook failure,** not a retry. It is
-  recorded on the subject, where it is seen.
+- **A hook's write that fails as docd goes down is lost,** not retried. It is logged as a
+  warning and recorded nowhere, since the record would need the store that did not take the
+  write. The claim is released once docd returns, and the subject stands where the rule left it.
 - **Four requests a lease per live task,** from versed to its runner: one a minute at the
   default.
 - **A hook runs one store round trip later than it can today,** since it waits for the record.
@@ -389,8 +392,9 @@ that, the task can outlive versed's `failed`.
 |---|---|---|
 | Froze, then continued | the rest of its lease | yes, if the rule fires again within it |
 | Ignores the lease | its own end or `timeout` | yes, if the rule fires again |
+| Answers subscribes whose answers never reach versed | one lease after versed's last subscribe | yes, if the rule fires again within it |
 
-In both rows versed's books are the same: the record is `failed`, `orphaned: true`, the hook
+In every row versed's books are the same: the record is `failed`, `orphaned: true`, the hook
 has run and the subject is free. What differs is the task's process, and until it stops it
 can still act on anything it reaches without versed.
 
