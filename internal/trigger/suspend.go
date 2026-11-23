@@ -855,6 +855,7 @@ type parkedLaunch struct {
 	binding    launch.Binding
 	occurrence int64
 	passed     []launch.Passed
+	within     [][]string // the firing's narrowing (launch); none on one read back from its record
 }
 
 // park holds a launch, and records it (recordParked).
@@ -912,7 +913,7 @@ func (e *Engine) releaseLaunches() {
 			kept = append(kept, l)
 			continue
 		}
-		h, err := e.launch(l.a, l.chain, l.subj, l.binding, l.occurrence, l.passed)
+		h, err := e.launch(l.a, l.chain, l.subj, l.binding, l.occurrence, l.passed, l.within)
 		if h == nil && err == nil && len(e.settled(mirror.TriggerOf(l.chain), l.subj)) > 0 {
 			// A suspension landed between the check above and the start, which refuses under
 			// one (startHooked): the launch is held again, and not one that started nothing.

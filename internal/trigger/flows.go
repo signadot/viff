@@ -24,6 +24,10 @@ type flowTask struct {
 	// about the subject. nil for a task not spawned here: one adopted with a chain has its
 	// action looked up by it when it ends (hooksOf), and one with none has no action.
 	hooks *Action
+	// within is what the hooks read by (occasion.within): the narrowing of the firing that
+	// spawned the task, worked out from the rule that fired, so that a hook reads what its own
+	// rule reads whatever has replaced that rule since. Only with hooks; nil reads whole.
+	within [][]string
 	// chain is this spawn's position in its trigger's action tree, as a KPATH: the trigger
 	// name at the top, then review.onDone, review.onDone.onFailed, … So it is not a private
 	// naming scheme but the address of the spawning Action inside the charter — which is
@@ -239,7 +243,8 @@ func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 
 // hookOccasion is the occasion a hook of rule runs at: the head, about ev (applyHook). Its reads
 // are narrowed by the rule armed or pending, as hooksOf finds it: a hook paid before the engine
-// opens, when nothing is armed, reads as narrowly as one paid after.
+// opens, when nothing is armed, reads as narrowly as one paid after. A hook the firing carried
+// is narrowed by that firing's rule instead (flowTask.within).
 func (e *Engine) hookOccasion(rule string, ev entity.Event) occasion {
 	var within [][]string
 	if t, ok := e.Rule(rule); ok {
@@ -294,6 +299,9 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// answer it gave before there was a narrowing to work out.
 	hookOf := mirror.TriggerOf(fp.chain)
 	oc := e.hookOccasion(hookOf, ev)
+	if fp.hooks != nil {
+		oc.within = fp.within // its action is the firing's, and so is what it reads
+	}
 	// THE SUBJECT IS RELEASED ONCE THE HOOK HAS RUN, however it ran: the claim the spawn took on
 	// it (applyOne) comes off on every path out of here, and the rule may fire about the subject
 	// again. After the hook's own writes, so that there is no moment in which the claim is free

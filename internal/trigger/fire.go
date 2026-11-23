@@ -580,14 +580,15 @@ func matchText(m map[string]any) string {
 // this task ends), chain is this spawn's position in a hook chain (for deterministic nested
 // ids). Public Spawn passes nil/"" — an ordinary spawn with no chaining.
 func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain string) task.Handle {
-	return e.startHooked(id, spec, hooks, chain, e.spawn)
+	return e.startHooked(id, spec, hooks, chain, nil, e.spawn)
 }
 
 // startHooked is spawnHooked with what starts the task named: the Spawner, or for a launch the
 // engine refuses itself, the Spawner given the refusal, which starts nothing and answers a task
 // that has already failed — one that passes every check a spawn does and whose end track takes
-// at once, so its completion hooks run as a started task's would.
-func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain string,
+// at once, so its completion hooks run as a started task's would. within is the narrowing of the
+// firing that spawns it, which its hooks read by (flowTask.within).
+func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain string, within [][]string,
 	start func(id string, spec launch.Spec) task.Handle) task.Handle {
 	if e.spawn == nil {
 		e.tracef("no spawner configured; cannot spawn %q", id)
@@ -626,7 +627,7 @@ func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain s
 	e.tracef("spawn task %s (doer=%s): %s", id, spec.Who(), spec.Prompt)
 	h := start(id, spec)
 	if h != nil && spec.Subject != "" {
-		e.track(flowTask{id: id, subject: spec.Subject, h: h, hooks: hooks, chain: chain, occurrence: spec.Occurrence})
+		e.track(flowTask{id: id, subject: spec.Subject, h: h, hooks: hooks, within: within, chain: chain, occurrence: spec.Occurrence})
 	}
 	return h
 }

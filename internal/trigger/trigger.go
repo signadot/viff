@@ -1188,7 +1188,7 @@ func (a Action) applyClaimed(chain string, oc occasion, subj entity.Ref, e *Engi
 	if src == fromCause {
 		taskFacts(b)
 	}
-	return e.launchSpawn(a, chain, subj, b, oc.commit.Rev, oc.passed)
+	return e.launchSpawn(a, chain, subj, b, oc.commit.Rev, oc.passed, oc.within)
 }
 
 // spawnSubjectValue is what `subject.value` is in a spawn's expressions: the subject's payload,
@@ -1332,15 +1332,15 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 // revision this run is about, 0 when nothing caused it; passed is the gates the firing passed,
 // nil for a launch no firing's gates admitted.
 func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, b launch.Binding,
-	occurrence int64, passed []launch.Passed) (task.Handle, error) {
+	occurrence int64, passed []launch.Passed, within [][]string) (task.Handle, error) {
 	// A SUSPENDED SUBJECT STARTS NOTHING. A hook's writes and derives have landed by now —
 	// recording is not progress — and what it would start is parked here. The lift starts it.
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
-		e.park(parkedLaunch{a: a, chain: chain, subj: subj, binding: b, occurrence: occurrence, passed: passed})
+		e.park(parkedLaunch{a: a, chain: chain, subj: subj, binding: b, occurrence: occurrence, passed: passed, within: within})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
 		return nil, errParked
 	}
-	return e.launch(a, chain, subj, b, occurrence, passed)
+	return e.launch(a, chain, subj, b, occurrence, passed, within)
 }
 
 // ownerSettle is how long a firing spawning `as: subject` waits for the subject's owner record to
@@ -1348,8 +1348,9 @@ func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, b launch.B
 const ownerSettle = 250 * time.Millisecond
 
 // launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
+// within is the firing's narrowing (occasion.within), which the task's hooks read by.
 func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Binding,
-	occurrence int64, passed []launch.Passed) (task.Handle, error) {
+	occurrence int64, passed []launch.Passed, within [][]string) (task.Handle, error) {
 	spec, refused := a.Spawn.Bind(b)
 	// What the firing's gates settled, the engine's to say and nobody else's: it is what a
 	// credential vouches for, so a value a charter wrote there does not survive to it.
@@ -1417,14 +1418,14 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Bindin
 		e.tracef("trigger %s: %v; the task fails without starting", chain, err)
 		e.failed(chain, subj, err)
 		spec.Refusal = err.Error()
-		return e.startHooked(id, spec, &hooks, chain, func(id string, spec launch.Spec) task.Handle {
+		return e.startHooked(id, spec, &hooks, chain, within, func(id string, spec launch.Spec) task.Handle {
 			if h := e.spawn(id, spec); h != nil {
 				return h
 			}
 			return task.FailedHandle(spec.Refusal)
 		}), nil
 	}
-	return e.spawnHooked(id, spec, &hooks, chain), nil
+	return e.startHooked(id, spec, &hooks, chain, within, e.spawn), nil
 }
 
 // installLaunch is a charter's spawn as the launch it will become, for the checks made at
