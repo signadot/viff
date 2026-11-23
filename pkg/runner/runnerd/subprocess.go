@@ -148,7 +148,10 @@ func (h *SubprocessHandler) Describe(desc runner.Description) { h.describe = des
 func (h *SubprocessHandler) OwnEnv(of EnvOf) { h.owned = of }
 
 // HTTPHandler serves the task contract and GET /describe.
-func (h *SubprocessHandler) HTTPHandler() http.Handler {
+func (h *SubprocessHandler) HTTPHandler() http.Handler { return asRunner(h.routes()) }
+
+// routes is the runner's routes, unmarked (HTTPHandler marks them).
+func (h *SubprocessHandler) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, h.describe)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/signadot/verse/pkg/codec"
+	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/client"
 	"github.com/signadot/verse/pkg/task"
 )
@@ -24,6 +25,7 @@ func TestAttachToAFailedTaskReportsWhyItFailed(t *testing.T) {
 	const reason = "launch refused: the task process exited before it served anything (exit status 1)"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(runner.AnswerHeader, "1")
 		// The events route has nothing to forward — the truthful 404 that used to be the
 		// whole report.
 		if strings.HasSuffix(r.URL.Path, "/events") {
@@ -79,6 +81,7 @@ func TestARefusedStreamFailsOnlyATaskTheRunnerDoesNotHave(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set(runner.AnswerHeader, "1")
 				if strings.HasSuffix(r.URL.Path, "/events") {
 					http.Error(w, "no stream here", http.StatusNotFound)
 					return
@@ -112,6 +115,7 @@ func TestAnOutageOnTheStreamFailsNothing(t *testing.T) {
 	for name, task := range map[string]int{"the task cannot be asked either": http.StatusBadGateway, "the task is not found": http.StatusNotFound} {
 		t.Run(name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set(runner.AnswerHeader, "1")
 				if strings.HasSuffix(r.URL.Path, "/events") {
 					http.Error(w, "down", http.StatusBadGateway)
 					return
@@ -131,6 +135,7 @@ func TestAnOutageOnTheStreamFailsNothing(t *testing.T) {
 // with or without a reason.
 func TestARefusedStreamReportsTheEndTheRunnerHolds(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(runner.AnswerHeader, "1")
 		if strings.HasSuffix(r.URL.Path, "/events") {
 			http.Error(w, "no stream here", http.StatusNotFound)
 			return
@@ -144,5 +149,18 @@ func TestARefusedStreamReportsTheEndTheRunnerHolds(t *testing.T) {
 	ev, open := <-ch
 	if !open || ev.Text != string(task.Failed) || !ev.Orphaned {
 		t.Fatalf("frame = %+v (open %v), want the runner's failed, orphaned end", ev, open)
+	}
+}
+
+// A 404 FROM IN FRONT OF THE RUNNER IS NOT THE RUNNER'S. An ingress's default backend, a route
+// not yet set up, a pod that is not the runner: each answers 404 to the stream and to the task,
+// and neither is the runner saying it has no such task. The stream closes with no frame, and the
+// task is asked about again.
+func TestA404FromInFrontOfTheRunnerEndsNothing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(http.NotFound))
+	defer srv.Close()
+	ch, _ := client.HTTP(srv.URL).Attach("run-1").Subscribe()
+	if ev, open := <-ch; open {
+		t.Fatalf("a frame %+v from a server that is not the runner, want the stream closed with none", ev)
 	}
 }

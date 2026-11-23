@@ -264,18 +264,27 @@ func (h *remoteHandle) subscribe(since int64, sayAccepted bool) (<-chan task.Eve
 	// requests, so a 404 on the stream alone is not the runner's word on the task: asked a
 	// moment apart, the runner may hold the task by the second. It has no such task when it
 	// answers 404 for the task as well: the task is gone and nothing will ever say how it ended,
-	// so it ends here, failed and orphaned. Any other refusal, and a runner that could not be
-	// asked about the task, says nothing about it: the stream closes with no frame, as a request
-	// that got no response does, and whoever reads it asks again.
+	// so it ends here, failed and orphaned. Each 404 is the runner's only where the runner gave
+	// it (runner.AnswerHeader). Any other refusal, and a runner that could not be asked about the
+	// task, says nothing about it: the stream closes with no frame, as a request that got no
+	// response does, and whoever reads it asks again.
 	if resp.StatusCode >= http.StatusBadRequest {
 		resp.Body.Close()
 		snap, said := h.ask()
 		switch {
 		case said == saidSnapshot && snap.Status.Terminal():
 			out <- task.Event{Kind: task.EventStatus, Text: string(snap.Status), Err: snap.Err, Orphaned: snap.Orphaned}
-		case said == saidNoTask && resp.StatusCode == http.StatusNotFound:
+		case said == saidNoTask && resp.StatusCode == http.StatusNotFound && runner.Answered(resp.Header):
 			out <- task.Event{Kind: task.EventStatus, Text: string(task.Failed), Orphaned: true, Err: noSuchTask}
 		}
+		close(out)
+		cancel()
+		return out, func() {}
+	}
+	// AN ANSWER THAT IS NOT THE RUNNER'S IS NONE: a page served in its place accepts nothing, and
+	// keeps no task's wait. The stream closes with no frame, for its reader to ask again.
+	if !runner.Answered(resp.Header) {
+		resp.Body.Close()
 		close(out)
 		cancel()
 		return out, func() {}
@@ -394,7 +403,9 @@ func (h *remoteHandle) ask() (task.Snapshot, int) {
 		return task.Snapshot{}, saidNothing
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
+	// A 404 is the runner's word only where the runner gave it (runner.AnswerHeader): anything
+	// in front of it answers 404 to a route it does not have.
+	if resp.StatusCode == http.StatusNotFound && runner.Answered(resp.Header) {
 		return task.Snapshot{}, saidNoTask
 	}
 	if resp.StatusCode >= http.StatusBadRequest {

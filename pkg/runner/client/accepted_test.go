@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/runner/client"
 	"github.com/signadot/verse/pkg/task"
 )
@@ -18,6 +19,7 @@ func TestAnAcceptedSubscribeSaysSo(t *testing.T) {
 	var refuse atomic.Bool
 	release := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(runner.AnswerHeader, "1")
 		if refuse.Load() {
 			http.Error(w, "busy", http.StatusServiceUnavailable)
 			return
@@ -65,5 +67,26 @@ func TestAnAcceptedSubscribeSaysSo(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("a refused subscribe stayed open")
+	}
+}
+
+// A PAGE SERVED IN THE RUNNER'S PLACE ACCEPTS NOTHING. A login or maintenance page answers the
+// subscribe 200, and it is not the runner's answer: the stream closes with no frame, as a
+// subscribe nobody answered does, and keeps no task's wait.
+func TestASubscribeAnsweredByAnotherServerIsNotAccepted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html>sign in</html>"))
+	}))
+	t.Cleanup(srv.Close)
+	ch, stop := client.HTTP(srv.URL).Attach("p").(task.Accepting).SubscribeAccepted(0)
+	defer stop()
+	select {
+	case ev, ok := <-ch:
+		if ok {
+			t.Fatalf("a page in the runner's place answered %+v, want the stream closed with no frame", ev)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream stayed open on a page in the runner's place")
 	}
 }

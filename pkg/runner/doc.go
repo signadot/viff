@@ -46,6 +46,12 @@
 // runner answers that route at once, and ends a task whose lease runs out as failed and
 // orphaned, on its terminal frame and its snapshot (docs/runners.md).
 //
+// # Answers
+//
+// Every answer a runner gives on these routes carries AnswerHeader, its refusals included. What
+// verse acts on as a fact about a task, a 404 for it and an accepted subscribe, it takes only
+// from an answer that carries it: anything in front of a runner can answer HTTP.
+//
 // Bodies are tony by default; a request's Content-Type and Accept pick the format. A refusal
 // is a status, and the client reads each as one of the errors in pkg/task/errors.go.
 package runner

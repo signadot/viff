@@ -54,7 +54,10 @@ func reasonRunner(t *testing.T, verseURL, reason string) *face {
 		_ = sse.Send(task.Event{Kind: task.EventStatus, Task: r.PathValue("id"), Text: string(task.Failed), Err: reason})
 		sse.Flush()
 	})
-	return provenFace(t, verseURL, mux, func() {})
+	return provenFace(t, verseURL, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(runner.AnswerHeader, "1") // a runner's answer
+		mux.ServeHTTP(w, r)
+	}), func() {})
 }
 
 // A FAILED TASK SAYS WHY, where a task is read. The reason a runner puts on its terminal frame

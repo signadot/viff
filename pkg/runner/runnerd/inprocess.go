@@ -130,7 +130,10 @@ func (d *InProcessHandler) OwnEnv(of EnvOf) { d.owned = of }
 
 // HTTPHandler returns the HTTP routes (Go 1.22 method+wildcard patterns): the task contract, and
 // GET /describe.
-func (d *InProcessHandler) HTTPHandler() http.Handler {
+func (d *InProcessHandler) HTTPHandler() http.Handler { return asRunner(d.routes()) }
+
+// routes is the runner's routes, unmarked (HTTPHandler marks them).
+func (d *InProcessHandler) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, d.describe)

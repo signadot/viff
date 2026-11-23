@@ -266,6 +266,11 @@ This is the runner's part of the contract:
   are still being cloned has a stream that is open and has no frames yet.
 - **A subscribe that comes after the lease ran out renews nothing.** It is answered with the
   task's end. A launch of the same id after that starts the work again.
+- **Every answer carries `Verse-Runner`.** Anything can answer HTTP between verse and a runner:
+  an ingress's default backend, a route not yet set up, a login page. Verse takes a subscribe as
+  accepted only where the answer carries the header. It takes a `404` as the runner having no
+  such task, which ends the task, only where the stream's `404` and the task's both carry it. An
+  answer without it is taken as no answer.
 
 Verse's part is to ask. It subscribes to each running task again four times within the lease, and
 stops waiting a minute after the lease has gone by with no subscribe the runner accepted. It then
