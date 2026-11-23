@@ -378,18 +378,25 @@ rules:
 	}
 }
 
-// A PRUNE LOCKS EVERY PACKAGE IT LEAVES OUT AT ONCE. It leaves out two: top.zed, whose task does
-// not take its cancel yet, and top.alpha, behind it deepest-first. An install at top.alpha while
-// the prune waits on top.zed's task is refused, the package being uninstalled, or lands once that
-// uninstall is over; and one that lands stands once the prune is through, which then refuses for
-// it: the prune does not take down unasked what was installed while it waited.
+// A PRUNE LOCKS EVERY PACKAGE IT LEAVES OUT AT ONCE. It leaves out two, top.zed and top.alpha,
+// each with a task that does not take its cancel yet, top.alpha behind top.zed deepest-first.
+// While the prune waits on them an install at top.alpha is refused, as at top.zed: neither is
+// open to an install the prune would then take down unasked. Once the runner answers, both are
+// gone and the request is in.
 func TestAPruneLocksEveryPackageItLeavesOutAtOnce(t *testing.T) {
 	deaf := new(atomic.Bool)
-	srv, url, _ := runningPackageAt(t, "top.zed", strings.Replace(reviewAtDemo, `"demo.pr.*"`, `"top.zed.pr.*"`, 1), deaf)
-	const alpha = `{name: note, condition: {subject: {path: "top.alpha.*", value: {stage: open}}}, action: {patch: {stage: noted}}}`
-	if code, msg := installAt(t, url, "top.alpha", alpha); code != 201 {
+	srv, url, _ := runningPackageAt(t, "top.zed", reviewAt("top.zed"), deaf)
+	noLocalRunner(t, srv) // top.alpha's task runs on the runner top.zed's does
+	if code, msg := installAt(t, url, "top.alpha", reviewAt("top.alpha")); code != 201 {
 		t.Fatalf("installing at top.alpha = %d: %s", code, msg)
 	}
+	pr := entity.RefAt("top", "alpha", "pr", "1")
+	testerOwns(t, srv, pr)
+	entitytest.Set(t, srv.Store, pr, entity.Obj{"stage": "open"}.Payload())
+	waitUntil(t, "top.alpha's task to be running", func() bool {
+		eng := srv.packageEngineIfRunning("top.alpha")
+		return eng != nil && len(eng.Running()) > 0
+	})
 	deaf.Store(true)
 	type answer struct {
 		code int
@@ -401,21 +408,26 @@ func TestAPruneLocksEveryPackageItLeavesOutAtOnce(t *testing.T) {
 		pruned <- answer{code, msg}
 	}()
 	waitUntil(t, "the prune to lock top.zed", func() bool { return srv.lockedAt("", "top.zed") != nil })
-	time.Sleep(200 * time.Millisecond) // the cancel is asked, and not taken
-	installed, msg := installAt(t, url, "top.alpha", alpha)
-	if installed != 201 && installed != 429 {
-		t.Fatalf("installing at top.alpha while the prune waits = %d: %s", installed, msg)
+	if code, msg := installAt(t, url, "top.alpha", reviewAt("top.alpha")); code != 429 {
+		t.Fatalf("installing at top.alpha while the prune waits on top.zed = %d, want 429: %s", code, msg)
 	}
 	deaf.Store(false) // the runner answers, and the prune goes on
-	got := <-pruned
-	if srv.packagesSeenAt("top.zed") {
-		t.Fatalf("top.zed stands after the prune (%d: %s)", got.code, got.msg)
+	select {
+	case got := <-pruned:
+		if got.code != 201 {
+			t.Fatalf("the prune, once the runner answers = %d: %s", got.code, got.msg)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the prune did not answer once the runner did")
 	}
-	if stands := srv.packagesSeenAt("top.alpha"); stands != (installed == 201) {
-		t.Fatalf("top.alpha installed = %v after an install there answered %d while the prune waited; the prune answered %d: %s",
-			stands, installed, got.code, got.msg)
+	if srv.packagesSeenAt("top.zed") || srv.packagesSeenAt("top.alpha") {
+		t.Fatalf("after the prune: top.zed installed = %v, top.alpha installed = %v", srv.packagesSeenAt("top.zed"), srv.packagesSeenAt("top.alpha"))
 	}
-	t.Logf("the install at top.alpha answered %d, the prune %d", installed, got.code)
+}
+
+// reviewAt is reviewAtDemo for a package at another address.
+func reviewAt(at string) string {
+	return strings.Replace(reviewAtDemo, `"demo.pr.*"`, `"`+at+`.pr.*"`, 1)
 }
 
 // failCharterListing is a store whose listing of the charter's records fails while on is set.

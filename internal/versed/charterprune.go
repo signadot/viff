@@ -21,10 +21,11 @@ import (
 // A PACKAGE THE REQUEST DOES NOT HOLD IS UNINSTALLED, FIRST, as `-R` uninstalls it (uninstall.go):
 // locked, its tasks cancelled and their hooks run, then removed. Each is asked about before any
 // is touched (mayUninstall), all are locked at once, under the charter lock, and uninstalled
-// together, and the install begins once every one is gone, so nothing of the request is
-// installed beside what it replaces, and nothing is installed meanwhile where it is taking down. An uninstall is not undone: an install refused
-// after it leaves those packages removed, which is where the request was taking them, and says
-// so. The request waits for as long as their tasks take to end.
+// together, and the install begins once every one is gone: nothing of the request is installed
+// beside what it replaces, and nothing is installed meanwhile where it is taking down. An
+// uninstall is not undone: an install refused after it leaves those packages removed, which is
+// where the request was taking them, and says so. The request waits for as long as their tasks
+// take to end.
 //
 // A PACKAGE THE REQUEST HOLDS IS NOT TAKEN DOWN AND PUT BACK. It is installed over, its rules
 // replaced by name as any install does, and then loses what its file leaves out, so a rule the
@@ -151,7 +152,11 @@ func pruneStopped(root string, gone []string, errs []error) string {
 		if errs[i] == nil {
 			done = append(done, at)
 		} else {
-			not = append(not, fmt.Sprintf("%s (%v)", at, errs[i]))
+			why := errs[i].Error()
+			if !strings.HasPrefix(why, at+":") {
+				why = at + ": " + why
+			}
+			not = append(not, why)
 		}
 	}
 	said := "none of the charters it leaves out was uninstalled"

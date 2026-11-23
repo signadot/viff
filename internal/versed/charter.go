@@ -518,8 +518,8 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		wait = d
 	}
 	store, scope, at, prune := s.scopedStore(r), q.Get("scope"), q.Get("at"), q.Get("prune")
-	// A PRUNE UNINSTALLS FIRST, off the lock (charterprune.go): the packages the request leaves
-	// out are gone, their tasks ended, before anything of it is installed.
+	// A PRUNE UNINSTALLS FIRST (charterprune.go): the packages the request leaves out are locked
+	// under the charter lock and gone, their tasks ended off it, before anything is installed.
 	var gone []string
 	if prune != "" {
 		var code int

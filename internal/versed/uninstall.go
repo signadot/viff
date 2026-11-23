@@ -79,6 +79,11 @@ func (s *Server) beginUninstall(store entity.Store, at string) (*uninstalling, e
 // running.
 func (u *uninstalling) wait(ctx context.Context, at string) error {
 	select {
+	case <-u.done: // over, whatever ctx says by now
+		return u.err
+	default:
+	}
+	select {
 	case <-u.done:
 		return u.err
 	case <-ctx.Done():
