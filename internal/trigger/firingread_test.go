@@ -237,3 +237,59 @@ func reviewReplacedWhileRunning(t *testing.T, pending bool) map[string]any {
 	}
 	return subjectNow(t, store)
 }
+
+// A SEQUENCE GOES ON BY THE RULE AS IT STANDS, and reads by it. An edit to the carrier's onDone
+// that leaves the elements alone, made while an element's task runs, is the run's onDone from
+// then on, and it reads the places the edited rule names: not only the firing's.
+func TestASequenceEditedWhileItsElementRunsReadsByTheRuleAsItStands(t *testing.T) {
+	store := entitytest.Store(t)
+	eng := New(store, task.AutoResolver{})
+	sp := &spawned{by: map[string]*heldHandle{}, store: store}
+	eng.SetSpawner(sp.spawn)
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: review
+  condition:
+    subject: {path: "demo.pr.*", value: {stage: open}}
+  action:
+    seq:
+    - spawn: {agent: {name: verse}, prompt: review}
+    onDone:
+      patch: {stage: finished}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, store, entity.RefAt("git", "verse", "head"), entity.Obj{"sha": "bbb222"}.Payload())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	<-eng.Opened()
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	id := spawnID(eng.idOwner(), chainID(seqChain("review", 0)), prRef("1"))
+	h := sp.wait(t, id)
+
+	if err := eng.InstallTrigger(mustParseCharter(t, `
+- name: review
+  condition:
+    subject: {path: "demo.pr.*", value: {stage: open}}
+  action:
+    seq:
+    - spawn: {agent: {name: verse}, prompt: review}
+    onDone:
+      patch: {stage: finished, covering: !get-path {at: "git.verse.head", path: sha}}
+`)); err != nil {
+		t.Fatalf("InstallTrigger: %v", err)
+	}
+	h.finish()
+	deadline := time.Now().Add(3 * time.Second)
+	var got map[string]any
+	for time.Now().Before(deadline) {
+		got = subjectNow(t, store)
+		if got["stage"] == "finished" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got["covering"] != "bbb222" || got["stage"] != "finished" {
+		t.Fatalf("subject = %v, want the new onDone's patch: finished, covering bbb222", got)
+	}
+}

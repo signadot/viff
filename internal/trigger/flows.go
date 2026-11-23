@@ -244,7 +244,7 @@ func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 // hookOccasion is the occasion a hook of rule runs at: the head, about ev (applyHook). Its reads
 // are narrowed by the rule armed or pending, as hooksOf finds it: a hook paid before the engine
 // opens, when nothing is armed, reads as narrowly as one paid after. A hook the firing carried
-// is narrowed by that firing's rule instead (flowTask.within).
+// is narrowed by that firing's rule instead (flowTask.within, in applyHook).
 func (e *Engine) hookOccasion(rule string, ev entity.Event) occasion {
 	var within [][]string
 	if t, ok := e.Rule(rule); ok {
@@ -299,9 +299,6 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// answer it gave before there was a narrowing to work out.
 	hookOf := mirror.TriggerOf(fp.chain)
 	oc := e.hookOccasion(hookOf, ev)
-	if fp.hooks != nil {
-		oc.within = fp.within // its action is the firing's, and so is what it reads
-	}
 	// THE SUBJECT IS RELEASED ONCE THE HOOK HAS RUN, however it ran: the claim the spawn took on
 	// it (applyOne) comes off on every path out of here, and the rule may fire about the subject
 	// again. After the hook's own writes, so that there is no moment in which the claim is free
@@ -364,6 +361,11 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// `"review.onDone".onFailed`, a valid kpath naming one field with a dotted name — and
 	// a quote is not legal unescaped in a URL path. A field segment appends with '.'.
 	chain := fp.chain + "." + seg
+	if fp.hooks != nil {
+		// The firing's action, and so the firing's reads (flowTask.within). A sequence's next
+		// element above is the rule's as it stands, and reads by it.
+		oc.within = fp.within
+	}
 	err := hook.apply(chain, oc, []entity.Ref{subj}, e, fromCause)
 	if errors.Is(err, ErrClosing) {
 		// Refused whole, as its charter is being taken down: no fault of the hook's, and nothing
