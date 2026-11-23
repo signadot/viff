@@ -6,6 +6,7 @@ import (
 
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/entity/entitytest"
+	"github.com/signadot/verse/pkg/mirror"
 	"github.com/signadot/verse/pkg/task"
 )
 
@@ -127,5 +128,42 @@ func TestARuleThatCannotNameWhatItReadsReadsTheWholeVerse(t *testing.T) {
 		if len(p) == 0 {
 			t.Fatalf("firingWithin = %v, which holds an empty place — that narrows to nothing", within)
 		}
+	}
+}
+
+// A HOOK PAID BEFORE THE ENGINE OPENS READS WHAT ITS RULE NAMES, as one paid after does. What
+// the last verse left is settled at start, ahead of anything armed: a claim whose task's record
+// says done, and its onDone reads a place the rule names.
+func TestAHookPaidBeforeTheEngineOpensReadsWhatItsRuleNames(t *testing.T) {
+	store := &countingStore{Store: entitytest.Store(t)}
+	eng := New(store, task.AutoResolver{})
+	sp := &spawned{by: map[string]*heldHandle{}}
+	eng.SetSpawner(sp.spawn)
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: review
+  condition:
+    subject: {path: "demo.pr.*", value: {stage: open}}
+  action:
+    spawn: {agent: {name: verse}, prompt: review}
+    onDone:
+      patch: {stage: reviewed, covering: !get-path {at: "git.verse.head", path: sha}}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	entitytest.Set(t, store, entity.RefAt("git", "verse", "head"), entity.Obj{"sha": "bbb222"}.Payload())
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "reviewing"}.Payload())
+	_, id := claimAt(t, eng, store, "review", true, 0)
+	entitytest.Set(t, store, mirror.Ref(id), entity.Obj{"status": string(task.Done)}.Payload())
+	before := store.wholeVerse()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.ObserveScoped(ctx)
+	<-eng.Opened()
+	if got := subjectNow(t, store); got["covering"] != "bbb222" {
+		t.Fatalf("subject = %v, want the hook's read written", got)
+	}
+	if whole := store.wholeVerse() - before; whole != 0 {
+		t.Fatalf("%d of the snapshots taken at start read the whole verse", whole)
 	}
 }

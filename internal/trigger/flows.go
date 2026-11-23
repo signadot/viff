@@ -237,10 +237,12 @@ func (e *Engine) retireHandle(id string, h task.Handle) (flowTask, bool) {
 	return flowTask{}, false
 }
 
-// hookOccasion is the occasion a hook of rule runs at: the head, about ev (applyHook).
+// hookOccasion is the occasion a hook of rule runs at: the head, about ev (applyHook). Its reads
+// are narrowed by the rule armed or pending, as hooksOf finds it: a hook paid before the engine
+// opens, when nothing is armed, reads as narrowly as one paid after.
 func (e *Engine) hookOccasion(rule string, ev entity.Event) occasion {
 	var within [][]string
-	if t, ok := e.Trigger(rule); ok {
+	if t, ok := e.Rule(rule); ok {
 		within = firingWithin(t)
 	}
 	return occasion{ev: ev, commit: entity.Commit{Rev: e.store.Head()},
