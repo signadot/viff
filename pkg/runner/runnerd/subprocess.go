@@ -220,7 +220,7 @@ type proc struct {
 }
 
 // record keeps an event the runner followed, once. A terminal frame after the task's end was
-// decided is not its end: the end decided first stands, on the stream as on the snapshot (orphan).
+// decided is not its end: the end decided first stands, on the stream as on the snapshot (endLate).
 func (p *proc) record(e task.Event) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -340,19 +340,25 @@ func (p *proc) snapshot() (task.Snapshot, bool) {
 // endOrphaned decides the task's end, failed and orphaned for why, unless it has one already: a
 // last word, or a terminal frame followed. One decision under p.mu, so that the task's own end
 // arriving as the lease runs out is either its end or not kept (record), never one on the
-// stream and the other on the snapshot.
-func (p *proc) endOrphaned(why string) bool {
+// stream and the other on the snapshot. It answers the end that stands, and whether this call
+// decided it.
+func (p *proc) endOrphaned(why string) (task.Snapshot, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.final != nil || p.endSeenLocked() {
-		return false
+	if p.final != nil {
+		return *p.final, false
 	}
 	final := p.known
-	final.Status, final.Err, final.Orphaned = task.Failed, why, true
 	final.ID = p.id
+	if p.endSeenLocked() {
+		e := p.events[len(p.events)-1]
+		final.Status, final.Err, final.Orphaned = task.Status(e.Text), e.Err, e.Orphaned
+		return p.withRefused(final), false
+	}
+	final.Status, final.Err, final.Orphaned = task.Failed, why, true
 	final = p.withRefused(final)
 	p.final = &final
-	return true
+	return final, true
 }
 
 // remember records the last word on the task. The first one stands: the end the task reported
@@ -432,7 +438,7 @@ func (h *SubprocessHandler) launch(w http.ResponseWriter, r *http.Request) {
 			l:     &body, lease: newLease(&body, h.lease)}
 		h.tasks[body.ID] = p
 		go h.run(ctx, p, &body, raw)
-		go p.lease.keep(p.done, func() { h.orphan(p) })
+		go p.lease.keep(p.done, func() { h.endLate(p) })
 	}
 	h.mu.Unlock()
 
@@ -475,14 +481,23 @@ func (h *SubprocessHandler) run(ctx context.Context, p *proc, l *runner.Launch, 
 	close(p.ready)
 }
 
-// orphan ends a task whose lease ran out: failed and orphaned, said at once, and then its start
+// endLate ends a task whose lease ran out: failed and orphaned, said at once, and then its start
 // is given up or its process stopped, whichever it has reached. run does the rest, as for any
-// task that ends: its repos settled, its directory removed or kept.
-func (h *SubprocessHandler) orphan(p *proc) {
+// task that ends: its repos settled, its directory removed or kept. An end the task reached
+// first stands instead. It answers the end that stands: a subscribe answered after the lease
+// ran out is answered with it, and not with the process's frames, which may say otherwise. The
+// lease running out and such a subscribe both call it, and the first decides.
+func (h *SubprocessHandler) endLate(p *proc) task.Snapshot {
 	why := p.lease.noReader()
-	if !p.endOrphaned(why) {
-		return // it ended first, and is only being kept a moment for its last readers
+	final, decided := p.endOrphaned(why)
+	if decided {
+		go h.stopOrphaned(p, why)
 	}
+	return final
+}
+
+// stopOrphaned stops a task whose lease ended it.
+func (h *SubprocessHandler) stopOrphaned(p *proc, why string) {
 	fmt.Fprintf(h.Log, "runnerd: %s: %s; the task is ended\n", p.id, why)
 	p.abort(errors.New(why))
 	p.mu.Lock()
@@ -847,8 +862,16 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 		if op == "events" {
 			// A subscribe renews the task's lease once it is answered, and here the answer is
 			// the task's process's: one it never gives renews nothing, so a task whose process
-			// has stopped answering is not kept by being asked after.
-			w = &answered{ResponseWriter: w, ok: func() { p.lease.renew() }}
+			// has stopped answering is not kept by being asked after. One answered after the
+			// lease ran out is answered with the task's end as the runner has it (endLate).
+			w = &answered{ResponseWriter: w, ok: p.lease.renew, late: func(w http.ResponseWriter) {
+				sse, err := codec.NewSSE(w, r)
+				if err != nil {
+					codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
+					return
+				}
+				p.sendEnded(sse, r, h.endLate(p))
+			}}
 		}
 		p.prox.ServeHTTP(w, r)
 		return
@@ -878,32 +901,52 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 	}
 }
 
-// answered is a response that says when it is answered with a 200: ok is called then, once.
+// answered is a response that says when it is answered with a 200: ok is called then, once. An
+// answer ok refuses is not given: late answers in its place, and what follows is dropped.
 type answered struct {
 	http.ResponseWriter
-	ok   func()
-	said bool
+	ok            func() bool
+	late          func(http.ResponseWriter)
+	said, dropped bool
+}
+
+func (a *answered) answer(code int) {
+	a.said = true
+	if code == http.StatusOK && !a.ok() {
+		a.dropped = true
+		a.late(a.ResponseWriter)
+	}
 }
 
 func (a *answered) WriteHeader(code int) {
 	if !a.said && code >= 200 { // a 1xx is not the answer
-		a.said = true
-		if code == http.StatusOK {
-			a.ok()
-		}
+		a.answer(code)
 	}
-	a.ResponseWriter.WriteHeader(code)
+	if !a.dropped {
+		a.ResponseWriter.WriteHeader(code)
+	}
 }
 
 func (a *answered) Write(b []byte) (int, error) {
 	if !a.said {
-		a.said = true
-		a.ok()
+		a.answer(http.StatusOK)
+	}
+	if a.dropped {
+		return len(b), nil
 	}
 	return a.ResponseWriter.Write(b)
 }
 
-// Unwrap is the response under it, for what a proxy asks of one: a flush after each frame.
+// FlushError is what a proxy asks of the response after each frame: a flush, of nothing once
+// the answer was dropped.
+func (a *answered) FlushError() error {
+	if a.dropped {
+		return nil
+	}
+	return http.NewResponseController(a.ResponseWriter).Flush()
+}
+
+// Unwrap is the response under it.
 func (a *answered) Unwrap() http.ResponseWriter { return a.ResponseWriter }
 
 // sendEnded is a finished task's stream: what the runner followed of it, from the reader's
@@ -934,7 +977,10 @@ func (h *SubprocessHandler) eventsEarly(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	sse.Flush()
-	p.lease.renew() // answered: one that comes after the lease ran out renews nothing
+	if !p.lease.renew() { // answered after the lease ran out: with the task's end
+		p.sendEnded(sse, r, h.endLate(p))
+		return
+	}
 	select {
 	case <-p.ready:
 	case <-r.Context().Done():
