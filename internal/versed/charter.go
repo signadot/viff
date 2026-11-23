@@ -533,12 +533,24 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(gone) > 0 {
-		release()
+		// EVERY ONE IS LOCKED BEFORE THE CHARTER LOCK COMES OFF, and they are uninstalled
+		// together. One locked only as its turn came would stand open while those before it
+		// ended their tasks, and an install there would be taken and then uninstalled unasked.
+		us, errs := make([]*uninstalling, len(gone)), make([]error, len(gone))
 		for i, t := range gone {
-			if err := s.uninstall(r.Context(), store, t); err != nil {
-				http.Error(w, pruneStopped(prune, gone[:i], t, err), http.StatusServiceUnavailable)
-				return
+			us[i], errs[i] = s.beginUninstall(store, t)
+		}
+		release()
+		failed := false
+		for i, u := range us {
+			if u != nil {
+				errs[i] = u.wait(r.Context(), gone[i])
 			}
+			failed = failed || errs[i] != nil
+		}
+		if failed {
+			http.Error(w, pruneStopped(prune, gone, errs), http.StatusServiceUnavailable)
+			return
 		}
 		again, err := s.lockCharter(r.Context())
 		if err != nil {

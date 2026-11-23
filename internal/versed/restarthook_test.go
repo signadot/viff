@@ -146,6 +146,12 @@ func TestATaskResumedAcrossARestartRunsItsHook(t *testing.T) {
 // answers no cancel.
 func runningPackage(t *testing.T, rule string, deaf *atomic.Bool) (*Server, string, string) {
 	t.Helper()
+	return runningPackageAt(t, "demo", rule, deaf)
+}
+
+// runningPackageAt is runningPackage with the package at an address, its task about at.pr.1.
+func runningPackageAt(t *testing.T, at, rule string, deaf *atomic.Bool) (*Server, string, string) {
+	t.Helper()
 	release := make(chan struct{})
 	build := func(l runner.Launch, _ *task.Registry) *task.Task {
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
@@ -171,10 +177,10 @@ func runningPackage(t *testing.T, rule string, deaf *atomic.Bool) (*Server, stri
 		runs.ServeHTTP(w, r)
 	}), end)
 	postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": face.Subject}).Body.Close()
-	if code, msg := installAt(t, ts.URL, "demo", rule); code != 201 {
+	if code, msg := installAt(t, ts.URL, at, rule); code != 201 {
 		t.Fatalf("installing the rule = %d: %s", code, msg)
 	}
-	pr := entity.RefAt("demo", "pr", "1")
+	pr := entity.RefAt(append(strings.Split(at, "."), "pr", "1")...)
 	testerOwns(t, srv, pr)
 	entitytest.Set(t, srv.Store, pr, entity.Obj{"stage": "open"}.Payload())
 	var id string
@@ -187,7 +193,7 @@ func runningPackage(t *testing.T, rule string, deaf *atomic.Bool) (*Server, stri
 		return id != ""
 	})
 	waitUntil(t, "the package's engine to track the task", func() bool {
-		_, live := srv.packageEngineIfRunning("demo").Live(id)
+		_, live := srv.packageEngineIfRunning(at).Live(id)
 		return live
 	})
 	return srv, ts.URL, id
@@ -363,4 +369,44 @@ rules:
 	if srv.packagesSeenAt("demo") || !srv.packagesSeenAt("demo.side") {
 		t.Fatalf("after the prune: demo installed = %v, demo.side installed = %v", srv.packagesSeenAt("demo"), srv.packagesSeenAt("demo.side"))
 	}
+}
+
+// A PRUNE LOCKS EVERY PACKAGE IT LEAVES OUT AT ONCE. It leaves out two: top.zed, whose task does
+// not take its cancel yet, and top.alpha, behind it deepest-first. An install at top.alpha while
+// the prune waits on top.zed's task is refused, the package being uninstalled, or lands once that
+// uninstall is over; and one that lands stands once the prune is through, which then refuses for
+// it: the prune does not take down unasked what was installed while it waited.
+func TestAPruneLocksEveryPackageItLeavesOutAtOnce(t *testing.T) {
+	deaf := new(atomic.Bool)
+	srv, url, _ := runningPackageAt(t, "top.zed", strings.Replace(reviewAtDemo, `"demo.pr.*"`, `"top.zed.pr.*"`, 1), deaf)
+	const alpha = `{name: note, condition: {subject: {path: "top.alpha.*", value: {stage: open}}}, action: {patch: {stage: noted}}}`
+	if code, msg := installAt(t, url, "top.alpha", alpha); code != 201 {
+		t.Fatalf("installing at top.alpha = %d: %s", code, msg)
+	}
+	deaf.Store(true)
+	type answer struct {
+		code int
+		msg  string
+	}
+	pruned := make(chan answer, 1)
+	go func() {
+		code, msg := pruneAt(t.Context(), t, url, "top", "at: top.keep\nrules: []\n")
+		pruned <- answer{code, msg}
+	}()
+	waitUntil(t, "the prune to lock top.zed", func() bool { return srv.lockedAt("", "top.zed") != nil })
+	time.Sleep(200 * time.Millisecond) // the cancel is asked, and not taken
+	installed, msg := installAt(t, url, "top.alpha", alpha)
+	if installed != 201 && installed != 429 {
+		t.Fatalf("installing at top.alpha while the prune waits = %d: %s", installed, msg)
+	}
+	deaf.Store(false) // the runner answers, and the prune goes on
+	got := <-pruned
+	if srv.packagesSeenAt("top.zed") {
+		t.Fatalf("top.zed stands after the prune (%d: %s)", got.code, got.msg)
+	}
+	if stands := srv.packagesSeenAt("top.alpha"); stands != (installed == 201) {
+		t.Fatalf("top.alpha installed = %v after an install there answered %d while the prune waited; the prune answered %d: %s",
+			stands, installed, got.code, got.msg)
+	}
+	t.Logf("the install at top.alpha answered %d, the prune %d", installed, got.code)
 }

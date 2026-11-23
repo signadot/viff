@@ -42,9 +42,19 @@ type uninstalling struct {
 // uninstall takes the package at an address down, joining an uninstall of it that is under way.
 // It answers when the uninstall is over, or when ctx ends, which leaves the uninstall running.
 func (s *Server) uninstall(ctx context.Context, store entity.Store, at string) error {
-	confine, err := trigger.ParseAt(at)
+	u, err := s.beginUninstall(store, at)
 	if err != nil {
 		return err
+	}
+	return u.wait(ctx, at)
+}
+
+// beginUninstall starts the uninstall of the package at an address, or joins the one under way:
+// from its return the package is locked (lockedAt).
+func (s *Server) beginUninstall(store entity.Store, at string) (*uninstalling, error) {
+	confine, err := trigger.ParseAt(at)
+	if err != nil {
+		return nil, err
 	}
 	key := "at:" + confine.Stamp()
 	s.scopeMu.Lock()
@@ -62,6 +72,12 @@ func (s *Server) uninstall(ctx context.Context, store entity.Store, at string) e
 		}()
 	}
 	s.scopeMu.Unlock()
+	return u, nil
+}
+
+// wait answers when the uninstall is over, with how it ended, or when ctx ends, which leaves it
+// running.
+func (u *uninstalling) wait(ctx context.Context, at string) error {
 	select {
 	case <-u.done:
 		return u.err

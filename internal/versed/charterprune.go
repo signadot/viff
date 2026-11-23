@@ -20,8 +20,9 @@ import (
 //
 // A PACKAGE THE REQUEST DOES NOT HOLD IS UNINSTALLED, FIRST, as `-R` uninstalls it (uninstall.go):
 // locked, its tasks cancelled and their hooks run, then removed. Each is asked about before any
-// is touched (mayUninstall), and the install begins once every one is gone, so nothing of the
-// request is installed beside what it replaces. An uninstall is not undone: an install refused
+// is touched (mayUninstall), all are locked at once, under the charter lock, and uninstalled
+// together, and the install begins once every one is gone, so nothing of the request is
+// installed beside what it replaces, and nothing is installed meanwhile where it is taking down. An uninstall is not undone: an install refused
 // after it leaves those packages removed, which is where the request was taking them, and says
 // so. The request waits for as long as their tasks take to end.
 //
@@ -142,13 +143,22 @@ func pruneUninstalled(err error, gone []string) error {
 		"install, and stay uninstalled", err, strings.Join(gone, ", "))
 }
 
-// pruneStopped says how a prune ended that did not uninstall everything it leaves out.
-func pruneStopped(root string, gone []string, at string, err error) string {
-	done := "none of the charters it leaves out was uninstalled"
-	if len(gone) > 0 {
-		done = strings.Join(gone, ", ") + " uninstalled"
+// pruneStopped says how a prune ended that did not uninstall everything it leaves out: gone[i]
+// was not uninstalled where errs[i] says why.
+func pruneStopped(root string, gone []string, errs []error) string {
+	var done, not []string
+	for i, at := range gone {
+		if errs[i] == nil {
+			done = append(done, at)
+		} else {
+			not = append(not, fmt.Sprintf("%s (%v)", at, errs[i]))
+		}
 	}
-	return fmt.Sprintf("prune %s: nothing was installed, and the prune stopped at %s (%s): %v", root, at, done, err)
+	said := "none of the charters it leaves out was uninstalled"
+	if len(done) > 0 {
+		said = strings.Join(done, ", ") + " uninstalled"
+	}
+	return fmt.Sprintf("prune %s: nothing was installed, and the prune did not uninstall %s; %s", root, strings.Join(not, "; "), said)
 }
 
 // keep notes that the request holds this rule, level or schedule at the package being installed.
