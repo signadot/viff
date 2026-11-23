@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -152,12 +153,18 @@ func runningPackage(t *testing.T, rule string, deaf *atomic.Bool) (*Server, stri
 // runningPackageAt is runningPackage with the package at an address, its task about at.pr.1.
 func runningPackageAt(t *testing.T, at, rule string, deaf *atomic.Bool) (*Server, string, string) {
 	t.Helper()
+	return runningPackageOn(t, entitytest.Store(t), at, rule, deaf)
+}
+
+// runningPackageOn is runningPackageAt on a store the test gives.
+func runningPackageOn(t *testing.T, store entity.Store, at, rule string, deaf *atomic.Bool) (*Server, string, string) {
+	t.Helper()
 	release := make(chan struct{})
 	build := func(l runner.Launch, _ *task.Registry) *task.Task {
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
 		return task.NewTask(l.ID, sup, &blockedDriver{release: release}, okExecutor{})
 	}
-	srv := issuing(t, serverWith(t, runnerdtest.Scripted, entitytest.Store(t)))
+	srv := issuing(t, serverWith(t, runnerdtest.Scripted, store))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -409,4 +416,40 @@ func TestAPruneLocksEveryPackageItLeavesOutAtOnce(t *testing.T) {
 			stands, installed, got.code, got.msg)
 	}
 	t.Logf("the install at top.alpha answered %d, the prune %d", installed, got.code)
+}
+
+// failCharterListing is a store whose listing of the charter's records fails while on is set.
+type failCharterListing struct {
+	entity.Store
+	on atomic.Bool
+}
+
+func (f *failCharterListing) ListAtErr(at []string, depth int, pred func(entity.Ref) bool) ([]entity.Entity, error) {
+	if f.on.Load() && slices.Equal(at, []string{entity.VerseRoot, charter.System}) {
+		return nil, errFor("context deadline exceeded")
+	}
+	return entity.ListAtErr(f.Store, at, depth, pred)
+}
+
+// AN INSTALL THAT CANNOT READ WHAT IS INSTALLED IS REFUSED, and takes nothing down. A package
+// at demo has a task running; the listing of the charter fails as an install at demo is made
+// that is then refused. Taken for fresh on that misread, the package would be stopped with the
+// refusal and its task cancelled with no hook.
+func TestAnInstallThatCannotListTheCharterLeavesARunningPackageAlone(t *testing.T) {
+	store := &failCharterListing{Store: entitytest.Store(t)}
+	srv, url, id := runningPackageOn(t, store, "demo", reviewAtDemo, new(atomic.Bool))
+	store.on.Store(true)
+	code, msg := installAt(t, url, "demo", `{name: broken, condition: {subject: {path: "demo.pr.*", value: {stage: open}}}, action: {patch: {stage: x}, onDone: {patch: {stage: y}}}}`)
+	store.on.Store(false)
+	if code < 400 {
+		t.Fatalf("the install = %d, want it refused: %s", code, msg)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if got := recordStatus(srv, id); got != string(task.Running) {
+		t.Fatalf("the package's task is %q after a refused install at it (%d: %s), want it running", got, code, msg)
+	}
+	if eng := srv.packageEngineIfRunning("demo"); eng == nil || len(eng.Triggers()) != 1 {
+		t.Fatalf("the package's engine or rule is gone after a refused install at it (%d: %s)", code, msg)
+	}
+	t.Logf("refused %d: %s", code, msg)
 }

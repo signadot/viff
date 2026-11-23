@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -723,8 +724,17 @@ func (tx *charterTx) install(groups []charterGroup) (int, error) {
 		if err := s.lockedAt(scope, g.at); err != nil {
 			return tx.refuse(http.StatusTooManyRequests, err)
 		}
-		if g.at != "" && !s.packagesSeenAt(g.at) {
-			tx.fresh = append(tx.fresh, g.at)
+		// AND ONLY FROM A LISTING THAT WAS READ: a package taken for fresh is stopped with a
+		// refusal, its tasks cancelled with no hook, so one missed by a read that did not happen
+		// would lose its work to a refusal of something else.
+		if g.at != "" {
+			seen, err := s.packagesSeenErr()
+			if err != nil {
+				return tx.refuse(http.StatusServiceUnavailable, err)
+			}
+			if !slices.Contains(seen, g.at) {
+				tx.fresh = append(tx.fresh, g.at)
+			}
 		}
 		eng, err := s.charterEngineFor(scope, g.at)
 		if errors.Is(err, errStopping) {
