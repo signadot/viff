@@ -1,7 +1,8 @@
 # task: a task ends on its record, a claim is what versed owes, and a runner keeps a lease
 
-Status: implemented, as eleven commits on `task-end-5-runner-lease` over `main`: each stage
-reviewed, then the stack reviewed whole, and green on `make check` and the full suite. It replaces the approach in PR #14. The
+Status: implemented, as twenty-three commits on `task-end-5-runner-lease` over `main`
+(`52d1c18a`): each stage reviewed, then the stack reviewed whole, then Daniel's review taken,
+and green on `make check` and the full suite. It replaces the approach in PR #14. The
 design is meant to be taken whole or dropped: every hole listed under "The problem" is closed by
 the four statements of "The model", and what they do not cover is said under "Beyond the model".
 
