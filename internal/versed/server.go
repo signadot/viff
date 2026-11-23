@@ -2937,6 +2937,8 @@ func (s *Server) reflect(store entity.Store, id string, serial uint64, h task.Ha
 	if m.As == "" {
 		m.As = runnerIdentity(store, m.RunnerName)
 	}
+	// Followed while this verse runs: the one that comes next follows it again (resume).
+	m.Done = s.ctxOrBackground().Done()
 	mirror.Reflect(store, id, h, m)
 }
 

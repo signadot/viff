@@ -154,8 +154,83 @@ func TestASlowStoreDoesNotHoldUpTheNextSubscribe(t *testing.T) {
 
 	q := newFrames()
 	ch, unsub := subscribe(h, true, 0)
-	go follow(h, q, ch, unsub, 400*time.Millisecond)
+	go follow(h, q, ch, unsub, 400*time.Millisecond, nil)
 	go record(store, "p", entity.Obj{"status": string(task.Running)}, Meta{Runner: "http://runner.invalid"}, h, q)
 
 	waitFor(t, "three subscribes while the store takes no write", func() bool { return len(h.subscribes()) >= 3 })
+}
+
+// A VERSE THAT STOPS STOPS FOLLOWING ITS TASKS, and ends none of them: the verse that comes next
+// follows them again. Once Done closes, nothing more is asked of the runner and nothing is
+// written on the record.
+func TestAFollowEndsWithTheVerseThatFollows(t *testing.T) {
+	h := &leasedHandle{}
+	done := make(chan struct{})
+	q := newFrames()
+	ch, unsub := subscribe(h, true, 0)
+	returned := make(chan struct{})
+	go func() {
+		follow(h, q, ch, unsub, 400*time.Millisecond, done)
+		close(returned)
+	}()
+	waitFor(t, "a resubscribe", func() bool { return len(h.subscribes()) >= 2 })
+	close(done)
+	select {
+	case <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the follow went on after the verse stopped")
+	}
+	asked := len(h.subscribes())
+	time.Sleep(300 * time.Millisecond) // three quarters of a lease: a follow still running asks again
+	if n := len(h.subscribes()); n != asked {
+		t.Fatalf("%d subscribes after the verse stopped", n-asked)
+	}
+	for {
+		it, ok := q.take()
+		if !ok {
+			break
+		}
+		if it.mark == markGaveUp {
+			t.Fatal("the follow gave the task up as the verse stopped")
+		}
+	}
+}
+
+// writeCounter is a store that counts the writes made to one task's record.
+type writeCounter struct {
+	entity.Store
+	mu     sync.Mutex
+	record int
+}
+
+func (c *writeCounter) Write(w entity.Write) (bool, int64, error) {
+	if w.At.Ref == Ref("p") && w.At.Access == "" {
+		c.mu.Lock()
+		c.record++
+		c.mu.Unlock()
+	}
+	return c.Store.Write(w)
+}
+
+// A TASK THAT SAYS MORE THAN THE STORE TAKES IS WRITTEN AS THE STORE TAKES IT. Frames queued behind
+// one another are one write, the last one's, and the end is on the record without a write for
+// each frame before it.
+func TestFramesQueuedTogetherAreOneWrite(t *testing.T) {
+	store := &writeCounter{Store: entitytest.Store(t)}
+	q := newFrames()
+	for i := 1; i <= 50; i++ {
+		q.put(item{ev: task.Event{Kind: task.EventSay, Text: "working", Cursor: int64(i)}})
+	}
+	q.put(item{ev: task.Event{Kind: task.EventStatus, Text: string(task.Done), Cursor: 51}})
+	q.close()
+	record(store, "p", entity.Obj{"status": string(task.Running)}, Meta{Runner: "http://runner.invalid"}, &leasedHandle{}, q)
+	if got := entity.Str(mustGet(t, store, "p"), "status"); got != string(task.Done) {
+		t.Fatalf("status = %q, want the end on the record", got)
+	}
+	store.mu.Lock()
+	n := store.record
+	store.mu.Unlock()
+	if n > 5 {
+		t.Fatalf("%d writes of the record for 51 frames queued together", n)
+	}
 }

@@ -62,6 +62,13 @@ func (q *frames) put(it item) {
 	q.wake()
 }
 
+// queued reports whether an item is waiting to be taken.
+func (q *frames) queued() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.items) > 0
+}
+
 // close says nothing more is coming.
 func (q *frames) close() {
 	q.mu.Lock()
@@ -111,7 +118,9 @@ func subscribe(h task.Handle, first bool, since int64) (<-chan task.Event, func(
 // follow hands q the frames of a task, from the subscription given (or one it asks for, where
 // none is) and each one after it, and returns at the task's terminal frame, or when the wait
 // has run out (markGaveUp).
-func follow(h task.Handle, q *frames, ch <-chan task.Event, unsub func(), lease time.Duration) {
+//
+// It returns when done closes, ending nothing: the verse that follows the task is going away.
+func follow(h task.Handle, q *frames, ch <-chan task.Event, unsub func(), lease time.Duration, done <-chan struct{}) {
 	defer q.close()
 	_, leased := h.(task.Accepting)
 	wait := lease + waitMargin
@@ -164,6 +173,12 @@ func follow(h task.Handle, q *frames, ch <-chan task.Event, unsub func(), lease 
 				if ended = take(ev); ended {
 					break stream
 				}
+			case <-done:
+				unsub()
+				if clock != nil {
+					clock.Stop()
+				}
+				return
 			case <-again:
 				byClock = true
 				// What the stream has already delivered is taken before it is closed: the
@@ -193,7 +208,11 @@ func follow(h task.Handle, q *frames, ch <-chan task.Event, unsub func(), lease 
 				return
 			}
 			q.put(item{mark: markLost})
-			time.Sleep(min(backoff(attempt), left))
+			select {
+			case <-done:
+				return
+			case <-time.After(min(backoff(attempt), left)):
+			}
 			attempt++
 		}
 		ch, unsub = subscribe(h, false, cursor)

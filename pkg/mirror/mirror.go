@@ -138,6 +138,10 @@ type Meta struct {
 	// The mirror subscribes again four times within it, and stops waiting on the runner a
 	// minute after it (follow.go). On the record as `lease`, so a re-attach carries it back.
 	Lease string
+	// Done closes when the verse mirroring the task stops: the task is no longer followed, and
+	// its record stands as it was last written, for the verse that comes next to follow it
+	// again. Nil is never.
+	Done <-chan struct{}
 	// StartedAt is when the task began, RFC3339. Empty on a fresh spawn — Reflect stamps
 	// the clock — and carried back verbatim by a re-attach, which is the only caller that
 	// knows this task is older than this verse.
@@ -405,7 +409,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	// store is slow to take does not hold up the next subscribe, which is what the task's
 	// lease is renewed by.
 	q := newFrames()
-	go follow(h, q, ch, unsub, runner.LeaseOf(m.Lease))
+	go follow(h, q, ch, unsub, runner.LeaseOf(m.Lease), m.Done)
 	go record(store, id, st, m, h, q)
 }
 
@@ -775,8 +779,25 @@ func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, 
 	if claimant != "" {
 		store = asPrincipal(base, claimant)
 	}
+	// A FRAME'S WRITE WAITS WHILE ANOTHER IS QUEUED BEHIND IT: the record is the task as it
+	// stands, and the next write carries this one's. A task that says more than the store takes
+	// in a moment is written as fast as the store takes it, and its end lands when it comes,
+	// not behind every frame before it. What waits is written before record waits for more.
+	dirty := false
+	write := func() {
+		if q.queued() {
+			dirty = true
+			return
+		}
+		project(store, id, st, m)
+		dirty = false
+	}
 	{
 		for {
+			if dirty && !q.queued() {
+				project(store, id, st, m)
+				dirty = false
+			}
 			it, ok := q.take()
 			if !ok {
 				return
@@ -785,14 +806,14 @@ func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, 
 			case markLost:
 				if st["observed"] != false {
 					st["observed"] = false
-					project(store, id, st, m)
+					write()
 				}
 				continue
 			case markCurrent:
 				// Removed from the document, since the document is what is stored.
 				if st["observed"] == false {
 					delete(st, "observed")
-					project(store, id, st, m)
+					write()
 				}
 				continue
 			case markGaveUp:
@@ -954,7 +975,7 @@ func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, 
 						return // the TASK ended; the entity remains, terminal
 					}
 				}
-				project(store, id, st, m)
+				write()
 				continue
 			case task.EventAutonomy: // the policy replaced — project it so `entity get` shows it
 				by := ev.By
@@ -974,7 +995,7 @@ func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, 
 			default: // boundary / steer / child / gap: not projected (index, not warehouse)
 				continue
 			}
-			project(store, id, st, m) // the payload is cloned on the way out; safe to reuse st
+			write() // the payload is cloned on the way out; safe to reuse st
 		}
 	}
 }
