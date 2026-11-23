@@ -163,7 +163,9 @@ subscribes are lost on the way back, or a command that detached into a session o
 its teardown steps do not run. "Where 'Watched' does not hold" has the table.
 
 **Deploy order.** versed first, runners after, in one tag. A runner that keeps the lease under a
-versed that subscribes once ends every task at four minutes.
+versed that subscribes once ends every task at four minutes, and a versed that takes only a
+runner's marked answers (`Verse-Runner`) takes an older runner's subscribes as unanswered, and
+gives its tasks up a lease and a minute on. The runners follow within that.
 
 ## What changes
 
@@ -393,12 +395,13 @@ that, the task can outlive versed's `failed`.
 | Froze, then continued | the rest of its lease | yes, if the rule fires again within it |
 | Ignores the lease | its own end or `timeout` | yes, if the rule fires again |
 | Answers subscribes whose answers never reach versed | one lease after versed's last subscribe | yes, if the rule fires again within it |
+| Accepted a launch from a versed that died before the task's first record was written | one lease after the launch | yes: the next versed settles the claim as orphaned, and a firing within the lease is answered with the running task |
 
 In every row versed's books are the same: the record is `failed`, `orphaned: true`, the hook
 has run and the subject is free. What differs is the task's process, and until it stops it
 can still act on anything it reaches without versed.
 
-The design does nothing more about either. The lease is the runner's contract:
+The design does nothing more about any of them. The lease is the runner's contract:
 `docs/runners.md` states it, both handlers are tested against it, and a runner that does not
 keep it is fixed by keeping it.
 
