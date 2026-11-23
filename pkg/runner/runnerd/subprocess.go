@@ -216,11 +216,15 @@ type proc struct {
 	events []task.Event
 }
 
-// record keeps an event the runner followed, once.
+// record keeps an event the runner followed, once. A terminal frame after the task's end was
+// decided is not its end: the end decided first stands, on the stream as on the snapshot (orphan).
 func (p *proc) record(e task.Event) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if e.Kind == task.EventGap {
+		return
+	}
+	if p.final != nil && e.Kind == task.EventStatus && task.Status(e.Text).Terminal() {
 		return
 	}
 	if n := len(p.events); n > 0 && e.Cursor <= p.events[n-1].Cursor {
@@ -236,6 +240,10 @@ func (p *proc) record(e task.Event) {
 func (p *proc) endSeen() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	return p.endSeenLocked()
+}
+
+func (p *proc) endSeenLocked() bool {
 	n := len(p.events)
 	return n > 0 && p.events[n-1].Kind == task.EventStatus && task.Status(p.events[n-1].Text).Terminal()
 }
@@ -324,6 +332,24 @@ func (p *proc) snapshot() (task.Snapshot, bool) {
 		return task.Snapshot{}, false
 	}
 	return *p.final, true
+}
+
+// endOrphaned decides the task's end, failed and orphaned for why, unless it has one already: a
+// last word, or a terminal frame followed. One decision under p.mu, so that the task's own end
+// arriving as the lease runs out is either its end or not kept (record), never one on the
+// stream and the other on the snapshot.
+func (p *proc) endOrphaned(why string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.final != nil || p.endSeenLocked() {
+		return false
+	}
+	final := p.known
+	final.Status, final.Err, final.Orphaned = task.Failed, why, true
+	final.ID = p.id
+	final = p.withRefused(final)
+	p.final = &final
+	return true
 }
 
 // remember records the last word on the task. The first one stands: the end the task reported
@@ -450,13 +476,10 @@ func (h *SubprocessHandler) run(ctx context.Context, p *proc, l *runner.Launch, 
 // is given up or its process stopped, whichever it has reached. run does the rest, as for any
 // task that ends: its repos settled, its directory removed or kept.
 func (h *SubprocessHandler) orphan(p *proc) {
-	if _, done := p.snapshot(); done || p.endSeen() {
+	why := p.lease.noReader()
+	if !p.endOrphaned(why) {
 		return // it ended first, and is only being kept a moment for its last readers
 	}
-	why := p.lease.noReader()
-	final := p.as(task.Failed, why)
-	final.Orphaned = true
-	p.remember(final)
 	fmt.Fprintf(h.Log, "runnerd: %s: %s; the task is ended\n", p.id, why)
 	p.abort(errors.New(why))
 	p.mu.Lock()
