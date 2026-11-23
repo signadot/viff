@@ -48,9 +48,10 @@
 //
 // # Answers
 //
-// Every answer a runner gives on these routes carries AnswerHeader, its refusals included. What
-// verse acts on as a fact about a task, a 404 for it and an accepted subscribe, it takes only
-// from an answer that carries it: anything in front of a runner can answer HTTP.
+// Every answer a runner's own handler gives on these routes carries AnswerHeader, its refusals
+// included; a door in front of it, such as its auth, need not. What verse acts on as a fact
+// about a task, a 404 for it and an accepted subscribe, it takes only from an answer that
+// carries it: anything in front of a runner can answer HTTP.
 //
 // Bodies are tony by default; a request's Content-Type and Accept pick the format. A refusal
 // is a status, and the client reads each as one of the errors in pkg/task/errors.go.
