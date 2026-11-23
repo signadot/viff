@@ -138,9 +138,9 @@ type Meta struct {
 	// The mirror subscribes again four times within it, and stops waiting on the runner a
 	// minute after it (follow.go). On the record as `lease`, so a re-attach carries it back.
 	Lease string
-	// Done closes when the verse mirroring the task stops: the task is no longer followed, and
-	// its record stands as it was last written, for the verse that comes next to follow it
-	// again. Nil is never.
+	// Done closes when the verse mirroring the task stops: the runner is asked nothing more, the
+	// frames already read are written, and the record stands so, for the verse that comes next
+	// to follow it again. Nil is never.
 	Done <-chan struct{}
 	// StartedAt is when the task began, RFC3339. Empty on a fresh spawn — Reflect stamps
 	// the clock — and carried back verbatim by a re-attach, which is the only caller that

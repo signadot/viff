@@ -161,8 +161,8 @@ func TestASlowStoreDoesNotHoldUpTheNextSubscribe(t *testing.T) {
 }
 
 // A VERSE THAT STOPS STOPS FOLLOWING ITS TASKS, and ends none of them: the verse that comes next
-// follows them again. Once Done closes, nothing more is asked of the runner and nothing is
-// written on the record.
+// follows them again. Once Done closes, nothing more is asked of the runner, and the task is not
+// given up.
 func TestAFollowEndsWithTheVerseThatFollows(t *testing.T) {
 	h := &leasedHandle{}
 	done := make(chan struct{})
