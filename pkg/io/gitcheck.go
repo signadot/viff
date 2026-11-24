@@ -10,32 +10,32 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // The check input of the git io's out half: a tree of charters in the repository, checked against
 // what runs at an address, and nothing installed (git-issue dzxn44gw).
 //
-//	to:    check.repos.verse      # everything after the first dot is the address
+//	to:    check.repos.viff      # everything after the first dot is the address
 //	tree:  4b825dc6…              # the tree object, as the reflection reports it
 //
 // or, for what a ref holds now, resolved from this io's own copy when the check is made:
 //
-//	to:    check.repos.verse
+//	to:    check.repos.viff
 //	ref:   main                   # a branch or tag, as `git rev-parse` resolves a short name
 //	of:    charters               # which `-tree` directory; may be left out when there is one
 //	round: 2026-10-04T21:00:00Z   # checked again whenever this changes
 //
 // or, for what a record holds now (gitrecord.go), its entry's whole tree:
 //
-//	to:     check.repos.verse
-//	record: live                  # refs/verse/live
+//	to:     check.repos.viff
+//	record: live                  # refs/viff/live
 //	round:  2026-10-04T21:00:00Z
 //
 // This reads the tree's charter files out of the repository, as the install input does, and asks
-// the verse's charter check (`POST /charter/check`) what an install of them at the address would
+// the viff's charter check (`POST /charter/check`) what an install of them at the address would
 // do. The status answers `tree`, `address`, `checkedAt`, and the check's own answer: `verdict`
 // (`installs` or `refused`), `refusal`, `packages` (each with what it would add, change, remove,
 // and hold) and `pruned`; and `changes`, how many charters the install would add, change, remove
@@ -43,7 +43,7 @@ import (
 // `record`, `sha` (the commit it stood at) and `round`, one that is not there is the verdict
 // `missing`, and
 // `differingFor` counts the rounds in a row the ref has differed from what runs at one commit: an
-// install verse is making takes a moment, and a reader that waits for 2 does not mistake it for
+// install viff is making takes a moment, and a reader that waits for 2 does not mistake it for
 // drift. `verdictSince` is the round from which the verdict has been what it is at that commit,
 // so a reader can act once each time a verdict starts to hold, and once more for each new commit
 // it holds at, rather than once per round. A tree checked already, or a round checked already,
@@ -53,7 +53,7 @@ import (
 // status carries the refusal for a reader to act on. A file in the tree that does not parse is
 // such a verdict too, said in the same place, since it is the tree's fault and an install would
 // be refused for it. What fails the input is not getting an answer: a tree the repository lacks
-// (for good), or a verse that cannot be reached (tried again).
+// (for good), or a viff that cannot be reached (tried again).
 //
 // IT IS NOT THE INSTALL. The check and the install are two inputs, two routes and two answers;
 // nothing here installs, and nothing in the install checks on this one's behalf.
@@ -63,8 +63,8 @@ const checkTarget = "check"
 
 // check carries one check input out, and answers the status fields.
 func (k *GitSink) check(ctx context.Context, rp repo, in Input, address string) (entity.Obj, error) {
-	if k.Verse == nil {
-		return nil, Permanent(fmt.Errorf("this io reads no verse, so it checks nothing: it runs with no address to check against"))
+	if k.Viff == nil {
+		return nil, Permanent(fmt.Errorf("this io reads no viff, so it checks nothing: it runs with no address to check against"))
 	}
 	segs, err := entity.PathSegs(address)
 	if err != nil || len(segs) == 0 {
@@ -131,7 +131,7 @@ func (k *GitSink) check(ctx context.Context, rp repo, in Input, address string) 
 		asked["verdictSince"] = verdictSince(in.Status, sha, tree, "refused", round)
 		return asked, nil
 	}
-	resp, err := k.Verse.PostNodes("/charter/check", url.Values{"at": {at}}, docs)
+	resp, err := k.Viff.PostNodes("/charter/check", url.Values{"at": {at}}, docs)
 	if err != nil {
 		return asked, fmt.Errorf("checking tree %s at %s: %w", tree, at, err)
 	}

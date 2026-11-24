@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/signadot/verse/pkg/io/github"
+	"go.viff.dev/viff/pkg/io/github"
 )
 
 // TestCapturedDeliveries replays real webhook payloads through the handler.
@@ -41,7 +41,7 @@ func TestCapturedDeliveries(t *testing.T) {
 			}
 			var captured struct {
 				Event   string `json:"event"`
-				Want    string `json:"verseWant"`
+				Want    string `json:"viffWant"`
 				Request struct {
 					Payload json.RawMessage `json:"payload"`
 				} `json:"request"`

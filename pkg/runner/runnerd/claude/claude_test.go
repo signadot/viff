@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/systems/systemstest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // workEnv is the environment claude runs in: its shell, its edits and its questions, which it
@@ -33,12 +33,12 @@ var workEnv = systems.Environment{Systems: systems.Systems{
 // re-executed (TestMain) with fakeEnvVar naming a scenario. The stand-in speaks the same
 // stream protocol over stdio the real one does — the message shapes were read from Claude Code
 // 2.1.304 — and writes what it was told to a log the test reads back. So what is asserted is
-// the conversation: what verse answered Claude, and what Claude's answers became on verse's
+// the conversation: what viff answered Claude, and what Claude's answers became on viff's
 // side.
 
 const (
-	fakeEnvVar = "VERSE_RUNNER_FAKE_CLAUDE"
-	fakeLogVar = "VERSE_RUNNER_FAKE_LOG"
+	fakeEnvVar = "VIFF_RUNNER_FAKE_CLAUDE"
+	fakeLogVar = "VIFF_RUNNER_FAKE_LOG"
 )
 
 // fakeServer is the stand-in. It handles the client's messages inline and runs each turn as a
@@ -58,7 +58,7 @@ func fakeServer() {
 	f.record(map[string]any{"auth": map[string]any{
 		"configDir":      os.Getenv("CLAUDE_CONFIG_DIR"),
 		"apiKey":         os.Getenv("ANTHROPIC_API_KEY"),
-		"credentialFile": os.Getenv("VERSE_CREDENTIAL_FILE"),
+		"credentialFile": os.Getenv("VIFF_CREDENTIAL_FILE"),
 	}})
 	go func() {
 		// The MCP handshake, which the real one does as it starts, before any turn, where its
@@ -209,7 +209,7 @@ func (f *fake) mcp(method string, params any) json.RawMessage {
 		msg["id"] = f.seq
 		f.mu.Unlock()
 	}
-	return f.request(map[string]any{"subtype": "mcp_message", "server_name": "verse", "message": msg})
+	return f.request(map[string]any{"subtype": "mcp_message", "server_name": "viff", "message": msg})
 }
 
 // decision is the client's answer to a permission request.
@@ -298,7 +298,7 @@ func (f *fake) turn(scenario string, turns int, text string) {
 	case "tool":
 		// Claude calls a tool of the server this side declared: the permission request first,
 		// then the call itself over the server's channel.
-		d := f.ask("mcp__verse__greet", "t1", map[string]any{"name": "ana"})
+		d := f.ask("mcp__viff__greet", "t1", map[string]any{"name": "ana"})
 		if d.Behavior != "allow" {
 			f.toolResult("t1", d.Message, true)
 			f.text("done: false: " + d.Message)
@@ -355,7 +355,7 @@ func (f *fake) turn(scenario string, turns int, text string) {
 		raw := f.request(map[string]any{"subtype": "can_use_tool", "tool_name": "Bash", "input": "not an object", "tool_use_id": "x1"})
 		f.record(map[string]any{"ask": "Bash", "id": "x1", "decision": raw})
 		f.toolResult("x1", "refused", true)
-		d := f.ask("mcp__verse__nope", "x2", map[string]any{})
+		d := f.ask("mcp__viff__nope", "x2", map[string]any{})
 		f.toolResult("x2", d.Message, true)
 		// A request whose line has a field of a type this side does not expect, and a request
 		// of a kind it does not serve: each is still answered, the second as an error.
@@ -485,9 +485,9 @@ func (f *fake) turn(scenario string, turns int, text string) {
 	case "nocall":
 		// An allowed call of the runner's tool that Claude fails on its own side, so no
 		// tools/call comes; then a command, which must still be answered.
-		d := f.ask("mcp__verse__greet", "t1", map[string]any{"name": "ana"})
+		d := f.ask("mcp__viff__greet", "t1", map[string]any{"name": "ana"})
 		f.record(map[string]any{"ask": "greet", "id": "t1", "decision": d})
-		f.toolResult("t1", "MCP server \"verse\" is not connected", true)
+		f.toolResult("t1", "MCP server \"viff\" is not connected", true)
 		d = f.ask("Bash", "c2", map[string]any{"command": "go vet", "description": "vet"})
 		f.toolResult("c2", "vetted", d.Behavior != "allow")
 		f.text("nocall done")
@@ -511,7 +511,7 @@ func (f *fake) turn(scenario string, turns int, text string) {
 	default: // basic
 		d := f.ask("Bash", "c1", map[string]any{"command": "go test ./...", "description": "run the tests"})
 		if d.Behavior == "allow" {
-			f.toolResult("c1", "ok\tverse\t0.1s\n", false)
+			f.toolResult("c1", "ok\tviff\t0.1s\n", false)
 		} else {
 			f.toolResult("c1", d.Message, true)
 		}
@@ -982,7 +982,7 @@ func TestClaudeSteps(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	d := &driver{dir: w, toolBy: map[string]verse.Tool{}, toolStep: verse.StepOf(nil),
+	d := &driver{dir: w, toolBy: map[string]viff.Tool{}, toolStep: viff.StepOf(nil),
 		rpc: &rpc{cancels: map[string]chan struct{}{}}}
 	ev := func(tool string, input map[string]any) event {
 		return event{Type: "control_request", RequestID: "r", Req: controlRequest{Subtype: "can_use_tool", ToolName: tool, Input: input, ToolUseID: "u"}}
@@ -1077,7 +1077,7 @@ func TestClaudeSteps(t *testing.T) {
 	if _, _, err := d.propose(ev("WebFetch", map[string]any{"url": "https://x.test"})); err == nil {
 		t.Error("a tool this side has no step for was accepted as an action")
 	}
-	if _, _, err := d.propose(ev("mcp__verse__nope", map[string]any{})); err == nil {
+	if _, _, err := d.propose(ev("mcp__viff__nope", map[string]any{})); err == nil {
 		t.Error("a call of a tool the task does not offer was accepted as an action")
 	}
 }
@@ -1157,8 +1157,8 @@ func TestConfigIsChecked(t *testing.T) {
 
 // greetTool is a runner tool for the tests: a command run, so a gate on commands can stop it, and
 // it says hello.
-func greetTool() verse.Tool {
-	return verse.Tool{
+func greetTool() viff.Tool {
+	return viff.Tool{
 		Name: "greet", Description: "say hello to somebody",
 		Params:   map[string]any{"name": map[string]any{"type": "string"}},
 		Required: []string{"name"},
@@ -1180,7 +1180,7 @@ func TestClaudeIsOfferedTheRunnersTools(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
 	tk, err := Task(runner.Launch{ID: "run-claude-8", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
-		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []viff.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1223,7 +1223,7 @@ func TestARefusedToolCallIsClaudesToRead(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
 	tk, err := Task(runner.Launch{ID: "run-claude-9", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv, Autonomy: namedGates},
-		reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
+		reg, creds, fakeEnv(), t.TempDir(), []viff.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1661,7 +1661,7 @@ func TestAnAllowedCallThatNeverArrivesEndsTheWait(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "nocall")
 	tk, err := Task(runner.Launch{ID: "run-claude-20", Prompt: "x", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
-		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []viff.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1761,7 +1761,7 @@ func TestClaudeHoldsAConversation(t *testing.T) {
 }
 
 // CLAUDE IS NOT OFFERED A QUESTION THE ENVIRONMENT DOES NOT GIVE: an environment with no
-// `question` leaves Claude without its question tool, as it leaves the verse agent without
+// `question` leaves Claude without its question tool, as it leaves the viff agent without
 // `question-ask`.
 func TestClaudeIsNotOfferedQuestionsTheEnvironmentDoesNotGive(t *testing.T) {
 	reg := task.NewRegistry()

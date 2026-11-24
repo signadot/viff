@@ -2,18 +2,18 @@
 # Carry what people wrote across a wipe: the places a hand-written list names, each with its owner,
 # its grants and its data, and nothing else (git-issue dzxn44gw, step 0 of the staging plan).
 #
-#   deploy/carry.sh capture <verse-addr> <places-file> <dir>   BEFORE the wipe; reads, writes only <dir>
-#   deploy/carry.sh restore <verse-addr> <places-file> <dir>   AFTER the repopulate; as each place's owner
+#   deploy/carry.sh capture <viff-addr> <places-file> <dir>   BEFORE the wipe; reads, writes only <dir>
+#   deploy/carry.sh restore <viff-addr> <places-file> <dir>   AFTER the repopulate; as each place's owner
 #
 # THE PLACES FILE is the manual step, and on purpose: somebody names the places that hold what
 # people wrote and no charter manages. One place per line, as the CLI spells an address, in steps
-# (`notes team`; a step holding a dot is one segment, as `verse data` takes it); `#` starts a
+# (`notes team`; a step holding a dot is one segment, as `viff data` takes it); `#` starts a
 # comment. A deployment keeps its own list beside its profile, outside this repository, and passes
 # the path.
 #
 # WHAT CROSSES, per place:
 #
-#   the record   its owner and what it holds out (`verse perms`): taken again by the same owner,
+#   the record   its owner and what it holds out (`viff perms`): taken again by the same owner,
 #                with the same grants and child-grants, before anything is written in it.
 #   the data     everything beneath it, as it stood, written as the owner in one write. Its
 #                history does not cross: what stands after the restore is one commit.
@@ -27,7 +27,7 @@
 #   a place with another principal's record beneath it: the data is written as the place's owner in
 #                one write, which cannot write into somebody else's place. Name the places so each
 #                is one owner's.
-#   verse's own half, `verse.*`: bindings, groups, questions, tasks, flows. Only verse writes there,
+#   viff's own half, `viff.*`: bindings, groups, questions, tasks, flows. Only viff writes there,
 #                and linking an account again after a wipe is the cost.
 #
 # An iod's reflection is not listed either: the iod fills it again on its own.
@@ -35,7 +35,7 @@
 # CAPTURE READS AS WHOEVER RUNS IT, so run it as an admin: each place's record and data are read,
 # and a place somebody may not read is refused, not skipped.
 #
-# RESTORE WRITES AS EACH OWNER (VERSE_USER, per place): the place is taken by whoever writes the
+# RESTORE WRITES AS EACH OWNER (VIFF_USER, per place): the place is taken by whoever writes the
 # record, and a restore run as somebody else would hand every place to them. That is an assertion
 # the deployment's mode must admit, which `optional` does; under `required`, run the restore of
 # each place as its owner yourself.
@@ -47,19 +47,19 @@ set -euo pipefail
 
 verb="${1:-}" ADDR="${2:-}" LIST="${3:-}" DIR="${4:-}"
 if [ -z "$verb" ] || [ -z "$ADDR" ] || [ -z "$LIST" ] || [ -z "$DIR" ]; then
-  echo "usage: $0 capture|restore <verse-addr> <places-file> <dir>   — say which verse, always" >&2
+  echo "usage: $0 capture|restore <viff-addr> <places-file> <dir>   — say which viff, always" >&2
   exit 2
 fi
 [ -r "$LIST" ] || { echo "$LIST: no such places file" >&2; exit 2; }
-VERSE="${VERSE:-verse}"
+VIFF="${VIFF:-viff}"
 O="${O:-o}"
-v() { "$VERSE" -addr "$ADDR" "$@"; }
-v status >/dev/null || { echo "cannot reach a verse at $ADDR" >&2; exit 1; }
+v() { "$VIFF" -addr "$ADDR" "$@"; }
+v status >/dev/null || { echo "cannot reach a viff at $ADDR" >&2; exit 1; }
 
 # places prints the list's places, one per line, comments and blank lines dropped.
 places() { sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$LIST" | grep -v '^$' || true; }
 
-# dotted joins steps the way the verse spells an address back: `notes.team`.
+# dotted joins steps the way the viff spells an address back: `notes.team`.
 dotted() { local IFS=.; echo "$*"; }
 
 # managed answers why a place is a charter's to rebuild, and nothing when it is not: a package at
@@ -104,7 +104,7 @@ capture)
     v perms "${steps[@]}" -o tony >"$d/perms.tony"
     owner="$("$O" get owner "$d/perms.tony" 2>/dev/null || true)"
     if [ -z "$owner" ]; then
-      echo "$at: no record names its owner, so there is no place to carry (verse perms $line)" >&2
+      echo "$at: no record names its owner, so there is no place to carry (viff perms $line)" >&2
       exit 1
     fi
     if others="$(strangers "$at" "$owner")" && [ -n "$others" ]; then
@@ -139,16 +139,16 @@ restore)
     fi
     echo "-- $at, as $owner"
     # THE RECORD BEFORE THE DATA, so the data lands in a place that is already the owner's.
-    VERSE_USER="$owner" v perms "${steps[@]}" "${args[@]}" >/dev/null
+    VIFF_USER="$owner" v perms "${steps[@]}" "${args[@]}" >/dev/null
     if [ -s "$d/data.tony" ] && [ "$(tr -d '[:space:]' <"$d/data.tony")" != "null" ]; then
-      VERSE_USER="$owner" v data "${steps[@]}" --put "$(cat "$d/data.tony")" >/dev/null
+      VIFF_USER="$owner" v data "${steps[@]}" --put "$(cat "$d/data.tony")" >/dev/null
     fi
     n=$((n + 1))
   done < <(places)
   echo "== restored $n place(s) on $ADDR from $DIR =="
   ;;
 *)
-  echo "usage: $0 capture|restore <verse-addr> <places-file> <dir>" >&2
+  echo "usage: $0 capture|restore <viff-addr> <places-file> <dir>" >&2
   exit 2
   ;;
 esac

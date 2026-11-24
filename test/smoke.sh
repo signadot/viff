@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# smoke.sh — end-to-end smoke of verse's core operator surfaces against an isolated,
+# smoke.sh — end-to-end smoke of viff's core operator surfaces against an isolated,
 # self-contained docd-backed server.
 #
-# It builds throwaway `verse` + `o` binaries (o is the pinned go-tony daemon runner, built
+# It builds throwaway `viff` + `o` binaries (o is the pinned go-tony daemon runner, built
 # from this module — so bringing up logd+docd needs no external dependency) and runs its own
-# `verse up` on an ephemeral port with a private data dir. Hermetic: every task it runs is a
+# `viff up` on an ephemeral port with a private data dir. Hermetic: every task it runs is a
 # script, so no LLM creds and no network. It never touches a dev server on :9797, and a trap
 # reaps the server (and its daemon tree) plus the temp dir on exit.
 #
@@ -26,18 +26,18 @@ die()  { printf '  \033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 has()  { printf '%s' "$1" | grep -qF -- "$2"; }
 # haskv asserts a document carries key: value, in WHICHEVER dialect it is written —
 # `"stage": "open"` and `stage: open` both match. The suite runs under both renderings
-# (make smoke-all: the tony default, then VERSE_OUTPUT_FORMAT=yaml), so a shape-dependent
+# (make smoke-all: the tony default, then VIFF_OUTPUT_FORMAT=yaml), so a shape-dependent
 # assertion would only ever be testing whichever one happened to be configured.
 #
 # The second pass varies the OUTPUT format only. Input is a different question: JSON is
-# read as tony, but YAML is a genuinely separate dialect, so a `VERSE_FORMAT=yaml` pass
+# read as tony, but YAML is a genuinely separate dialect, so a `VIFF_FORMAT=yaml` pass
 # would be asserting that JSON payloads fail — which is not a property worth protecting.
 haskv() { printf '%s' "$1" | grep -qE "\"?$2\"?[[:space:]]*:[[:space:]]*\"?$3\"?"; }
 
-# ── build throwaway binaries (verse + the pinned daemon runner) ──────────────
-step "build (verse + pinned o)"
+# ── build throwaway binaries (viff + the pinned daemon runner) ──────────────
+step "build (viff + pinned o)"
 tmp=$(mktemp -d)
-BIN="$tmp/verse"
+BIN="$tmp/viff"
 SRV=""
 CONN=""
 MCP=""
@@ -49,13 +49,13 @@ cleanup() {
 	rm -rf "$tmp"
 }
 trap cleanup EXIT INT TERM
-go build -o "$BIN" ./cmd/verse || die "go build ./cmd/verse failed"
+go build -o "$BIN" ./cmd/viff || die "go build ./cmd/viff failed"
 go build -o "$tmp/o" github.com/signadot/tony-format/go-tony/cmd/o || die "go build o failed"
-ok "built verse + o"
+ok "built viff + o"
 
 # ── the listen address: an ephemeral port, from the kernel ───────────────────
-# Reserve-and-release, the same trick cmd/verse/docd.go plays for the daemons: bind :0, read
-# back whichever port the kernel picked, drop it, and hand it to `verse up` a moment later.
+# Reserve-and-release, the same trick cmd/viff/docd.go plays for the daemons: bind :0, read
+# back whichever port the kernel picked, drop it, and hand it to `viff up` a moment later.
 # It replaces a scan upward from a fixed 19797, which two smokes started side by side (two
 # worktrees, say) would both walk to the same answer before either of them bound it. Go is
 # already a hard dependency here, so this costs nothing a shell probe would not.
@@ -88,13 +88,13 @@ else
 fi
 # Somebody, and the smoke's own: a request that writes names who makes it, and whoever runs this
 # may have no `user:` configured. A step that is about another party says so with --as.
-export VERSE_USER="${VERSE_USER:-user:smoke}"
+export VIFF_USER="${VIFF_USER:-user:smoke}"
 v() { "$BIN" --addr "$ADDR" "$@"; }
 
 # ── start the monolith on its own logd+docd ──────────────────────────────────
 step "up (docd) on $ADDR"
-# invoke the binary directly (not via v()) so $! is the verse process itself — a backgrounded
-# shell function is a subshell, and kill would signal the wrapper, not verse.
+# invoke the binary directly (not via v()) so $! is the viff process itself — a backgrounded
+# shell function is a subshell, and kill would signal the wrapper, not viff.
 "$BIN" --addr "$ADDR" up --data "$tmp/data" --o-bin "$tmp/o" >"$tmp/server.log" 2>&1 &
 SRV=$!
 ready=
@@ -151,7 +151,7 @@ v data demo pr a.b --rm >/dev/null || die "data --rm of the dotted id failed"
 ok "steps on the way in, the same steps on the way out"
 # `has`, not `=`: a path can now answer with a BARE SCALAR at the document root, and the two
 # renderings frame one differently — tony writes `open`, yaml writes it as a block scalar
-# (`|` then the line). The value is verse's answer; the framing is the encoder's.
+# (`|` then the line). The value is viff's answer; the framing is the encoder's.
 has "$(v data demo pr 1 stage)" open || die "a path into the payload did not answer"
 ok "one path, four depths: demo / demo.pr / demo.pr.1 / demo.pr.1.stage"
 # ONE ADDRESS on the verbs too: the path reaches inside the payload, which `--at` used to.
@@ -167,15 +167,15 @@ ok "one address: put/get/rm reach inside a payload, by ref or by path"
 
 # ── grants on create: a node that holds out what its creator says from its first commit ──
 step "data --put --grants (a node created private)"
-VERSE_USER=user:alice@example.com v data notes alice todo --put '{todo: "buy milk"}' --grants '[]' >/dev/null ||
+VIFF_USER=user:alice@example.com v data notes alice todo --put '{todo: "buy milk"}' --grants '[]' >/dev/null ||
 	die "data --put --grants failed"
-has "$(VERSE_USER=user:alice@example.com v data notes alice todo)" 'buy milk' ||
+has "$(VIFF_USER=user:alice@example.com v data notes alice todo)" 'buy milk' ||
 	die "alice cannot read the note she created"
-VERSE_USER=user:bob@example.com v data notes alice todo >/dev/null 2>&1 &&
+VIFF_USER=user:bob@example.com v data notes alice todo >/dev/null 2>&1 &&
 	die "bob read a note created holding out nothing"
 ok "alice's note, created with --grants '[]', is refused to bob"
 
-# ── the representation: verse READS three dialects and WRITES two ────────────
+# ── the representation: viff READS three dialects and WRITES two ────────────
 # The asymmetry is the design (see package codec): JSON input is parsed as tony, because
 # valid JSON is valid tony, but nothing renders JSON — a tagged charter has no faithful
 # JSON spelling. Both halves are asserted here rather than left to the double-run, because
@@ -189,7 +189,7 @@ has "$(v data demo pr 1 -o json 2>&1 || true)" 'does not render json' \
 	|| die "-o json failed without explaining itself"
 ok "-o tony | yaml render; a bad value and json are rejected"
 # --ifmt says how to READ what the operator supplied; it must not decide how the REQUEST is
-# rendered, because verse renders no json. A WRITE is the case that proves the two are
+# rendered, because viff renders no json. A WRITE is the case that proves the two are
 # separate: --ifmt json used to fail every command that sends a body — i.e. every write —
 # complaining about rendering json to someone who had only asked to type it.
 v --ifmt json data demo pr 7 --put '{"stage":"open"}' >/dev/null || die "--ifmt json write failed"
@@ -362,7 +362,7 @@ ok "the rising edge fired: demo.build.1 reviewed → shipped"
 # ── the human loop: an ask gate HOLDS, and answering it releases the action ───
 # The charters above prove the engine reacts on its own. This is the other half — the dial
 # turned down to `ask` — and it is the one surface with no unit-level end-to-end: the gate
-# has to reach `verse question`, and the answer has to travel back and unblock the action.
+# has to reach `viff question`, and the answer has to travel back and unblock the action.
 #
 # Answering is a VERB (`question approve <id>`), not a flag on a `resolve` command, so the two
 # states that are not a decision cannot be typed. The short forms are exercised here rather
@@ -375,7 +375,7 @@ v charter -a --file - >/dev/null <<'JSON' || die "gated charter -a failed"
     "action":    { "patch": { "stage": "shipped" } } } ]
 JSON
 v data demo release 1 --put '{"stage":"open"}' >/dev/null || die "data --put failed"
-# A gate id is a whole path with a `~` in it (verse.trigger.smoke-gated.ship~1), so it is cut by
+# A gate id is a whole path with a `~` in it (mirror.trigger.smoke-gated.ship~1), so it is cut by
 # prefix, not by field.
 GID=
 for _ in $(seq 1 100); do
@@ -383,8 +383,8 @@ for _ in $(seq 1 100); do
 	[ -n "$GID" ] && break
 	sleep 0.2
 done
-[ -n "$GID" ] || die "the ask gate never appeared in verse question"
-ok "the action is held; verse question shows $GID"
+[ -n "$GID" ] || die "the ask gate never appeared in viff question"
+ok "the action is held; viff question shows $GID"
 # Still open: an ask gate that let the action through would be indistinguishable from auto.
 haskv "$(v data demo release 1)" stage open || die "the ask gate did not hold the action"
 ok "demo.release.1 still open while the gate is pending"
@@ -449,35 +449,35 @@ for _ in $(seq 1 100); do
 done
 [ -n "$carried" ] || die "the second approval did not release the action"
 ok "two of two: demo.motion.1 open → shipped"
-rec=$(v data verse ask "$QID")
+rec=$(v data mirror ask "$QID")
 has "$rec" "user:alice" && has "$rec" "user:bob" || die "the settled record does not carry both ballots: $rec"
 haskv "$rec" verdict proceed || die "the settled record does not say what it settled on"
 ok "the question is settled with both ballots on the record"
 
 # ── ask: a person asks a person, and is told the answer ─────────────────────
-# Every verse asks: nothing is installed for it. alice asks bob, bob answers on the docket, and
+# Every viff asks: nothing is installed for it. alice asks bob, bob answers on the docket, and
 # alice reads the answer off her ask and off the watch.
 step "ask: alice asks bob, bob answers, alice sees it"
-LAND=$(VERSE_USER=user:alice v ask land -q "Review verse/ask?" --to user:bob --due 48h) || die "alice could not ask"
+LAND=$(VIFF_USER=user:alice v ask land -q "Review viff/ask?" --to user:bob --due 48h) || die "alice could not ask"
 LAND=${LAND#raised question }
 LAND=${LAND%%:*}
 # The ask is the question: its id is what bob answers, once it is posed and waits on him.
 AID=$LAND
 posed=
 for _ in $(seq 1 100); do
-	if has "$(VERSE_USER=user:alice v ask land 2>/dev/null || true)" "waitingOn"; then
+	if has "$(VIFF_USER=user:alice v ask land 2>/dev/null || true)" "waitingOn"; then
 		posed=1
 		break
 	fi
 	sleep 0.2
 done
-[ -n "$posed" ] || die "alice's ask was never posed: $(VERSE_USER=user:alice v ask land)"
-has "$(VERSE_USER=user:alice v ask land)" "user:bob" || die "alice's ask does not say it waits on bob"
+[ -n "$posed" ] || die "alice's ask was never posed: $(VIFF_USER=user:alice v ask land)"
+has "$(VIFF_USER=user:alice v ask land)" "user:bob" || die "alice's ask does not say it waits on bob"
 ok "alice's ask is posed as $AID, waiting on bob"
 v question "$AID" --answer proceed --as user:bob >/dev/null || die "bob could not answer"
 answered=
 for _ in $(seq 1 100); do
-	if haskv "$(VERSE_USER=user:alice v ask land 2>/dev/null || true)" answer yes; then
+	if haskv "$(VIFF_USER=user:alice v ask land 2>/dev/null || true)" answer yes; then
 		answered=1
 		break
 	fi
@@ -486,7 +486,7 @@ done
 [ -n "$answered" ] || die "alice's ask never showed bob's yes"
 ok "alice sees bob's yes on her ask"
 # the binary directly, as for up: $! is then the watch itself, not a subshell around it
-VERSE_USER=user:alice "$BIN" --addr "$ADDR" ask --watch --since 0 >"$tmp/askwatch.out" 2>&1 &
+VIFF_USER=user:alice "$BIN" --addr "$ADDR" ask --watch --since 0 >"$tmp/askwatch.out" 2>&1 &
 wpid=$!
 for _ in $(seq 1 50); do
 	grep -q "answered $LAND yes" "$tmp/askwatch.out" && break
@@ -502,16 +502,16 @@ ok "alice's watch, from the beginning, says it was answered"
 # the service, acting as the resolver, sees the ask it serves, asks erin onward, and erin's yes is
 # carried back as carol's answer, through the resolver.
 step "resolver: carol's desk answers for her, after asking erin"
-VERSE_USER=user:dan v resolver add - >/dev/null <<'TONY' || die "dan could not install the resolver"
+VIFF_USER=user:dan v resolver add - >/dev/null <<'TONY' || die "dan could not install the resolver"
 name: carols-desk
 match: {}
 method: {driver: service}
 TONY
-has "$(VERSE_USER=user:carol v resolver grant carols-desk)" "answers for you" || die "carol could not grant the desk"
-SHIP=$(VERSE_USER=user:alice v ask ship -q "Ship it?" --to user:carol) || die "alice could not ask carol"
+has "$(VIFF_USER=user:carol v resolver grant carols-desk)" "answers for you" || die "carol could not grant the desk"
+SHIP=$(VIFF_USER=user:alice v ask ship -q "Ship it?" --to user:carol) || die "alice could not ask carol"
 SHIP=${SHIP#raised question }
 SHIP=${SHIP%%:*}
-desk() { curl -s -H 'Verse-Principal: user:dan' -H 'Verse-Resolver: carols-desk' "$@"; }
+desk() { curl -s -H 'Viff-Principal: user:dan' -H 'Viff-Resolver: carols-desk' "$@"; }
 served=
 for _ in $(seq 1 100); do
 	if has "$(desk "http://$ADDR/resolvers/carols-desk/asks" || true)" "$SHIP"; then
@@ -528,7 +528,7 @@ UP=$(desk -H 'Content-Type: application/tony' -d "{name: up, question: \"Ship al
 [ -n "$UP" ] || die "the desk could not raise an onward ask"
 upposed=
 for _ in $(seq 1 100); do
-	if has "$(VERSE_USER=user:erin v question 2>/dev/null || true)" "$UP"; then
+	if has "$(VIFF_USER=user:erin v question 2>/dev/null || true)" "$UP"; then
 		upposed=1
 		break
 	fi
@@ -539,15 +539,15 @@ ok "the desk asked erin onward, as $UP"
 v question "$UP" --answer proceed --as user:erin >/dev/null || die "erin could not answer the onward ask"
 carried=
 for _ in $(seq 1 100); do
-	if haskv "$(VERSE_USER=user:alice v ask ship 2>/dev/null || true)" answer yes; then
+	if haskv "$(VIFF_USER=user:alice v ask ship 2>/dev/null || true)" answer yes; then
 		carried=1
 		break
 	fi
 	sleep 0.2
 done
-[ -n "$carried" ] || die "erin's yes was never carried back to alice's ask: $(VERSE_USER=user:alice v data verse ask "$SHIP")"
-rec=$(VERSE_USER=user:alice v data verse ask "$SHIP")
-haskv "$rec" by "user:carol" && has "$rec" "via:verse.resolvers.carols-desk" ||
+[ -n "$carried" ] || die "erin's yes was never carried back to alice's ask: $(VIFF_USER=user:alice v data mirror ask "$SHIP")"
+rec=$(VIFF_USER=user:alice v data mirror ask "$SHIP")
+haskv "$rec" by "user:carol" && has "$rec" "via:mirror.resolvers.carols-desk" ||
 	die "alice's ask was not answered as carol's, through the desk: $rec"
 ok "erin's yes came back on alice's ask as carol's, via the desk"
 
@@ -570,11 +570,11 @@ v charter -a smoke-susp -f - >/dev/null <<'TONY' || die "suspend charter -a fail
   action:
     patch: {stage: approved}
 TONY
-out=$(v flow suspend 2>&1) && die "a bare verse flow suspend was accepted: $out"
-has "$out" "--charter" || die "a bare verse flow suspend does not print its usage: $out"
-has "$(v status)" "suspensions:" && die "a bare verse flow suspend wrote a suspension"
-ok "a bare verse flow suspend prints its usage and suspends nothing"
-v flow suspend --charter smoke-susp --why "smoke: hold the package" >/dev/null || die "verse flow suspend --charter smoke-susp failed"
+out=$(v flow suspend 2>&1) && die "a bare viff flow suspend was accepted: $out"
+has "$out" "--charter" || die "a bare viff flow suspend does not print its usage: $out"
+has "$(v status)" "suspensions:" && die "a bare viff flow suspend wrote a suspension"
+ok "a bare viff flow suspend prints its usage and suspends nothing"
+v flow suspend --charter smoke-susp --why "smoke: hold the package" >/dev/null || die "viff flow suspend --charter smoke-susp failed"
 has "$(v flow)" 'smoke: hold the package' || die "the listing does not say why it is held"
 ok "suspended the charter at smoke-susp, and the listing says why"
 v data smoke-susp level 1 --put '{stage: open}' >/dev/null || die "data --put failed"
@@ -585,9 +585,9 @@ has "$(v question --all)" 'smoke-susp' && die "a suspended gated rule put a ques
 st=$(v status)
 has "$st" "suspensions:" && haskv "$st" count 1 || die "status does not count the suspension: $st"
 ok "nothing fired, nothing was asked, and status counts suspensions: {count: 1}"
-args=$(v flow --charter smoke-susp --args) || die "verse flow --charter smoke-susp --args failed"
+args=$(v flow --charter smoke-susp --args) || die "viff flow --charter smoke-susp --args failed"
 [ "$args" = "-charter smoke-susp -subject '*'" ] || die "the listing's --args is not the flags that name it: $args"
-printf '%s\n' "$args" | xargs -L1 "$BIN" --addr "$ADDR" flow resume >/dev/null || die "xargs -L1 verse flow resume over --args failed"
+printf '%s\n' "$args" | xargs -L1 "$BIN" --addr "$ADDR" flow resume >/dev/null || die "xargs -L1 viff flow resume over --args failed"
 settled=
 for _ in $(seq 1 100); do
 	if haskv "$(v data smoke-susp level 1 2>/dev/null || true)" stage settled; then
@@ -607,7 +607,7 @@ for _ in $(seq 1 100); do
 done
 [ -n "$asked" ] || die "the resumed gated rule did not ask"
 has "$(v flow)" 'smoke-susp' && die "the lifted suspension is still listed"
-ok "resumed through verse flow --args | xargs -L1 verse flow resume: settle acted, approve asked, and nothing is suspended"
+ok "resumed through viff flow --args | xargs -L1 viff flow resume: settle acted, approve asked, and nothing is suspended"
 
 # ── task runtime + the autonomy surface (a script: hermetic) ──────
 # A script runs as a real shell command, so `sleep 30` is a genuinely live task to exercise
@@ -616,7 +616,7 @@ ok "resumed through verse flow --args | xargs -L1 verse flow resume: settle acte
 # by the owner and the runner, so the party that spawned it is the party that steers it.
 step "task run + control surfaces"
 echo '{script: "sleep 30", environment: {systems: {network: {mode: open}}}}' |
-	VERSE_USER=user:smoke v task run -f - >/dev/null || die "task run failed"
+	VIFF_USER=user:smoke v task run -f - >/dev/null || die "task run failed"
 ID=$(v task -o tony | awk -F'[:[:space:]]+' '/^[[:space:]]*-?[[:space:]]*id:/ {print $NF; exit}')
 [ -n "$ID" ] || die "no task id from list"
 ok "spawned $ID (sleep 30)"
@@ -624,16 +624,16 @@ has "$(v task get "$ID")" "$ID" || die "task get missing the id"
 ok "task get"
 # A script has no turn for words: what it may be told is the answer to a call it makes, so a
 # say is refused when said, in that sentence, rather than queued for a turn that never comes.
-out=$(VERSE_USER=user:smoke v task say "$ID" "also mention the token TTL" 2>&1) && die "a say to a script was accepted: $out"
+out=$(VIFF_USER=user:smoke v task say "$ID" "also mention the token TTL" 2>&1) && die "a say to a script was accepted: $out"
 has "$out" "no turn for words" || die "the say to a script was refused for another reason: $out"
 ok "task say to a script is refused (a script has no turn for words)"
-out=$(VERSE_USER=user:smoke v task autonomy "$ID" '[{then: ask}]' --as user:smoke) || die "task autonomy failed"
+out=$(VIFF_USER=user:smoke v task autonomy "$ID" '[{then: ask}]' --as user:smoke) || die "task autonomy failed"
 has "$out" "default ask" || die "task autonomy did not report the new autonomy"
 ok "task autonomy → ask (as user:smoke)"
 # the slide is observable on the read plane (the task is live, so the mirror projects it)
 observed=
 for _ in $(seq 1 25); do
-	if haskv "$(v data verse task instance "$ID" 2>/dev/null || true)" autonomyBy user:smoke; then
+	if haskv "$(v data mirror task instance "$ID" 2>/dev/null || true)" autonomyBy user:smoke; then
 		observed=1
 		break
 	fi
@@ -641,10 +641,10 @@ for _ in $(seq 1 25); do
 done
 [ -n "$observed" ] || die "slide not observable on the entity (autonomy/autonomyBy not projected)"
 ok "slide observable on the entity (autonomy/autonomyBy projected)"
-VERSE_USER=user:smoke v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
+VIFF_USER=user:smoke v task cancel "$ID" >/dev/null 2>&1 || true # stop the sleep (frees the runtime promptly)
 ok "task cancel (kills the running command)"
 
-# ── mcp: a host drives `verse mcp` on stdio ──────────────────────────────────
+# ── mcp: a host drives `viff mcp` on stdio ──────────────────────────────────
 # What a host does: initialize, list the tools, call one. One JSON-RPC message per line, as the
 # stdio transport frames them; stdin stays open until the call is answered, since the server
 # ends at its end.
@@ -658,7 +658,7 @@ printf '%s\n' \
 	'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
 	'{"jsonrpc":"2.0","method":"notifications/initialized"}' \
 	'{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
-	'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"verse_data","arguments":{"at":"smokemcp.x.1"}}}' \
+	'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"viff_data","arguments":{"at":"smokemcp.x.1"}}}' \
 	'{"jsonrpc":"2.0","id":4,"method":"prompts/list"}' >&3
 answered=
 for _ in $(seq 1 50); do
@@ -672,19 +672,19 @@ done
 exec 3>&-
 wait "$MCP" 2>/dev/null || true
 MCP=""
-[ -n "$answered" ] || { cat "$tmp/mcp.err" "$tmp/mcp.out" >&2; die "verse mcp never answered the call"; }
-grep '"id":1' "$tmp/mcp.out" | grep -q '"name":"verse"' || die "initialize did not name the server: $(cat "$tmp/mcp.out")"
+[ -n "$answered" ] || { cat "$tmp/mcp.err" "$tmp/mcp.out" >&2; die "viff mcp never answered the call"; }
+grep '"id":1' "$tmp/mcp.out" | grep -q '"name":"viff"' || die "initialize did not name the server: $(cat "$tmp/mcp.out")"
 tools=$(grep '"id":2' "$tmp/mcp.out")
-for tool in verse_data verse_data_put verse_data_rm verse_question verse_ask_get verse_ask_list verse_wait verse_task verse_task_events verse_flow_cancel \
-	verse_charter verse_charter_check verse_charter_install verse_charter_remove verse_status verse_schema \
-	verse_flow verse_flow_show; do
+for tool in viff_data viff_data_put viff_data_rm viff_question viff_ask_get viff_ask_list viff_wait viff_task viff_task_events viff_flow_cancel \
+	viff_charter viff_charter_check viff_charter_install viff_charter_remove viff_status viff_schema \
+	viff_flow viff_flow_show; do
 	has "$tools" "\"name\":\"$tool\"" || die "tools/list does not name $tool"
 done
 ok "initialize, and tools/list names the tools"
 call=$(grep '"id":3' "$tmp/mcp.out")
-has "$call" '"isError":true' && die "verse_data was an error: $call"
-haskv "$call" k v || die "verse_data did not answer smokemcp.x.1: $call"
-ok "tools/call verse_data answers smokemcp.x.1"
+has "$call" '"isError":true' && die "viff_data was an error: $call"
+haskv "$call" k v || die "viff_data did not answer smokemcp.x.1: $call"
+ok "tools/call viff_data answers smokemcp.x.1"
 prompts=$(grep '"id":4' "$tmp/mcp.out")
 for prompt in explain-charter why-not; do
 	has "$prompts" "\"name\":\"$prompt\"" || die "prompts/list does not name $prompt: $prompts"
@@ -707,7 +707,7 @@ ok "--scope $SCOPE suspend of baseline's package is refused, naming baseline"
 # ── status ───────────────────────────────────────────────────────────────────
 step "status"
 # `rules` is inside the charter census now — counted where each charter is, since the top-level
-# count was baseline's alone and read 0 on a verse whose program is packaged.
+# count was baseline's alone and read 0 on a viff whose program is packaged.
 has "$(v status)" 'rules' || die "status missing the charter census"
 has "$(v status)" 'storeRev' || die "status missing engine counts"
 ok "status reports engine counts"
@@ -812,7 +812,7 @@ v charter -r strata smoke-observe >/dev/null 2>&1 && die "removed a stratum stil
 ok "removing a stratum with rules in it is refused"
 
 # ── restart: the charter is durable ──────────────────────────────────────────
-# The rules installed above are records (verse.trigger.rule.<name>), so a second `up` over the
+# The rules installed above are records (mirror.trigger.rule.<name>), so a second `up` over the
 # same data dir comes back running the same program. This is the one check that exercises
 # the real path end to end — down, up, and a change that arrives only afterwards.
 step "restart (the charter survives)"
@@ -852,19 +852,19 @@ step "down"
 v down >/dev/null 2>&1 || true # the trap also reaps the server + its daemons
 ok "down"
 
-# ── the quick start: a fresh verse, and nobody configured ────────────────────
-# What the README tells a new developer to type, as they arrive: no config, no VERSE_USER, a
-# verse on this machine. Every seed script writes, so each one running is a check that a CLI
+# ── the quick start: a fresh viff, and nobody configured ────────────────────
+# What the README tells a new developer to type, as they arrive: no config, no VIFF_USER, a
+# viff on this machine. Every seed script writes, so each one running is a check that a CLI
 # with nobody configured acts as somebody here (the local user), and that the scripts a
 # newcomer meets first still say what the CLI takes.
 #
-# A verse of its own, because the scripts seed baseline: beside the rules the steps above
+# A viff of its own, because the scripts seed baseline: beside the rules the steps above
 # installed, what a seeded entity does would be theirs to decide as much as the seed's.
-step "quick start (a fresh verse, nobody configured)"
+step "quick start (a fresh viff, nobody configured)"
 QADDR="127.0.0.1:$(free_port)" || die "could not reserve an ephemeral port"
 # The environment a newcomer has: no user, no agent, and no config file in either layer.
-q() { env -u VERSE_USER -u VERSE_AGENT VERSE_CONFIG="$tmp/none.tony" VERSE="$BIN" VERSE_ADDR="$QADDR" "$@"; }
-env -u VERSE_USER -u VERSE_AGENT VERSE_CONFIG="$tmp/none.tony" \
+q() { env -u VIFF_USER -u VIFF_AGENT VIFF_CONFIG="$tmp/none.tony" VIFF="$BIN" VIFF_ADDR="$QADDR" "$@"; }
+env -u VIFF_USER -u VIFF_AGENT VIFF_CONFIG="$tmp/none.tony" \
 	"$BIN" --addr "$QADDR" up --data "$tmp/quick" --o-bin "$tmp/o" >"$tmp/quick.log" 2>&1 &
 SRV=$!
 ready=
@@ -893,7 +893,7 @@ q ./scripts/seed-demo.sh --clean >/dev/null 2>&1 || die "seed-demo.sh --clean fa
 
 q ./scripts/seed-entities.sh >"$tmp/seed-entities.out" 2>&1 ||
 	{ cat "$tmp/seed-entities.out" >&2; die "seed-entities.sh failed with nobody configured"; }
-haskv "$(q "$BIN" data verse-tutorial person ana)" team platform || die "seed-entities.sh: verse-tutorial.person.ana is not there"
+haskv "$(q "$BIN" data viff-tutorial person ana)" team platform || die "seed-entities.sh: viff-tutorial.person.ana is not there"
 ok "seed-entities.sh: a world to select over"
 
 for shape in patch derive; do
@@ -903,7 +903,7 @@ done
 ok "charter-shapes.sh: a shape installs and is driven"
 
 # ── shutdown, again ──────────────────────────────────────────────────────────
-step "down (the quick start's verse)"
+step "down (the quick start's viff)"
 q "$BIN" down >/dev/null 2>&1 || true # the trap also reaps the server + its daemons
 ok "down"
 

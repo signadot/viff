@@ -5,11 +5,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // An ownership claim says what no other source may write, and it is spelled the way every other
-// address in verse is — one pattern per level, at whatever depth — with `*` allowed at any of
+// address in viff is — one pattern per level, at whatever depth — with `*` allowed at any of
 // them and a trailing one making a prefix: `github.acme.app-*`, or just `git` for the whole root.
 //
 // It is NOT an entity.Pattern, which is what a Reflection's Covers is and what a charter's
@@ -21,7 +21,7 @@ import (
 //
 // Proving predicates apart syntactically is also worse than it looks. A null in a predicate is a
 // PRESENCE test (see entity.Pattern.Predicate), so the obvious rule — same field, different
-// constants — proves `{repo: null}` disjoint from `{repo: verse}` when the second entails the
+// constants — proves `{repo: null}` disjoint from `{repo: viff}` when the second entails the
 // first: a wrong REFUSAL, from a check whose whole job is to be conservative.
 //
 // A CLAIM IS AN ADDRESS AND NOTHING BESIDE IT, and that is what makes sharing cost nothing
@@ -52,7 +52,7 @@ import (
 // Claims, once, and everything that reasons about ownership takes those — so there is no path
 // through this package on which an unparseable claim is silently skipped.
 //
-//tony:schemagen=verse-iod-own,notag
+//tony:schemagen=viff-iod-own,notag
 type Own struct {
 	// At is the address, as an address glob: a level may be `*`, and may end in one.
 	// ParseClaim is what reads it.
@@ -202,13 +202,13 @@ func ParseClaim(s string) (Claim, error) {
 		return Claim{}, fmt.Errorf("ownership claim %q: want an address, one pattern per level, "+
 			"where a level may be `*` and may end in one (github.acme.app-*)", s)
 	}
-	// NOTHING IN VERSE'S OWN HALF, said at the parse rather than only where a removal reads the
-	// claim: a source reflects the world, and the half verse keeps about its own running is not
+	// NOTHING IN VIFF'S OWN HALF, said at the parse rather than only where a removal reads the
+	// claim: a source reflects the world, and the half viff keeps about its own running is not
 	// a slice anybody may register for. A claim whose first level is a `*` still reaches it, and
 	// Claimed refuses that at the point — this catches the one somebody wrote down.
-	if parts[0] == entity.VerseRoot {
-		return Claim{}, fmt.Errorf("ownership claim %q: %q is what verse writes about its own "+
-			"running, and no source may claim it — a source reflects the world", s, entity.VerseRoot)
+	if parts[0] == entity.ViffRoot {
+		return Claim{}, fmt.Errorf("ownership claim %q: %q is what viff writes about its own "+
+			"running, and no source may claim it — a source reflects the world", s, entity.ViffRoot)
 	}
 	var c Claim
 	for _, p := range parts {
@@ -259,7 +259,7 @@ func (c Claim) String() string {
 // SHORTER one contains the longer. That is the whole of it: one walk, level by level.
 //
 // A shorter claim is not a weaker one: `git` owns everything under it, so it overlaps
-// `git.verse.ref.x` rather than being disjoint from it. That is what makes a subtree claim mean
+// `git.viff.ref.x` rather than being disjoint from it. That is what makes a subtree claim mean
 // something, and it is the case the three fixed dimensions could not express at all. It is also
 // how two owners of one thing are told apart — `linear.project.*.owners.ENG` parts company with
 // `…owners.OPS` at the last level, which is a comparison the levels above never reach.
@@ -303,7 +303,7 @@ func Disjoint(a, b []Own) (bool, error) {
 // It is Disjoint asked about a point: a ref is a claim with no wildcards, and a claim covers it
 // exactly when the two are not disjoint. Naming it rather than open-coding that identity twice,
 // because the two callers are far apart — an install proving two registrations are separable,
-// and a removal deciding what a `--forget` may tombstone — and they must not drift, or verse
+// and a removal deciding what a `--forget` may tombstone — and they must not drift, or viff
 // would delete on removal something it never proved this source owned.
 //
 // PLACES RATHER THAN A YES/NO, because several claims may reach one ref and a `--forget` writes
@@ -311,12 +311,12 @@ func Disjoint(a, b []Own) (bool, error) {
 // claims both reach is deleted once rather than twice: the second write would go into a node
 // that is already gone.
 func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
-	// NOTHING IN VERSE'S OWN HALF, whatever a claim says. ParseClaim refuses one that NAMES it,
+	// NOTHING IN VIFF'S OWN HALF, whatever a claim says. ParseClaim refuses one that NAMES it,
 	// but a wildcard first level — `*.*.*`, which a source with no neighbour may register —
-	// still reaches `verse.task.instance.x` and `verse.trigger.rule.y` as readily as the world's. The caller that deletes writes straight to the store, below
-	// the refusal that guards the HTTP face, so `verse iod remove --forget` was the one
+	// still reaches `mirror.task.instance.x` and `mirror.trigger.rule.y` as readily as the world's. The caller that deletes writes straight to the store, below
+	// the refusal that guards the HTTP face, so `viff iod remove --forget` was the one
 	// client-reachable path that could tombstone the charter. A source reflects the world; the
-	// half verse keeps about itself is not a slice anybody may claim.
+	// half viff keeps about itself is not a slice anybody may claim.
 	if ref.Reserved() {
 		return nil
 	}
@@ -343,7 +343,7 @@ func Claimed(claims []Claim, ref entity.Ref) []entity.Path {
 }
 
 // Node is the place in the tree this claim's owner record sits at: the claim's levels up to
-// the first that is a glob, and whether there is one. `git.verse` is its own node;
+// the first that is a glob, and whether there is one. `git.viff` is its own node;
 // `linear.issue.ENG-*` is `linear.issue`, the deepest literal place everything it could match
 // lies beneath. A claim whose first level is a glob names no place, and answers false.
 //
@@ -366,7 +366,7 @@ func (c Claim) Node() (entity.Ref, bool) {
 }
 
 // Nodes is the places a registration's claims own, shallowest first and with any node beneath
-// another dropped: an owner record at `git` already owns `git.verse`.
+// another dropped: an owner record at `git` already owns `git.viff`.
 func Nodes(claims []Claim) []entity.Ref {
 	var all []entity.Ref
 	for _, c := range claims {
@@ -424,7 +424,7 @@ func shallowest(places []entity.Path) []entity.Path {
 //
 // SEGMENT-WISE, and never as a string. `owners.ENG` and `owners.ENGINE` are two different
 // places, and a string-prefix test would say the first contains the second — the same false
-// alarm `git.*.verse*` makes against `verse-extras/main`, which is the mistake the address
+// alarm `git.*.viff*` makes against `viff-extras/main`, which is the mistake the address
 // grammar is shaped to avoid. Here it costs nothing to avoid, because an address is a list of
 // segments before it is ever a string.
 func holds(a, b []string) bool { return under(b, a) }

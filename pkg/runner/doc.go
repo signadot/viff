@@ -1,8 +1,8 @@
-// Package runner is the Runner API: the contract between verse and a runner, as the routes a
-// runner serves and the requests and answers that are its own. A task is verse's, not a
+// Package runner is the Runner API: the contract between viff and a runner, as the routes a
+// runner serves and the requests and answers that are its own. A task is viff's, not a
 // runner's: what a runner reports about one (task.Snapshot, task.Event) is the task's shape, in
-// package task, which imports neither this package nor anything else of verse's. Both ends
-// depend on it: verse's client of a runner (pkg/runner/client) and the runtime a runner is built on
+// package task, which imports neither this package nor anything else of viff's. Both ends
+// depend on it: viff's client of a runner (pkg/runner/client) and the runtime a runner is built on
 // (pkg/runner/runnerd). A runner written in another language reads the same shapes from the schema,
 // where each is published under its name.
 //
@@ -28,8 +28,8 @@
 //
 // What the API returns is named for what it is: Description, task.Snapshot, task.Event. The body
 // of a command is named for the command, <Command>Request, and says who gave it (`by`). A task
-// starts from a Launch: the spawn a charter wrote, as verse resolved it for one firing, with
-// verse's references filled in, and an id. "Spawn" is verse's word,
+// starts from a Launch: the spawn a charter wrote, as viff resolved it for one firing, with
+// viff's references filled in, and an id. "Spawn" is viff's word,
 // for the charter's declaration and the act of firing it; "launch" is the runner's, for the
 // concrete request it receives. POST /tasks answers with the task's snapshot: 201 when it
 // started the task, 200 when the task was already running.
@@ -51,7 +51,7 @@
 // # Answers
 //
 // Every answer a runner's own handler gives on these routes carries AnswerHeader, its refusals
-// included; a door in front of it, such as its auth, need not. What verse acts on as a fact
+// included; a door in front of it, such as its auth, need not. What viff acts on as a fact
 // about a task, a 404 for it and an accepted subscribe, it takes only from an answer that
 // carries it: anything in front of a runner can answer HTTP.
 //

@@ -1,6 +1,6 @@
 # Why: An automatic supervisor
 
-The reasons behind [An automatic supervisor](../auto-supervisor.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [An automatic supervisor](../auto-supervisor.md). They are for somebody changing viff; the page itself says what viff does.
 
 ## Why `then: allow` for the supervisor
 

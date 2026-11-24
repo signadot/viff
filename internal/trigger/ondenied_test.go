@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A NO IS A DECISION, AND A DECISION HAS A CONSEQUENCE.

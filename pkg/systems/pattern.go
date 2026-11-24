@@ -13,13 +13,13 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/tony-format/go-tony/mergeop"
-	"github.com/signadot/verse/pkg/exprs"
+	"go.viff.dev/viff/pkg/exprs"
 )
 
 // A STEP IS MATCHED BY A TONY MATCH. A row's match, an environment's shape and a runner's ceiling
-// write each field as a pattern in tony's own grammar, the one a charter's `value:` and `verse
+// write each field as a pattern in tony's own grammar, the one a charter's `value:` and `viff
 // data --if` take: a literal is the value it is, `null` any value, and an operator says the rest
-// (`!glob "refs/heads/verse/*"`, `!regexp "git push"`, `!or [none, allow]`, `!not true`). The
+// (`!glob "refs/heads/viff/*"`, `!regexp "git push"`, `!or [none, allow]`, `!not true`). The
 // systems name no operator of their own. `!glob` is Go's path.Match, whose `*` stops at a `/`;
 // `!regexp` is Go's regexp, anchored where it says so.
 //
@@ -502,7 +502,7 @@ func globTokens(g string) (textPat, bool) {
 
 // regexpTokens reads a regexp as tokens: its literal text where it has some, a run of anything
 // where it is not anchored, and a run of anything for whatever else it says, which makes it not
-// exact. `^refs/heads/verse/` is exactly every string beginning so, and `git push` every string
+// exact. `^refs/heads/viff/` is exactly every string beginning so, and `git push` every string
 // holding it.
 func regexpTokens(s string) (textPat, bool) {
 	re, err := syntax.Parse(s, syntax.Perl)
@@ -681,7 +681,7 @@ func pathPattern(n *ir.Node) ([]*ir.Node, error) {
 
 // Address is a kinded path as a step carries it in a field of the form path: its segments in
 // order, a name as itself and any other segment (`(b)`, `[0]`, a wildcard, `..`) as its own text,
-// so every address verse reads is one a row's pattern sees, and lies under the names above it.
+// so every address viff reads is one a row's pattern sees, and lies under the names above it.
 // The root, "", is no segments. A path that does not read is an error, for the runner to refuse the step on.
 func Address(s string) (*ir.Node, error) {
 	if s == "" {

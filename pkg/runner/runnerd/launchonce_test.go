@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/systems/systemstest"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // workEnv is an environment giving the shell and file writes, the steps these tests' drivers

@@ -3,13 +3,13 @@ package trigger
 import (
 	"fmt"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // Check answers whether one package's levels and rules would install, without installing them.
 //
-// It is the charter check's engine half (internal/versed/chartercheck.go): the checks an install makes of
+// It is the charter check's engine half (internal/viffd/chartercheck.go): the checks an install makes of
 // a stratum and of a rule, made in an engine of the check's own, confined to the package's
 // address and given what it declares it reads, which is never started, never registered and
 // never writes. The strata go in without being written down, so the rules face the file's levels
@@ -23,7 +23,7 @@ import (
 // spawn no runner takes is refused here as the install refuses it. runners is what the vet makes
 // of a spawn no runner offers at all: RunnersChecked refuses it, as an install does;
 // RunnersToCome holds it, as a restore places a rule before the runners are known, for a check
-// against a verse whose runners are not up yet.
+// against a viff whose runners are not up yet.
 func Check(store entity.Store, confine Subtree, reads []Subtree, as string, strata []Stratum, rules []Trigger,
 	offer func(runner.Launch) error, runners Runners) (held []string, err error) {
 	e := New(store, nil)

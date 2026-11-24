@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // connectionRefused is why a connection the task's proxy is asked to open is refused, or nil:

@@ -8,10 +8,10 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
-// DefaultListen is the address a runner serves verse on when its configuration names none.
+// DefaultListen is the address a runner serves viff on when its configuration names none.
 const DefaultListen = ":9802"
 
 // Config is every runner's configuration. A runner's own keys sit beside these in the same
@@ -19,13 +19,13 @@ const DefaultListen = ":9802"
 //
 // Secrets are never in the file: a runner reads them from its environment, which is where a
 // deployment puts a Kubernetes Secret, or from a secret store the file names the directory of
-// (the verse runner's `secrets:`, package secretstore), which is where a deployment mounts one.
+// (the viff runner's `secrets:`, package secretstore), which is where a deployment mounts one.
 type Config struct {
-	// Listen is the address the runner serves verse on.
+	// Listen is the address the runner serves viff on.
 	Listen string `tony:"field=listen,omitzero"`
-	// Verse is the one verse this runner serves, by the token versed presents (verseauth.go).
+	// Viff is the one viff this runner serves, by the token viffd presents (viffauth.go).
 	// Absent, the runner serves whoever reaches it.
-	Verse *Verse `tony:"field=verse,omitzero"`
+	Viff *Viff `tony:"field=viff,omitzero"`
 }
 
 // Check fills in the defaults and validates what is set.
@@ -33,8 +33,8 @@ func (c *Config) Check() error {
 	if c.Listen == "" {
 		c.Listen = DefaultListen
 	}
-	if c.Verse != nil {
-		if err := c.Verse.Check(); err != nil {
+	if c.Viff != nil {
+		if err := c.Viff.Check(); err != nil {
 			return err
 		}
 	}

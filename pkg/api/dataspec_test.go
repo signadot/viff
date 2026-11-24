@@ -5,11 +5,11 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// THE DATA GRAMMAR SAYS WHICH WORD IS WRONG, named as verse mcp's parameters are, and whether it
+// THE DATA GRAMMAR SAYS WHICH WORD IS WRONG, named as viff mcp's parameters are, and whether it
 // is a misuse of the words or a value that does not read: the CLI says a misuse as a usage error
 // and the rest as what they are, and a tool names its own parameter.
 func TestTheDataGrammarSaysWhichWordIsWrong(t *testing.T) {

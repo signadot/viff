@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// An address becomes an ID TOKEN wherever verse names something after what it is about: a task
+// An address becomes an ID TOKEN wherever viff names something after what it is about: a task
 // id (`review.onDone@demo.pr.1`), a derived entity's id, a resolver's cover
 // (`security-review@demo.pr.1`). All of those cross a URL path segment and get pasted back onto
 // a command line, so the token has to be legible, injective, and free of characters those two

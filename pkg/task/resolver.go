@@ -21,7 +21,7 @@ type Resolution struct {
 	// happened to be named proceed. Chosen reads whichever was set.
 	Choice   string
 	Proceed  bool
-	By       string // who resolved: "auto", "user:walter@example.com", "via:verse.resolvers.review", ...
+	By       string // who resolved: "auto", "user:walter@example.com", "via:mirror.resolvers.review", ...
 	Note     string
 	Question GateQuestion
 	// Steer: context/instructions the resolver folds into the task's conversation
@@ -34,7 +34,7 @@ type Resolution struct {
 	// zero is the edit standing when it arrives.
 	Edit int
 	// Via is the party an answer came through, where By is whose answer it is. A resolver
-	// answering for a party it serves (9ce3bva0, stage 4), `via:verse.resolvers.<name>`: the
+	// answering for a party it serves (9ce3bva0, stage 4), `via:mirror.resolvers.<name>`: the
 	// ballot is the party's, given by the resolver they granted, and nothing authenticated them.
 	// Or an io relaying a person it identified, `agent:slack-iod`: the ballot is the person's, who
 	// the io's provider vouched for, and Authenticated says so. Empty for an answer somebody gave

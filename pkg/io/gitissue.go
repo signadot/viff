@@ -15,8 +15,8 @@ import (
 
 	"github.com/signadot/tony-format/git-issue/issuelib"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // GitIssueRoot is the entity slice a git-issue Source owns and is the single writer of.
@@ -258,7 +258,7 @@ func (g *GitIssue) reflectRepo(ctx context.Context, id string, rp repo) (Reflect
 		// refs carry `id: 5` where the struct wants a string. issuelib's doc says such issues
 		// "remain reachable on read" until `git issue migrate` rewrites them, and upstream's
 		// own reader does not manage it — GetByRef errors and List silently returns 172 of 173.
-		// So verse reflects what it can rather than inheriting that.
+		// So viff reflects what it can rather than inheriting that.
 		var issue issuelib.Issue
 		metaErr := codec.Unmarshal(meta, &issue, codec.Tony)
 		// The ref namespace is authoritative for status, per issuelib: closing MOVES the ref,
@@ -467,7 +467,7 @@ func addStrings(p entity.Obj, key string, v []string) {
 // exactly one ref and its namespace IS its status.
 //
 // A MIRROR is not that repository. `git issue push` writes the new ref and does not delete
-// the one it moved from, so a mirror accumulates both — 12 of 17 closed issues on the verse
+// the one it moved from, so a mirror accumulates both — 12 of 17 closed issues on the viff
 // tracker carry a stale open ref alongside their closed one. Read naively that is one
 // issue reflected twice, once open and once closed, with nothing deciding which lands: nine
 // closed issues were reading `status: open` on staging, and one entity could say `status:

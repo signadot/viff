@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // A node created with grants (Write.Grants) holds out what its creator said from its first
@@ -40,7 +40,7 @@ func (l *landed) Write(w entity.Write) (bool, int64, error) {
 	return ok, rev, err
 }
 
-// A STRANGER NEVER SEES IT. In an open verse, with the mirror loaded and watched, a node made
+// A STRANGER NEVER SEES IT. In an open viff, with the mirror loaded and watched, a node made
 // with `grants: []` is refused to a stranger from the moment it commits — before the watch
 // that keeps the check's view has delivered its record, and before its writer has done anything
 // after the commit — and a live watch as the stranger never carries it, while the node made
@@ -199,7 +199,7 @@ func TestACreatorWhoOwnsThePlaceAboveGetsTheRecord(t *testing.T) {
 }
 
 // WHAT A CREATOR MAY SAY IS WHAT AN OWNER MAY SAY, and no more: `owner` held out at the node is
-// refused as `verse perms --grants` refuses it, and nothing is created. So are grants where no
+// refused as `viff perms --grants` refuses it, and nothing is created. So are grants where no
 // node is created to carry them.
 func TestAGrantNoOwnerCouldGiveIsRefused(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)

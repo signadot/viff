@@ -5,9 +5,9 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // A DEEP READ ADDRESS ANSWERS, whichever way it is spelled: a whole kinded path into the payload,
@@ -15,10 +15,10 @@ import (
 // quoted one used to fail as "nothing stands there".
 func TestADeepReadAddressAnswers(t *testing.T) {
 	store := entitytest.Store(t)
-	setPayload(t, store, entity.RefAt("verse-dev", "drift", "head", "abc"), `{result: {report: hello}}`)
-	deep := "head-moved@git.head.verse@aaaa1111"
-	setPayload(t, store, entity.RefAt("verse-dev", "drift", "head", deep), `{result: {report: deep}}`)
-	setPayload(t, store, entity.RefAt("verse-dev", "drift", "head", "v1.2.3"), `{result: {report: dotted}}`)
+	setPayload(t, store, entity.RefAt("viff-dev", "drift", "head", "abc"), `{result: {report: hello}}`)
+	deep := "head-moved@git.head.viff@aaaa1111"
+	setPayload(t, store, entity.RefAt("viff-dev", "drift", "head", deep), `{result: {report: deep}}`)
+	setPayload(t, store, entity.RefAt("viff-dev", "drift", "head", "v1.2.3"), `{result: {report: dotted}}`)
 	snap := entity.Reader(store).(entity.Snapshot)
 
 	for _, tc := range []struct {
@@ -26,10 +26,10 @@ func TestADeepReadAddressAnswers(t *testing.T) {
 		node func(t *testing.T) *ir.Node
 		want string
 	}{
-		{"a kinded path", getPathOf("verse-dev.drift.head.abc.result.report"), "hello"},
-		{"a quoted segment holding @", getPathOf(`verse-dev.drift.head."head-moved@git.head.verse@aaaa1111".result.report`), "deep"},
-		{"a quoted segment holding dots", getPathOf(`verse-dev.drift.head."v1.2.3".result.report`), "dotted"},
-		{"at and path", readNode(`!get-path {at: 'verse-dev.drift.head."v1.2.3"', path: result.report}`), "dotted"},
+		{"a kinded path", getPathOf("viff-dev.drift.head.abc.result.report"), "hello"},
+		{"a quoted segment holding @", getPathOf(`viff-dev.drift.head."head-moved@git.head.viff@aaaa1111".result.report`), "deep"},
+		{"a quoted segment holding dots", getPathOf(`viff-dev.drift.head."v1.2.3".result.report`), "dotted"},
+		{"at and path", readNode(`!get-path {at: 'viff-dev.drift.head."v1.2.3"', path: result.report}`), "dotted"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			spec, err := readSpec(tc.node(t))

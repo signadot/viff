@@ -1,17 +1,17 @@
 # Iods
 
-An **[iod](glossary.md#iod)** is one program that connects verse to one external system, such as
+An **[iod](glossary.md#iod)** is one program that connects viff to one external system, such as
 a git repository, GitHub, Linear or Slack. An iod has two halves.
 
 | Half | What it does |
 |---|---|
-| the **[source](glossary.md#source)** (the in half) | It reads the external system. Verse writes what it read into the [store](glossary.md#store), under the iod's [root](glossary.md#root-of-an-iod) (`git`, `github`, …). The iod is the single writer of everything under that root. [Rules](glossary.md#rule) and agents read what it wrote, and react. |
+| the **[source](glossary.md#source)** (the in half) | It reads the external system. Viff writes what it read into the [store](glossary.md#store), under the iod's [root](glossary.md#root-of-an-iod) (`git`, `github`, …). The iod is the single writer of everything under that root. [Rules](glossary.md#rule) and agents read what it wrote, and react. |
 | the **[sink](glossary.md#sink)** (the out half) | Somebody writes what they want said or done, at an address the iod reads. The iod makes the external system match, and writes back what happened. |
 
 The two halves differ in one thing: **which side dials**.
 
-- Verse dials the source and asks it what is true.
-- The sink dials verse. It reads what is asked of it, and it writes its own statuses.
+- Viff dials the source and asks it what is true.
+- The sink dials viff. It reads what is asked of it, and it writes its own statuses.
 
 The rest follows from that difference. [seams.md](seams.md) makes the general point: the
 direction of a connection decides what is possible on it.
@@ -21,7 +21,7 @@ and one deployment.
 
 Git's out half is narrow. It makes a tag, moves a branch to a commit that already exists, and
 installs a tree of charters. A commit, and a push of new work, go through a **task**. A push of
-new work cannot be taken back, and verse gates each step of an irreversible effect and does it
+new work cannot be taken back, and viff gates each step of an irreversible effect and does it
 once.
 
 The rule is reversibility:
@@ -32,19 +32,19 @@ The rule is reversibility:
 | a task | what cannot be taken back | a push |
 
 For the surface of an iod (the registration, the verbs, the routes, the contracts it serves), see
-[reference/io.md](reference/io.md). Verse ships five iods: git, git-issue, Slack, Linear and
+[reference/io.md](reference/io.md). Viff ships five iods: git, git-issue, Slack, Linear and
 GitHub. For them, see [reference/iod.md](reference/iod.md). To build your own iod, copy
 [examples/io](reference/examples/io/main.go). It is a real program, and it compiles with the
 tree.
 
 ```sh
-verse iod add git   http://git-iod:9801    -root git
-verse iod add slack http://slack-iod:9801  -root slack
-verse iod
+viff iod add git   http://git-iod:9801    -root git
+viff iod add slack http://slack-iod:9801  -root slack
+viff iod
 ```
 
 **Name an iod after its connector, unless two of them run.** The name is the whole of the
-address (`verse.iods.<name>`), and you choose it freely. Where one iod of a kind runs, the name
+address (`mirror.iods.<name>`), and you choose it freely. Where one iod of a kind runs, the name
 `git` says what `--root git` already says. The reader has nothing new to learn.
 
 Where two iods of one kind run, the name is the only thing that tells them apart. For example,
@@ -52,7 +52,7 @@ one reflects the repositories on the cluster, and one reflects the repositories 
 host. Give the second a name of its own:
 
 ```sh
-verse iod add git-buildhost http://build-host:9801 -root git
+viff iod add git-buildhost http://build-host:9801 -root git
 ```
 
 ## The core law: a hint is a hint, reconcile is the truth
@@ -64,7 +64,7 @@ An external system offers two ways to integrate:
 | a webhook | a hint with low latency, such as "PR 42 changed". It may be missed or duplicated, and it may arrive out of order. |
 | a poll-reconcile | a pass that reads the external truth and makes the store match it. It is authoritative and level-triggered. |
 
-Verse makes the same split inside itself:
+Viff makes the same split inside itself:
 
 > webhook : poll-reconcile :: Observe : Since
 
@@ -77,12 +77,12 @@ A [hint](glossary.md#hint) names the addresses that went stale. A reconcile of t
 reads the external system and [converges](glossary.md#converge) the store with it. A periodic
 full reconcile catches every hint that went missing.
 
-**Verse does not parse deliveries at all.** The source owns its own deliveries. It installed
-the git hook, and it holds the webhook secret. It tells verse which addresses went stale.
+**Viff does not parse deliveries at all.** The source owns its own deliveries. It installed
+the git hook, and it holds the webhook secret. It tells viff which addresses went stale.
 
 A delivery carries no data. So a delivery costs at most a reconcile of an address whose
 contents its sender does not choose. For this reason the hint route can stay unauthenticated
-in a wide-open dogfood verse.
+in a wide-open dogfood viff.
 
 The reasons are in [Why it is this way](#why-it-is-this-way).
 
@@ -95,22 +95,22 @@ writer.
 Compare-and-swap still matters where several rules write a shared *subject*. Reflected data
 is not a shared subject.
 
-Inside one verse process, one `Git` value keeps the single writer. Across deployments, only the
+Inside one viff process, one `Git` value keeps the single writer. Across deployments, only the
 install check below keeps it.
 
 **Converge writes with no precondition** (`entity.ReplaceAt`). It uses the snapshot it has
 already read to spell the removals, so the write is a replace and not a merge.
 
 A compare-and-swap here would protect an address with a single writer against a second writer
-that cannot exist. The gain is modest. Verse keeps it for the rule, not for the measurement.
+that cannot exist. The gain is modest. Viff keeps it for the rule, not for the measurement.
 
-## The out half: verse asks, the iod does it
+## The out half: viff asks, the iod does it
 
 The sections above and below this one are about the source. This section is about the sink.
 The sink runs the same reconciliation in the other direction.
 
 1. Somebody writes what they want, at an address the iod reads. It may be a person with
-   `verse data`, or a charter's `derive`. What they write is an **input**: a node with a `to`
+   `viff data`, or a charter's `derive`. What they write is an **input**: a node with a `to`
    field, which says whom or what it is about.
 2. The iod writes back what happened, at the sibling address `<name>~status`.
 
@@ -129,11 +129,11 @@ The sink differs from the source only in direction, and in what follows from dir
 
 | | in | out |
 |---|---|---|
-| who dials | verse | the iod |
+| who dials | viff | the iod |
 | what it carries | data and covers | inputs, and a status per input |
 | the law | the single writer of what it covers; covered-and-omitted is tombstoned | what is asked is compared with what was done, and the difference is done |
 | failure | recorded on the registration, retried by the next pass | recorded on the status, retried by the next pass; a refusal is permanent until the input changes |
-| who verse trusts | what the reflection answers | what the iod says it did (it cannot see for itself) |
+| who viff trusts | what the reflection answers | what the iod says it did (it cannot see for itself) |
 
 The addresses a sink reads must lie **inside the iod's claim and outside its covers**:
 
@@ -149,7 +149,7 @@ it reads its own place, and writes each status inside the package
 
 The registration says three things: where the sink reads, whom the iod acts as, and who may
 ask. The install writes the grants that the registration describes. So you set up a sink in one
-act, not with four `verse perms` lines and a flag
+act, not with four `viff perms` lines and a flag
 ([reference/io.md](reference/io.md#the-out-half)).
 
 **The rule is reversibility**: a sink is for what is kept in step with a record and corrected by
@@ -157,10 +157,10 @@ editing, and a task is for what cannot be taken back. This rule keeps the out ha
 an RPC framework. So git's out half is narrow. It makes a tag once and never moves it, moves a
 branch to a commit that already exists with a lease on where it stood, and installs a tree of
 charters the repository already holds: each is kept in step with its input and changed by
-editing the input. A commit, and a push of new work, belong to a task, which verse gates per
+editing the input. A commit, and a push of new work, belong to a task, which viff gates per
 step and does once.
 
-## The seam: a source answers, verse converges
+## The seam: a source answers, viff converges
 
 ```go
 // A Source is NOT handed a store. It reads external truth and answers with it; converging
@@ -176,7 +176,7 @@ type Reflection struct {
 }
 ```
 
-A source answers with a [reflection](glossary.md#reflection). Verse
+A source answers with a [reflection](glossary.md#reflection). Viff
 [converges](glossary.md#converge) the store with it. Converging does three things:
 
 - It **skips what is unchanged**.
@@ -184,7 +184,7 @@ A source answers with a [reflection](glossary.md#reflection). Verse
   reconcile of one repository never deletes the refs of another.
 - It **never tombstones what the answer did not claim**.
 
-None of that is knowledge about git. All of it is knowledge about the store. So verse does it
+None of that is knowledge about git. All of it is knowledge about the store. So viff does it
 once, and a source does not do it.
 
 `Covers` names what the answer is complete for:
@@ -195,7 +195,7 @@ once, and a source does not do it.
 A cover is a path. Its first segment is the root of the source. Git covers `git.<repo>.ref.*`
 and `git.<repo>.head`, and it does not cover `git.<repo>.commit.*`. So a commit that falls out
 of the bounded window of tips is not mentioned, and it stays. The history that git keeps is a
-declaration in the answer. It is not a branch in the code of verse.
+declaration in the answer. It is not a branch in the code of viff.
 
 A write **replaces** the data at its address. It does not merge into it. The answer is what the
 data *is*, so a field that the source stops reporting is gone.
@@ -211,17 +211,17 @@ The reasons are in [Why it is this way](#why-it-is-this-way).
 | `GET /io` | a descriptor |
 | `GET /reflect` | a `Reflection` |
 
-`io.HTTP` is the client that verse drives an iod with. `runnerd` uses the same pattern, for the
+`io.HTTP` is the client that viff drives an iod with. `runnerd` uses the same pattern, for the
 same reason. `io.Git` behind `iod` *is* the sample external io. The same value behind the
-reflector of verse is the built-in iod. So a deployed iod has no privileged local path to differ
+reflector of viff is the built-in iod. So a deployed iod has no privileged local path to differ
 from.
 
 **Three ways to reach an iod, and one contract.** A registration carries exactly one of these:
 
 | Field | Who connects |
 |---|---|
-| `url` | verse dials |
-| `dir` | the git iod, in the verse process |
+| `url` | viff dials |
+| `dir` | the git iod, in the viff process |
 | `dial-in` | the iod dials. It is designed and not built. |
 
 The three differ only in where the `net.Conn` comes from. `Reflect` is the same call on all
@@ -230,7 +230,7 @@ three. The field that is present says which way it is.
 A runner differs here: a runner with no url is refused. For a runner, absence means
 `local`, so a registration with no url would be ambiguous.
 
-**Verse dials, and the hint goes the other way.** A source that is pulled is a pure function of
+**Viff dials, and the hint goes the other way.** A source that is pulled is a pure function of
 the external truth. It has no ticker, no backoff, no retry policy, no diff, no cursor and no
 CAS. So the sample program is short enough to copy.
 
@@ -272,10 +272,10 @@ external source may not.
   registration points at a git source. The source would write every reflection into the wrong
   address, and it would think it is right. Nothing can recover from that later.
 - **Every claim must be provably disjoint from every registration that stands in the same
-  scope.** Otherwise verse refuses the install, and the message shows both claims. Verse could
+  scope.** Otherwise viff refuses the install, and the message shows both claims. Viff could
   not prove them apart, so the operator must decide.
   - Two sources that write different addresses inside one thing each claim a deeper
-    address. Verse then proves the claims apart like any others.
+    address. Viff then proves the claims apart like any others.
   - `-allow-overlap` is for two sources that do write the same address. The cost is stated:
     two writers on one address, each tombstoning what the other reflected.
 
@@ -295,17 +295,17 @@ every rule about the separate root names it. For this reason the root is a flag 
 shape.
 
 **An ownership claim is an address, not a payload predicate.** `owns` is an address, such as
-`{at: "git.verse"}` (the address of one repository).
+`{at: "git.viff"}` (the address of one repository).
 
 - A level may be `*`.
 - A glob in a level is a literal prefix and a trailing `*`, and nothing else.
 - Two claims are disjoint when any level is disjoint.
-- A `*` level is disjoint from nothing. So `git.*.*` claims all of `git`, and verse can prove
+- A `*` level is disjoint from nothing. So `git.*.*` claims all of `git`, and viff can prove
   it apart from nothing else under that root.
 
 A claim may name an address at any **depth**. This lets two sources share a thing, and neither
 is a second writer of anything. Each source is the single writer of its own node beneath the
-thing. Verse proves the two apart with the same comparison, one level further down.
+thing. Viff proves the two apart with the same comparison, one level further down.
 
 The Linear source declares such a claim. A project belongs to several teams at once. So each
 team claims `linear.project.*.owners.<KEY>`, and nothing at the project itself (see below).
@@ -314,14 +314,14 @@ team claims `linear.project.*.owners.<KEY>`, and nothing at the project itself (
 
 By default, removing a source tombstones what it wrote. An address that nobody reflects is an
 address that nothing can correct. Without the tombstones, a charter would go on believing in a
-branch of a repository that verse no longer watches.
+branch of a repository that viff no longer watches.
 
 One common case needs the other answer. **Moving a repository to another host is a remove and
 an add of the same physical truth.** Tombstoning would fire every branch-deleted rule, and then
 every branch-created rule. A change of bookkeeping would destroy live facts and create them
 again. This is the same problem as renaming a runner.
 
-So verse **refuses to remove a source that still has something reflected**, until you say which
+So viff **refuses to remove a source that still has something reflected**, until you say which
 case it is:
 
 | Flag | Meaning |
@@ -334,28 +334,28 @@ Removing a source that has nothing reflected needs no flag.
 `owns` alone bounds what `-forget` may delete. It can tombstone only what the install proved
 this source to be the single writer of.
 
-## What verse records, and what it refuses to
+## What viff records, and what it refuses to
 
-Verse writes `lastReflect` and `lastError` on the registration.
+Viff writes `lastReflect` and `lastError` on the registration.
 
-| Field | When verse writes it |
+| Field | When viff writes it |
 |---|---|
 | `lastError` | on a **transition** only. A source that fails every minute writes once. The write that clears it says that the source recovered. |
 | `lastReflect` | only when a pass **wrote** something. It is the poll cursor. |
 
-Suppose verse stamped `lastReflect` on every pass. It would write to `verse.iods.*` once per
-resync interval, forever. A rule that watches those addresses would fire on a verse where
+Suppose viff stamped `lastReflect` on every pass. It would write to `mirror.iods.*` once per
+resync interval, forever. A rule that watches those addresses would fire on a viff where
 nothing happens.
 
 `lastReflect` cannot show a source that is *wedged*: alive and answering, and reflecting
-nothing new. On a quiet repository a healthy source looks the same. So **verse reports when a
-pass last completed, and never stores it.** `verse iod` reads it live from the reflector.
+nothing new. On a quiet repository a healthy source looks the same. So **viff reports when a
+pass last completed, and never stores it.** `viff iod` reads it live from the reflector.
 
 A runner follows the same rule about wellness. A fact about reachability that is written down
 can be stale, and stale in the direction that costs.
 
-A clean shutdown is not a failure, and verse does not record it as one. Cancelling a reflector
-fails the pass in flight. If verse wrote that failure down, every source would come back from a
+A clean shutdown is not a failure, and viff does not record it as one. Cancelling a reflector
+fails the pass in flight. If viff wrote that failure down, every source would come back from a
 clean stop carrying it. A listing after a restart would then show every source as broken, when
 all are fine.
 
@@ -380,7 +380,7 @@ no removal step to forget. It cannot outlive the sandbox it was for.
 **A scope can hide what it does not own.** A scoped converge tombstones what the external truth
 does not hold. Inside a scope, most of what it finds is inherited from baseline. The tombstone
 hides the inherited data from the reads and watches of the scope. Baseline still holds the
-data. Verse drops the tombstone with the overlay.
+data. Viff drops the tombstone with the overlay.
 
 **Hiding works at every depth.** A scope hides an inherited node deeper inside the data in the same
 way. So a sandbox can say "that team does not own this project in here". Neither direction
@@ -394,13 +394,13 @@ and an empty `scope` gives that.
 
 ## Five of them, and what the ones after git cost
 
-Verse ships `iod`, a second binary with one subcommand per system it connects
+Viff ships `iod`, a second binary with one subcommand per system it connects
 ([reference/iod.md](reference/iod.md)): git, git-issue, Slack, Linear and GitHub. `iod` is in
-the same image as `verse`, and deliberately not in the same process.
+the same image as `viff`, and deliberately not in the same process.
 
 The five are not privileged. They are ordinary external sources that are maintained in this
 repository. To write a sixth, copy the sample program. **The third and the fourth iod add
-nothing to `pkg/io/`, `internal/versed/` or the CLI.** This tests the claim that the seam is general.
+nothing to `pkg/io/`, `internal/viffd/` or the CLI.** This tests the claim that the seam is general.
 
 **The credential is the one difference between them.**
 
@@ -410,7 +410,7 @@ nothing to `pkg/io/`, `internal/versed/` or the CLI.** This tests the claim that
 | git-issue | none. It reads the same directory as git. |
 | Slack, Linear, GitHub | a token |
 
-Because git needs no credential, git can also run in the verse process (`-dir`), and its
+Because git needs no credential, git can also run in the viff process (`-dir`), and its
 "webhook" is a shell script of four lines. The three with a token stay on the far side of the
 seam. This is what "nothing new about credentials" means in practice (see below).
 
@@ -438,13 +438,13 @@ So a hint about `#42` converges that issue alone. The cover of the answer must s
 other open issue in the repository. The size of the hint and the size of the cover are the
 same question.
 
-**A source knows its API budget.** The resync interval of verse is a constant: one minute. The
-complexity budget of Linear is per hour. The budget of Slack is per method per minute. So verse
+**A source knows its API budget.** The resync interval of viff is a constant: one minute. The
+complexity budget of Linear is per hour. The budget of Slack is per method per minute. So viff
 offers `io.Throttle`. Within its window, a source answers with its last *successful* reflection,
 and does not ask again.
 
 A throttle costs the latency of a hint during a burst. A source that is rate-limited reflects
-nothing at all until the limit lifts, so this is the better direction. Verse never caches a
+nothing at all until the limit lifts, so this is the better direction. Viff never caches a
 failure. A cached failure would be a `-min-interval` window of a source claiming that an external system
 is empty.
 
@@ -459,7 +459,7 @@ comparison. The throttle stays underneath, as the backstop for a burst.
 **A cover is how a source says what it could not read.** The people in Slack need a scope that
 its channels do not need. So when `users.list` fails, the source drops the cover of users *and*
 the users' data. The answer is then complete for the channels, and complete for nothing else.
-Verse leaves standing what the source could not read, and does not delete it.
+Viff leaves standing what the source could not read, and does not delete it.
 
 The channels are treated differently. A pass that lost the channels has nothing true left to
 say, and it fails. This asymmetry is what `Covers` is for. Without it, the job would need a
@@ -493,12 +493,12 @@ A GitHub *user* is a third case, and a different one. A user has exactly one own
 owner is the system. So the answer is not a node under a shared thing. It is a source of its
 own, at an address of its own. Under `github`, the next level is an organisation. A source of
 people that claimed a level there would claim a name that GitHub could give an organisation.
-Verse reflects neither kind.
+Viff reflects neither kind.
 
 ### The window, and why Slack is not git
 
 A git source carries commits under **no** cover, so history stays. The Slack source covers its
-messages. So the last `-depth` messages per channel are a window that slides, and verse
+messages. So the last `-depth` messages per channel are a window that slides, and viff
 tombstones what falls out.
 
 The difference is not a preference:
@@ -562,7 +562,7 @@ network, and it is native to the SDLC.
 
 A reply in a Slack thread, or a mention, is not a reflection and not a delivery. It
 is a control request, and [an intervention is never a store write](control.md). So a connector
-that hears one asks verse through the ordinary route, as the person who did it. It writes
+that hears one asks viff through the ordinary route, as the person who did it. It writes
 nothing.
 
 `io.Controller` gets a way to act as somebody, not a way to write. It is a client factory, with
@@ -574,8 +574,8 @@ one principal per request. Three invariants hold for every connector:
 
 An answer recorded as the iod's own principal would be an answer that nobody gave.
 
-Where the verse verifies people, the connector presents its own token and names the account the
-person is, and verse admits the request as the person through that account's binding, from a
+Where the viff verifies people, the connector presents its own token and names the account the
+person is, and viff admits the request as the person through that account's binding, from a
 connector the deployment trusts for the provider
 ([a person relayed by a trusted iod](reference/perms.md#a-person-relayed-by-a-trusted-iod)). The
 invariants hold the same way: the request is made as the person, and the record says which
@@ -594,7 +594,7 @@ mounted this way would reflect a repository perfectly and fire nothing. Firing i
 of a source.
 
 The line is clean: **facts something reacts to must be ordinary writes.** A `Source` is
-entirely that kind. It stays an interface of verse, with nothing underneath it, and verse mounts
+entirely that kind. It stays an interface of viff, with nothing underneath it, and viff mounts
 nothing.
 
 ## What a Source does not do
@@ -613,12 +613,12 @@ write.
 narrows its `Covers`, and reflects one address at a time. That is the same level-triggered pass
 at a finer grain. If that stops being enough, the answer is a paged reflect, not a stream.
 
-**No authority.** Verse dials a url that a writer of the registration chose, and it accepts hints from
+**No authority.** Viff dials a url that a writer of the registration chose, and it accepts hints from
 anyone. The install probe of a runner opens the same edge.
 
 **Nothing new about credentials.** The events endpoint of the Slack source takes requests from
 the internet. It needs an ingress and a signature check. All of that lives in the Slack source,
-where the signing secret already is. Verse grows no public face for it. Verse knows nothing
+where the signing secret already is. Viff grows no public face for it. Viff knows nothing
 about Slack, and every source uses the same hint route.
 
 ## Why it is this way
@@ -626,15 +626,15 @@ about Slack, and every source uses the same hint route.
 ### Why a hint never writes
 
 The law gives three properties: idempotency, self-healing, and independence from order and from
-duplicates. Verse converges against the real state of the system, not against a delivery that
+duplicates. Viff converges against the real state of the system, not against a delivery that
 may fail. Translating the payload of a webhook straight into writes of data is the same mistake as
 trusting `Observe` without `Since`.
 
-Verse does not map a delivery to addresses itself. A second implementation of that mapping, one
+Viff does not map a delivery to addresses itself. A second implementation of that mapping, one
 per source, is how the law comes to be broken in one of the two places. Across a network, a
 difference between the two is the hardest to recover from.
 
-### Why converge is in verse and not in the source
+### Why converge is in viff and not in the source
 
 The store cannot cross a process boundary, but that is not the reason. A client of the store is
 easy to ship, and `POST /entity` already exists, so an external program could write `git.*`. The
@@ -649,20 +649,20 @@ A connector author who held this knowledge would get it wrong in a way that noth
 until a charter fires two hundred times.
 
 `Covers` states the scope of a reconcile in the answer, and not in a parameter. So the history
-that git keeps is a declaration, and not a branch in the code of verse.
+that git keeps is a declaration, and not a branch in the code of viff.
 
 A write replaces and does not merge, for this reason. A merge would leave a stale field
 standing. The check for unchanged compares against what the source said. So the data would
 differ on every pass, forever, and fire its rules each time.
 
-### Why verse dials
+### Why viff dials
 
 A pushed reflection would move the reconcile loop into every source. That is the same
 duplication, one level up and across a network. A pulled source has no loop of its own.
 
 ### Why a failed reflect is an error
 
-An empty answer with covers tells verse to tombstone everything under them. Verse cannot tell
+An empty answer with covers tells viff to tombstone everything under them. Viff cannot tell
 that answer from a source that failed. So the source must fail loudly.
 
 ### Why a claim is an address
@@ -685,7 +685,7 @@ only when the external system has such a state.
 ### Why a scope has its own reflections
 
 One could argue that a reflection is a fact about the outside world, so every scope should read
-the same one. That argument is wrong. A verse whose reflections
+the same one. That argument is wrong. A viff whose reflections
 are all shared cannot say "in here, the repository looks like this". A sandbox exists to answer
 that question. Shadowing is the feature, and for this reason the ownership check is per scope.
 

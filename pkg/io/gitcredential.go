@@ -21,7 +21,7 @@ import (
 // kept until it lapses, since GitHub being briefly unreachable should not empty the file.
 //
 // THE ONLY HELPER: the list of helpers git has from the environment and its config is reset
-// first, so a person's token mounted beside the app (the deployment's `verse-git` Secret) is not
+// first, so a person's token mounted beside the app (the deployment's `viff-git` Secret) is not
 // tried ahead of it. Where a deployment gives both, the app is used, as it is for the github io.
 //
 // It sets GIT_CONFIG_* in this process's environment, which every git command it runs inherits,

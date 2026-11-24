@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // Causal provenance: which commits this engine caused, and how far each one stands from the
@@ -54,7 +54,7 @@ func (e *Engine) caused(chain string, parent int64) entity.Store {
 }
 
 // Principal is who a firing acts as: the rule's own record, as a place acting —
-// `via:verse.trigger.rule.<name>` (`<package>:<name>` in a package). The rule and not its owner, because a firing has
+// `via:mirror.trigger.rule.<name>` (`<package>:<name>` in a package). The rule and not its owner, because a firing has
 // no launcher — nobody typed it — and a write carrying the installer's name would say they
 // acted when they did not. The perms mirror resolves the address to whoever owns the record,
 // which is how the charter acts as its owner without the write saying so.
@@ -93,7 +93,7 @@ func (c causal) Write(w entity.Write) (bool, int64, error) {
 	if committed && rev != 0 {
 		c.e.recordCause(rev, c.chain, c.parent)
 	}
-	// WHAT THE SYSTEM'S RULE MAKES IN VERSE'S HALF CARRIES THE SYSTEM'S RECORD: the calendar the
+	// WHAT THE SYSTEM'S RULE MAKES IN VIFF'S HALF CARRIES THE SYSTEM'S RECORD: the calendar the
 	// base charter derives stands beneath a row that holds `child-owner` out to everyone at any
 	// depth, and with no record of its own that line reaches inside it
 	// (entity.OwnedForSystem).

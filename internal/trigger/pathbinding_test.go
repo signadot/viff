@@ -4,15 +4,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A READ MAY NOT NAME A `!let` BINDING, and finds out at install.
 //
 // The shape below is the one a charter author writes: bind main's tip, then list the proposals
 // cut from it. Tony's own `let` binds a sibling — `let: [{a: x}, {b: .[a]}]` resolves — so this
-// reads as though it works. It does not, because verse answers the read BEFORE tony evaluates
+// reads as though it works. It does not, because viff answers the read BEFORE tony evaluates
 // the let: `{base: .[tip]}` is matched with `.[tip]` as a literal string, no payload has that
 // value, and the binding lands on the EMPTY LIST. The rule then decides on an answer nobody
 // computed, silently.
@@ -33,9 +33,9 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
       path: "git.head.*"
       value: !let
         let:
-        - tip: !get-path {at: "git.head.verse", path: sha}
+        - tip: !get-path {at: "git.head.viff", path: sha}
         - fresh: !list-paths
-            at: "verse-dev.merge.proposal.*"
+            at: "viff-dev.merge.proposal.*"
             value: {base: .[tip]}
             path: branch
         in: {branches: .[fresh]}
@@ -53,7 +53,7 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
       path: "git.head.*"
       value: !let
         let:
-        - tip: !get-path {at: "git.head.verse", path: sha}
+        - tip: !get-path {at: "git.head.viff", path: sha}
         - one: !get-path {at: [merge, proposal, .[tip]], path: branch}
         in: {branch: .[one]}
   action:
@@ -70,7 +70,7 @@ func TestAReadCannotNameALetBinding(t *testing.T) {
       path: "git.head.*"
       value: !let
         let:
-        - field: !get-path {at: "git.head.verse", path: which}
+        - field: !get-path {at: "git.head.viff", path: which}
         - one: !get-path {at: "merge.proposal.p1", path: .[field]}
         in: {branch: .[one]}
   action:
@@ -104,7 +104,7 @@ func TestAReadThatNamesNoBindingInstalls(t *testing.T) {
       value: !let
         let:
         - fresh: !list-paths
-            at: "verse-dev.merge.proposal.*"
+            at: "viff-dev.merge.proposal.*"
             value: {base: "a.[tip]b"}
             path: branch
         in: {branches: .[fresh]}

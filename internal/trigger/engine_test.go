@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 type denyResolver struct{}
@@ -127,7 +127,7 @@ func TestATriggerIsReachedOnlyByWhatItReads(t *testing.T) {
 	eng.Start(ctx)
 
 	// A task:* change is not in anything this trigger reads, so it never reaches it.
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "p1"), entity.Obj{"status": "running"}.Payload())
+	entitytest.Set(t, store, entity.ViffRef("task", "instance", "p1"), entity.Obj{"status": "running"}.Payload())
 	time.Sleep(200 * time.Millisecond)
 	if f := eng.Fired(); f != 0 {
 		t.Fatalf("fired on a task:* change it does not read (fired=%d)", f)
@@ -175,7 +175,7 @@ func TestRunawayOscillationIsStoppedByTheThrottle(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	eng.ObserveScoped(ctx) // versed's production path (per-trigger subtree watch)
+	eng.ObserveScoped(ctx) // viffd's production path (per-trigger subtree watch)
 
 	entitytest.Set(t, store, entity.RefAt("demo", "loop", "1"), entity.Obj{"phase": "a"}.Payload()) // ignite
 

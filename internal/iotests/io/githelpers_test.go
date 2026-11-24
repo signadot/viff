@@ -1,8 +1,8 @@
 package io_test
 
 // The three git helpers of pkg/io/git_test.go, copied: the tests here drive an iod against a
-// running versed and need a repository to point it at, and pkg/io's own tests, which need no
-// versed, keep the originals beside their code. Thirty lines twice is cheaper than a helper
+// running viffd and need a repository to point it at, and pkg/io's own tests, which need no
+// viffd, keep the originals beside their code. Thirty lines twice is cheaper than a helper
 // package exported for them alone.
 
 import (

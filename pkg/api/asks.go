@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // GateSay says something ABOUT a question without answering it: "checking with ops", "this is the
@@ -15,7 +15,7 @@ import (
 // it leaves is a durable, attributed line on the question, where everyone who reads the question
 // reads it, rather than in whatever chat window it was typed in.
 //
-//tony:schemagen=verse-gate-say,notag
+//tony:schemagen=viff-gate-say,notag
 type GateSay struct {
 	// ID is the question said on. POST /asks/{id}/say takes it from its path, and a body naming
 	// another is refused.
@@ -33,7 +33,7 @@ type GateSay struct {
 // `decisionId`/`proceed` because they are the words the CLI, `gate list`, and the docs
 // already use, and because "decision id" named the same thing twice.
 //
-//tony:schemagen=verse-resolve,notag
+//tony:schemagen=viff-resolve,notag
 type Resolve struct {
 	// ID is the gate answered. POST /asks/{id}/answer takes it from its path, and a body naming
 	// another is refused; POST /tasks/{id}/resolve takes it here.
@@ -68,8 +68,8 @@ type Resolve struct {
 	Force bool `tony:"field=force,omitzero"`
 }
 
-// Ask is a person asking somebody something (`verse ask`, POST /asks): what is asked, of whom, by
-// when, and what follows its answer. The ask is written at `verse.ask.<id>` as its asker's record,
+// Ask is a person asking somebody something (`viff ask`, POST /asks): what is asked, of whom, by
+// when, and what follows its answer. The ask is written at `mirror.ask.<id>` as its asker's record,
 // with the id derived from Name, and the verb poses it (docs/asking.md).
 //
 // On is what follows the answer, as rows read in order: each `{match, then}`, where match is a tony
@@ -82,7 +82,7 @@ type Resolve struct {
 // null or `{}` does nothing. No row matching, or no On, and the ask is a vote: the answer is all
 // it leaves.
 //
-//tony:schemagen=verse-ask,notag
+//tony:schemagen=viff-ask,notag
 type Ask struct {
 	Name     string `tony:"field=name"`
 	Question string `tony:"field=question"`
@@ -110,7 +110,7 @@ type Ask struct {
 
 // Asked is what an ask answers with: the id it was written under, and the edit it stands at.
 //
-//tony:schemagen=verse-asked,notag
+//tony:schemagen=viff-asked,notag
 type Asked struct {
 	ID   string `tony:"field=id"`
 	Edit int    `tony:"field=edit,omitzero"`
@@ -120,7 +120,7 @@ type Asked struct {
 // the parties the resolver answers for on it — each principal it answers for, or the address of
 // the place.
 //
-//tony:schemagen=verse-served-ask,notag
+//tony:schemagen=viff-served-ask,notag
 type ServedAsk struct {
 	ID     string            `tony:"field=id"`
 	Edit   int               `tony:"field=edit,omitzero"`
@@ -133,7 +133,7 @@ type ServedAsk struct {
 // AskServed is GET /asks/{id}/served: the resolver serving the ask for the caller, empty where
 // none does.
 //
-//tony:schemagen=verse-ask-served,notag
+//tony:schemagen=viff-ask-served,notag
 type AskServed struct {
 	Resolver string `tony:"field=resolver,omitzero"`
 }
@@ -143,7 +143,7 @@ type AskServed struct {
 // Count have chosen Choice so far. The answer that reaches Need settles the question, and that
 // answers 204.
 //
-//tony:schemagen=verse-recorded,notag
+//tony:schemagen=viff-recorded,notag
 type Recorded struct {
 	Count  int    `tony:"field=count"`
 	Need   int    `tony:"field=need"`
@@ -162,13 +162,13 @@ func (r Recorded) String() string {
 	return fmt.Sprintf("recorded: %d of %d for %s", r.Count, r.Need, r.Choice)
 }
 
-// AskChange is a change to a waiting ask by its asker (`verse ask <id> --due …`, PATCH
+// AskChange is a change to a waiting ask by its asker (`viff ask <id> --due …`, PATCH
 // /asks/{id}). A new Due moves its clock and asks nothing again. A new Question, To or On changes
 // what it asks, so it is asked again, as the next edit, and the ballots cast before are dropped. A
 // new On takes the place of the rows whole. Edit is the edit the asker changed, where they name it; a change to an ask that has
 // moved on since is refused.
 //
-//tony:schemagen=verse-ask-change,notag
+//tony:schemagen=viff-ask-change,notag
 type AskChange struct {
 	Edit     int            `tony:"field=edit,omitzero"`
 	Due      string         `tony:"field=due,omitzero"`

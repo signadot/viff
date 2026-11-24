@@ -1,10 +1,10 @@
 package trigger
 
-// A PARKED LAUNCH IS RECORDED, so that it outlives the verse that parked it as the suspension
-// holding it does. The record stands in scratch (entity.Scratch), at verse.task.parked.<id> for
+// A PARKED LAUNCH IS RECORDED, so that it outlives the viff that parked it as the suspension
+// holding it does. The record stands in scratch (entity.Scratch), at mirror.task.parked.<id> for
 // the task the launch would start: nothing watches it, it has no history worth keeping, and one
 // engine writes it. It is written when the launch parks and removed when the lift starts it. An
-// engine reads its own before it settles the claims the last verse left, so a claim waiting on a
+// engine reads its own before it settles the claims the last viff left, so a claim waiting on a
 // parked launch is found in flight.
 //
 // Scratch is the store's to keep, and is flushed behind the write: a store that goes down before
@@ -18,21 +18,21 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
 )
 
-// parkedKind is where the records stand: verse.task.parked.<id>, in scratch.
+// parkedKind is where the records stand: mirror.task.parked.<id>, in scratch.
 const parkedKind = "parked"
 
-func parkedRef(id string) entity.Ref { return entity.VerseRef(mirror.System, parkedKind, id) }
+func parkedRef(id string) entity.Ref { return entity.ViffRef(mirror.System, parkedKind, id) }
 
 // id is the task the launch would start.
 func (l parkedLaunch) id(e *Engine) string { return spawnID(e.idOwner(), chainID(l.chain), l.subj) }
 
 // recordParked writes a parked launch's record. A store with no scratch, or one that refuses the
-// write, leaves the launch parked in this verse alone.
+// write, leaves the launch parked in this viff alone.
 func (e *Engine) recordParked(l parkedLaunch) {
 	sc, ok := entity.ScratchOf(e.store)
 	if !ok {
@@ -42,7 +42,7 @@ func (e *Engine) recordParked(l parkedLaunch) {
 	for i := range l.passed {
 		n, err := l.passed[i].ToTonyIR()
 		if err != nil {
-			e.logger.Warn("a parked launch was not recorded, and will not outlive this verse", "chain", l.chain, "subject", l.subj.String(), "err", err)
+			e.logger.Warn("a parked launch was not recorded, and will not outlive this viff", "chain", l.chain, "subject", l.subj.String(), "err", err)
 			return
 		}
 		passed = append(passed, n)
@@ -55,7 +55,7 @@ func (e *Engine) recordParked(l parkedLaunch) {
 		"passed":     ir.FromSlice(passed),
 	}
 	if err := sc.ScratchWrite(parkedRef(l.id(e)), rec.Payload()); err != nil && !errors.Is(err, entity.ErrNoScratch) {
-		e.logger.Warn("a parked launch was not recorded, and will not outlive this verse", "chain", l.chain, "subject", l.subj.String(), "err", err)
+		e.logger.Warn("a parked launch was not recorded, and will not outlive this viff", "chain", l.chain, "subject", l.subj.String(), "err", err)
 	}
 }
 
@@ -70,7 +70,7 @@ func (e *Engine) forgetParked(id string) {
 	}
 }
 
-// restoreParked parks again the launches the last verse left parked under this engine's owner
+// restoreParked parks again the launches the last viff left parked under this engine's owner
 // prefix, and reports whether it did. The records are read until the store answers, for as long
 // as the engine runs. A record is removed, and nothing parked, where what it names is not there
 // to launch: its action no longer in the charter, or its task already started, which the task's
@@ -82,7 +82,7 @@ func (e *Engine) restoreParked(ctx context.Context) bool {
 	}
 	var recs *ir.Node
 	for wait := 250 * time.Millisecond; ; wait = min(2*wait, 8*time.Second) {
-		got, err := sc.ScratchRead(entity.VerseRef(mirror.System, parkedKind))
+		got, err := sc.ScratchRead(entity.ViffRef(mirror.System, parkedKind))
 		if err == nil {
 			recs = got
 			break
@@ -90,7 +90,7 @@ func (e *Engine) restoreParked(ctx context.Context) bool {
 		if errors.Is(err, entity.ErrNoScratch) {
 			return true // a view over a store with none: nothing was recorded, so nothing is left
 		}
-		e.logger.Warn("the launches the last verse left parked could not be read; the engine stays shut and asks again", "err", err)
+		e.logger.Warn("the launches the last viff left parked could not be read; the engine stays shut and asks again", "err", err)
 		select {
 		case <-ctx.Done():
 			return false

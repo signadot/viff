@@ -1,7 +1,7 @@
 package trigger
 
 import (
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // Formula is what `on` and `when` hold: a point-in-time Match, asked of the store's evolution
@@ -15,7 +15,7 @@ import (
 // stood at the root of — `!until`, `!quorum`, `!fact`, `!deadline` — is refused by name
 // where a charter is read (Formula.FromTonyIR), with the spelling that replaced it.
 //
-//tony:schemagen=verse-formula,notag,codec=custom
+//tony:schemagen=viff-formula,notag,codec=custom
 type Formula struct {
 	// Neither field is on the wire: the codec renders the match itself (tonycodec.go).
 	Op  FormulaOp    `tony:"field=op"`
@@ -31,7 +31,7 @@ const OpAtom FormulaOp = "atom"
 // the match is an edge on a change (Formula.MatchEvent) and, as a store predicate, presence.
 // Not on the wire of its own: Formula's codec renders the match.
 //
-//tony:schemagen=verse-requirement,notag,codec=custom
+//tony:schemagen=viff-requirement,notag,codec=custom
 type Requirement struct {
 	Kind  RequirementKind
 	Facts Match // the store facts this requirement reads (a point-in-time Match)

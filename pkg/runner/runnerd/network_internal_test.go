@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // A TASK'S NETWORK IS ITS LAUNCH'S, absent being none; an agent reaches its model under any of

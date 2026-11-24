@@ -13,22 +13,22 @@
 #
 # Install it once the pods are up. The name is free, as the git source's is: this one is polled
 # and posts no hints, so there is nothing for a baked-in url to have to match.
-#   verse iod add issues http://git-issue-iod:9801 -root git-issue
+#   viff iod add issues http://git-issue-iod:9801 -root git-issue
 #
 # What it reflects is the drive's own notices: an issue filed before a breaking push lands in
-# this slice, which is what makes `verse docket`'s neighbourhood
+# this slice, which is what makes `viff docket`'s neighbourhood
 # — a charter reacting to a notice — something that can be written at all.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: git-issue-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: git-issue
 spec:
   replicas: 1
-  # Recreate, for the git source's reason: two pods would each hold a mirror, verse would dial
+  # Recreate, for the git source's reason: two pods would each hold a mirror, viff would dial
   # whichever the Service picked, and a fetch's timing would decide which answer a pass got. A
   # source is the single writer of its slice, and running two of it is what the install's
   # disjointness check exists to prevent, arriving through the deployment instead.
@@ -36,19 +36,19 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: verse
+      app: viff
       tier: iods
       io: git-issue
   template:
     metadata:
       labels:
-        app: verse
+        app: viff
         tier: iods
         io: git-issue
     spec:
       containers:
       - name: git-issue-iod
-        image: signadot/verse:latest
+        image: signadot/viff:latest
         # The mirror spec comes from the build (`-e gitMirror=…`); see deploy/build.tony, where
         # this shares the git source's knob because the ordinary case is both over one repo.
         command:
@@ -59,7 +59,7 @@ spec:
         - -state
         - /repos
         - -mirror
-        - https://github.com/signadot/verse.git
+        - https://github.com/signadot/viff.git
         ports:
         - name: source
           containerPort: 9801
@@ -86,7 +86,7 @@ spec:
           readOnly: true
         readinessProbe:
           # GET /io is the contract's own "what are you", which is the question a readiness
-          # probe is asking. A source that cannot answer it is one verse's install probe would
+          # probe is asking. A source that cannot answer it is one viff's install probe would
           # call unreachable.
           httpGet:
             path: /io
@@ -102,7 +102,7 @@ spec:
         emptyDir: {}
       - name: git-credentials
         secret:
-          secretName: verse-git
+          secretName: viff-git
           optional: true
 ---
 apiVersion: v1
@@ -110,12 +110,12 @@ kind: Service
 metadata:
   name: git-issue-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: git-issue
 spec:
   selector:
-    app: verse
+    app: viff
     tier: iods
     io: git-issue
   ports:

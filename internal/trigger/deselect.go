@@ -6,8 +6,8 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/exprs"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/exprs"
 )
 
 // Deselection: whether a subject can still match the predicate that selected it, once the

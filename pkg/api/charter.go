@@ -2,9 +2,9 @@ package api
 
 // CharterCheck is what `POST /charter/check` answers: whether a tree of charters would install
 // at an address over what runs there, and what would change, with nothing installed. It is a
-// question, beside the install and never part of it (internal/versed/chartercheck.go).
+// question, beside the install and never part of it (internal/viffd/chartercheck.go).
 //
-//tony:schemagen=verse-charter-check,notag
+//tony:schemagen=viff-charter-check,notag
 type CharterCheck struct {
 	// At is the address checked, which the tree would be installed at with a prune.
 	At string `tony:"field=at"`
@@ -22,7 +22,7 @@ type CharterCheck struct {
 // CharterCheckPackage is one package of a checked tree: its address and what would change there,
 // each entry `rules.<name>` or `strata.<name>`.
 //
-//tony:schemagen=verse-charter-check-package,notag
+//tony:schemagen=viff-charter-check-package,notag
 type CharterCheckPackage struct {
 	At      string   `tony:"field=at"`
 	Added   []string `tony:"field=added,omitzero"`
@@ -35,7 +35,7 @@ type CharterCheckPackage struct {
 // Installed is what `POST /charter` answers: what each package of the request installed, and
 // what `?prune` took out.
 //
-//tony:schemagen=verse-installed,notag
+//tony:schemagen=viff-installed,notag
 type Installed struct {
 	Installed []InstalledPackage `tony:"field=installed"`
 	Pruned    []Pruned           `tony:"field=pruned,omitzero"`
@@ -48,14 +48,14 @@ type Installed struct {
 // removed at, RFC 3339; installing it again renews it.
 //
 // An install answers once the charter is accepted — written and checked — and arming is the
-// store's pace: a rule's watches open a few at a time behind every other watch the verse is
+// store's pace: a rule's watches open a few at a time behind every other watch the viff is
 // opening. So Held carries the rules still arming at the instant of the answer, marked Arming,
-// and `?wait=<d>` holds the answer until none is, or d has passed (internal/versed/charter.go). Rules
+// and `?wait=<d>` holds the answer until none is, or d has passed (internal/viffd/charter.go). Rules
 // counts an arming rule, since it has passed every check and the store alone stands between it
 // and firing, and leaves out one held for a stratum or a runner: the count is the same whatever
 // the store's pace.
 //
-//tony:schemagen=verse-installed-package,notag
+//tony:schemagen=viff-installed-package,notag
 type InstalledPackage struct {
 	Rules   int        `tony:"field=rules"`
 	Strata  int        `tony:"field=strata"`
@@ -69,7 +69,7 @@ type InstalledPackage struct {
 // not declare, a runner no registration offers, a read that did not happen, or its watches,
 // which Arming marks: the rule passed every check and the store has not opened them yet.
 //
-//tony:schemagen=verse-held-rule,notag
+//tony:schemagen=viff-held-rule,notag
 type HeldRule struct {
 	Rule   string `tony:"field=rule"`
 	Waits  string `tony:"field=waits"`
@@ -79,7 +79,7 @@ type HeldRule struct {
 // RuleNote is an advisory about a rule: something the install took but the author may not
 // have meant.
 //
-//tony:schemagen=verse-rule-note,notag
+//tony:schemagen=viff-rule-note,notag
 type RuleNote struct {
 	Rule string `tony:"field=rule"`
 	Note string `tony:"field=note"`
@@ -88,7 +88,7 @@ type RuleNote struct {
 // Pruned is what `?prune` took out at one address: what it Removed from a package the request
 // still installs, or the whole package, Uninstalled.
 //
-//tony:schemagen=verse-pruned,notag
+//tony:schemagen=viff-pruned,notag
 type Pruned struct {
 	At          string   `tony:"field=at"`
 	Removed     []string `tony:"field=removed,omitzero"`

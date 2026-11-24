@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	tony "github.com/signadot/tony-format/go-tony"
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // A PRECONDITION AT AN ARRAY ELEMENT IS ABOUT THE ELEMENT. A write at `votes[1].choice` whose

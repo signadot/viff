@@ -6,7 +6,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // Phased is a store whose watches stand in a phase the test sets — refused, in line, opening

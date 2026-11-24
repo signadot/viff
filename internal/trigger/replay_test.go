@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A hold that outlasts the live observe buffer drops live commits — but none are LOST: on

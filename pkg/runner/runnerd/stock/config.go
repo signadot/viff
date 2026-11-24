@@ -1,8 +1,8 @@
-// Package stock is the runner verse ships, built on package runnerd: it offers the agents its
-// configuration names under `agents:` (verse's own, package verse; codex; claude) and, where it has a `script:`
+// Package stock is the runner viff ships, built on package runnerd: it offers the agents its
+// configuration names under `agents:` (viff's own, package viff; codex; claude) and, where it has a `script:`
 // section, scripts. `runnerd -config` serves it.
 //
-// A launch's doer picks which: `agent: verse` is the verse agent, and `script` runs a script.
+// A launch's doer picks which: `agent: viff` is the viff agent, and `script` runs a script.
 package stock
 
 import (
@@ -17,23 +17,23 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/claude"
-	"github.com/signadot/verse/pkg/runner/runnerd/codex"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/claude"
+	"go.viff.dev/viff/pkg/runner/runnerd/codex"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/secretstore"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// annotations is every annotation the verse agent knows, with the type of its value. A
+// annotations is every annotation the viff agent knows, with the type of its value. A
 // configuration may accept any of them.
-var annotations = map[string]string{verse.AnnotationVirtualKey: "string"}
+var annotations = map[string]string{viff.AnnotationVirtualKey: "string"}
 
 // The environment variables the runner reads the systems' credentials from; each agent's are its
-// package's (verse.EnvAPIKey, codex.EnvAPIKey, claude.EnvAPIKey). No configuration names one: a
+// package's (viff.EnvAPIKey, codex.EnvAPIKey, claude.EnvAPIKey). No configuration names one: a
 // variable is read where the configuration offers what needs it.
 const (
 	// EnvGitHubToken is the runner's token for its forge: what it fetches and pushes with, and
@@ -50,7 +50,7 @@ const (
 // systems', by the table) and its agents'. No `shellEnv` names one: what the runner acts with
 // stays in the runner, and no task's shell, nor its process, holds it.
 var credentials = append(performedEnvs(),
-	verse.EnvAPIKey, verse.EnvBaseURL, verse.EnvVirtualKey, codex.EnvAPIKey, claude.EnvOAuthToken, claude.EnvAPIKey)
+	viff.EnvAPIKey, viff.EnvBaseURL, viff.EnvVirtualKey, codex.EnvAPIKey, claude.EnvOAuthToken, claude.EnvAPIKey)
 
 // A performed system is one the runner performs for its tasks over the channel, with a
 // credential of its own. THE TABLE BELOW IS EVERY ONE OF THEM, and what the runner says of a
@@ -82,9 +82,9 @@ type performed struct {
 
 // The table's conditions.
 var (
-	checksOut    = func(c Config) bool { return c.Repos != nil }
-	atGitHub     = Config.atGitHub
-	reachesVerse = func(c Config) bool { return c.reachesVerse }
+	checksOut   = func(c Config) bool { return c.Repos != nil }
+	atGitHub    = Config.atGitHub
+	reachesViff = func(c Config) bool { return c.reachesViff }
 	// ceilingNames is a system performed where a doer's ceiling names it.
 	ceilingNames = func(system string) func(Config) bool {
 		return func(c Config) bool { return len(c.naming(system)) > 0 }
@@ -125,9 +125,9 @@ var performedSystems = []performed{
 	// The pkg system acts with no credential: the trust an install rides is the repositories'
 	// signed index, which the `pkg:` section names.
 	{system: "pkg", when: hasPkg, needs: needsPkg},
-	// The verse system is carried to verse over the channel too, where the runner reaches its
-	// verse with a token of its own (Standalone's toVerse); `question`'s ask stays inside the run.
-	{system: "verse", when: reachesVerse, atStart: true},
+	// The viff system is carried to viff over the channel too, where the runner reaches its
+	// viff with a token of its own (Standalone's toViff); `question`'s ask stays inside the run.
+	{system: "viff", when: reachesViff, atStart: true},
 }
 
 // performedEnvs is the variables the performed systems' credentials are read from, each once.
@@ -155,7 +155,7 @@ func performedNamed(system string) (performed, bool) {
 // systems an inner system is stopped for name it.
 const ScriptDoer = "script"
 
-// Config is the verse runner's own configuration, beside runnerd.Config in the same file: the
+// Config is the viff runner's own configuration, beside runnerd.Config in the same file: the
 // agents the process runs, by name, and whether it runs scripts, each doer under its own
 // ceilings and its own shell environment. Presence is the switch: an agent the map does not name
 // is not offered, and no `script:` offers no scripts.
@@ -163,7 +163,7 @@ type Config struct {
 	// Repos is where the runner keeps its git mirrors, and the forge it fetches from. Absent,
 	// the runner takes no launch that names repos.
 	Repos *Repos `tony:"field=repos,omitzero"`
-	// Agents is the agents this process runs, by name: verse, codex, claude. Each value is how
+	// Agents is the agents this process runs, by name: viff, codex, claude. Each value is how
 	// that program is run and what its tasks get.
 	Agents map[string]Agent `tony:"field=agents,omitzero"`
 	// Script is the runner's scripts: present, it offers them.
@@ -185,14 +185,14 @@ type Config struct {
 	// it installs any.
 	Pkg *Pkg `tony:"field=pkg,omitzero"`
 
-	// reachesVerse is whether the runner carries the verse system's verbs to the verse it serves
-	// (Standalone's toVerse): not the file's to say, since it follows from the runner's `verse:`
+	// reachesViff is whether the runner carries the viff system's verbs to the viff it serves
+	// (Standalone's toViff): not the file's to say, since it follows from the runner's `viff:`
 	// block and its token.
-	reachesVerse bool
+	reachesViff bool
 }
 
 // Agent is one agent the runner runs: its program's own keys, which are the agent's (codex
-// `bin`, `sandbox`, `config`; claude `bin`; verse none), and the four keys every agent takes.
+// `bin`, `sandbox`, `config`; claude `bin`; viff none), and the four keys every agent takes.
 type Agent struct {
 	// Bin is the program, the agent's name on PATH by default (codex, claude).
 	Bin string `tony:"field=bin,omitzero"`
@@ -205,7 +205,7 @@ type Agent struct {
 	ShellEnv []string `tony:"field=shellEnv,omitzero"`
 	// Settings is the operator's say over each setting the agent takes (Setting).
 	Settings map[string]Setting `tony:"field=settings,omitzero"`
-	// Annotations is the annotations a launch of the agent may set (verse only), with the type of
+	// Annotations is the annotations a launch of the agent may set (viff only), with the type of
 	// their value and the value used where a launch sets none.
 	Annotations map[string]Annotation `tony:"field=annotations,omitzero"`
 	// Systems is the agent's ceilings, by system (System).
@@ -417,19 +417,19 @@ func TokensFromEnv(c Config) Tokens {
 
 // Held is the configuration the runner runs with in the environment it starts in (getenv): c,
 // with each system whose credential is not there (performed.own) left out of every doer's section, and the
-// verse agent left out where its model key is not set. The runner then does not perform the
+// viff agent left out where its model key is not set. The runner then does not perform the
 // system, or run the agent, and no offer holds it, so a spawn that needs it is refused at
 // install, where it is written, rather than the runner not starting or the act failing at the
 // service. It says what it closed. Codex and claude are not closed: without a key, a login may
 // still authenticate them (CheckStart).
 func (c Config) Held(getenv func(string) string) (Config, []string) {
 	var warnings []string
-	if _, ok := c.Agents[AgentName]; ok && getenv(verse.EnvAPIKey) == "" {
+	if _, ok := c.Agents[AgentName]; ok && getenv(viff.EnvAPIKey) == "" {
 		agents := maps.Clone(c.Agents)
 		delete(agents, AgentName)
 		c.Agents = agents
-		warnings = append(warnings, fmt.Sprintf("%s is not set: agents.%s is closed, since the verse agent calls its model with it; a spawn that prompts it is refused at install",
-			verse.EnvAPIKey, AgentName))
+		warnings = append(warnings, fmt.Sprintf("%s is not set: agents.%s is closed, since the viff agent calls its model with it; a spawn that prompts it is refused at install",
+			viff.EnvAPIKey, AgentName))
 	}
 	for _, s := range performedSystems {
 		naming := c.naming(s.system)
@@ -585,14 +585,14 @@ func (c Config) claudeProgram() string {
 // left to offer, an agent whose program is not there. It returns what it lets start and is worth
 // saying: a forge token missing, which a forge on this filesystem does without and a fetch over
 // the network finds, an agent left to its own login, and claude's API key shadowed by an OAuth
-// token. A system whose credential is not set, or the verse agent with no model key, is not
+// token. A system whose credential is not set, or the viff agent with no model key, is not
 // refused here; the runner runs with it closed (Held).
 func (c Config) CheckStart(getenv func(string) string, lookPath func(string) (string, error)) (warnings []string, err error) {
 	if c.Repos != nil && getenv(EnvGitHubToken) == "" {
 		warnings = append(warnings, EnvGitHubToken+" is not set: a fetch or a push over the network is refused where it reaches for it")
 	}
 	if len(c.Agents) == 0 && c.Script == nil {
-		return nil, fmt.Errorf("the runner offers nothing it can run: agents.%s is closed, %s not being set, and nothing else is offered", AgentName, verse.EnvAPIKey)
+		return nil, fmt.Errorf("the runner offers nothing it can run: agents.%s is closed, %s not being set, and nothing else is offered", AgentName, viff.EnvAPIKey)
 	}
 	if cc := c.codexConfig(); cc != nil {
 		if _, err := lookPath(cc.Program()); err != nil {
@@ -671,7 +671,7 @@ func (c Config) performs() []string {
 }
 
 // inner is the systems the runner stops inside a run rather than performs over the channel,
-// and which doers it stops them for: the verse agent all four, codex and claude what each
+// and which doers it stops them for: the viff agent all four, codex and claude what each
 // proposes, a script its questions alone, since its commands and files are one action and no
 // step.
 var inner = map[string][]string{
@@ -682,7 +682,7 @@ var inner = map[string][]string{
 }
 
 // OpenInside is the systems the runner stops inside a run for doer, each under an open ceiling
-// (systems.Open): the ceilings of a runner whose operator is the author of its tasks, `verse
+// (systems.Open): the ceilings of a runner whose operator is the author of its tasks, `viff
 // up`'s, which says so rather than leaving them closed.
 func OpenInside(doer string) map[string]System {
 	out := map[string]System{}
@@ -776,7 +776,7 @@ func (c Config) shellEnv(doer string) []string {
 // the runner's environment, and what its `with.env` may not name.
 func (c Config) envOf(l *runner.Launch) []string { return c.shellEnv(c.doer(l)) }
 
-// Load reads the verse runner's configuration file.
+// Load reads the viff runner's configuration file.
 func Load(path string) (runnerd.Config, Config, error) {
 	var c Config
 	rc, err := runnerd.Load(path, &c)
@@ -985,7 +985,7 @@ func (c *Config) checkAgent(name string, a Agent) error {
 	for _, ann := range slices.Sorted(maps.Keys(a.Annotations)) {
 		want, ok := annotations[ann]
 		if name != AgentName || !ok {
-			return fmt.Errorf("%s.annotations.%s: %s takes no annotation %q (the verse agent takes: %s)", at, ann, name, ann,
+			return fmt.Errorf("%s.annotations.%s: %s takes no annotation %q (the viff agent takes: %s)", at, ann, name, ann,
 				strings.Join(slices.Sorted(maps.Keys(annotations)), ", "))
 		}
 		if typ := a.Annotations[ann].Type; typ != want {
@@ -1026,7 +1026,7 @@ func (c *Config) checkSystems(doer string, sections map[string]System) error {
 					at, name, doer, name, strings.Join(innerFor(doer), ", "))
 			}
 		} else if p, _ := performedNamed(name); name != "network" && !p.atStart && !slices.Contains(performs, name) {
-			// verse's section is taken whether or not the runner reaches a verse, which the file
+			// viff's section is taken whether or not the runner reaches a viff, which the file
 			// is checked before knowing (performed.atStart): the runner offers the system only
 			// where it does, with its own token.
 			return fmt.Errorf("%s.%s: this runner does not perform %s (it performs: %s); %s", at, name, name,

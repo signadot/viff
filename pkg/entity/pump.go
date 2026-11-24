@@ -451,7 +451,7 @@ func (p *pump) apply(ev *logdapi.WatchEvent) {
 // A SUBSCRIBER CURRENT THROUGH THE COMMIT BEFORE gets the patch on its commit (Commit.delta),
 // rooted where Changes are, so Touches answers about a path from what the commit wrote rather
 // than from Changes, whose events stand at entity depth: a write to an entity's `stage` does not
-// touch that entity's `verse.charter`, though both are beneath the event. A subscriber walked from
+// touch that entity's `@sys.charter`, though both are beneath the event. A subscriber walked from
 // further back gets none, since its Changes are the net of more than this patch.
 //
 // ONE WALK PER PATTERN among the subscribers current through prev: the changes are the same
@@ -891,7 +891,7 @@ func (p *pump) run() {
 //
 // ONE ROOTING (session protocol 2). Every event of a watch — the State it opens on and each
 // Patch after it — is rooted AT THE WATCHED PATH, with that path's own segments stripped: a
-// watch on verse.demo.pr sees top-level fields that are ids. The documents this store reads
+// watch on viff.demo.pr sees top-level fields that are ids. The documents this store reads
 // entities out of are rooted at the store root, because a Ref is addressed from there and
 // nothing below the root is fixed for the store as a whole. Nesting is the difference
 // between the two rootings, and it is the same for both event shapes.

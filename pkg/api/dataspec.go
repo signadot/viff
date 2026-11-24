@@ -9,17 +9,17 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// THE VERSE AS `verse data` READS AND WRITES IT, and as verse_data, verse_data_put and
-// verse_data_rm and the verse system's verse-data-get, -put and -rm do: one grammar for all, so a
+// THE VIFF AS `viff data` READS AND WRITES IT, and as viff_data, viff_data_put and
+// viff_data_rm and the viff system's viff-data-get, -put and -rm do: one grammar for all, so a
 // task reads and writes as its owner would. An error is a FieldError: which of the words it is
 // about, and whether it is a misuse of them or a value that does not read.
 
 // FieldError is a data grammar error about one of the words a caller gave. Field names it as
-// verse mcp's tools do (at, if, if_at, trim, value, create, update, expect, grants), for each
+// viff mcp's tools do (at, if, if_at, trim, value, create, update, expect, grants), for each
 // caller to say in its own spelling: the CLI by its flag, a tool by its parameter. Misuse is a
 // misuse of the words, an address that is no address or two that contradict each other, rather
 // than a value that does not read.
@@ -38,7 +38,7 @@ func misuse(field string, err error) error { return &FieldError{Field: field, Mi
 // unread is a FieldError for a value of field that does not read.
 func unread(field string, err error) error { return &FieldError{Field: field, Err: err} }
 
-// StateQuery is a read of the verse at the kinded path at, as GET /state takes it: the server's
+// StateQuery is a read of the viff at the kinded path at, as GET /state takes it: the server's
 // selector (pattern, in the format in, rooted at patternAt), and for a listing the paths alone,
 // depth levels deep (entity.Unbounded for all). It answers the path parsed too, which is what the
 // answer is walked by.
@@ -103,7 +103,7 @@ func FilterQuery(q url.Values, pattern, at string, in codec.Format) error {
 //
 // It is if-at's alone: an ADDRESS is a kinded path (entity.TargetOf), which quotes a field name
 // carrying a dot, while this stays the flat split because if-at says where to root a predicate
-// inside one payload rather than naming a place in the verse. The wire takes the segments as a
+// inside one payload rather than naming a place in the viff. The wire takes the segments as a
 // list either way, so nothing but this spelling is in the way if a dotted field name ever needs
 // rooting.
 func fieldPath(at string) []string {
@@ -151,19 +151,19 @@ func (p DataWrite) Body(segs []string, in codec.Format) (PutEntity, error) {
 		return PutEntity{}, err
 	}
 	// GRANTS ARE GIVEN AT A CREATION, so a write that says something stands is not one: what a
-	// node that stands holds out is changed with `verse perms`.
+	// node that stands holds out is changed with `viff perms`.
 	var grants entity.Payload
 	if p.Grants != "" {
 		if p.Update || p.Expect != "" {
 			return PutEntity{}, misuse("grants", errors.New("a write with grants creates the node, and update "+
-				"and expect are about one that stands; change what a node holds out with verse perms --grants"))
+				"and expect are about one that stands; change what a node holds out with viff perms --grants"))
 		}
 		if grants, err = codec.ParseNode([]byte(p.Grants), codec.Tony); err != nil {
 			return PutEntity{}, unread("grants", err)
 		}
 	}
-	// THE WHOLE ADDRESS IS THE PLACE. `verse data verse-dev drift head abc --put '{…}'` writes
-	// there, and so does `verse data demo.pr.1.labels.urgent --put true` — a write is a value
+	// THE WHOLE ADDRESS IS THE PLACE. `viff data viff-dev drift head abc --put '{…}'` writes
+	// there, and so does `viff data demo.pr.1.labels.urgent --put true` — a write is a value
 	// at a path, and where the entity "ends" is a question a write does not answer. The answer
 	// comes back from the address written, so a put still shows the merge wherever the address
 	// IS an entity, which is the ordinary case.
@@ -210,10 +210,10 @@ func RemoveQuery(segs []string) (url.Values, entity.Path, error) {
 	return q, at, nil
 }
 
-// RemovedLine is the line a removal says once verse has made it: nothing stands there now, which is
+// RemovedLine is the line a removal says once viff has made it: nothing stands there now, which is
 // all there is to say, and is equally true of a path that held nothing to begin with.
 //
-// NAMED IN STEPS, like every other address `verse data` prints, so the line reads as the one
+// NAMED IN STEPS, like every other address `viff data` prints, so the line reads as the one
 // somebody typed rather than as the kpath it was sent as. A path that is not a plain address — a
 // glob, a reach into an array — is echoed as it stands, since it has no steps.
 func RemovedLine(at entity.Path) string {

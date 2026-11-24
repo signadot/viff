@@ -73,7 +73,7 @@ func TestStripBracketsDoesNotMutate(t *testing.T) {
 	}
 }
 
-// A document arriving over the wire becomes a VALUE verse holds, and how the operator's
+// A document arriving over the wire becomes a VALUE viff holds, and how the operator's
 // file happened to be punctuated is not part of it. Read is the one place that boundary is
 // crossed, so it is the one place the hint is dropped — a per-route strip would have to find
 // every field that is an opaque tony node (a charter's `patch`, a match's `fields`, an

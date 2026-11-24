@@ -6,7 +6,7 @@ import "os"
 // enough for a shell and the tools in it to find themselves, and no credential.
 //
 // A credential is never on it, and adding one here would be the wrong fix for a task that needs
-// it — that is a declaration for the deployment to make (`shellEnv:` for `verse up`, and in a
+// it — that is a declaration for the deployment to make (`shellEnv:` for `viff up`, and in a
 // runner's configuration), where it can be seen.
 var DefaultShellEnv = []string{"PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "TERM", "TMPDIR"}
 

@@ -1,9 +1,9 @@
-// Package claude is the claude agent: Anthropic's Claude Code as a verse task, with every
+// Package claude is the claude agent: Anthropic's Claude Code as a viff task, with every
 // command, every edit and every question it proposes decided by the task's autonomy and shown on
 // the read plane. A spawn asks for it with `agent: {name: claude}`, and a runner that hosts it
 // builds its task with Task.
 //
-// It is an agent of its own beside verse's (package verse) and codex (package codex), and it
+// It is an agent of its own beside viff's (package viff) and codex (package codex), and it
 // exists for the reason codex does: a program the runner runs and reads the output of is gated
 // once, at the invocation, and nothing inside it is seen. Claude Code offers something else.
 //
@@ -11,7 +11,7 @@
 // message and reads the session as it goes, and, told that this side answers its permission
 // prompts (`--permission-prompt-tool stdio`), Claude ASKS THIS SIDE before every tool call its
 // permission mode does not already allow. Under `manual`, that is each command, each edit and
-// each question for a person; a read in the workspace asks nothing. So the decision points verse wants are
+// each question for a person; a read in the workspace asks nothing. So the decision points viff wants are
 // there, and this package's job is to put each of them in front of the loop as an ordinary
 // action:
 //
@@ -19,8 +19,8 @@
 //     step it is derived here — `commands.run` for Bash, `files.write` on the path for Edit
 //     and Write (and on the file it lands on, where a symlink leads elsewhere in the
 //     workspace), `question.ask` for a question where the environment gives questions. The
-//     supervisor gates it exactly as it gates the verse agent's `run_bash` or `write_file`: the
-//     autonomy decides, a blocked question goes to the docket, `verse question` answers it. The
+//     supervisor gates it exactly as it gates the viff agent's `run_bash` or `write_file`: the
+//     autonomy decides, a blocked question goes to the docket, `viff question` answers it. The
 //     gate model gains nothing new.
 //   - Execute answers Claude. Proceed is allow, and the executor then waits for the call's
 //     result so the loop's exec frame carries what the command printed. A refused gate is a
@@ -45,7 +45,7 @@
 // What Claude does WITHOUT asking is the part that is attested rather than enforced: its reads
 // in the workspace (Read, Glob, Grep). Those are narrated when they complete, so the read plane
 // shows them, but no gate saw them first. A read outside the workspace asks, and is refused.
-// The verse agent has the same shape for its reads, which are no step; here the set of free
+// The viff agent has the same shape for its reads, which are no step; here the set of free
 // reads is the tool list below, and this comment is where that is said.
 //
 // Claude Code's own sandbox is not used; the runner's containment is the sandbox, and the
@@ -75,11 +75,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/signadot/verse/pkg/answer"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/answer"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Agent is the agent's name: what a spawn writes in `agent: {name: …}`.
@@ -94,14 +94,14 @@ var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
 
 // mcpServer is the name this side's MCP server is declared under; Claude prefixes its tools
 // `mcp__<server>__`.
-const mcpServer = "verse"
+const mcpServer = "viff"
 
 // TakesTool is why Claude cannot be offered a tool of this name, nil where it can: the name
-// Claude reads is `mcp__verse__<name>`, and its API bounds a tool's name in length and in
-// letters — the one bound every doer takes (verse.TakesToolNamed). A runtime offering tools it
+// Claude reads is `mcp__viff__<name>`, and its API bounds a tool's name in length and in
+// letters — the one bound every doer takes (viff.TakesToolNamed). A runtime offering tools it
 // did not write (an MCP server's) asks before offering one.
 func TakesTool(name string) error {
-	return verse.TakesToolNamed("claude", name, "mcp__"+mcpServer+"__"+name)
+	return viff.TakesToolNamed("claude", name, "mcp__"+mcpServer+"__"+name)
 }
 
 // The variables the runner reads Claude's credential from, the first set taken: a
@@ -212,7 +212,7 @@ func (c Creds) argv(model, effort string, tools, ask bool) []string {
 }
 
 // The names an action proposed by this agent carries: Claude's own words for what it is about
-// to do, lowered, which is what a person reading `verse question` or `attach` should see.
+// to do, lowered, which is what a person reading `viff question` or `attach` should see.
 const (
 	kindBash  = "bash"
 	kindEdit  = "edit"
@@ -227,7 +227,7 @@ const (
 // claude process's environment (the runner's allowlist, the launch's environment variables, and
 // where the task's credential file is, for a task that has one), offering it tools (the
 // runner's) as its own.
-func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []verse.Tool, ceilings map[string]systems.Ceiling) (*task.Task, error) {
+func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []viff.Tool, ceilings map[string]systems.Ceiling) (*task.Task, error) {
 	var contract *answer.Contract
 	if l.Answer != nil {
 		c, err := answer.Parse(l.Answer)
@@ -246,7 +246,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 		resolver: reg,
 		log:      os.Stderr,
 		tools:    tools,
-		toolBy:   map[string]verse.Tool{},
+		toolBy:   map[string]viff.Tool{},
 		asks:     l.Environment.Gives(task.StepQuestionAsk),
 	}
 	for _, t := range tools {
@@ -255,7 +255,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 	if contract != nil {
 		d.contractSrc = contract.Source()
 	}
-	d.toolStep = verse.StepOf(tools)
+	d.toolStep = viff.StepOf(tools)
 	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
 	sup.SetCeilings(ceilings)
 	sup.SetStepsOf(d.stepsOf)
@@ -294,9 +294,9 @@ type driver struct {
 	log           io.Writer
 	emit          func(task.Event)
 	// tools are the runner's, offered to Claude as an MCP server and run here when it calls one.
-	tools  []verse.Tool
-	toolBy map[string]verse.Tool
-	// toolStep is the step a call of one of the tools is, as the verse agent's is classified.
+	tools  []viff.Tool
+	toolBy map[string]viff.Tool
+	// toolStep is the step a call of one of the tools is, as the viff agent's is classified.
 	toolStep func(task.ToolUse) (task.Step, bool)
 	// asks is whether the environment gives `question.ask`, so Claude is offered its question tool.
 	asks bool
@@ -340,7 +340,7 @@ type driver struct {
 type proposal struct {
 	ev   event
 	kind string // kindBash | kindEdit | kindWrite | kindAsk | kindTool
-	tool verse.Tool
+	tool viff.Tool
 	// steps are what the request is, as the spec names a task's steps. None is no step.
 	steps []task.Step
 	// gone is closed when Claude cancels the request: the question about it is withdrawn
@@ -580,7 +580,7 @@ func (d *driver) served(ev event) bool {
 		_ = d.rpc.MCPRespond(ev.RequestID, m, map[string]any{"tools": specs})
 	case "tools/call":
 		// A call no permission request preceded: not approved, so not run.
-		_ = d.rpc.MCPRespond(ev.RequestID, m, mcpCallResult(false, "verse did not approve this call"))
+		_ = d.rpc.MCPRespond(ev.RequestID, m, mcpCallResult(false, "viff did not approve this call"))
 	default:
 		if m.isNotification() {
 			_ = d.rpc.MCPRespond(ev.RequestID, m, nil)
@@ -668,7 +668,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 		}
 		p.kind, p.tool = kindTool, t
 		tu := task.ToolUse{Name: t.Name, Input: in}
-		// The tool's own step, as the verse agent's call of it is classified: a call that is no
+		// The tool's own step, as the viff agent's call of it is classified: a call that is no
 		// step (a branch the spawn never permitted) is refused by its Do, so nobody is asked
 		// about something that cannot happen.
 		if st, ok := d.toolStep(tu); ok {
@@ -769,7 +769,7 @@ func (d *driver) refuse(ev event, why string) {
 	case "can_use_tool":
 		// Answered, so the deny's result is not narrated as a call that ran and failed.
 		d.answered[ev.Req.ToolUseID] = true
-		_ = d.rpc.Deny(ev.RequestID, "verse refused this call: "+why+". Do not retry it; plan around it.")
+		_ = d.rpc.Deny(ev.RequestID, "viff refused this call: "+why+". Do not retry it; plan around it.")
 	default:
 		_ = d.rpc.respondError(ev.RequestID, why)
 	}
@@ -791,10 +791,10 @@ func (d *driver) decline(p *proposal, note string) {
 // say), which it may propose again if it still applies.
 func refusal(what, note string) string {
 	if strings.HasPrefix(note, task.WithdrawnNote) {
-		return "verse did not decide this " + what + ": " + note +
+		return "viff did not decide this " + what + ": " + note +
 			". It was not refused; propose it again if it still applies after what you were just told."
 	}
-	why := "verse refused this " + what
+	why := "viff refused this " + what
 	if note != "" {
 		why += ": " + note
 	}

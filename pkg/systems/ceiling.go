@@ -9,7 +9,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/exprs"
+	"go.viff.dev/viff/pkg/exprs"
 )
 
 // A CEILING IS A RUNNER'S BOUND ON ONE SYSTEM, in the environment's form: blocks of attributes
@@ -28,12 +28,12 @@ import (
 //	ceiling:
 //	- repo: !glob "github.com/signadot/*"
 //	  fetch: {}
-//	  push: [{ref: !regexp "^refs/heads/verse/"}, {ref: !glob "refs/heads/release/*", force: false}]
+//	  push: [{ref: !regexp "^refs/heads/viff/"}, {ref: !glob "refs/heads/release/*", force: false}]
 type Ceiling []CeilingBlock
 
 // Open is the ceiling that bounds nothing of a system: the empty block, every verb in any shape,
 // for any value of its attributes. It is what a runner whose operator is its task's author writes
-// (`verse up`'s), said rather than implied: a ceiling written nowhere is closed. It is for the
+// (`viff up`'s), said rather than implied: a ceiling written nowhere is closed. It is for the
 // systems a runner stops inside a run; for one with a unique attribute it would be any
 // repository on any forge, which a `git` ceiling may not be (the stock runner's forge check). It is
 // not for the network either: the network is apart from the empty block (Block.Given), so Open

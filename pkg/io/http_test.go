@@ -10,22 +10,22 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
-	verseiod "github.com/signadot/verse/pkg/io/iod"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
+	viffiod "go.viff.dev/viff/pkg/io/iod"
 )
 
 // serve puts a source behind iod and returns a client for it — the deployed shape, in a
 // test's address space.
-func serve(t *testing.T, src verseio.Source) *verseio.Client {
+func serve(t *testing.T, src viffio.Source) *viffio.Client {
 	t.Helper()
-	ts := httptest.NewServer(verseiod.New(src).Handler())
+	ts := httptest.NewServer(viffiod.New(src).Handler())
 	t.Cleanup(ts.Close)
-	return verseio.HTTP(src.Root(), ts.URL, nil)
+	return viffio.HTTP(src.Root(), ts.URL, nil)
 }
 
-// The test that earns the transport: ONE verseio.Git, one Reflection, compared across both
+// The test that earns the transport: ONE viffio.Git, one Reflection, compared across both
 // ways of asking. It is the whole claim of this step — that a source deployed elsewhere and
 // one linked in are the same source — and it is where the wire encoding of a Reflection
 // actually gets pinned, covers, predicates and payloads included.
@@ -39,7 +39,7 @@ func TestReflectionIsTheSameAcrossBothTransports(t *testing.T) {
 	commit(t, dir, "a.txt", "hi", "first")
 	gitRun(t, dir, "branch", "shiny")
 
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("A", dir)
 
 	direct, err := g.Reflect(ctx, entity.Ref{})
@@ -61,7 +61,7 @@ func TestReflectionIsTheSameAcrossBothTransports(t *testing.T) {
 	sameReflection(t, direct, one) // one repo is registered, so the targeted answer is the whole
 }
 
-func sameReflection(t *testing.T, want, got verseio.Reflection) {
+func sameReflection(t *testing.T, want, got viffio.Reflection) {
 	t.Helper()
 	if len(got.Covers) != len(want.Covers) {
 		t.Fatalf("covers: got %d, want %d", len(got.Covers), len(want.Covers))
@@ -105,13 +105,13 @@ type erroring struct{ root string }
 
 func (e erroring) Root() string { return e.root }
 
-func (e erroring) Reflect(context.Context, entity.Ref) (verseio.Reflection, error) {
-	return verseio.Reflection{}, errors.New("the repo is on a laptop that is asleep")
+func (e erroring) Reflect(context.Context, entity.Ref) (viffio.Reflection, error) {
+	return viffio.Reflection{}, errors.New("the repo is on a laptop that is asleep")
 }
 
 // The sharpest bug this design admits, and it costs three lines to close. An empty Reflection
 // is not "nothing to say" — it is an instruction to tombstone everything its covers claim. So
-// a source that FAILED must reach verse as an error, never as an empty answer, or a transport
+// a source that FAILED must reach viff as an error, never as an empty answer, or a transport
 // fault converges as "the external system is empty now" and the whole slice is deleted.
 func TestAFailedReflectIsAnErrorAndNotAnEmptyOne(t *testing.T) {
 	ctx := context.Background()
@@ -119,12 +119,12 @@ func TestAFailedReflectIsAnErrorAndNotAnEmptyOne(t *testing.T) {
 	standing := entity.RefAt("x", "a", "1")
 
 	// Something the source reflected earlier, standing in the store.
-	ok := &fakeSource{root: "x", answer: func() verseio.Reflection {
-		rn := verseio.Reflection{Covers: []entity.Pattern{verseio.Cover("x", "a", "*")}}
+	ok := &fakeSource{root: "x", answer: func() viffio.Reflection {
+		rn := viffio.Reflection{Covers: []entity.Pattern{viffio.Cover("x", "a", "*")}}
 		rn.Add(standing, entity.Obj{"n": 1})
 		return rn
 	}}
-	if err := verseio.NewReflector(ok, store, 0).Reconcile(ctx, entity.Ref{}); err != nil {
+	if err := viffio.NewReflector(ok, store, 0).Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -133,12 +133,12 @@ func TestAFailedReflectIsAnErrorAndNotAnEmptyOne(t *testing.T) {
 		t.Fatalf("a failed reflect answered %+v instead of an error", rn)
 	}
 	// Unreachable, not not-a-source: something is there and it is having a bad day.
-	if !errors.Is(err, verseio.ErrUnreachable) {
+	if !errors.Is(err, viffio.ErrUnreachable) {
 		t.Fatalf("want ErrUnreachable, got %v", err)
 	}
 
 	// And the whole point of the above: converge never runs, so what was reflected stands.
-	if err := verseio.NewReflector(serve(t, erroring{root: "x"}), store, 0).
+	if err := viffio.NewReflector(serve(t, erroring{root: "x"}), store, 0).
 		Reconcile(ctx, entity.Ref{}); err == nil {
 		t.Fatal("a reconcile over a failing source should report the failure")
 	}
@@ -156,8 +156,8 @@ func TestAnUndecodableAnswerIsRefused(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	_, err := verseio.HTTP("x", ts.URL, nil).Reflect(context.Background(), entity.Ref{})
-	if !errors.Is(err, verseio.ErrNotSource) {
+	_, err := viffio.HTTP("x", ts.URL, nil).Reflect(context.Background(), entity.Ref{})
+	if !errors.Is(err, viffio.ErrNotSource) {
 		t.Fatalf("want ErrNotSource, got %v", err)
 	}
 }
@@ -171,31 +171,31 @@ func TestProbe(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	initRepo(t, dir)
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("A", dir)
 
-	ts := httptest.NewServer(verseiod.New(g).Handler())
+	ts := httptest.NewServer(viffiod.New(g).Handler())
 	defer ts.Close()
 
-	reach, d, err := verseio.Probe(ctx, ts.URL, nil)
-	if reach != verseio.IsSource || err != nil {
+	reach, d, err := viffio.Probe(ctx, ts.URL, nil)
+	if reach != viffio.IsSource || err != nil {
 		t.Fatalf("probe of a source = %v (%v)", reach, err)
 	}
-	if d.Root != verseio.GitRoot {
+	if d.Root != viffio.GitRoot {
 		t.Fatalf("descriptor root = %q, want git", d.Root)
 	}
 	// The ownership claim an install proves disjointness with: one place per repo.
-	want := []verseio.Own{{At: "git.A"}}
+	want := []viffio.Own{{At: "git.A"}}
 	// EqualFunc rather than Equal: a claim carries a path, so it holds a slice and is not
 	// comparable. Its rendering is the whole of it.
-	if !slices.EqualFunc(d.Owns, want, func(a, b verseio.Own) bool { return a.String() == b.String() }) {
+	if !slices.EqualFunc(d.Owns, want, func(a, b viffio.Own) bool { return a.String() == b.String() }) {
 		t.Fatalf("descriptor owns = %v, want %v", d.Owns, want)
 	}
 
 	// Something that answers and is not this: the mistake an operator makes with a url.
 	other := httptest.NewServer(http.NotFoundHandler())
 	defer other.Close()
-	if reach, _, _ := verseio.Probe(ctx, other.URL, nil); reach != verseio.NotSource {
+	if reach, _, _ := viffio.Probe(ctx, other.URL, nil); reach != viffio.NotSource {
 		t.Fatalf("probe of a non-source = %v, want not a source", reach)
 	}
 
@@ -203,7 +203,7 @@ func TestProbe(t *testing.T) {
 	// that names it, and the reason an install warns rather than refuses.
 	dead := httptest.NewServer(http.NotFoundHandler())
 	dead.Close()
-	if reach, _, _ := verseio.Probe(ctx, dead.URL, nil); reach != verseio.Unreachable {
+	if reach, _, _ := viffio.Probe(ctx, dead.URL, nil); reach != viffio.Unreachable {
 		t.Fatalf("probe of a dead url = %v, want unreachable", reach)
 	}
 
@@ -213,7 +213,7 @@ func TestProbe(t *testing.T) {
 		http.Error(w, "the disk is full", http.StatusInternalServerError)
 	}))
 	defer sick.Close()
-	if reach, _, _ := verseio.Probe(ctx, sick.URL, nil); reach != verseio.Unreachable {
+	if reach, _, _ := viffio.Probe(ctx, sick.URL, nil); reach != viffio.Unreachable {
 		t.Fatalf("probe of a failing source = %v, want unreachable", reach)
 	}
 }
@@ -232,9 +232,9 @@ func TestTheWireIsWhatTheContractSays(t *testing.T) {
 	dir := t.TempDir()
 	initRepo(t, dir)
 	commit(t, dir, "a.txt", "hi", "first")
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("A", dir)
-	ts := httptest.NewServer(verseiod.New(g).Handler())
+	ts := httptest.NewServer(viffiod.New(g).Handler())
 	defer ts.Close()
 
 	fields := func(path string) entity.Payload {
@@ -260,10 +260,10 @@ func TestTheWireIsWhatTheContractSays(t *testing.T) {
 		}
 	}
 
-	d := fields(verseio.DescribePath)
+	d := fields(viffio.DescribePath)
 	has("the descriptor", d, "root", "owns")
 
-	rn := fields(verseio.ReflectPath)
+	rn := fields(viffio.ReflectPath)
 	has("a reflection", rn, "covers", "entities")
 	covers, entities := entity.Get(rn, "covers"), entity.Get(rn, "entities")
 	if len(covers.Values) == 0 || len(entities.Values) == 0 {

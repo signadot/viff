@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner/runnerd/cellar"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner/runnerd/cellar"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // THE PKG SYSTEM IS ONE PACKAGE INSTALLED BY THE RUNNER INTO THE TASK'S READ-ONLY PREFIX, which

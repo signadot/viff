@@ -1,6 +1,6 @@
 package api
 
-// FlowSelect names the work a `verse flow` verb reaches, and narrows what `GET /flows` lists (as
+// FlowSelect names the work a `viff flow` verb reaches, and narrows what `GET /flows` lists (as
 // query parameters there). A selection is a TASK — that run only — or a CHARTER and a SUBJECT,
 // the coordinates a live task carries and a suspension names; a task combines with neither.
 //
@@ -12,7 +12,7 @@ package api
 //
 // Why is what a suspension is for; Text is what a say says; By is who says it.
 //
-//tony:schemagen=verse-flow-select,notag
+//tony:schemagen=viff-flow-select,notag
 type FlowSelect struct {
 	Task      string `tony:"field=task,omitzero"`
 	Charter   string `tony:"field=charter,omitzero"`
@@ -36,7 +36,7 @@ const (
 // Charter, Recursive, Subject and Task are the selection that names the row, so a row printed as
 // flags is the act that reaches it again.
 //
-//tony:schemagen=verse-flow-row,notag
+//tony:schemagen=viff-flow-row,notag
 type FlowRow struct {
 	// Kind is task | suspension.
 	Kind string `tony:"field=kind"`
@@ -69,7 +69,7 @@ type FlowRow struct {
 // SuspensionHolding is what a suspension holds now: tasks it paused, questions it withdrew, and
 // launches it parked.
 //
-//tony:schemagen=verse-suspension-holding,notag
+//tony:schemagen=viff-suspension-holding,notag
 type SuspensionHolding struct {
 	Tasks     int `tony:"field=tasks,omitzero"`
 	Questions int `tony:"field=questions,omitzero"`
@@ -78,7 +78,7 @@ type SuspensionHolding struct {
 
 // SuspensionHolder is one party's hold on a suspension.
 //
-//tony:schemagen=verse-suspension-holder,notag
+//tony:schemagen=viff-suspension-holder,notag
 type SuspensionHolder struct {
 	By    string `tony:"field=by"`
 	Why   string `tony:"field=why"`
@@ -95,7 +95,7 @@ type SuspensionHolder struct {
 // logged, or read back later it says what was done without reference to the route that did it,
 // and a key never does double duty as the name of the act and the count of it.
 //
-//tony:schemagen=verse-steered,notag
+//tony:schemagen=viff-steered,notag
 type Steered struct {
 	// Task, Charter and Subject are the selection that was steered.
 	Task    string `tony:"field=task,omitzero"`
@@ -110,7 +110,7 @@ type Steered struct {
 
 // FlowCount is how much work is live: tasks, and the distinct subjects they are about.
 //
-//tony:schemagen=verse-flow-count,notag
+//tony:schemagen=viff-flow-count,notag
 type FlowCount struct {
 	Tasks    int `tony:"field=tasks"`
 	Subjects int `tony:"field=subjects"`
@@ -120,7 +120,7 @@ type FlowCount struct {
 // they hold and the distinct subjects those are about, the questions they have withdrawn and the
 // launches they have parked. Each is counted once however many suspensions cover it.
 //
-//tony:schemagen=verse-suspension-count,notag
+//tony:schemagen=viff-suspension-count,notag
 type SuspensionCount struct {
 	Count     int `tony:"field=count"`
 	Tasks     int `tony:"field=tasks"`

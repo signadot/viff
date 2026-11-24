@@ -27,7 +27,7 @@ import (
 //   - a REQUEST this side makes (initialize, thread/start, turn/start, turn/steer,
 //     turn/interrupt), answered by id;
 //   - a REQUEST codex makes of this side (an approval, a question for the person), which the
-//     driver answers after verse has decided;
+//     driver answers after viff has decided;
 //   - a NOTIFICATION from codex (an item started or completed, a turn completed), which the
 //     driver narrates onto the read plane.
 //

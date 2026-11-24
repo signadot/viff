@@ -15,46 +15,46 @@ DOCKER  ?= docker
 # Image. The container runs linux; IMAGE_ARCH is the node arch (Docker Desktop on Apple
 # Silicon = arm64; most EKS = amd64 — override: make docker IMAGE_ARCH=amd64).
 REGISTRY  ?= signadot
-NAME      ?= verse
+NAME      ?= viff
 TAG       ?= dev
 IMAGE     ?= $(NAME):$(TAG)                 # local dev tag (docker-desktop/minikube)
 PUSH_IMAGE?= $(REGISTRY)/$(NAME):$(TAG)     # registry ref for `make push`
 IMAGE_ARCH?= $(GOARCH)
 
-RUNNER_IMAGE     ?= $(REGISTRY)/verse-runner:$(TAG)         # the verse runner, its own image (deploy/verse-runner)
-CODEX_RUNNER_IMAGE ?= $(REGISTRY)/verse-runner:codex-$(TAG)  # the verse runner with Codex in it (deploy/codex-runner)
-CLAUDE_RUNNER_IMAGE ?= $(REGISTRY)/verse-runner:claude-$(TAG)  # the verse runner with Claude Code in it (deploy/claude-runner)
+RUNNER_IMAGE     ?= $(REGISTRY)/viff-runner:$(TAG)         # the viff runner, its own image (deploy/viff-runner)
+CODEX_RUNNER_IMAGE ?= $(REGISTRY)/viff-runner:codex-$(TAG)  # the viff runner with Codex in it (deploy/codex-runner)
+CLAUDE_RUNNER_IMAGE ?= $(REGISTRY)/viff-runner:claude-$(TAG)  # the viff runner with Claude Code in it (deploy/claude-runner)
 
 DIST := dist
 
 O_PKG := github.com/signadot/tony-format/go-tony/cmd/o
 
 # Four binaries, one image:
-#   verse    the engine + CLI
-#   o        the tony daemons verse spawns for logd+docd (pinned, built alongside verse)
+#   viff    the engine + CLI
+#   o        the tony daemons viff spawns for logd+docd (pinned, built alongside viff)
 #   iod  the shipped Sources (git, slack, linear) — a SEPARATE process by design, so the
 #            engine binary carries no connector's wire format or credential handling. Riding
 #            in the same image is free; riding in the same process is not (cmd/iod).
-#   runnerd  the shipped runners (verse) — separate for the same reason (cmd/runnerd).
-#   verse-call-tool
-#            a task's tools from the shell (cmd/verse-call-tool): the runner finds it beside
+#   runnerd  the shipped runners (viff) — separate for the same reason (cmd/runnerd).
+#   viff-call-tool
+#            a task's tools from the shell (cmd/viff-call-tool): the runner finds it beside
 #            itself and copies it into each task's workspace, for a program running there.
-#   verse-secret-exec
-#            one command run with a secret from the shell, as if in place (cmd/verse-secret-exec):
-#            beside verse-call-tool, where a task's script finds both.
+#   viff-secret-exec
+#            one command run with a secret from the shell, as if in place (cmd/viff-secret-exec):
+#            beside viff-call-tool, where a task's script finds both.
 define go_build
-	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse ./cmd/verse
+	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/viff ./cmd/viff
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/o $(O_PKG)
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/iod ./cmd/iod
 	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/runnerd ./cmd/runnerd
-	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse-call-tool ./cmd/verse-call-tool
-	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/verse-secret-exec ./cmd/verse-secret-exec
+	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/viff-call-tool ./cmd/viff-call-tool
+	CGO_ENABLED=0 GOOS=$(1) GOARCH=$(2) $(GO) build -o $(DIST)/$(1)/$(2)/viff-secret-exec ./cmd/viff-secret-exec
 endef
 
 .DEFAULT_GOAL := help
 
 .PHONY: bin
-bin: ## build verse + o + iod + runnerd + verse-call-tool + verse-secret-exec for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
+bin: ## build viff + o + iod + runnerd + viff-call-tool + viff-secret-exec for the host → dist/$(GOOS)/$(GOARCH)/ (dev use)
 	$(call go_build,$(GOOS),$(GOARCH))
 
 .PHONY: iod
@@ -62,59 +62,59 @@ iod: ## build just the source connectors (git, slack, linear) for the host
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/iod ./cmd/iod
 
 .PHONY: runnerd
-runnerd: ## build just the runners (verse) for the host
+runnerd: ## build just the runners (viff) for the host
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/runnerd ./cmd/runnerd
 
-.PHONY: verse-call-tool
-verse-call-tool: ## build just the shell's tool caller for the host
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/verse-call-tool ./cmd/verse-call-tool
+.PHONY: viff-call-tool
+viff-call-tool: ## build just the shell's tool caller for the host
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/viff-call-tool ./cmd/viff-call-tool
 
-.PHONY: verse-secret-exec
-verse-secret-exec: ## build just the shell's command-with-a-secret for the host
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/verse-secret-exec ./cmd/verse-secret-exec
+.PHONY: viff-secret-exec
+viff-secret-exec: ## build just the shell's command-with-a-secret for the host
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) $(GO) build -o $(DIST)/$(GOOS)/$(GOARCH)/viff-secret-exec ./cmd/viff-secret-exec
 
 .PHONY: dist-linux
-dist-linux: ## cross-compile verse + o + iod + runnerd + verse-call-tool + verse-secret-exec for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
+dist-linux: ## cross-compile viff + o + iod + runnerd + viff-call-tool + viff-secret-exec for linux/$(IMAGE_ARCH) → dist/linux/$(IMAGE_ARCH)/ (for the image)
 	$(call go_build,linux,$(IMAGE_ARCH))
 
 .PHONY: docker
 docker: dist-linux ## build the image, COPYing the pre-built linux binaries (no go build in docker)
 	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) -t $(IMAGE) -f build/Dockerfile .
 
-# The verse runner is its OWN image and its own target. It is not folded into `docker` because the
+# The viff runner is its OWN image and its own target. It is not folded into `docker` because the
 # two images have nothing to do with each other's cadence: the runtime image is thin and pinned
 # to the engine, this one is sized by the toolchain the repositories it serves need to build.
-# verse-call-tool and verse-secret-exec ride beside runnerd, where the runner finds them for a
+# viff-call-tool and viff-secret-exec ride beside runnerd, where the runner finds them for a
 # task's scripts.
 .PHONY: runner-linux
-runner-linux: ## cross-compile runnerd, verse-call-tool and verse-secret-exec for linux/$(IMAGE_ARCH)
+runner-linux: ## cross-compile runnerd, viff-call-tool and viff-secret-exec for linux/$(IMAGE_ARCH)
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
 	  -o $(DIST)/linux/$(IMAGE_ARCH)/runnerd ./cmd/runnerd
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
-	  -o $(DIST)/linux/$(IMAGE_ARCH)/verse-call-tool ./cmd/verse-call-tool
+	  -o $(DIST)/linux/$(IMAGE_ARCH)/viff-call-tool ./cmd/viff-call-tool
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(IMAGE_ARCH) $(GO) build \
-	  -o $(DIST)/linux/$(IMAGE_ARCH)/verse-secret-exec ./cmd/verse-secret-exec
+	  -o $(DIST)/linux/$(IMAGE_ARCH)/viff-secret-exec ./cmd/viff-secret-exec
 
 .PHONY: runner-docker
-runner-docker: runner-linux ## build the verse runner image (bubblewrap containment)
+runner-docker: runner-linux ## build the viff runner image (bubblewrap containment)
 	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) \
-	  -t $(RUNNER_IMAGE) -f deploy/verse-runner/Dockerfile .
+	  -t $(RUNNER_IMAGE) -f deploy/viff-runner/Dockerfile .
 
 # No RUNNER_PUSH_IMAGE to pair with PUSH_IMAGE: RUNNER_IMAGE already carries the registry, so
 # there is nothing to retag. Override it whole — including into the same repository as the
 # runtime image under a distinguishing tag, which is one repository to create and one pull
 # credential to grant:
 #
-#   make runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=<registry>/verse-runner:<tag>
+#   make runner-push IMAGE_ARCH=amd64 RUNNER_IMAGE=<registry>/viff-runner:<tag>
 .PHONY: runner-push
 runner-push: runner-docker ## build + push $(RUNNER_IMAGE)
 	$(DOCKER) push $(RUNNER_IMAGE)
 
-# The codex runner: the verse runner image plus a pinned Codex, for the codex agent. A tag in
+# The codex runner: the viff runner image plus a pinned Codex, for the codex agent. A tag in
 # the runner's repository rather than a repository of its own, for the reason the comment above
 # gives.
 .PHONY: codex-runner-docker
-codex-runner-docker: runner-linux ## build the codex runner image (verse runner + Codex)
+codex-runner-docker: runner-linux ## build the codex runner image (viff runner + Codex)
 	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) \
 	  -t $(CODEX_RUNNER_IMAGE) -f deploy/codex-runner/Dockerfile .
 
@@ -122,10 +122,10 @@ codex-runner-docker: runner-linux ## build the codex runner image (verse runner 
 codex-runner-push: codex-runner-docker ## build + push $(CODEX_RUNNER_IMAGE)
 	$(DOCKER) push $(CODEX_RUNNER_IMAGE)
 
-# The claude runner: the verse runner image plus a pinned Claude Code, for the claude agent, a
+# The claude runner: the viff runner image plus a pinned Claude Code, for the claude agent, a
 # tag in the runner's repository for the same reason.
 .PHONY: claude-runner-docker
-claude-runner-docker: runner-linux ## build the claude runner image (verse runner + Claude Code)
+claude-runner-docker: runner-linux ## build the claude runner image (viff runner + Claude Code)
 	$(DOCKER) build --platform linux/$(IMAGE_ARCH) --build-arg TARGETARCH=$(IMAGE_ARCH) \
 	  -t $(CLAUDE_RUNNER_IMAGE) -f deploy/claude-runner/Dockerfile .
 
@@ -143,9 +143,9 @@ push: docker ## build + push $(PUSH_IMAGE) to the registry
 	$(DOCKER) push $(PUSH_IMAGE)
 
 # make deploy PROFILE=minikube                     # default SC (no mount)
-# make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/verse   # host-linked (needs --mount)
+# make deploy PROFILE=minikube HOSTPV=true HOSTPATH=/mnt/viff   # host-linked (needs --mount)
 # make deploy PROFILE=eks                          # EKS: gp3, the EKS issuer (deploy/profiles/eks.tony)
-# make deploy PROFILE=eks IMAGE=<registry>/verse:<sha>   # …a particular build of it
+# make deploy PROFILE=eks IMAGE=<registry>/viff:<sha>   # …a particular build of it
 # make deploy E='-e gitIod=true -e slackIod=true'          # …plus source connectors
 #
 # `-O yaml` is not decoration. The default output is TONY, which for block-style input happens
@@ -167,13 +167,13 @@ E        ?=
 # deployed the local dev tag to a cluster where no node can pull it. So:
 #
 #   no PROFILE  — nothing else names one; pass $(IMAGE), the local flow's just-built tag.
-#   a PROFILE   — it names its own (minikube: verse:dev, eks: its own ref),
+#   a PROFILE   — it names its own (minikube: viff:dev, eks: its own ref),
 #                 so stay quiet unless this invocation named one itself.
 #
 # `origin` is what tells "you said IMAGE/NAME/TAG" from the `?=` defaults at the top of this
 # file: those report `file`, a command-line or exported one reports otherwise. NAME/TAG count
 # as naming one, but they compose into $(NAME):$(TAG) — the SHARED repository — so on a cluster
-# `TAG=v9` renders `verse:v9` and fails to pull. Name IMAGE= outright there.
+# `TAG=v9` renders `viff:v9` and fails to pull. Name IMAGE= outright there.
 IMAGE_NAMED  := $(filter-out file default undefined,$(origin IMAGE) $(origin NAME) $(origin TAG))
 DEPLOY_IMAGE := $(if $(PROFILE),$(if $(IMAGE_NAMED),$(IMAGE)),$(IMAGE))
 
@@ -262,7 +262,7 @@ test: ## go test ./...
 test-long: ## go test ./... including the long, timeout-waiting tests (GOTEST_LONG=1)
 	GOTEST_LONG=1 $(GO) test ./...
 
-# verse renders through package codec; a stray encoding/json is how that quietly stops
+# viff renders through package codec; a stray encoding/json is how that quietly stops
 # being true. It does not fail loudly — it produces the wrong dialect, or fails to parse one
 # and looks like an empty stream. Both happened during the migration.
 .PHONY: check-json
@@ -301,15 +301,15 @@ check-docs: ## fail if the docs do not build (skips if mkdocs is absent)
 		echo "mkdocs absent — skipping the docs build (pip install -r docs/requirements.txt)"; \
 	fi
 
-# pkg/ is what a program outside the verse imports; internal/ is versed's own. The compiler does
+# pkg/ is what a program outside the viff imports; internal/ is viffd's own. The compiler does
 # not stop one from importing the other inside the module, so this does: the dependency closure
 # of pkg/ must hold nothing from internal/. Anchored on the module path, because stdlib and
 # third-party packages have internal/ directories of their own. -test holds the tests to it as
-# well: a test of a package under pkg/ that needs a running versed lives under internal/iotests,
+# well: a test of a package under pkg/ that needs a running viffd lives under internal/iotests,
 # beside what it needs, rather than importing internal/ from pkg/.
 .PHONY: check-layers
 check-layers: ## fail if a package under pkg/, or one of its tests, depends on one under internal/
-	@bad="$$($(GO) list -deps -test ./pkg/... | grep 'github.com/signadot/verse/internal/' || true)"; \
+	@bad="$$($(GO) list -deps -test ./pkg/... | grep 'go.viff.dev/viff/internal/' || true)"; \
 	  [ -z "$$bad" ] || { echo "pkg/ imports internal/:"; echo "$$bad" | sed 's/^/  /'; exit 1; }
 	@echo "pkg/ imports nothing from internal/"
 
@@ -321,15 +321,15 @@ smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on an
 	@./test/smoke.sh
 
 # Note the difference from smoke: smoke builds its own binaries and its own server and
-# reaps both; this one writes into YOUR running verse and leaves it there to play with.
+# reaps both; this one writes into YOUR running viff and leaves it there to play with.
 .PHONY: seed-demo
-seed-demo: ## seed a RUNNING verse with a demo charter + entities (./scripts/seed-demo.sh --help)
+seed-demo: ## seed a RUNNING viff with a demo charter + entities (./scripts/seed-demo.sh --help)
 	@./scripts/seed-demo.sh
 
 # The two the tutorial drives, split so each section seeds only what it is about: a world of
 # entities with nothing reacting to them, and the rules that react, one shape at a time.
 .PHONY: seed-entities
-seed-entities: ## seed a RUNNING verse with a world of entities and no charter (the tutorial's data page)
+seed-entities: ## seed a RUNNING viff with a world of entities and no charter (the tutorial's data page)
 	@./scripts/seed-entities.sh
 
 .PHONY: shapes
@@ -339,16 +339,16 @@ shapes: ## list the charter shapes (./scripts/charter-shapes.sh run <shape> to i
 # Correlation across systems, run rather than argued: three id schemes, the derived link the
 # engine names f(rule, subject), and the set read that reassembles the chain.
 .PHONY: lineage
-lineage: ## seed a RUNNING verse with a commit → PR → release chain (./scripts/lineage.sh --help)
+lineage: ## seed a RUNNING viff with a commit → PR → release chain (./scripts/lineage.sh --help)
 	@./scripts/lineage.sh
 
 # The representation is a DEFAULT, not a fixture: tony out of the box, JSON when asked for.
 # Running the suite only one way would let the other rot silently — and the JSON path is what
 # every existing client and `curl | jq` still uses. This is the target CI should call.
 .PHONY: smoke-all
-smoke-all: ## smoke under both renderings (tony default, then VERSE_OUTPUT_FORMAT=yaml)
+smoke-all: ## smoke under both renderings (tony default, then VIFF_OUTPUT_FORMAT=yaml)
 	@./test/smoke.sh
-	@VERSE_OUTPUT_FORMAT=yaml ./test/smoke.sh
+	@VIFF_OUTPUT_FORMAT=yaml ./test/smoke.sh
 
 .PHONY: clean
 clean: ## remove dist/

@@ -29,7 +29,7 @@ A test drives the charter below through each of its routes
 
 ## Two supervisors, one word
 
-Verse has a Go type called `Supervisor`, and it is not the supervisor of this page:
+Viff has a Go type called `Supervisor`, and it is not the supervisor of this page:
 
 | | what it decides | who writes it |
 |---|---|---|
@@ -52,14 +52,14 @@ The subject is a change, `change.pr.<n>`. It carries a `stage` and a `tests` fac
 assessment, it also carries the supervisor's `review`. Install the charter:
 
 ```sh
-verse c -a -f - <<'TONY'
+viff c -a -f - <<'TONY'
 - name: assess                 # the supervisor decides, and decides whether to promote
   condition:
     subject: {path: "change.pr.*", value: { stage: proposed }}
   action:
     patch: { stage: assessing }
     spawn:
-      agent: {name: verse}
+      agent: {name: viff}
       environment: {systems: {network: {mode: open}}}
       prompt: |
         Assess $[subject.ref] for landing. Read the change and the tests it touches.
@@ -104,7 +104,7 @@ verse c -a -f - <<'TONY'
   action:
     patch: { stage: landed }
 
-- name: land-ask               # promoted: one human decision, in `verse question`
+- name: land-ask               # promoted: one human decision, in `viff question`
   condition:
     subject:
       path: "change.pr.*"
@@ -131,7 +131,7 @@ The charter has five [rules](glossary.md#rule). The routing between them is the 
 | `approve`, risk `low` | `green` | `land-auto` fires. No gate poses a question. | the supervisor |
 | `approve`, risk `medium`/`high` | any | `remit` rewrites the decision to `escalate`, then `land-ask` fires | the charter, over the supervisor |
 | `approve`, risk `low` | not `green` | the same: `remit`, then `land-ask` | the charter, over the supervisor |
-| `escalate` | any | `land-ask` fires, with one `sign-off` gate in `verse question` | the supervisor, promoting |
+| `escalate` | any | `land-ask` fires, with one `sign-off` gate in `viff question` | the supervisor, promoting |
 | `reject` | any | `close` fires | the supervisor |
 | nothing (the run failed) | any | `onFailed` writes `escalate`, then `land-ask` fires | nobody: this is the default |
 
@@ -191,8 +191,8 @@ review:
 ```
 
 One failure does not reach this route. With no model credentials, the runner offers no
-`verse` agent, and verse refuses to install the charter at all: `this runner offers no agent
-"verse"`. Nothing is installed, so nothing lands. **A supervisor that goes wrong must fail
+`viff` agent, and viff refuses to install the charter at all: `this runner offers no agent
+"viff"`. Nothing is installed, so nothing lands. **A supervisor that goes wrong must fail
 toward the person.** That is a property of where `onFailed` points, not of the agent behaving
 well.
 
@@ -218,24 +218,24 @@ promotion is the one that skips the assessment.
 
 ## Drive it
 
-The charter needs model credentials to install, because its `assess` rule names the `verse`
-agent. `verse up` reads them: see [the local runner](reference/up.md#the-local-runner).
+The charter needs model credentials to install, because its `assess` rule names the `viff`
+agent. `viff up` reads them: see [the local runner](reference/up.md#the-local-runner).
 The *routing* needs nothing more. A `review` is an ordinary fact, so you can write one yourself
 and watch where it goes. Start with a review that the supervisor cleared inside its remit:
 
 ```sh
-verse data change pr 7 -put '{stage: assessed, tests: green, review: {decision: approve, risk: low}}'
-verse data change pr 7
+viff data change pr 7 -put '{stage: assessed, tests: green, review: {decision: approve, risk: low}}'
+viff data change pr 7
 # payload:
 #   review: { decision: approve, risk: low }
-#   stage: landed            ← land-auto fired; `verse question` is empty
+#   stage: landed            ← land-auto fired; `viff question` is empty
 ```
 
 Next, write the same approval on a change that CI does not support:
 
 ```sh
-verse data change pr 8 -put '{stage: assessed, tests: red, review: {decision: approve, risk: low, why: "docs only"}}'
-verse data change pr 8
+viff data change pr 8 -put '{stage: assessed, tests: red, review: {decision: approve, risk: low, why: "docs only"}}'
+viff data change pr 8
 # payload:
 #   review:
 #     decision: escalate
@@ -243,27 +243,27 @@ verse data change pr 8
 #     risk: low
 #     why: "docs only"       ← the supervisor's reasoning survives the override
 #   stage: assessed          ← waiting on a person
-verse question
+viff question
 # - from: {rule: land-ask}
 #   gate: sign-off
-#   id: verse.trigger.land-ask.sign-off~090ea377
+#   id: mirror.trigger.land-ask.sign-off~090ea377
 #   mode: ASK
 #   reason: "trigger land-ask gate sign-off on change.pr.8"
 #   subject: change.pr.8
-verse question approve verse.trigger.land-ask.sign-off~090ea377 --as you@example.com
-# approved verse.trigger.land-ask.sign-off~090ea377
-verse data change pr 8      # stage: landed
+viff question approve mirror.trigger.land-ask.sign-off~090ea377 --as you@example.com
+# approved mirror.trigger.land-ask.sign-off~090ea377
+viff data change pr 8      # stage: landed
 ```
 
-Verse derives the suffix of the id from the subjects of the firing. It does not count. So when
+Viff derives the suffix of the id from the subjects of the firing. It does not count. So when
 the same decision is reached again, it is the same [question](glossary.md#question), and not a
 second one.
 
-With credentials, `verse data change pr 9 -put '{stage: proposed, tests: green}'` runs the real
+With credentials, `viff data change pr 9 -put '{stage: proposed, tests: green}'` runs the real
 supervisor. Three things show the result:
 
-- `verse flow` shows the assessment while it runs.
-- `verse data verse task instance assess@change.pr.9` shows what the supervisor read and said.
+- `viff flow` shows the assessment while it runs.
+- `viff data mirror task instance assess@change.pr.9` shows what the supervisor read and said.
 - The change ends `landed`, `closed`, or waiting at a gate.
 
 ## Where this stops
@@ -277,7 +277,7 @@ supervisor. Three things show the result:
   the decision. That is weaker than what a gate gives. A gate with `need: 2` keeps a
   [ballot](glossary.md#ballot) for each voter, and each ballot names who cast it
   ([the tutorial](tutorial/charters.md#no-is-a-real-outcome)). A principal of kind `agent` can
-  cast one of those ballots, as a person can (`verse question approve <id> --as agent:<name>`). So
+  cast one of those ballots, as a person can (`viff question approve <id> --as agent:<name>`). So
   an agent can be one of the two approvals on a gate with `need: 2`. The supervisor in this
   example is a task that writes a field, and it casts no ballot.
 - **No second opinion, as written.** Two supervisors that must agree would be one gate with

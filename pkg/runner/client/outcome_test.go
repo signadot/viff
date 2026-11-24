@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/task"
 )
 
 type resolver interface {

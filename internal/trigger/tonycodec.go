@@ -25,7 +25,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // ── Match ────────────────────────────────────────────────────────────────────
@@ -123,9 +123,9 @@ func (m *Match) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	}
 	// A `!match` tag is accepted and never emitted: the match atom is written unwrapped, but
 	// someone may spell it explicitly.
-	if tagName(node) == VersePathTag {
+	if tagName(node) == ViffPathTag {
 		return fmt.Errorf("match: !%s is not a spelling of an address — write the kinded path "+
-			"(`demo.pr.*`) or `path: \"demo.pr.*\"`", VersePathTag)
+			"(`demo.pr.*`) or `path: \"demo.pr.*\"`", ViffPathTag)
 	}
 	if tag := tagName(node); tag != "" && tag != string(ReqMatch) {
 		return fmt.Errorf("match: unexpected tag %q", node.Tag)
@@ -167,7 +167,7 @@ func matchFromObject(node *ir.Node) (Match, error) {
 		switch k {
 		case mKeyPath:
 			// A KINDED PATH, which is the one spelling an address has: `demo.pr.*`, the same
-			// grammar `verse data -at` takes. A list of segments was the other one, and it
+			// grammar `viff data -at` takes. A list of segments was the other one, and it
 			// existed to carry a match on a segment; a predicate on the payload says what those
 			// said, and says it where a reader looks for it.
 			if val == nil || val.Type != ir.StringType {
@@ -362,12 +362,12 @@ func (c *Condition) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	return nil
 }
 
-// VersePathTag marks an address written as STEPS: `!verse-path [demo pr 1]`.
+// ViffPathTag marks an address written as STEPS: `!viff-path [demo pr 1]`.
 //
 // The tag is required rather than inferred from the array. A bare list where an address belongs
 // would be a second thing a bare list can mean — the union form a stratum's `match` takes is
 // already one — and an address is exactly the place where guessing wrong is expensive.
-const VersePathTag = "verse-path"
+const ViffPathTag = "viff-path"
 
 // stepText is a step's text, whatever scalar it was written as. It is scalarText's question
 // asked of an ADDRESS rather than of an interpolation, and it answers no for a composite for

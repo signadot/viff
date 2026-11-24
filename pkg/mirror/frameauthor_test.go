@@ -4,16 +4,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A FRAME DOES NOT NAME ITS OWN AUTHOR, where a worker wrote it. A relayed task's frames say
 // whatever the worker said, so a `by` on one is a name the worker chose: a decision by the
 // answerer a gate was held out to, a slide by the docket. Who answered is what the answer route
 // wrote when it accepted the answer, who slid is who the control route relayed it for, and
-// where verse wrote neither, the worker of record did it.
+// where viff wrote neither, the worker of record did it.
 
 func awaitFields(t *testing.T, store entity.Store, ref entity.Ref, why string, ok func(map[string]any) bool) map[string]any {
 	t.Helper()
@@ -146,8 +146,8 @@ func TestAWorkersVectorFrameDoesNotSayWhoSlidIt(t *testing.T) {
 	}
 }
 
-// Frames verse makes itself, for a task no runner holds, are trusted: nobody relayed them.
-func TestFramesVerseMakesItselfAreTrusted(t *testing.T) {
+// Frames viff makes itself, for a task no runner holds, are trusted: nobody relayed them.
+func TestFramesViffMakesItselfAreTrusted(t *testing.T) {
 	const ana = "user:ana@example.com"
 	store := entitytest.Store(t)
 	h := &fakeHandle{ch: make(chan task.Event)}

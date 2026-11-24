@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // A RUNNER KEEPS EACH TASK'S LEASE (runner.DefaultLease). The lease counts from the task's

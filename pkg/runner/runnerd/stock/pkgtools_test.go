@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // echoInstaller answers installs without a cellar: the version asked or 1.0, the name asked or

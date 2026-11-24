@@ -29,7 +29,7 @@ const (
 	// and checked by the control routes, never by the store.
 	Control Level = "control"
 	// Answer admits a RESOLVER answering for whoever the node stands for: a place's asks, or a
-	// person's at `verse.for.<person>` (9ce3bva0, stage 4). Like Control it stands beside the
+	// person's at `viff.for.<person>` (9ce3bva0, stage 4). Like Control it stands beside the
 	// record levels, is checked by the answer route and never by the store, and is held only by
 	// being NAMED: owning the node confers nothing here, since a resolver acts as whoever
 	// installed it, and an owner's own resolver would otherwise answer for them ungranted.
@@ -191,7 +191,7 @@ func (l Levels) Payload() Payload {
 // Grant is one line of a record's grants: a path the grant covers, and who holds which level
 // there.
 //
-//   - read-write: [verse-runner]            # the record's own node, and beneath it
+//   - read-write: [viff-runner]            # the record's own node, and beneath it
 //   - below: true                          # beneath the record's node, not the node itself
 //     owner: ["*"]
 //   - at: [spaces, walter, shared, "*"]     # somewhere else: a path, with at most a trailing *

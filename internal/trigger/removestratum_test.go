@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A LEVEL A RULE DERIVES INTO IS IN USE, even when no rule LIVES in it.
@@ -14,21 +14,21 @@ import (
 // `RemoveStratum` refuses a level that still holds rules, for a reason it states itself: they
 // would be left "installed and unchecked". It counted only the rules whose `stratum:` names it,
 // and a derive TARGET is the other way a level is depended on — `ledger` owns
-// `verse-dev.drift.finding`, nothing declares `stratum: ledger`, and removing it left
+// `viff-dev.drift.finding`, nothing declares `stratum: ledger`, and removing it left
 // `comment-drift` deriving into a level that no longer existed.
 //
 // That is exactly the state install refuses ("derive into X matches no stratum: every derived
 // entity has to belong to a level"), reached through the back door. Driven by hand on a local
-// verse: `verse c -r strata ledger` answered "removed ledger".
+// viff: `viff c -r strata ledger` answered "removed ledger".
 func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
-	eng.Confine(SubtreeAt("verse-dev", "drift"))
+	eng.Confine(SubtreeAt("viff-dev", "drift"))
 	eng.SetReads([]Subtree{SubtreeAt("git")})
 
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
-		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.head"}`)}},
-		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.finding"}`)}},
+		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: "viff-dev.drift.head"}`)}},
+		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: "viff-dev.drift.finding"}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
 			t.Fatalf("stratum %q: %v", st.Name, err)
@@ -39,10 +39,10 @@ func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 - name: gather
   stratum: tip
   condition:
-    subject: verse-dev.drift.head.*
+    subject: viff-dev.drift.head.*
   action:
     derive:
-    - path: "verse-dev.drift.finding"
+    - path: "viff-dev.drift.finding"
       value: {noted: true}
 `)); err != nil {
 		t.Fatalf("install: %v", err)
@@ -59,7 +59,7 @@ func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 	// And the level nothing depends on still goes, so this did not turn into "no stratum may
 	// ever be removed".
 	if err := eng.AddStratum(Stratum{Name: "spare", Level: 30,
-		Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.spare"}`)}}); err != nil {
+		Match: []Match{mustPathMatch(t, `{path: "viff-dev.drift.spare"}`)}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := eng.RemoveStratum("spare"); err != nil {
@@ -67,17 +67,17 @@ func TestAStratumADeriveTargetsIsInUse(t *testing.T) {
 	}
 }
 
-// The refusal names WHERE: the stratum's path and each rule's, which a reader can hand to `verse
+// The refusal names WHERE: the stratum's path and each rule's, which a reader can hand to `viff
 // data --at` — a name alone is something to search for, and the same name stands in many
 // packages.
 func TestAStratumRefusalNamesThePaths(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
-	eng.Confine(SubtreeAt("verse-dev", "drift"))
+	eng.Confine(SubtreeAt("viff-dev", "drift"))
 	eng.SetReads([]Subtree{SubtreeAt("git")})
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
-		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.head"}`)}},
-		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.finding"}`)}},
+		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: "viff-dev.drift.head"}`)}},
+		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: "viff-dev.drift.finding"}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
 			t.Fatalf("stratum %q: %v", st.Name, err)
@@ -87,10 +87,10 @@ func TestAStratumRefusalNamesThePaths(t *testing.T) {
 - name: gather
   stratum: tip
   condition:
-    subject: verse-dev.drift.head.*
+    subject: viff-dev.drift.head.*
   action:
     derive:
-    - path: "verse-dev.drift.finding"
+    - path: "viff-dev.drift.finding"
       value: {noted: true}
 `)); err != nil {
 		t.Fatalf("install: %v", err)

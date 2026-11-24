@@ -6,20 +6,20 @@ Every rule has the same parts: a `condition` that selects the data the rule is a
 piece its **subject**; `gates` that ask before it acts; and an `action` on the subject.
 
 A charter is installed at an [address](../glossary.md#address), and its rules write only under
-it. The tutorial's charter lives at `verse-tutorial`, where the tutorial's data lives, so
+it. The tutorial's charter lives at `viff-tutorial`, where the tutorial's data lives, so
 everything it makes is in one place and leaves in one command. It looks after one team's work
-on `acme/app`: the issues its users open, and the releases that ship the fixes. `verse charter`
-reads a charter back as `verse data` reads the store, and prints the file that installs it:
+on `acme/app`: the issues its users open, and the releases that ship the fixes. `viff charter`
+reads a charter back as `viff data` reads the store, and prints the file that installs it:
 
 ```sh
-verse charter verse-tutorial     # the charter, as a file
-verse charter                    # every charter, the baseline one first
+viff charter viff-tutorial     # the charter, as a file
+viff charter                    # every charter, the baseline one first
 ```
 
 This page goes in four steps, each one on from the last. The first rule changes data. The
 second asks first. The third starts a task and writes its answer back into the data. The fourth
 derives data of its own, which keeps its lineage, and one more rule reacts to it. Each is
-installed from the text shown, on [a verse running](README.md#start), so what you read is what
+installed from the text shown, on [a viff running](README.md#start), so what you read is what
 runs. [Charters, continued](charters-2.md) has the rest of what a rule can say.
 
 ## 1. A rule that changes data
@@ -27,16 +27,16 @@ runs. [Charters, continued](charters-2.md) has the rest of what a rule can say.
 An issue is opened. The rule triages it.
 
 ```sh
-verse charter -a verse-tutorial -f - <<'EOF'
+viff charter -a viff-tutorial -f - <<'EOF'
 rules:
 - name: triage
   condition:
-    subject: {path: "verse-tutorial.issue.*", value: {stage: open}}
+    subject: {path: "viff-tutorial.issue.*", value: {stage: open}}
   action:
     patch: {stage: triaged}
 EOF
-verse data verse-tutorial issue 1 -put '{stage: open, title: "login fails"}'
-verse data verse-tutorial issue 1          # stage: triaged
+viff data viff-tutorial issue 1 -put '{stage: open, title: "login fails"}'
+viff data viff-tutorial issue 1          # stage: triaged
 ```
 
 The condition is a path with a wildcard and a pattern on the value. The action has no target of
@@ -49,12 +49,12 @@ The team ships `acme/app` in releases, and shipping one matters. The rule ships 
 is ready while CI on main is green, and only once Ana, who runs the releases, says yes.
 
 ```sh
-verse charter -a verse-tutorial -f - <<'EOF'
+viff charter -a viff-tutorial -f - <<'EOF'
 rules:
 - name: ship
   condition:
-    subject: {path: "verse-tutorial.release.*", value: {stage: ready}}
-    when:    {path: "verse-tutorial.ci.main", value: {state: green}}
+    subject: {path: "viff-tutorial.release.*", value: {stage: ready}}
+    when:    {path: "viff-tutorial.ci.main", value: {state: green}}
   gates:
   - name: approval
     mode: ask
@@ -65,9 +65,9 @@ rules:
   action:
     patch: {stage: shipped}
 EOF
-verse data verse-tutorial release 1 -put '{stage: ready}'
-verse data verse-tutorial ci main -put '{state: green}'
-verse question --all
+viff data viff-tutorial release 1 -put '{stage: ready}'
+viff data viff-tutorial ci main -put '{state: green}'
+viff question --all
 ```
 
 The question reaches the docket a moment after the write that raised it; an empty list means you
@@ -78,11 +78,11 @@ read too early.
     default: deny
     within: 4h
   from:
-    at: verse-tutorial
+    at: viff-tutorial
     rule: ship
   gate: approval
-  id: verse-tutorial:verse.trigger.ship.approval~d584bf79
-  subject: 'verse-tutorial.release."1"'
+  id: viff-tutorial:mirror.trigger.ship.approval~d584bf79
+  subject: 'viff-tutorial.release."1"'
   to:
     grantees:
     - user:ana@example.com
@@ -90,18 +90,18 @@ read too early.
 ```
 
 ```sh
-verse question verse-tutorial:verse.trigger.ship.approval~d584bf79 --answer proceed --as ana@example.com
-verse data verse-tutorial release 1        # stage: shipped
+viff question viff-tutorial:mirror.trigger.ship.approval~d584bf79 --answer proceed --as ana@example.com
+viff data viff-tutorial release 1        # stage: shipped
 ```
 
 `when` reads another address and makes the action conditional on it. The subject says what to
-act on; `when` says whether this is a moment to act. Verse evaluates the rule again at every
+act on; `when` says whether this is a moment to act. Viff evaluates the rule again at every
 commit that touches either address, so a release that becomes ready later is asked about too,
 and one that is ready while CI is red waits.
 
 The gate's question is an ask, as on [the questions page](questions.md): on the same docket, put
 to the people in `answerers`, settled on `deny` if nobody answers in four hours. The rule asks
-**once** per subject, however often verse evaluates it. `onDenied` says what a no means; without
+**once** per subject, however often viff evaluates it. `onDenied` says what a no means; without
 it, the next commit that touches the subject asks again
 ([`onDenied`](../reference/gates.md#ondenied-what-a-no-means)).
 
@@ -126,15 +126,15 @@ the issue to `reviewing` and starts an agent that reviews it. When the agent is 
 writes what it said onto the issue.
 
 ```sh
-verse charter -a verse-tutorial -f - <<'EOF'
+viff charter -a viff-tutorial -f - <<'EOF'
 rules:
 - name: review
   condition:
-    subject: {path: "verse-tutorial.issue.*", value: {stage: triaged}}
+    subject: {path: "viff-tutorial.issue.*", value: {stage: triaged}}
   action:
     patch: {stage: reviewing}
     spawn:
-      agent: {name: verse}
+      agent: {name: viff}
       environment: {systems: {network: {mode: open}}}
       prompt: "Review this issue: $[title]. Is it a bug or a feature, and how severe is it?"
       answer:
@@ -145,11 +145,11 @@ rules:
     onFailed:
       patch: {stage: unreviewed, why: .[err]}
 EOF
-verse task                                 # the task, while it runs, and its result once it is done
-verse data verse-tutorial issue 1          # stage: reviewed, and the kind and severity the agent chose
+viff task                                 # the task, while it runs, and its result once it is done
+viff data viff-tutorial issue 1          # stage: reviewed, and the kind and severity the agent chose
 ```
 
-The spawn names its **agent**: here `verse`, verse's own, with the host's network and a
+The spawn names its **agent**: here `viff`, viff's own, with the host's network and a
 `prompt` that is the one job. The subject and every field of the issue are bound in the action,
 and a spawn's strings read them as expressions, so `$[title]` in the prompt is the issue's title. Its environment gives only the network, so the
 agent is given no verb: it reads and answers, and cannot write a file, run a command or push
@@ -159,13 +159,13 @@ agent is given no verb: it reads and answers, and cannot write a file, run a com
 `onDone` fires when the task is done, and what it reads is the task: `result` is the
 [answer](tasks.md#the-answer) as text, and `data` is the answer read as a document. So
 `.[data.kind]` is what the review decided, and the patch writes it onto the issue as the first rule
-wrote `stage`. From here on the answer is data like any other: `verse data` shows it, and a rule
+wrote `stage`. From here on the answer is data like any other: `viff data` shows it, and a rule
 that selects `{kind: bug}` fires on it without knowing that a task wrote it. That is how a task
-connects to everything else in verse: through what it writes, not through a caller waiting on it
+connects to everything else in viff: through what it writes, not through a caller waiting on it
 ([the loop](../concepts.md#the-loop)).
 
 An agent answers in words, and the rule reads fields. `answer` is the **contract** between them:
-the shape the answer must have, written as a match pattern in the vocabulary of `when`. Verse
+the shape the answer must have, written as a match pattern in the vocabulary of `when`. Viff
 tells the agent the contract when it starts, and checks the answer when it stops. An answer that
 misses is sent back with what was wrong, and the agent repairs it; one that never fits fails the
 task. So `data.kind` in `onDone` is never absent, and `onFailed` says what happens when the
@@ -174,16 +174,16 @@ task could not say it, with `err` the reason
 asked again, can carry a contract, so a script carries none.
 
 The first patch is what makes this rule safe to leave installed. It moves the issue out of the
-rule's own selection, so the rule does not fire on the same issue twice. Verse refuses at install
+rule's own selection, so the rule does not fire on the same issue twice. Viff refuses at install
 a spawning rule that does not do this ([the latch](../glossary.md#latch)).
 
 The agent needs a model key ([the local runner](../reference/up.md#the-local-runner)).
-Without one, the runner offers no agent, and verse refuses the rule when you install it:
-`this runner offers no agent "verse"`. Nothing is installed, and the issue stays `triaged`. To go
+Without one, the runner offers no agent, and viff refuses the rule when you install it:
+`this runner offers no agent "viff"`. Nothing is installed, and the issue stays `triaged`. To go
 on, write what the agent would have answered:
 
 ```sh
-verse data verse-tutorial issue 1 -put '{stage: reviewed, title: "login fails", kind: bug, severity: high}'
+viff data viff-tutorial issue 1 -put '{stage: reviewed, title: "login fails", kind: bug, severity: high}'
 ```
 
 ## 4. Lineage and derivations
@@ -193,23 +193,23 @@ writes anywhere can write in a circle, it comes with a declared order of levels,
 a rule's subject is in its own stratum, and what it derives lands in a higher one.
 
 ```sh
-verse charter -a verse-tutorial -f - <<'EOF'
+viff charter -a viff-tutorial -f - <<'EOF'
 strata:
 - name: issues
   level: 0
-  match: verse-tutorial.issue
+  match: viff-tutorial.issue
 - name: bugs
   level: 10
-  match: verse-tutorial.bug
+  match: viff-tutorial.bug
 rules:
 - name: raise
   stratum: issues
   condition:
-    subject: {path: "verse-tutorial.issue.*", value: {stage: reviewed, kind: bug}}
+    subject: {path: "viff-tutorial.issue.*", value: {stage: reviewed, kind: bug}}
   action:
     patch: {stage: raised}
     derive:
-    - path: "verse-tutorial.bug"
+    - path: "viff-tutorial.bug"
       id: .[subject.name]
       value:
         about: .[subject.ref]
@@ -219,14 +219,14 @@ rules:
   stratum: bugs
   condition:
     subject:
-      path: "verse-tutorial.bug.*"
+      path: "viff-tutorial.bug.*"
       value: !and [{priority: high}, !not {scheduled: null}]
   action:
     patch: {scheduled: true}
 EOF
-verse data verse-tutorial issue 1          # stage: raised
-verse data verse-tutorial bug 1            # about: verse-tutorial.issue."1", title: "login fails", priority: high, scheduled: true
-verse data verse-tutorial bug 1 verse meta derivedFrom   # rule: raise, subject: verse-tutorial.issue."1"
+viff data viff-tutorial issue 1          # stage: raised
+viff data viff-tutorial bug 1            # about: viff-tutorial.issue."1", title: "login fails", priority: high, scheduled: true
+viff data viff-tutorial bug 1 viff meta derivedFrom   # rule: raise, subject: viff-tutorial.issue."1"
 ```
 
 The issue at `reviewed` with `kind: bug` is standing when this is installed, and the install
@@ -238,9 +238,9 @@ The output above is for the review that the write at the end of step 3 records: 
 severity, `schedule` does not.
 
 Derived data keeps its **lineage**: what it came from. The engine writes it at
-`verse.meta.derivedFrom`, naming the rule and the subject, whatever the derived value says. So a
+`@sys.meta.derivedFrom`, naming the rule and the subject, whatever the derived value says. So a
 bug leads back to its issue, and a read over `derivedFrom` finds everything one rule derived.
-`id: .[subject.name]` puts the bug at `verse-tutorial.bug.1`, under the name of the issue it is
+`id: .[subject.name]` puts the bug at `viff-tutorial.bug.1`, under the name of the issue it is
 about; without `id:`, the engine addresses it by the rule and the subject. Either way, no new id
 is minted for it ([`derive`: identity, not state](../strata.md#derive-identity-not-state)).
 
@@ -255,15 +255,15 @@ writes, and its condition is the absence of `scheduled`, which it writes: so it 
 once, and a re-install, which fires every rule over everything it selects again, cannot undo its
 work. Two rules that write one field install with a warning saying so.
 
-That is how a flow of several steps continues in verse: through the store. Nothing sequences the
+That is how a flow of several steps continues in viff: through the store. Nothing sequences the
 steps.
 
 ## Your own charters
 
 You have the four parts now. A charter of your own is made of the same kinds of rule, over your own
-data. On real systems the shapes stay the same, and the verse is shared: a charter you install acts
+data. On real systems the shapes stay the same, and the viff is shared: a charter you install acts
 under your name, its gates reach the colleagues they name wherever they are, and the tasks it starts
-are on the task list of everyone who may read them. [Iods](../io.md) connect verse to a repository,
+are on the task list of everyone who may read them. [Iods](../io.md) connect viff to a repository,
 a forge or a chat workspace: they write the data, and they carry what a rule writes back out to
 the system. Tasks run agents on [runners](../runners.md), with an environment in the spawn that says
 what the task may reach, and an autonomy that says what it does unasked. An irreversible step is

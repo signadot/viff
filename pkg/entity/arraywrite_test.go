@@ -51,10 +51,10 @@ func TestTheSubstrateDoesPatchAnInRangeArrayElement(t *testing.T) {
 
 // A `(key)` element is a different answer: the substrate refuses it, and nothing is damaged.
 //
-// TWICE OVER NOW. The array below carries no `!key` tag, because verse refuses one on the way in
+// TWICE OVER NOW. The array below carries no `!key` tag, because viff refuses one on the way in
 // (checkNotKeyed): identity is the store's, given by the schema, and the store's schema keys
 // nothing here. So `(walter)` names no element of a positional array, which is what the patch is
-// told -- and it is why an element is addressed by position everywhere verse spells an address.
+// told -- and it is why an element is addressed by position everywhere viff spells an address.
 func TestTheSubstrateRefusesAKeyedElementPatch(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("demo", "pr", "1")
@@ -83,7 +83,7 @@ func TestTheSubstrateRefusesAKeyedElementPatch(t *testing.T) {
 // test that pinned that is this one, inverted — it skipped on a refusal and said to re-take the
 // decision, which is what happened when the fix landed.
 //
-// Kept, because a promise this cheap to check should not be inherited: the reason verse refuses
+// Kept, because a promise this cheap to check should not be inherited: the reason viff refuses
 // array element writes is no longer "it would take the store with it", and if this ever starts
 // being accepted again the reason has to be re-taken a second time.
 func TestAnArrayPatchPastTheEndIsRefused(t *testing.T) {

@@ -9,13 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Reach is what a probe found at a url: a runner, something else answering, or nothing. A
 // fourth answer, Unverified, is a caller's to give: a runner that answered and did not prove it
-// is the one registered (versed's handshake), which no probe decides on its own.
+// is the one registered (viffd's handshake), which no probe decides on its own.
 type Reach int
 
 const (
@@ -49,7 +49,7 @@ func Probe(baseURL string) (Reach, runner.Description, error) {
 
 // ProbeOver is Probe over a transport of the caller's choosing (nil is the default), answering
 // also the token the runner presented in runner.TokenHeader, "" where it presented none. The
-// transport is how verse carries its own token to the runner (Bearer); the header is the
+// transport is how viff carries its own token to the runner (Bearer); the header is the
 // runner's answer to it.
 func ProbeOver(baseURL string, tr http.RoundTripper) (Reach, runner.Description, string, error) {
 	d, token, err := DescribeOver(baseURL, tr)
@@ -73,7 +73,7 @@ func Describe(baseURL string) (runner.Description, error) {
 
 // DescribeOver is Describe over a transport, answering the runner's token too (ProbeOver). A
 // runner that refused the request (401, 403) is unreachable rather than not a runner: it is one,
-// and it did not take this verse for its own, which deploying verse's token fixes.
+// and it did not take this viff for its own, which deploying viff's token fixes.
 func DescribeOver(baseURL string, tr http.RoundTripper) (runner.Description, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -91,10 +91,10 @@ func DescribeOver(baseURL string, tr http.RoundTripper) (runner.Description, str
 	case http.StatusOK:
 	case http.StatusUnauthorized, http.StatusForbidden:
 		// The runner's own words say which of the two it was: a token for another runner, or a
-		// verse it does not know.
+		// viff it does not know.
 		said, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return runner.Description{}, "", fmt.Errorf("%w: %s refused this verse (GET /describe: %s: %s): it serves "+
-			"its own verse alone, and this verse presented no token it takes", task.ErrUnreachable, baseURL, resp.Status,
+		return runner.Description{}, "", fmt.Errorf("%w: %s refused this viff (GET /describe: %s: %s): it serves "+
+			"its own viff alone, and this viff presented no token it takes", task.ErrUnreachable, baseURL, resp.Status,
 			strings.TrimSpace(string(said)))
 	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		// A runner that cannot answer right now (its issuer unread, its token file gone) is a

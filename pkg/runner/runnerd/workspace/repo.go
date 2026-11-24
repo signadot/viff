@@ -3,7 +3,7 @@ package workspace
 import (
 	"strings"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // Repo is one repository in a workspace: the launch's repo (its name and where its checkout

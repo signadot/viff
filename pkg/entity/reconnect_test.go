@@ -15,8 +15,8 @@ import (
 
 // Does a store whose connection died come back on its own?
 //
-// A deployment said no. `make deploy` rolled docd and versed together, docd's volume took
-// 24s to detach from the old node, and from then on every write versed made timed out —
+// A deployment said no. `make deploy` rolled docd and viffd together, docd's volume took
+// 24s to detach from the old node, and from then on every write viffd made timed out —
 // for five and a half minutes, until a human restarted the pod. Nothing was broken except
 // a session.
 //
@@ -28,7 +28,7 @@ import (
 // noticed by waiting. A recovery built against the first and shipped against the second is
 // exactly the outage, since a rolled pod does not always get to say goodbye.
 //
-// The assertion in both is verse's own observable behaviour and nothing about the
+// The assertion in both is viff's own observable behaviour and nothing about the
 // substrate's mechanism: after connectivity returns, A WRITE SUCCEEDS. Not "the session
 // reports connected", not "a reconnect was attempted" — the store does the thing it exists
 // to do. What layer makes that true is free to change.
@@ -175,7 +175,7 @@ func (g *gate) heal() {
 	g.mu.Unlock()
 }
 
-// storeThroughGate stands up logd + docd (the production shape: verse talks to docd's
+// storeThroughGate stands up logd + docd (the production shape: viff talks to docd's
 // client face) with a gate in front, and returns the store and its gate.
 func storeThroughGate(t *testing.T) (*LogdStore, *gate) {
 	t.Helper()
@@ -186,7 +186,7 @@ func storeThroughGate(t *testing.T) (*LogdStore, *gate) {
 
 func storeVia(t *testing.T, g *gate) *LogdStore {
 	t.Helper()
-	s, err := OpenLogdStore(LogdConfig{Addr: g.addr(), ClientID: "verse-test"})
+	s, err := OpenLogdStore(LogdConfig{Addr: g.addr(), ClientID: "viff-test"})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestStoreRecoversFromClosedConnection(t *testing.T) {
 //
 // It is long by construction — the noticing IS the runtime, and making it fast would test
 // something else. What the timings say when it passes is worth as much as the pass: how
-// long a verse spends unable to write before it repairs itself is a number an operator
+// long a viff spends unable to write before it repairs itself is a number an operator
 // eventually asks for.
 func TestStoreRecoversFromDarkConnection(t *testing.T) {
 	requireLong(t)
@@ -302,7 +302,7 @@ func TestStoreRecoversFromDarkConnection(t *testing.T) {
 
 	g.darken()
 
-	// Several writers at once, because versed had several — sources, the engine and the
+	// Several writers at once, because viffd had several — sources, the engine and the
 	// mirror all write, and a session that serializes requests under one mutex can fail
 	// differently for the second caller than for the first.
 	var wg sync.WaitGroup
@@ -333,7 +333,7 @@ func TestStoreRecoversFromDarkConnection(t *testing.T) {
 	}
 }
 
-// A WATCH is open while the outage happens, which is the one thing versed has that the
+// A WATCH is open while the outage happens, which is the one thing viffd has that the
 // tests above do not. It is not a detail: a subtree watch re-establishes itself, and
 // re-establishing means connecting, and connecting is done under the session's mutex.
 //

@@ -6,12 +6,12 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // THE OLD SPELLING IS REFUSED IN A DERIVE as in a patch (TestTheOldSpellingIsRefusedAtInstall): its
@@ -84,7 +84,7 @@ func TestEachKeyComposesAndRefusesNull(t *testing.T) {
 		}
 		return eng, store, trigs[0]
 	}
-	subj := entity.RefAt("git", "commit", "verse/abc")
+	subj := entity.RefAt("git", "commit", "viff/abc")
 	fire := func(t *testing.T, eng *Engine, store entity.Store, tr Trigger, findings string) error {
 		t.Helper()
 		payload, err := codec.ParseNode([]byte(`{reviewed: pending, f: `+findings+`}`), codec.Tony)
@@ -142,7 +142,7 @@ func TestAHookWritesNullDataForATaskWithNoDocument(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
 				Patch: entity.Obj{"stage": "reviewed", "report": ".[data]", "said": ".[result]"}.Payload(),
 			},

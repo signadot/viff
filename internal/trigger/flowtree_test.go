@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // treeEngine is the onhook harness plus a mirrored task, which is what a tree renders.
@@ -64,12 +64,12 @@ func TestFlowTreeJoinsHistoryAndCharter(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
 				Patch:    entity.Obj{"stage": "reviewed"}.Payload(),
-				Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $[subject.ref]"},
+				Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "merge $[subject.ref]"},
 				OnDone:   &Action{Patch: entity.Obj{"stage": "merged"}.Payload()},
-				OnFailed: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "escalate $[subject.ref]"}},
+				OnFailed: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "escalate $[subject.ref]"}},
 			},
 		},
 	}); err != nil {
@@ -142,8 +142,8 @@ func TestFlowTreeSeqCarrierHooks(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "lint $[subject.ref]"}},
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "test $[subject.ref]"},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "lint $[subject.ref]"}},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "test $[subject.ref]"},
 					OnFailed: &Action{Patch: entity.Obj{"stage": "broken"}.Payload()}},
 			},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "built"}.Payload()},
@@ -197,16 +197,16 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("never")},
 		Action: Action{
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
-				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $[subject.ref]"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "merge $[subject.ref]"},
 				Patch: entity.Obj{"stage": "merging"}.Payload(),
 			},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo.pr.2"),
+	entitytest.Set(t, store, entity.ViffRef("task", "instance", "review@demo.pr.2"),
 		entity.Obj{"status": "running", "flow": `demo.pr."2"`, "chain": "review", "trigger": "review"}.Payload())
 
 	tree := onlyTree(t, eng, `demo.pr."2"`)
@@ -223,13 +223,13 @@ func TestFlowTreePendingWhileRunning(t *testing.T) {
 	}
 }
 
-// A task with no trigger behind it (a bare `verse task run`) is still part of the
+// A task with no trigger behind it (a bare `viff task run`) is still part of the
 // subject's flow. It has no charter position, so it is a root of its own rather than being
 // dropped — a tree that silently omits work is worse than one with a bare node in it.
 func TestFlowTreeIncludesChainlessTasks(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "run-abc"),
+	entitytest.Set(t, store, entity.ViffRef("task", "instance", "run-abc"),
 		entity.Obj{"status": "running", "flow": `demo.pr."3"`, "prompt": "poke at it"}.Payload())
 
 	tree := onlyTree(t, eng, `demo.pr."3"`)
@@ -247,7 +247,7 @@ func TestFlowTreeIncludesChainlessTasks(t *testing.T) {
 func TestFlowTreeSurvivesTriggerRemoval(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "gone@demo.pr.4"),
+	entitytest.Set(t, store, entity.ViffRef("task", "instance", "gone@demo.pr.4"),
 		entity.Obj{"status": "done", "flow": `demo.pr."4"`, "chain": "gone", "trigger": "gone"}.Payload())
 
 	tree := onlyTree(t, eng, `demo.pr."4"`)
@@ -266,7 +266,7 @@ func TestFlowTreeAddressing(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := treeEngine(t, store)
 	for _, id := range []string{"1", "2"} {
-		entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo.pr."+id),
+		entitytest.Set(t, store, entity.ViffRef("task", "instance", "review@demo.pr."+id),
 			entity.Obj{"status": "done", "flow": `demo.pr."` + id + `"`, "chain": "review", "trigger": "review"}.Payload())
 	}
 	m, _ := ParseExpr("demo.pr.*")
@@ -292,7 +292,7 @@ func TestFlowTreeHookFailure(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -300,7 +300,7 @@ func TestFlowTreeHookFailure(t *testing.T) {
 	}
 	// The task that ran, plus the failure its completion hook recorded — written here rather
 	// than provoked, because what the tree owes is to READ the record wherever it comes from.
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "review@demo.pr.7"),
+	entitytest.Set(t, store, entity.ViffRef("task", "instance", "review@demo.pr.7"),
 		entity.Obj{
 			"status": "done", "flow": `demo.pr."7"`, "chain": "review", "trigger": "review",
 			"hook": entity.Obj{"chain": "review.onDone", "status": "failed", "err": "subject.value: no causing commit"},
@@ -330,13 +330,13 @@ func TestFlowTreeSeqCarrierHookFailure(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "deploying"}.Payload(),
-			Seq:    []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "canary $[subject.ref]"}}},
+			Seq:    []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "canary $[subject.ref]"}}},
 			OnDone: &Action{Patch: entity.Obj{"stage": "deployed"}.Payload()},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "rollout.seq.0@demo.pr.8"),
+	entitytest.Set(t, store, entity.ViffRef("task", "instance", "rollout.seq.0@demo.pr.8"),
 		entity.Obj{
 			"status": "done", "flow": `demo.pr."8"`, "chain": "rollout.seq[0]", "trigger": "rollout",
 			"hook": entity.Obj{"chain": "rollout.onDone", "status": "failed", "err": "derive did not resolve"},

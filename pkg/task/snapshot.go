@@ -3,11 +3,11 @@ package task
 import "github.com/signadot/tony-format/go-tony/ir"
 
 // Snapshot is a task as its runner reports it: the answer to `GET /tasks` (a list of them)
-// and `GET /tasks/{id}`. It is the runtime's view, and only what the runner knows; verse's own
-// view of a task (api.Task) adds what verse knows, and the durable record (the mirror's
+// and `GET /tasks/{id}`. It is the runtime's view, and only what the runner knows; viff's own
+// view of a task (api.Task) adds what viff knows, and the durable record (the mirror's
 // task:instance:<id>) is a separate index that adds read-plane previews.
 //
-//tony:schemagen=verse-task-snapshot,notag
+//tony:schemagen=viff-task-snapshot,notag
 type Snapshot struct {
 	ID     string `tony:"field=id"`
 	Prompt string `tony:"field=prompt,omitzero"`
@@ -30,7 +30,7 @@ type Snapshot struct {
 	Ended   string `tony:"field=ended,omitzero"`
 	Result  string `tony:"field=result,omitzero"` // the driver's final answer, once completed
 	Err     string `tony:"field=err,omitzero"`    // failure detail (e.g. "driver error: …")
-	// Orphaned says a failed task ended because verse and its runner lost each other, and not
+	// Orphaned says a failed task ended because viff and its runner lost each other, and not
 	// for a reason of its own.
 	Orphaned bool          `tony:"field=orphaned,omitzero"`
 	Pending  []PendingGate `tony:"field=pending,omitzero"` // open gates awaiting resolution
@@ -46,7 +46,7 @@ type Snapshot struct {
 // PendingGate is one open gate on a task, in Snapshot's `pending`: a raised GateQuestion awaiting a
 // resolution, in the snapshot's shape, with the step it is about when it is about one.
 //
-//tony:schemagen=verse-pending-gate,notag
+//tony:schemagen=viff-pending-gate,notag
 type PendingGate struct {
 	ID     string   `tony:"field=id"`
 	Origin string   `tony:"field=origin,omitzero"`

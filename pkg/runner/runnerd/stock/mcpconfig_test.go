@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // mcpRunner is a runner that calls linear, with the secret linear-mcp of a store at dir, and

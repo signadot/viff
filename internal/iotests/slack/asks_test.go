@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	verseapi "github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	viffapi "go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 const peggy = "user:peggy@example.com"
@@ -27,18 +27,18 @@ func tonyDoc(t *testing.T, src string) entity.Payload {
 	return n
 }
 
-// askPeggy is walter asking peggy something with an `on`, as `verse ask` does, and the input a charter
+// askPeggy is walter asking peggy something with an `on`, as `viff ask` does, and the input a charter
 // derives to reach her; it answers the ask's id once it is posed.
 func (r *socketRig) askPeggy(t *testing.T) string {
 	t.Helper()
-	resp, err := client.New(r.addr, "user:walter@example.com").Post("/asks", nil, verseapi.Ask{
-		Name: "land", Question: "Merge verse/ask?", To: []string{peggy},
-		On: tonyDoc(t, `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge verse/ask to main", environment: {systems: {network: {mode: open}}}}}}]`),
+	resp, err := client.New(r.addr, "user:walter@example.com").Post("/asks", nil, viffapi.Ask{
+		Name: "land", Question: "Merge viff/ask?", To: []string{peggy},
+		On: tonyDoc(t, `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge viff/ask to main", environment: {systems: {network: {mode: open}}}}}}]`),
 	})
 	if err != nil || resp.StatusCode != http.StatusCreated {
 		t.Fatalf("asking peggy: %v %v", err, resp)
 	}
-	var asked verseapi.Asked
+	var asked viffapi.Asked
 	if err := client.Decode(resp, &asked); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestAPersonsAskReachesThemReadAsThem(t *testing.T) {
 		t.Fatalf("posted %v, want peggy's DM: %v", r.fake.posted, r.status(t, "land"))
 	}
 	said := shown(t, r.fake.posted[0])
-	for _, want := range []string{"Merge verse/ask?", "asked by `walter@example.com`", "on *proceed*, runs as the asker: “merge verse/ask to main”", "Answer in this thread"} {
+	for _, want := range []string{"Merge viff/ask?", "asked by `walter@example.com`", "on *proceed*, runs as the asker: “merge viff/ask to main”", "Answer in this thread"} {
 		if !strings.Contains(said, want) {
 			t.Errorf("peggy's DM does not say %q: %q", want, said)
 		}
@@ -101,10 +101,10 @@ func TestAReplyToAnAskSinceChangedIsRefused(t *testing.T) {
 	id := r.askPeggy(t)
 	r.pass(t)
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
-	b, _ := codec.Marshal(verseapi.AskChange{On: tonyDoc(t, `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}]`)}, codec.Tony)
+	b, _ := codec.Marshal(viffapi.AskChange{On: tonyDoc(t, `[{match: {verdict: proceed}, then: {spawn: {prompt: "merge it and tag it", environment: {systems: {network: {mode: open}}}}}}]`)}, codec.Tony)
 	req, _ := http.NewRequest(http.MethodPatch, "http://"+r.addr+"/asks/"+id, strings.NewReader(string(b)))
 	req.Header.Set("Content-Type", "application/tony")
-	req.Header.Set(verseapi.PrincipalHeader, "user:walter@example.com")
+	req.Header.Set(viffapi.PrincipalHeader, "user:walter@example.com")
 	if resp, err := http.DefaultClient.Do(req); err != nil || resp.StatusCode != http.StatusOK {
 		t.Fatalf("walter's change: %v %v", err, resp)
 	}
@@ -164,14 +164,14 @@ func (r *socketRig) deskForPeggy(t *testing.T) {
 	}
 }
 
-// send makes one request of the verse as who, through the resolver named where one is.
+// send makes one request of the viff as who, through the resolver named where one is.
 func (r *socketRig) send(t *testing.T, who, resolver, method, path, body string) int {
 	t.Helper()
 	req, _ := http.NewRequest(method, "http://"+r.addr+path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/tony")
-	req.Header.Set(verseapi.PrincipalHeader, who)
+	req.Header.Set(viffapi.PrincipalHeader, who)
 	if resolver != "" {
-		req.Header.Set(verseapi.ResolverHeader, resolver)
+		req.Header.Set(viffapi.ResolverHeader, resolver)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -188,7 +188,7 @@ func TestAnAskYourResolverServesTakesForce(t *testing.T) {
 	id := r.askPeggy(t)
 	r.pass(t)
 	r.ts, _ = r.fake.posted[0]["ts"].(string)
-	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, "served for you by `verse.resolvers.desk`") {
+	if said := shown(t, r.fake.posted[0]); !strings.Contains(said, "served for you by `mirror.resolvers.desk`") {
 		t.Fatalf("peggy's DM does not say her resolver serves it: %q", said)
 	}
 	r.peggySays(t, "4", "proceed")
@@ -219,7 +219,7 @@ func TestAnAnswerThroughAResolverSaysSo(t *testing.T) {
 	if len(r.fake.updates) == 0 {
 		t.Fatal("the message was not redrawn")
 	}
-	if said := shown(t, r.fake.updates[len(r.fake.updates)-1]); !strings.Contains(said, "answered *proceed* by `peggy@example.com` via `verse.resolvers.desk`") {
+	if said := shown(t, r.fake.updates[len(r.fake.updates)-1]); !strings.Contains(said, "answered *proceed* by `peggy@example.com` via `mirror.resolvers.desk`") {
 		t.Fatalf("redrawn as %q, want peggy's answer via the desk", said)
 	}
 }
@@ -259,13 +259,13 @@ func TestWordsUnderATurnAreTheReply(t *testing.T) {
 // lead, said so the person answering knows what each outcome sets going.
 func TestADMSaysWhatAYesAndANoRun(t *testing.T) {
 	r := newSocketRig(t)
-	post := func(as string, body verseapi.Ask) string {
+	post := func(as string, body viffapi.Ask) string {
 		t.Helper()
 		resp, err := client.New(r.addr, as).Post("/asks", nil, body)
 		if err != nil || resp.StatusCode != http.StatusCreated {
 			t.Fatalf("asking: %v %v", err, resp)
 		}
-		var asked verseapi.Asked
+		var asked viffapi.Asked
 		if err := client.Decode(resp, &asked); err != nil {
 			t.Fatal(err)
 		}
@@ -277,8 +277,8 @@ func TestADMSaysWhatAYesAndANoRun(t *testing.T) {
 		}
 		return asked.ID
 	}
-	ship := post("user:alice@example.com", verseapi.Ask{Name: "ship", Question: "Ship it?", To: []string{"user:walter@example.com"}})
-	id := post("user:walter@example.com", verseapi.Ask{
+	ship := post("user:alice@example.com", viffapi.Ask{Name: "ship", Question: "Ship it?", To: []string{"user:walter@example.com"}})
+	id := post("user:walter@example.com", viffapi.Ask{
 		Name: "ui-ok", Question: "Is the UI ok?", To: []string{peggy},
 		On: tonyDoc(t, `[{match: {verdict: proceed}, then: {answer: {ask: `+ship+`, choice: proceed}}},
 			{then: {ask: {name: ship-lead, question: "Peggy said no: ship it?", to: [lead@example.com]}}}]`),

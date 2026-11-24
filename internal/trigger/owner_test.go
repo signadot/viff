@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Every id a firing mints leads with the engine that minted it — the scope, then the charter's
@@ -19,7 +19,7 @@ func TestIDsLeadWithTheEngineThatMintedThem(t *testing.T) {
 		want  string
 	}{
 		{"", nil, "review.onDone@demo.pr.1"},
-		{"", []string{"verse-dev", "drift"}, "verse-dev.drift:review.onDone@demo.pr.1"},
+		{"", []string{"viff-dev", "drift"}, "viff-dev.drift:review.onDone@demo.pr.1"},
 		{"me", nil, "me::review.onDone@demo.pr.1"},
 	} {
 		id := spawnID(ownerOf(c.scope, c.at), "review.onDone", ref)

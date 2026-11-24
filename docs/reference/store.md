@@ -1,12 +1,12 @@
 # The store
 
-Verse coordinates everything through one [store](../glossary.md#store). The store is a tree of
+Viff coordinates everything through one [store](../glossary.md#store). The store is a tree of
 [data](../glossary.md#data). It can be watched, and a reader can follow it with a cursor. You do
-not have to touch the store to *use* verse, because `up` brings it up for you. But the deeper
-properties of verse come from the store, and this page is the one place that states them.
+not have to touch the store to *use* viff, because `up` brings it up for you. But the deeper
+properties of viff come from the store, and this page is the one place that states them.
 
 By default the store is [docd](https://signadot.github.io/tony-format/docd/), the tony-format
-document store, over logd. docd gives verse four things:
+document store, over logd. docd gives viff four things:
 
 | Property | What it means |
 |---|---|
@@ -22,8 +22,8 @@ directory. It points the store at the client face of docd. The store flags chang
 |---|---|
 | `-data <dir>` | uses a durable directory |
 | `-docd-addr` | attach to a docd that is already running |
-| `-docd-advertise-addr` | publish a different address on `/status`. Use it when a store client beside verse reaches docd at another address than verse does. |
-| `-logd-config <file>` | the logd configuration, in tony, for the daemons that `up` starts, in place of the one verse writes. Verse refuses it beside `-docd-addr`, which starts nothing. |
+| `-docd-advertise-addr` | publish a different address on `/status`. Use it when a store client beside viff reaches docd at another address than viff does. |
+| `-logd-config <file>` | the logd configuration, in tony, for the daemons that `up` starts, in place of the one viff writes. Viff refuses it beside `-docd-addr`, which starts nothing. |
 
 See [up.md](up.md#the-store).
 
@@ -33,8 +33,8 @@ The store keeps its tree in logd under a prefix of its own. The prefix belongs t
 and nobody addresses it as a level. The node at `demo.pr.1` is the node at that
 [kinded path](../glossary.md#kinded-path), whatever it holds. The store reads and writes with
 Match and Patch. One logd watch drives both the change stream and the
-[revision](../glossary.md#revision) cursor. That tree is all that `verse data` publishes. The
-document that `verse data` answers with *is* this tree, at the same
+[revision](../glossary.md#revision) cursor. That tree is all that `viff data` publishes. The
+document that `viff data` answers with *is* this tree, at the same
 [address](../glossary.md#address) ([data](entities.md#reading)).
 
 **Absence is a missing key, not a null.** A removal is `!delete`. logd executes it by taking
@@ -53,7 +53,7 @@ is the same as an update, because logd delivers the patch that the writer applie
 
 ## The reactive grain is the node, not the transaction
 
-The rule in this section is subtle, and much of verse depends on it.
+The rule in this section is subtle, and much of viff depends on it.
 
 One docd commit can patch many nodes atomically. The store splits each commit into **one
 change event for each node that changed**. `changesAt` does the split: it compares the document
@@ -61,7 +61,7 @@ before the commit with the document after it, at the depth that the watching que
 about. All the events of one commit share the revision of that commit.
 
 Because of this split, the [subject](../glossary.md#subject) of a [rule](../glossary.md#rule)
-is always one node. Verse dispatches one edge for each node. So `subject`, and the flow keyed
+is always one node. Viff dispatches one edge for each node. So `subject`, and the flow keyed
 on it, is never ambiguous, even under a broad match. A broad pattern gives one
 [firing](../glossary.md#firing) for each matching change.
 
@@ -88,13 +88,13 @@ Three properties of the store make the reactive loop converge. An author of a
   makes no commit, so it starts no evaluation. This property stops a completion
   [hook](../glossary.md#hook) that states a subject's stage again from looping.
 - **A watch is level-triggered when it opens.** So an installed rule acts on the backlog that
-  stands in the store. After a restart, verse reaches the same verdicts again. They do not
+  stands in the store. After a restart, viff reaches the same verdicts again. They do not
   depend on what this engine saw. For this reason a rule needs a
   [latch](../glossary.md#latch) and not an edge; see [convergence](../convergence.md).
 - **A write is a patch, so a write cannot carry a match operator as data.** `!irtype`, `!or`,
   `!glob`, `!let` and the rest of the match vocabulary are operations. When a payload carries
   one, the store executes it and does not store it. The write itself does not fail. Every later
-  read fails, so the store becomes unreadable, and not only that data wrong. Verse refuses such
+  read fails, so the store becomes unreadable, and not only that data wrong. Viff refuses such
   a write, and names the operator and the field.
 
   Instead, mark the subtree as data. Use `entity.Raw` (`!raw`) on the way in. A charter rule

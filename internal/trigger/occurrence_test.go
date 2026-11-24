@@ -5,17 +5,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // The spawn carries WHICH RUN it is: the commit that woke the firing.
 //
 // A spawn id is derived from the chain and the subject, so a re-fire about one subject reuses
-// it — deliberately, since that is what makes a re-fire idempotent and what `verse flow
+// it — deliberately, since that is what makes a re-fire idempotent and what `viff flow
 // demo.pr.1` addresses. Nothing named the occurrence, so two runs wrote one record and their
 // fields interleaved: staging held a task record whose `ended` preceded its `started` by fifty
 // minutes, carrying one run's result beside another's status (git-issue gjv063rrh12ksvgnfsn0).
@@ -23,7 +23,7 @@ import (
 // The engine has the causing commit in hand and stamps it, the way it already stamps Subject
 // and Chain — engine-owned fields that ride the spec so the spawner can put them on the
 // record. Asserted HERE, on what the engine hands the spawner, because that is where the fact
-// is known; that it reaches the entity is versed's test.
+// is known; that it reaches the entity is viffd's test.
 func TestASpawnCarriesTheCommitThatCausedIt(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -44,7 +44,7 @@ func TestASpawnCarriesTheCommitThatCausedIt(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {

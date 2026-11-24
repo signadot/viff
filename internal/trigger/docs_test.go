@@ -11,12 +11,12 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/stock"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/stock"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Every charter written in the docs must install.
@@ -27,7 +27,7 @@ import (
 // that does not is running it.
 //
 // It extracts fenced tony/json blocks AND heredoc bodies inside shell blocks (which is how the
-// tutorial shows `verse c -a -f -`), keeps whatever parses as a trigger with a name and
+// tutorial shows `viff c -a -f -`), keeps whatever parses as a trigger with a name and
 // a subject, and installs it on a fresh engine. Anything that is not a charter — a fragment, a
 // goal record, an entity payload — simply does not parse as one and is skipped.
 func TestDocCharartersInstall(t *testing.T) {
@@ -108,7 +108,7 @@ func TestDocCharartersInstall(t *testing.T) {
 			// thing it documents does not work.
 			for i, node := range nodes {
 				if err := CheckFields(node); err != nil {
-					t.Errorf("%s:%d: charter %q would be refused by `verse c -a`:\n  %v\n\n%s",
+					t.Errorf("%s:%d: charter %q would be refused by `viff c -a`:\n  %v\n\n%s",
 						filepath.Base(path), blk.line, trigs[i].Name, err, indent(blk.text))
 				}
 			}
@@ -136,9 +136,9 @@ func TestDocCharartersInstall(t *testing.T) {
 	}
 }
 
-// upOffers checks a spawn as `verse up`'s own runner, with a model key, would at install: a doc
-// charter is typed in on `verse up` first, and a spawn that runner refuses (it builds only the
-// host's network) is a tutorial that stops at its first install. A spawn for an agent `verse up`
+// upOffers checks a spawn as `viff up`'s own runner, with a model key, would at install: a doc
+// charter is typed in on `viff up` first, and a spawn that runner refuses (it builds only the
+// host's network) is a tutorial that stops at its first install. A spawn for an agent `viff up`
 // does not offer, or giving a system its runner does not hold (a repository, a Slack channel), is
 // for a runner set up elsewhere, and is not this test's to judge.
 func upOffers(l runner.Launch) error {
@@ -185,7 +185,7 @@ func isResolver(text string) bool {
 var fence = regexp.MustCompile("(?s)```(tony|json|yaml)( +proposed)?\\n(.*?)```")
 
 // charterBlocks yields every fenced tony/json block, plus every heredoc body (which is how a
-// doc shows a charter being piped into `verse c -a -f -`). Go's regexp has no
+// doc shows a charter being piped into `viff c -a -f -`). Go's regexp has no
 // backreference, so the heredoc terminator is matched by scanning rather than by pattern.
 func charterBlocks(src string) []block {
 	var out []block

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // WHICH OF LINEAR'S ANSWERS ARE REFUSALS (git-issue na9fce9dh12krdydqsn0): what Linear says is the
@@ -44,7 +44,7 @@ func TestWhichAnswersAreRefusals(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), c.says) {
 				t.Fatalf("err %v, want one saying %q", err, c.says)
 			}
-			if got := verseio.IsPermanent(err); got != c.permanent {
+			if got := viffio.IsPermanent(err); got != c.permanent {
 				t.Errorf("permanent %v, want %v (%v)", got, c.permanent, err)
 			}
 		})

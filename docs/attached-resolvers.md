@@ -12,7 +12,7 @@ place it answers for granted.
 | Word | What it is |
 |---|---|
 | **party** | whom an ask is put to: each person it names, or, where it names nobody, the place it is [about](asking.md#who-reads-it) |
-| **resolver** | an installed service, at `verse.resolvers.<name>` ([resolver](glossary.md#resolver)) |
+| **resolver** | an installed service, at `mirror.resolvers.<name>` ([resolver](glossary.md#resolver)) |
 | **match** | the asks a resolver watches: what they are about, and their labels |
 | **grant** | a party letting a resolver answer for them: an [`answer`](reference/perms.md#levels) grant naming the resolver |
 | **serving** | a resolver serves an ask for a party when its match admits the ask and the party granted it |
@@ -29,11 +29,11 @@ rule and belongs to whoever runs it.
 ```tony
 name:  carols-desk
 match: {}                                  # every ask put to whoever grants it
-method: { driver: service, url: "https://desk.internal/verse" }   # url: a note; the service dials verse
+method: { driver: service, url: "https://desk.internal/viff" }   # url: a note; the service dials viff
 ```
 
 ```sh
-verse resolver add carols-desk.tony        # as dan, who runs the desk
+viff resolver add carols-desk.tony        # as dan, who runs the desk
 ```
 
 `match` is required. `match: {}` watches every ask put to whoever grants the resolver. A desk
@@ -46,7 +46,7 @@ match:
 ```
 
 `about` is a path with no value, since a value changes while an ask stands. An ask carries labels
-from its gate (`labels:` on a charter's gate or a task's) or from `verse ask --label`.
+from its gate (`labels:` on a charter's gate or a task's) or from `viff ask --label`.
 
 A resolver acts as whoever installed it. Its service reads what they may read, and nothing more.
 
@@ -55,12 +55,12 @@ A resolver acts as whoever installed it. Its service reads what they may read, a
 A resolver answers for nobody until somebody grants it:
 
 ```sh
-verse resolver grant carols-desk                   # as carol: it answers for her
-verse resolver grant carols-desk --for demo.pr     # …or for a place on record as hers
-verse resolver revoke carols-desk                  # and takes it back
+viff resolver grant carols-desk                   # as carol: it answers for her
+viff resolver grant carols-desk --for demo.pr     # …or for a place on record as hers
+viff resolver revoke carols-desk                  # and takes it back
 ```
 
-A person's grant stands at `verse.for.<person>`, which their first grant makes, owned by them. A
+A person's grant stands at `viff.for.<person>`, which their first grant makes, owned by them. A
 place's owner on record grants at the place, and the grant reaches beneath it as any grant does.
 
 **Two resolvers never answer for one party on one ask.** A grant is refused where another resolver
@@ -78,8 +78,8 @@ serving it reads it, as grants stand at each read.
 Its service follows what it serves by watching the asks as the resolver:
 
 ```sh
-curl -N -H 'Verse-Principal: user:dan@example.com' -H 'Verse-Resolver: carols-desk' \
-  "$VERSE/watch?at=verse.ask&since=0"
+curl -N -H 'Viff-Principal: user:dan@example.com' -H 'Viff-Resolver: carols-desk' \
+  "$VIFF/watch?at=mirror.ask&since=0"
 ```
 
 `GET /resolvers/<name>/asks`, asked the same way, lists the waiting asks it serves now, with the
@@ -87,29 +87,29 @@ parties each is for. For context — the run that asked, the history of what an 
 reads through the ordinary routes, as the resolver, and sees what its installer sees.
 
 **A resolver's service is whoever installed it, acting as it.** A request presents the installer
-in `Verse-Principal` and names the resolver in `Verse-Resolver`. Verse makes it as
-`via:verse.resolvers.<name>` where that principal owns the resolver, and refuses it otherwise.
+in `Viff-Principal` and names the resolver in `Viff-Resolver`. Viff makes it as
+`via:mirror.resolvers.<name>` where that principal owns the resolver, and refuses it otherwise.
 
 ## Answering
 
-Alice asks Carol, `verse ask ship -q "Ship it?" --to carol@example.com`, and the desk serves it.
+Alice asks Carol, `viff ask ship -q "Ship it?" --to carol@example.com`, and the desk serves it.
 The service answers as any answerer does, made as the resolver:
 
 ```sh
-curl -H 'Verse-Principal: user:dan@example.com' -H 'Verse-Resolver: carols-desk' \
+curl -H 'Viff-Principal: user:dan@example.com' -H 'Viff-Resolver: carols-desk' \
   -H 'Content-Type: application/tony' -d '{choice: proceed, for: carol@example.com}' \
-  "$VERSE/asks/<ask>/answer"
+  "$VIFF/asks/<ask>/answer"
 ```
 
 The answer is the party's. It names one party the resolver serves the ask for, in `for`, or is for
 the only one. A person answers as themselves, and a place as its owner at the moment of the
 answer. From there it is held to everything that party's own answer is held to, and the record
-says both: `by: <party>` and `via: via:verse.resolvers.<name>`. A threshold counts each party
+says both: `by: <party>` and `via: via:mirror.resolvers.<name>`. A threshold counts each party
 once.
 
 **What it serves for you is its to answer, until you say otherwise.** Your questions
-(`verse question`) leave out an ask a resolver serves for you, and `verse question --served`
-shows it, saying which resolver. `verse question --watch` shows it waiting on you,
+(`viff question`) leave out an ask a resolver serves for you, and `viff question --served`
+shows it, saying which resolver. `viff question --watch` shows it waiting on you,
 `(served by …)`. Answering it yourself is
 refused, naming the resolver, unless you pass `--force`. Beyond that, the two answers are yours to
 keep apart: a resolver's policy — waiting to the last moment, saying no to silence — is its own
@@ -121,26 +121,26 @@ To consult somebody, or to escalate, a resolver raises an ask of its own inside 
 The desk asks Erin before it answers for Carol:
 
 ```sh
-curl -H 'Verse-Principal: user:dan@example.com' -H 'Verse-Resolver: carols-desk' \
+curl -H 'Viff-Principal: user:dan@example.com' -H 'Viff-Resolver: carols-desk' \
   -H 'Content-Type: application/tony' \
   -d '{name: up, question: "Ship it, for carol?", to: [erin@example.com], serves: <ask>}' \
-  "$VERSE/asks"
+  "$VIFF/asks"
 ```
 
-Erin answers it as she answers anything, `verse question <up> --answer proceed`, and Alice's ask
-is answered yes, `by: user:carol@example.com`, `via: via:verse.resolvers.carols-desk`.
+Erin answers it as she answers anything, `viff question <up> --answer proceed`, and Alice's ask
+is answered yes, `by: user:carol@example.com`, `via: via:mirror.resolvers.carols-desk`.
 
 - **It fits inside the ask it serves.** It offers the same options, each settled by one ballot.
   Its clock fits inside the served ask's: a later date is refused, and with none it takes that
   clock, and what silence settles on there. It takes no `on`.
-- **What it comes to is carried back.** When it settles, versed answers the served ask as the
+- **What it comes to is carried back.** When it settles, viffd answers the served ask as the
   resolver, for the party it was raised for, held to the grant and the match as they stand then.
   A clock that settled on no option carries nothing. The onward ask records `carried`.
 - **It follows the ask it serves.** When that ask settles, is withdrawn, removed, or asked again,
   the onward ask is withdrawn, saying why. A sooner clock there moves its own.
 - **It is changed as it was raised.** Its record says it is from the resolver,
-  `from: {principal: via:verse.resolvers.<name>}`, so `PATCH /asks/<id>` changes it with the
-  `Verse-Resolver` header, as the resolver. Its installer, as themselves, is refused: the record
+  `from: {principal: via:mirror.resolvers.<name>}`, so `PATCH /asks/<id>` changes it with the
+  `Viff-Resolver` header, as the resolver. Its installer, as themselves, is refused: the record
   is theirs, since a resolver owns nothing, but they did not ask it.
 
 Any ask a resolver raises, onward or not, is from the resolver, and is changed the same way.
@@ -150,7 +150,7 @@ answer comes back over each hop. Removing a resolver withdraws the onward asks i
 
 ## Walk it
 
-[`test/smoke.sh`](../test/smoke.sh)'s resolver step runs the whole of this against a fresh verse: dan
+[`test/smoke.sh`](../test/smoke.sh)'s resolver step runs the whole of this against a fresh viff: dan
 installs a desk, carol grants it, alice asks carol, the desk serves the ask, asks erin onward, and
 erin's yes comes back on alice's ask as carol's, through the desk.
 

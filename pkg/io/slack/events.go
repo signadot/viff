@@ -12,17 +12,17 @@ import (
 	"strconv"
 	"time"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // The delivery half: Slack's Events API, received HERE.
 //
-// This is the git hook in another costume, and the symmetry is the design. verse does not
+// This is the git hook in another costume, and the symmetry is the design. viff does not
 // parse deliveries — a source owns its own, because the source is what deployed the hook or
-// holds the signing secret — so what crosses to verse is the same thing in both cases: which
+// holds the signing secret — so what crosses to viff is the same thing in both cases: which
 // ref went stale, as a query parameter, and nothing else. `Git.InstallHook` writes a four-line
-// `/bin/sh` script that curls it; this reads a signed JSON envelope and calls verseio.PostHint.
-// Neither one tells verse anything it could act on wrongly.
+// `/bin/sh` script that curls it; this reads a signed JSON envelope and calls viffio.PostHint.
+// Neither one tells viff anything it could act on wrongly.
 //
 // Which is why a forged delivery is not interesting: it costs a reconcile of a slice the
 // sender does not get to choose the contents of. The signature check below is here because
@@ -45,9 +45,9 @@ const eventsMaxSkew = 5 * time.Minute
 // names too much costs a pass and a hint that names nothing costs a missed change.
 //
 // The hint is sent BEFORE the 200, synchronously. Slack wants an answer within three seconds
-// and verse is a service away, so the round trip is not the thing to optimise — and if it ever
+// and viff is a service away, so the round trip is not the thing to optimise — and if it ever
 // were, Slack's retry would deliver the event again, which by the law above is harmless.
-func (s *Slack) Events(signingSecret string, hint verseio.Hinter) http.Handler {
+func (s *Slack) Events(signingSecret string, hint viffio.Hinter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if signingSecret == "" {
 			// Refused rather than trusted. The hint law says a forged delivery is cheap, but a
@@ -86,7 +86,7 @@ func (s *Slack) Events(signingSecret string, hint verseio.Hinter) http.Handler {
 // hintFor sends the hint a delivery calls for: the channel it names, or a full resync when it
 // names none. A delivery arrives by the request url, signed, or over Socket Mode, on a connection
 // the app token opened (socket.go), and says the same thing either way.
-func (s *Slack) hintFor(ctx context.Context, d delivery, hint verseio.Hinter) {
+func (s *Slack) hintFor(ctx context.Context, d delivery, hint viffio.Hinter) {
 	if hint == nil {
 		return
 	}

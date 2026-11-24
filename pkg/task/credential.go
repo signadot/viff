@@ -9,9 +9,9 @@ import (
 
 // CredentialFileEnv names the variable a task's shell finds its credential's file under. The
 // variable holds a path and never the token: a tool that takes a web identity token takes it as a
-// file (`AWS_WEB_IDENTITY_TOKEN_FILE=$VERSE_CREDENTIAL_FILE`), and a path is all that every
+// file (`AWS_WEB_IDENTITY_TOKEN_FILE=$VIFF_CREDENTIAL_FILE`), and a path is all that every
 // process the task starts inherits.
-const CredentialFileEnv = "VERSE_CREDENTIAL_FILE"
+const CredentialFileEnv = "VIFF_CREDENTIAL_FILE"
 
 // CredentialFile writes a launch's credential where its task can read it and its workspace does
 // not hold it: a file of its own, in a fresh directory under the system's temporary directory,
@@ -21,7 +21,7 @@ const CredentialFileEnv = "VERSE_CREDENTIAL_FILE"
 // It answers the `NAME=value` a runner adds to the task's shell, and what removes the file when
 // the task has ended.
 func CredentialFile(token, workspace string) (env string, remove func(), err error) {
-	dir, err := os.MkdirTemp("", "verse-credential-")
+	dir, err := os.MkdirTemp("", "viff-credential-")
 	if err != nil {
 		return "", nil, err
 	}

@@ -19,7 +19,7 @@
 //
 // A push is one op of the channel, and the rest are the acts of the other systems the runner
 // performs with a credential of its own: a pull request, an issue at a tracker, a message in
-// Slack, a request to verse. EVERY OP IS IN ONE TABLE (ops), and none performs anything itself:
+// Slack, a request to viff. EVERY OP IS IN ONE TABLE (ops), and none performs anything itself:
 // it reads the request into the steps it asks about and the act that follows them, and the
 // server checks every step against the task's environment, its autonomy and the runner's ceiling
 // before it calls the act (Server.perform). A request is an op, what it is asked with by name,

@@ -4,15 +4,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A removed trigger stops firing. In subtree mode a trigger's observation is its own
 // goroutines — not a shared dispatch loop reading the charter — so removing it from the
 // charter is only half the removal: the watch has to be cancelled too, or the trigger keeps
-// acting on the verse with nothing listing it any more (`verse charter` shows it gone while
+// acting on the viff with nothing listing it any more (`viff charter` shows it gone while
 // its effects continue).
 func TestRemovedTriggerStopsFiring(t *testing.T) {
 	store := entitytest.Store(t)
@@ -23,7 +23,7 @@ func TestRemovedTriggerStopsFiring(t *testing.T) {
 		Action:    setStage("reviewed"),
 	})
 
-	eng.ObserveScoped(t.Context()) // versed's production path (per-trigger subtree watch)
+	eng.ObserveScoped(t.Context()) // viffd's production path (per-trigger subtree watch)
 
 	// It observes while installed.
 	first := entity.RefAt("demo", "pr", "1")

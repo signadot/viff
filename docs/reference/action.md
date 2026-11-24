@@ -7,7 +7,7 @@ action belongs to is in [the charter reference](../trigger-model.md).
 
 Most examples on this page are a team's pull requests of `acme/app`, kept as records at
 `demo.pr.<n>` with a `stage` and the branch `head`. The examples of `derive` and of a read in a
-condition are from comment-drift, the charter that reviews the verse repository's own `main`
+condition are from comment-drift, the charter that reviews the viff repository's own `main`
 ([the charter](charter.md)).
 
 ## `action`: what fires
@@ -25,18 +25,18 @@ its own. It acts on the [subject](../glossary.md#subject) of the condition.
 | `onFailed` | an action that fires when the task ends `failed` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 | `onCancelled` | an action that fires when the task ends `cancelled` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 
-An action writes to the store, and it can also act on a system outside verse. A `patch` or a
+An action writes to the store, and it can also act on a system outside viff. A `patch` or a
 `derive` that writes to an [iod](../glossary.md#iod)'s out place asks the iod to act: to post a
 comment, to set a label, to merge. The iod carries the write out to its system, and writes back
 what happened ([the out half](io.md#the-out-half)). For work that needs a judgment or a
 checkout, the action spawns a task.
 
-**Every rule has an action, and verse refuses at install a rule that would do nothing.** Any one
+**Every rule has an action, and viff refuses at install a rule that would do nothing.** Any one
 of `patch`, `derive`, `spawn` or `seq` is enough. A rule with none of them would install, watch
 its subtree for the life of the store, and never write anything.
 
 Completion hooks do not count as an action. A hook is what happens when something finishes, and
-without a spawn or a seq nothing finishes. For the same reason, verse refuses an `onX` without a
+without a spawn or a seq nothing finishes. For the same reason, viff refuses an `onX` without a
 spawn or a seq. A gate does not count either: on a rule with no action, a gate asks a question
 whose answer nothing reads.
 
@@ -67,7 +67,7 @@ overwrite each other's fields. The
 (`patch: 42`) replaces the whole payload.
 
 A nested write merges into an object. The subject may hold an array or a scalar under that key.
-Then nothing is there to merge into, and verse refuses the firing. It does not replace what
+Then nothing is there to merge into, and viff refuses the firing. It does not replace what
 stands there:
 
 ```yaml
@@ -89,7 +89,7 @@ that grows structure depends on this.
 
 `derive` writes data at an address that is *not* the subject. A `patch` cannot do this. A
 [derive](../glossary.md#derive) is a list of entries. Each entry names an address as a path, and
-what goes there: `- {path: "repos.verse.drift.head", value: …}`. Its content may read its
+what goes there: `- {path: "repos.viff.drift.head", value: …}`. Its content may read its
 own subject. It may also read other data, at or below its own level.
 
 A derive is installable only inside a declared order of levels, and it must land strictly above
@@ -97,23 +97,23 @@ the rule that writes it. See [strata](../strata.md).
 
 **Without a name, the engine chooses the address, and the address says where the record came
 from.** The address is the place, then the rule, then the segments of the subject. A rule
-`proposal-appeared` that selects `git.verse.ref.*` and derives into
-`[repos, verse, merge, proposal]` writes
+`proposal-appeared` that selects `git.viff.ref.*` and derives into
+`[repos, viff, merge, proposal]` writes
 
-    repos.verse.merge.proposal.proposal-appeared.git.verse.ref."verse/auto/…"
+    repos.viff.merge.proposal.proposal-appeared.git.viff.ref."viff/auto/…"
 
 This address has **nine** segments: four for the place, one for the rule, four for the subject.
 No two rules can address the same record.
 
 **So a reader of a derivation says how deep one is.** The depth follows from the depth of the
-subjects that the producing rule selects. `[repos, verse, merge, proposal, "*"]` has five
+subjects that the producing rule selects. `[repos, viff, merge, proposal, "*"]` has five
 segments. It selects the *rule* level, whose payload is the whole subtree of that rule's
 derivations, and not any one of them.
 [The pattern says how deep its subjects are](condition.md#the-pattern-says-how-deep-its-subjects-are)
 says what a wrong depth does.
 
 **Naming one is how a derive stays shallow.** `id:` puts the record at the place plus that one
-segment: `repos.verse.merge.proposal."verse/auto/…"`, which has five segments. A reader already
+segment: `repos.viff.merge.proposal."viff/auto/…"`, which has five segments. A reader already
 spells that address. A derive usually wants an `id:` when its subjects stand under one place and
 the rules that read them name the place literally.
 
@@ -124,29 +124,29 @@ and not one long paragraph. See
 [strata](../strata.md#each-when-one-answer-holds-many-facts).
 
 A single derive may carry a `key:` too:
-`- {path: "repos.verse.merge.train", key: .[subject.value.sha], value: …}`. Its address is then a
+`- {path: "repos.viff.merge.train", key: .[subject.value.sha], value: …}`. Its address is then a
 function of (rule, subject, key), and not of (rule, subject). It gives one record per value of
 something, where the same subject keeps moving. See
 [strata](../strata.md#a-key-on-a-single-derive).
 
 **`id:` is that key without the rule and the subject.** The difference is for the reader. A keyed
-record stands at `repos.verse.drift.head.head-moved.git.verse.head.aaaa1111`: the place, the
+record stands at `repos.viff.drift.head.head-moved.git.viff.head.aaaa1111`: the place, the
 rule, the subject, the key. Nothing in the grammar builds that address from a subject. So a
 reader that wants the record must *describe* it, with a `"*"` per segment and a predicate on a
 field it happens to know. It cannot name it.
 
-With `id: .[subject.value.sha]` the record is `repos.verse.drift.head.aaaa1111`, and a reader
-spells it: `!get-path {at: [repos, verse, drift, head, .[subject.value.sha]], path: result.report}`.
+With `id: .[subject.value.sha]` the record is `repos.viff.drift.head.aaaa1111`, and a reader
+spells it: `!get-path {at: [repos, viff, drift, head, .[subject.value.sha]], path: result.report}`.
 
 `id:` gives the author the job of keeping addresses unique.
 
 | Field | Two subjects of one rule that compute the same value | What it claims |
 |---|---|---|
-| `id:` | share one record | the value identifies the record **across subjects**. This is true when the subject is a singleton, as `git.verse.head` is. |
+| `id:` | share one record | the value identifies the record **across subjects**. This is true when the subject is a singleton, as `git.viff.head` is. |
 | `key:` | get one record each | the value identifies the record within one subject only |
 
 The *place* stays the engine's in both cases, because a derive may write only inside its own
-stratum. Verse checks this at install. Verse refuses a derive that carries both `id:` and `key:`.
+stratum. Viff checks this at install. Viff refuses a derive that carries both `id:` and `key:`.
 
 `!each` takes both too, and there the difference matters more.
 
@@ -189,7 +189,7 @@ the field.
 
 ### `spawn`
 
-`spawn` launches a [task](../glossary.md#task). Verse tags the spawned task with the subject.
+`spawn` launches a [task](../glossary.md#task). Viff tags the spawned task with the subject.
 The tag makes the task part of the flow of that subject.
 
 A spawn answers four questions, and each is a field:
@@ -197,7 +197,7 @@ A spawn answers four questions, and each is a field:
 | Question | Field | What it names |
 |---|---|---|
 | what is the work | `prompt` or `script` | a prompt, the job in text, for an agent; or a script, which is the work and its own doer. Exactly one. |
-| who does it | `agent` | for a prompt, the agent that does it (`agent: {name: verse}`), with its settings; absent is verse's default agent |
+| who does it | `agent` | for a prompt, the agent that does it (`agent: {name: viff}`), with its settings; absent is viff's default agent |
 | what it works in | `environment` | the variables its shell is given (`vars`), and the systems it may use (`systems`): the whole of what the task may do |
 | what each step gets | `autonomy` | one ordered list of rows over the task's steps: the first row that matches a step denies it, asks about it, or allows it, and the last row decides every step no row above matched |
 
@@ -205,15 +205,15 @@ The spawn can also carry a [contract](#the-answer-contract) (`answer`) that the 
 satisfy.
 
 **The work and who does it.** A `prompt` is for an agent. `agent` names one by the name runners
-offer it under (`verse` is verse's own agent); without `agent`, it is verse's default agent
-(`defaultAgent`, `verse` by default). Verse routes the spawn to a runner that offers it
+offer it under (`viff` is viff's own agent); without `agent`, it is viff's default agent
+(`defaultAgent`, `viff` by default). Viff routes the spawn to a runner that offers it
 ([runners](../runners.md#where-a-spawn-runs)). A `script` is a shell script; it runs by its `#!` line, or
 under bash, and takes no `agent`. A spawn with both, or neither, is refused.
 
 An agent's settings are written beside its name: `agent: {name: codex, model: gpt-5-codex,
 effort: high}`. Each is one the runner's offer declares, with a value it takes; one it does not
 declare is refused. They take expressions, so a charter can write `model: $[subject.value.model]`.
-`agent.annotations` are settings for the runner, such as `verse.portkey/virtual-key`. Verse
+`agent.annotations` are settings for the runner, such as `viff.portkey/virtual-key`. Viff
 writes that one itself from `virtualKey`, the address of the model credential the run spends
 ([virtual key](../glossary.md#virtual-key)), and refuses it written in `annotations`.
 
@@ -226,16 +226,16 @@ shapes; a block that names no verb gives every verb of its system, the network a
 
 | System | What its block does |
 |---|---|
-| `git` | a repository the task works in: `{repo: acme/app, from: main, fetch: {}, push: [{ref: !glob "refs/heads/verse/auto/*", exists: false}, {ref: !glob "refs/heads/verse/auto/*", own: true}]}`. `repo` is `owner/name` at GitHub, or `host/owner/name` on another forge; `from` omitted is the default branch. Both take expressions, so a charter can write `from: $[subject.value.head]`. Its `push` shapes are what may leave it, by `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills from the forge; a charter that ships writes them rather than an empty block, which would give every push. The record of the task carries `git`, so a reader sees what the run worked on without the charter. |
+| `git` | a repository the task works in: `{repo: acme/app, from: main, fetch: {}, push: [{ref: !glob "refs/heads/viff/auto/*", exists: false}, {ref: !glob "refs/heads/viff/auto/*", own: true}]}`. `repo` is `owner/name` at GitHub, or `host/owner/name` on another forge; `from` omitted is the default branch. Both take expressions, so a charter can write `from: $[subject.value.head]`. Its `push` shapes are what may leave it, by `ref`, `delete`, `force`, and `exists` and `own`, which the runner fills from the forge; a charter that ships writes them rather than an empty block, which would give every push. The record of the task carries `git`, so a reader sees what the run worked on without the charter. |
 | `git-issue` | a repository's own tracker, of a repository `git` checks out: `{repo: acme/app}` gives all its verbs |
 | `github`, `github-issue`, `linear-issue`, `slack` | the forge's pull requests, the trackers' issues, and Slack's channels, each a block of its own: `{repo: acme/app}` for `github` and `github-issue`; Linear's and Slack's blocks name their verbs and shapes, such as `{post: {channel: deploys}}` ([the systems](../systems/README.md)) |
-| `verse` | verse itself, acted on as the person the task runs for: reading and writing data, asks, and installing charters (`verse.charter-install`). A charter a task installs launches within the task, less `verse.charter-install` ([the verse system](../systems/verse.md), [the charter](charter.md)) |
-| `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, tcp-client: [{host: api.github.com}, {host: pypi.org, port: 443}]}`. Absent is `none`. The runner builds it once, when the run starts, and refuses a mode its sandbox cannot build: an unconfined runner, such as `verse up`'s, builds only `open` ([the network](../systems/inside.md#the-network)). |
+| `viff` | viff itself, acted on as the person the task runs for: reading and writing data, asks, and installing charters (`viff.charter-install`). A charter a task installs launches within the task, less `viff.charter-install` ([the viff system](../systems/viff.md), [the charter](charter.md)) |
+| `network` | what the run may reach: `{mode: none}`, `{mode: open}` (the host's network), or `{mode: allow, tcp-client: [{host: api.github.com}, {host: pypi.org, port: 443}]}`. Absent is `none`. The runner builds it once, when the run starts, and refuses a mode its sandbox cannot build: an unconfined runner, such as `viff up`'s, builds only `open` ([the network](../systems/inside.md#the-network)). |
 | `files`, `commands`, `agent`, `question` | what a doer does inside its run: `files: {}`, `commands: {run: {command: !regexp "^make "}}` |
 
-**A script is one action, and no step.** Nothing asks before it runs: verse decided to start
+**A script is one action, and no step.** Nothing asks before it runs: viff decided to start
 it. What it may do beyond its workspace is call the task's tools from its shell with
-`verse-call-tool`: `git-push`, `github-create-pr` and `git-fetch` for the repositories its
+`viff-call-tool`: `git-push`, `github-create-pr` and `git-fetch` for the repositories its
 environment gives, their issue trackers' verbs (`git-issue-create`, `github-issue-comment`,
 `linear-issue-close`, …), Slack's (`slack-post`, `slack-read`, …), and `question-ask`. Each call
 is an action of the task, and the same step an agent's use of the tool is, so the same rows
@@ -275,7 +275,7 @@ autonomy:
 | Field | What it does |
 |---|---|
 | `name` | what the question names, and what a hook's `onDenied` refers to; absent, the row is named by its place, `autonomy[0]`. Two rows of one name are refused, and so are `turn`, `ask`, `question-ask` and `environment`, the questions that are no row's |
-| `match` | the step's `system`, which every row but the default names, its `verb`, left out for any of the system's, and the step's fields: `repo`, `from`, `ref`, `delete` and `force` for `git.push`, and `exists` and `own`, which the runner fills from the forge; `repo`, `base`, `head`, `draft` and `own` for `github.create-pr`; `repo`, `head`, `base` and `own` for `github.update-pr`; `path` for `files.write`; `command` for `commands.run`; `agent` for `agent.call-sub-agent`; `repo` and `issue` for a tracker's acts, `team` for a Linear filing; `channel`, and `thread` or `emoji`, for Slack's; `host` and `port` for `network.tcp-client`. Each [system's page](../systems/README.md) lists its verbs and their fields. A field left out matches anything. Each field is a tony match pattern: a value matches itself, `null` any value, `!glob "refs/heads/*"` a glob whose `*` stops at a `/`, `!regexp "^refs/heads/verse/"` a Go regexp, and `!or [a, b]` either ([the autonomy](tasks.md#the-autonomy)). A field is written as the runner spells it: `repo` as `host/owner/name` in lower case (`github.com/acme/app`), `ref` a full ref (`refs/heads/main`), `base` and `head` a branch's name (`main`), `delete` and `force` `true` or `false`, unquoted, a Linear `team` or `issue` uppercase, a Slack `channel` lowercase with no `#`; a pattern it is never spelled as is refused. A field the step does not have is refused, and so is a `$`: a match is a pattern over what the task does, not bound by the firing. A row with no `match` is the default, and it is last. A row that can match nothing the environment gives is refused, since it would never decide. |
+| `match` | the step's `system`, which every row but the default names, its `verb`, left out for any of the system's, and the step's fields: `repo`, `from`, `ref`, `delete` and `force` for `git.push`, and `exists` and `own`, which the runner fills from the forge; `repo`, `base`, `head`, `draft` and `own` for `github.create-pr`; `repo`, `head`, `base` and `own` for `github.update-pr`; `path` for `files.write`; `command` for `commands.run`; `agent` for `agent.call-sub-agent`; `repo` and `issue` for a tracker's acts, `team` for a Linear filing; `channel`, and `thread` or `emoji`, for Slack's; `host` and `port` for `network.tcp-client`. Each [system's page](../systems/README.md) lists its verbs and their fields. A field left out matches anything. Each field is a tony match pattern: a value matches itself, `null` any value, `!glob "refs/heads/*"` a glob whose `*` stops at a `/`, `!regexp "^refs/heads/viff/"` a Go regexp, and `!or [a, b]` either ([the autonomy](tasks.md#the-autonomy)). A field is written as the runner spells it: `repo` as `host/owner/name` in lower case (`github.com/acme/app`), `ref` a full ref (`refs/heads/main`), `base` and `head` a branch's name (`main`), `delete` and `force` `true` or `false`, unquoted, a Linear `team` or `issue` uppercase, a Slack `channel` lowercase with no `#`; a pattern it is never spelled as is refused. A field the step does not have is refused, and so is a `$`: a match is a pattern over what the task does, not bound by the firing. A row with no `match` is the default, and it is last. A row that can match nothing the environment gives is refused, since it would never decide. |
 | `then` | `deny`, `ask` or `allow`; or `{ask: {…}}`, an ask with its shape |
 | `then.ask.need` | how many approvals the step takes; absent is one |
 | `then.ask.answerers` | who is asked, in the grammar a rule's gate uses (`user:…`, `group:…`, `$principal`); absent is the docket |
@@ -283,7 +283,7 @@ autonomy:
 | `then.ask.labels` | what the question says about itself for whoever watches asks: `team: payments`, `slack: C…` |
 
 The runner reads the step, the approvals, the answerers and the deadline's duration, and says
-which gate matched. Verse adds the rest when it poses the question. See
+which gate matched. Viff adds the rest when it poses the question. See
 [a gate's question](tasks.md#a-rows-question).
 
 What a run may do is its environment, and the runner refuses the rest and asks nobody. The
@@ -291,28 +291,28 @@ environment lies within the runner's ceilings: a runner publishes, for each syst
 ceiling its operator wrote, blocks in the environment's form, and an environment beyond one fails
 the spawn when the rule is installed, naming the ceiling, as does one its sandbox can't build.
 The runner holds the environment to its ceilings again at the launch and at each act
-([the verse runner](runnerd.md#what-it-offers)). The autonomy is the dial over the rest.
+([the viff runner](runnerd.md#what-it-offers)). The autonomy is the dial over the rest.
 
 An unknown step in a row, an agent no runner offers, a setting no runner offering it takes, or an
-unknown field inside `spawn:` (`runner:` among them: verse routes a spawn to a runner that offers
+unknown field inside `spawn:` (`runner:` among them: viff routes a spawn to a runner that offers
 its doer, [runners](../runners.md#where-a-spawn-runs)) fails the spawn when the rule is installed.
-Verse does not fall back to a default, and it drops nothing.
+Viff does not fall back to a default, and it drops nothing.
 
 | Field | What it names |
 |---|---|
-| `timeout` | how long the run may take, as a duration. Verse cancels it after that, on every runner. |
-| `lease` | how long the task runs on with verse out of reach, as a duration of `1m` or more. Absent is `4m`. Verse asks the runner for the task's events four times within it. A runner that has gone that long unasked stops the task and ends it `failed` with `orphaned: true`, and a minute after that verse ends the task's record the same way where the runner has not said so ([a task's lease](../runners.md#a-tasks-lease)). A longer lease rides out a longer outage, and holds the subject that much longer when the runner is really gone. |
-| `credential` | `{audience: <name>}` asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule that writes a gate, `mode: auto` included. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
-| `virtualKey` | the address of the model credential the run spends, such as `acme.keys.review`. Verse reads it as whoever installed the rule, so a rule cannot name a key its owner may not read. Absent is the runner's default ([virtual key](../glossary.md#virtual-key)). |
-| `retain` | how many of the task's events verse keeps for a reader who attaches late. Absent is the default. |
+| `timeout` | how long the run may take, as a duration. Viff cancels it after that, on every runner. |
+| `lease` | how long the task runs on with viff out of reach, as a duration of `1m` or more. Absent is `4m`. Viff asks the runner for the task's events four times within it. A runner that has gone that long unasked stops the task and ends it `failed` with `orphaned: true`, and a minute after that viff ends the task's record the same way where the runner has not said so ([a task's lease](../runners.md#a-tasks-lease)). A longer lease rides out a longer outage, and holds the subject that much longer when the runner is really gone. |
+| `credential` | `{audience: <name>}` asks viff for a token that vouches for the task to a system outside viff: the rule's gate let this work through. It is for a rule's own spawn, of a rule that writes a gate, `mode: auto` included. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
+| `virtualKey` | the address of the model credential the run spends, such as `acme.keys.review`. Viff reads it as whoever installed the rule, so a rule cannot name a key its owner may not read. Absent is the runner's default ([virtual key](../glossary.md#virtual-key)). |
+| `retain` | how many of the task's events viff keeps for a reader who attaches late. Absent is the default. |
 
 A spawn names no resolver. A question goes to the people a row or a gate names, and each of
-them grants the [resolver](../attached-resolvers.md) that answers for them (`verse resolver
-grant`). Verse refuses a `resolver:` on a spawn at install.
+them grants the [resolver](../attached-resolvers.md) that answers for them (`viff resolver
+grant`). Viff refuses a `resolver:` on a spawn at install.
 
 ```tony
 spawn:
-  agent: {name: verse}
+  agent: {name: viff}
   environment: {systems: {network: {mode: open}}}
   prompt:   "Review $[subject.ref] for security defects."
   answer:
@@ -340,7 +340,7 @@ record under `requests`, a place the rule's installer owns and grants people to 
   action:
     patch: {stage: running}
     spawn:
-      agent: {name: verse}
+      agent: {name: viff}
       environment: {systems: {network: {mode: open}}}
       prompt: $[subject.value.prompt]
       as: subject
@@ -353,17 +353,17 @@ right, and the installer's reach is not lent to the owner.
 
 A rule may say `as: subject` only where its subject lies in a place the installer owns: the
 settled part of the subject's path, the last segment left out. Anywhere else, the installer
-could select somebody's records and run a task of the installer's design as them, so verse
+could select somebody's records and run a task of the installer's design as them, so viff
 refuses the charter at install.
 
 The task record is the owner's, and says so as `actsFor:`. Its own gates ask the owner. Where the
 owner is the system, the task acts as the rule alone. Its commits carry the owner's tagged address
-as author and committer, as the owner's own launch would (`u+verse-<doer>-runner@h`, where the
+as author and committer, as the owner's own launch would (`u+viff-<doer>-runner@h`, where the
 [doer](../glossary.md#doer) is the agent's name or `script`), with the pair in the
-`Verse-Principal` trailer; where the owner is not a person, or is the system, they carry the
+`Viff-Principal` trailer; where the owner is not a person, or is the system, they carry the
 runner's.
 
-`subject` is the only value that `as` takes. Verse refuses any other at install. It also refuses
+`subject` is the only value that `as` takes. Viff refuses any other at install. It also refuses
 a charter that writes `actsFor:` itself, because the engine sets it.
 
 ### A script — when the charter knows the actions
@@ -376,7 +376,7 @@ doing something else.
 spawn:
   script: |
     git -C app merge --ff-only "mirror/$BRANCH"
-    verse-call-tool git-push -branch main
+    viff-call-tool git-push -branch main
   environment:
     vars: {BRANCH: $[subject.value.head]}
     systems:
@@ -392,11 +392,11 @@ spawn:
 
 The environment gives the push to `main` and no other, so no row has to refuse the rest. The
 script runs in the workspace its `git` blocks checked out, with its `vars` in its shell.
-Its calls to `verse-call-tool` are the task's actions. Each is a step, as an agent's call is: the
+Its calls to `viff-call-tool` are the task's actions. Each is a step, as an agent's call is: the
 same rows decide it, and the task's record shows it. So a row written for an agent's push holds
 this push too. A call
 the runner declines is an answer on the call's output, and the script decides what it means:
-`verse-call-tool git-push -branch "$BRANCH" -delete || true` is a sweep that one declined ref does
+`viff-call-tool git-push -branch "$BRANCH" -delete || true` is a sweep that one declined ref does
 not stop.
 
 **A script's text is not bound.** `$[subject.ref]` in a prompt is the subject; a script's text
@@ -440,7 +440,7 @@ with the refusal as its `err`. This is why those bindings are flat. They are fac
 
 Each of them is there whatever the task said. `result` and `err` are empty where it said
 nothing, and `data` is null where its result is no document. `orphaned` is there too, `false`
-unless the task ended because verse and its runner lost each other. So a hook that an `onDone` and an
+unless the task ended because viff and its runner lost each other. So a hook that an `onDone` and an
 `onFailed` share can say `.[err]` in both, and `report: .[data]` writes null for a task that gave
 no document. Reading into a null is not reading a null: `.[data.findings]` there refuses the
 firing, as any absent path does.
@@ -459,7 +459,7 @@ firing, as any absent path does.
 **A completion hook reads the subject as it is when the task ends.** A task that finishes wakes
 the hook, and no write does. So the hook has no cause of its own, and no commit of its own to
 read at. It reads at the head: `subject.value`, `subject.commit`, `!get-path`, `!list-paths`, a
-derive and the strings of a hook's spawn all read the verse as it stands when the task ends, in
+derive and the strings of a hook's spawn all read the viff as it stands when the task ends, in
 one snapshot, so a hook that reads twice reads one world. The head is always there to read. The
 store keeps history for its compaction cutoff only, and a hook that read at the commit its rule
 fired at lost that commit whenever its task ran longer than the cutoff. A hook also survives a
@@ -482,7 +482,7 @@ spawn, and its `onDone` writes the answer.
 A task that the charter did not start has no firing, and its hooks read the same way, the
 subject as it is. Nothing on its record has to name a commit for `subject.value` to resolve.
 
-In a patch or a derive, verse reads the subject's value only where an expression asks for it: a
+In a patch or a derive, viff reads the subject's value only where an expression asks for it: a
 read of `subject` other than as `subject.ref` or `subject.name`, such as `.[subject.value.round]`,
 `.[subject?.value]`, `.[subject["value"]]`, or `.[subject]` whole. A hook's spawn reads it
 whenever one of its strings asks for it.
@@ -525,7 +525,7 @@ puts on the value is its own and stays: `tmp: !delete .[x]` deletes.
 A `$` that does not open `$[` is not an expression. In a spawn's strings it stays as written:
 `$HOME` and `$5` reach the agent as they are, whatever the payload holds. In a patch or a derive,
 a `$` followed by a name, `$HOME` included, is the spelling references had before expressions,
-and verse refuses it at install with the expression to write instead. Text that means a dollar
+and viff refuses it at install with the expression to write instead. Text that means a dollar
 and a name writes it as an expression, `'$["$HOME"]'`. `$5` and a lone `$` are text everywhere.
 `$$[` is a literal `$[`. A `.[` anywhere but the whole of a value is text, so a jq filter such as
 `.[0].name` in a prompt reaches the agent as written.
@@ -561,7 +561,7 @@ indexes, and nothing else. Inside a larger expression an absent field is null:
 `'$[subject.value.never == "x" ? "yes" : "no"]'` gives `no`. `?.` and `??` say so on purpose,
 `'$[subject.value?.handoff?.summary ?? "none"]'`. A value that must be there is its own `.[…]`.
 
-So in a patch or a derive, verse refuses at install a value that is one map or list literal,
+So in a patch or a derive, viff refuses at install a value that is one map or list literal,
 `'.[{findings: data.findings, n: result}]'`, since an absent field in it would be written as null.
 The refusal gives the same value in tony, where each field is its own expression and held to the
 rule: `{findings: .[data.findings], n: .[result]}`. A literal deeper in an expression builds what
@@ -570,7 +570,7 @@ predicate and the inner ones the map. An expression in a patch or a derive that 
 refused at install too. One that does not compile, or calls the clock, refuses at the firing as an
 absent path does.
 
-In a patch or a derive the refusal fails the firing, and verse writes nothing. The store records
+In a patch or a derive the refusal fails the firing, and viff writes nothing. The store records
 an absent key as different from a null one. Writing null for an absent path would turn "the task
 never said" into "the task said nothing", and a match reads those as different facts. A field
 written null reads as null. The failure is the one that a failed write takes: the action stops,
@@ -583,7 +583,7 @@ In a spawn the refusal is a failed task. The action's patch has already landed, 
 action:
   patch: {stage: developing}
   spawn:
-    agent: {name: verse}
+    agent: {name: viff}
     prompt: "open a pull request whose body is $[subject.value.handoff.summary]"
   onFailed:
     # spawn refused: prompt: error evaluating "subject.value.handoff.summary": no "handoff" in subject.value
@@ -591,7 +591,7 @@ action:
 ```
 
 The refused task is on record like a task that a runner refuses. Its id holds `status: failed`,
-with the refusal as `err` and the firing's `occurrence`, so `verse task get` says why. Nothing
+with the refusal as `err` and the firing's `occurrence`, so `viff task get` says why. Nothing
 was started. Its `onFailed` reads `subject.value` as it is, as any hook does: `stage` is
 `developing`, which the firing wrote before the spawn was refused.
 
@@ -617,13 +617,13 @@ action:
       value: {state: green}
       path: branch
     # the string form is the kinded path, for an address with nothing to expand in it
-    head:     !get-path git.verse.head
+    head:     !get-path git.viff.head
     # and `at:` names the address as a path, at whatever depth the tree is
     says: !get-path
-      at: "repos.verse.drift.head.aaaa1111"
+      at: "repos.viff.drift.head.aaaa1111"
       path: result.report
     open: !list-paths
-      at: "repos.verse.drift.finding.*"
+      at: "repos.viff.drift.finding.*"
       value: {status: open}
       path: says
 ```
@@ -640,7 +640,7 @@ tag that answers that question instead.
 
 | Form | What it is |
 |---|---|
-| a string | the address as a kinded path (`git.verse.head`), with nothing in it to expand. It may go on into the payload (`git.verse.head.sha`). |
+| a string | the address as a kinded path (`git.viff.head`), with nothing in it to expand. It may go on into the payload (`git.viff.head.sha`). |
 | `at` | the address as a path of at least two segments. Every segment above the last is a literal or `*`. The last is a literal, a whole `.[…]`, or (list only) a `*` or an operator. |
 | `path` | a kpath into the payload. Wildcards are list-only. Omitted, you get the whole payload. |
 | `value` | a predicate on the payload, **list only**: of the addresses the path selects, the ones that look like this |
@@ -657,14 +657,14 @@ On the list form, a predicate makes the read *cheaper*. A `*` already walks ever
 place, and the predicate narrows it.
 
 Neither form is a query that moves with time. Both are answered from one snapshot at the causing
-commit. So verse evaluates a predicate against the same world that the rule saw.
+commit. So viff evaluates a predicate against the same world that the rule saw.
 
 The dots of the string form are its segments. An expression has dots of its own, so in the
 string form it is quoted as a segment of its own, `!get-path git.repo."$[subject.value.head]"`, or
 the address is written as a list with `at:`, `[git, repo, .[subject.value.head]]`. A whole `.[…]`
 cannot be the string form: an address is a list of segments, not one value.
 
-**In an action, they copy and do not track.** Verse reads the value once. If it changes
+**In an action, they copy and do not track.** Viff reads the value once. If it changes
 afterwards, nothing runs again. This rule fires again only when its own subject changes, or when
 an `on` or `when` that it carries covers the target. Add the `on` if you want to follow the
 target.
@@ -680,11 +680,11 @@ elsewhere. `!let` binds the read, and the body compares:
 - name: proposal-outrun
   condition:
     subject:
-      path: "repos.verse.merge.proposal.*"
+      path: "repos.viff.merge.proposal.*"
       value: !let
         let:
         - tip: !get-path
-            at: "git.verse.head"
+            at: "git.viff.head"
             path: sha
         in:
           state: open
@@ -696,17 +696,17 @@ elsewhere. `!let` binds the read, and the body compares:
 This rule selects every open proposal cut from a commit that is not the tip of main. It answers
 "which of these can still land", with no walk of ancestry and nothing to poll.
 
-**The read joins what the rule reads.** This is how it differs from a read in an action. Verse
-evaluates the rule `proposal-outrun` again when `git.verse.head` moves, over proposals that did
+**The read joins what the rule reads.** This is how it differs from a read in an action. Viff
+evaluates the rule `proposal-outrun` again when `git.viff.head` moves, over proposals that did
 not change.
 
-Verse skips a rule at a commit that touched nothing the rule reads. A condition that compares
+Viff skips a rule at a commit that touched nothing the rule reads. A condition that compares
 against other data reaches a different verdict as soon as that data moves. So the read must
 count, or the skip would be wrong.
 
 **The read cannot name `subject`.** In an action the subject is settled, and the action
 addresses other data by its fields. A condition *chooses* the subject, so no one subject is
-there to read from yet. Verse refuses it at install, and says so. It does not say "unknown
+there to read from yet. Viff refuses it at install, and says so. It does not say "unknown
 reference".
 
 **A missing `!get-path` target fails the firing**, as any unresolved reference does. So "nothing
@@ -730,7 +730,7 @@ way, under the same `!raw` escape:
 
 ```tony
 spawn:
-  agent: {name: verse}
+  agent: {name: viff}
   environment: {systems: {network: {mode: open}}}
   prompt:   "Review $[subject.ref]."
   answer:
@@ -739,7 +739,7 @@ spawn:
     why:      !irtype string
 ```
 
-Verse checks the contract when the model stops. That is the only moment it can check it. A run
+Viff checks the contract when the model stops. That is the only moment it can check it. A run
 ends when the model stops calling tools, so stopping and reporting are one act.
 
 A failure goes back to the agent as a **diagnosis**, and the agent is asked to fix it. The
@@ -760,7 +760,7 @@ A run whose answer never satisfies its contract **fails**. This has four consequ
 - `patch: { class: .[data.class] }` cannot fail at patch time, because a task that could not
   produce `class` did not succeed. The failure lands on `onFailed`, for which every rule already
   declares a branch. It does not land on a hook that nobody watches.
-- The check is on the answer, not the layout. Verse unwraps a fenced answer, so the repair
+- The check is on the answer, not the layout. Viff unwraps a fenced answer, so the repair
   attempts go to the content.
 - The contract is a guarantee about *shape*, not about content. A repair loop pushes a model to
   comply. So the agent is also told to call `yield` with the reason `cannot`, and not to invent a
@@ -781,7 +781,7 @@ onDone:
   patch:
     stage:    reviewed
     severity: .[data.severity]      # the task's own answer, as a fact on the subject
-    step:     .[verse.review.step]  # any depth, and list indices: .[result.findings[0].id]
+    step:     .[viff.review.step]  # any depth, and list indices: .[result.findings[0].id]
 ```
 
 A result patched onto the subject is an ordinary fact, and an ordinary condition matches it. The
@@ -803,7 +803,7 @@ An `Action` carries one [hook](../glossary.md#hook) for each terminal status:
 | `onFailed` | `failed` |
 | `onCancelled` | `cancelled` |
 
-A task that ended because verse and its runner lost each other is `failed`, and its record says
+A task that ended because viff and its runner lost each other is `failed`, and its record says
 `orphaned: true`. `onFailed` reads `.[orphaned]`, which is `false` on every other end.
 
 Each hook is itself a full `Action` (`patch` + `spawn` + its own hooks). So a chain
@@ -829,7 +829,7 @@ owes nothing, so a hook that writes nothing does not fire its rule again by itse
 action:
   patch:  { stage: reviewing }
   spawn:
-    agent: {name: verse}
+    agent: {name: viff}
     prompt: "review the pull request at $[subject.ref]"
     environment:
       systems:
@@ -842,42 +842,42 @@ action:
 ```
 
 The alternative is a *decoupled* completion rule. That is a separate rule that fires on the
-change to `verse.task.instance` and names the PR by pattern. Use it when a completion should fan
+change to `mirror.task.instance` and names the PR by pattern. Use it when a completion should fan
 out into several reactions, advance a different subject, or be written separately. Use the hook
 for a linear chain that one rule owns, with the task step visible in the rule.
 
 The three hooks are named fields. So an unknown status cannot be written: no field exists to write
-it in. Verse refuses a misspelled `onDoen` at install, as it refuses any field an action does not
+it in. Viff refuses a misspelled `onDoen` at install, as it refuses any field an action does not
 have.
 
 Hooks survive a restart. A task's hook is looked up by the chain on its record when the task
-ends, so `done`, `failed` and `cancelled` still fire for a task that was running while verse was
+ends, so `done`, `failed` and `cancelled` still fire for a task that was running while viff was
 down.
 
-A claim is what verse owes: the hook of a task, or the rest of a sequence. A claim found at a
+A claim is what viff owes: the hook of a task, or the rest of a sequence. A claim found at a
 restart with no task running behind it is paid then, from the task's record, before any rule of
 its charter package fires. A record that says
 `done` runs `onDone`. A record that says another end runs that end's hook. A record that says no
 end, or no record of that run, is `failed`, `orphaned: true`, and runs `onFailed`. A sequence
 carries on from the element its `step` names, or stops there. An element that spawns nothing is
-not run again: the run ends `error` and says that verse restarted.
+not run again: the run ends `error` and says that viff restarted.
 
-So a hook can run twice: verse ended after the hook ran and before its claim came off. Write a
+So a hook can run twice: viff ended after the hook ran and before its claim came off. Write a
 hook so that running it again is harmless. A sequence's element can run twice in one case: the
-write of `step` that follows the element before it did not land, and verse then restarted.
+write of `step` that follows the element before it did not land, and viff then restarted.
 
-A task whose rule's charter package is gone when verse comes back is cancelled, and no hook
+A task whose rule's charter package is gone when viff comes back is cancelled, and no hook
 runs: no rule is there to say what its end owes. The package's claims come off once the task's
 record says it ended, and a cancel that does not reach the task is asked again until then.
-Where verse could not read which packages there are, the task and its claim are left as they
-stand. A package [removed](charter.md#a-charter-can-be-installed-at-an-address) while verse is
+Where viff could not read which packages there are, the task and its claim are left as they
+stand. A package [removed](charter.md#a-charter-can-be-installed-at-an-address) while viff is
 up is different: its rules are still there, so its tasks' hooks run, except a hook that would
 start work, which the package's removal refuses whole.
 
 A task on a runner is attached again at a restart, and what its runner says of it ends it. A
 runner that has no such task ends it `failed`, `orphaned: true`, and its `onFailed` runs. So does
-a runner that stopped the task because verse was away for longer than the task's `lease`. A
-task that ran in verse's own process ended with that process, and the restart writes its record
+a runner that stopped the task because viff was away for longer than the task's `lease`. A
+task that ran in viff's own process ended with that process, and the restart writes its record
 `failed`, `orphaned: true`.
 
 ### `seq`: sequence along the chain, parallel across triggers
@@ -902,7 +902,7 @@ task that ran in verse's own process ended with that process, and the restart wr
             network: {mode: open}
             git: {repo: acme/app, from: $[subject.value.head], fetch: {}}
     - spawn:
-        agent: {name: verse}
+        agent: {name: viff}
         prompt: "review the pull request at $[subject.ref]"
         environment:
           systems:
@@ -923,7 +923,7 @@ A [seq](../glossary.md#seq) follows these rules.
 
 - `seq` and `spawn` are mutually exclusive on one action. `patch` beside `seq` is allowed: the
   patch applies, then the sequence runs.
-- The sequence owns the `done` slot of each element. So verse refuses at install an explicit
+- The sequence owns the `done` slot of each element. So viff refuses at install an explicit
   `onDone` on any element, the last element too. The list already says what comes next.
   `onFailed` and `onCancelled` stay on each element as ways out, and firing one ends the
   sequence.
@@ -938,7 +938,7 @@ A [seq](../glossary.md#seq) follows these rules.
 
 ### Chains and ids
 
-Verse identifies a spawned task by `<chain>@<subject>`. The
+Viff identifies a spawned task by `<chain>@<subject>`. The
 [chain](../glossary.md#chain-of-an-action) is the
 [kpath](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath) of the action inside
 its rule: dotted field names, and brackets for positions in a list. Hooks descend by field name,
@@ -976,9 +976,9 @@ The task and its gate questions carry it:
 
 | the charter | task id | gate question id |
 |---|---|---|
-| baseline's | `review@demo.pr.1` | `verse.trigger.review.ok~…` |
-| the package at `repos.verse.drift` | `repos.verse.drift:review@demo.pr.1` | `repos.verse.drift:verse.trigger.review.ok~…` |
-| scope `me`'s | `me::review@demo.pr.1` | `me::verse.trigger.review.ok~…` |
+| baseline's | `review@demo.pr.1` | `mirror.trigger.review.ok~…` |
+| the package at `repos.viff.drift` | `repos.viff.drift:review@demo.pr.1` | `repos.viff.drift:mirror.trigger.review.ok~…` |
+| scope `me`'s | `me::review@demo.pr.1` | `me::mirror.trigger.review.ok~…` |
 
 For this reason the name of a rule may not contain `:`, as it may not contain `@`.
 
@@ -986,10 +986,10 @@ For this reason the name of a rule may not contain `:`, as it may not contain `@
 
 A parallel branch is woken by a condition, and a condition matches facts. So a sequence publishes
 its position. Without it, the breadth axis could not observe the depth axis at all. The engine
-writes the position on the subject, under one reserved `verse` root, as each element completes:
+writes the position on the subject, under one reserved `viff` root, as each element completes:
 
 ```tony
-verse:
+viff:
   charter:             # what the engine records about rules acting on this record
     review:            # keyed by trigger
       step:  2         # how many elements have completed
@@ -1003,7 +1003,7 @@ verse:
         task: review@demo.pr.1
         occurrence: 4480
         err: 'error evaluating "data.severity": no "severity" in data'
-  meta:                # what verse records about the record itself
+  meta:                # what viff records about the record itself
     vanishing: "2026-07-29T13:04:05Z"   # the intent to remove it — see Lifecycle
 ```
 
@@ -1025,19 +1025,19 @@ until its declared shape changes, as after an off-ramp. A clean hook or element 
 removes `hook`. An element that fails while the rule fires, before any task of the sequence has
 run, is not recorded. That run stops, and the next firing tries again.
 
-What the engine writes under `verse.charter.<rule>` does not wake that rule. A commit whose only
-change to what the rule reads is under its own `verse.charter.<rule>` (its sequence's position,
+What the engine writes under `@sys.charter.<rule>` does not wake that rule. A commit whose only
+change to what the rule reads is under its own `@sys.charter.<rule>` (its sequence's position,
 its `hook` record) does not fire it. So a rule whose spawn has no patch beside it, and whose
 subject still matches when its hook fails, is not fired again by the record of that failure. It
 runs again when something else about the subject changes. Other rules are woken by the record as
 by any change. A subject at any depth works the same way, `demo..pr` included.
 
 The check costs one read of what the rule reads at the commit before. It is paid only on a
-commit that writes under the rule's own `verse.charter.<rule>` on a subject. A subject is written
+commit that writes under the rule's own `@sys.charter.<rule>` on a subject. A subject is written
 whole, so that is every write of a subject the rule has a record on: every write of a subject
 partway through the rule's sequence, and every write of a subject with a failed `hook` standing,
 until a clean hook removes it. A write of a subject where the rule has written nothing costs
-nothing more, whether versed watches the whole verse or each rule's subtrees.
+nothing more, whether viffd watches the whole viff or each rule's subtrees.
 
 A charter can match on `hook`, for example
 to ask a person when `fix`'s hook was lost:
@@ -1046,7 +1046,7 @@ to ask a person when `fix`'s hook was lost:
 subject:
   path: "demo.pr.*"
   value:
-    verse:
+    viff:
       charter:
         fix: { hook: { chain: fix.onDone } }
 ```
@@ -1057,7 +1057,7 @@ A join reads the position at whatever depth it needs:
 subject:
   path: "demo.pr.*"
   value:
-    verse:
+    viff:
       charter:
         review: { done: true }
 ```
@@ -1069,7 +1069,7 @@ subject:
 | `done` | the engine latches it when `step` has reached `steps` and the sequence's `onDone` has run |
 | `ended` | the terminal status other than `done` at which an element stopped the sequence. Its own `onFailed`/`onCancelled` runs, and the sequence stops there. `error` when an element after a finished task could not run. |
 | `reason` | with `ended: error`, the error of the element that could not run |
-| `shape` | a hash of the declared sequence. Verse compares it at each advance. |
+| `shape` | a hash of the declared sequence. Viff compares it at each advance. |
 
 A join that asks for `done` does not match a run that gave up. A sequence that concluded either
 way does not run again at this shape. Editing the sequence changes the shape, and only that frees

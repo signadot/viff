@@ -15,12 +15,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // THE SECRET SYSTEM'S TOOL is `secret-exec`: one command run by the runner with one secret of
@@ -52,7 +52,7 @@ var (
 // execFileMost and the answer carries the last execTailMost of each stream. The answers of the
 // last execRunsKept runs that ended are kept for a wait that comes after.
 const (
-	execDir      = ".verse/exec"
+	execDir      = ".viff/exec"
 	execFileMost = 16 << 20
 	execTailMost = 16 << 10
 	execRunsKept = 32
@@ -62,12 +62,12 @@ const (
 // run, the wait and the kill, which share the runs. ended is for when the task has ended: it
 // lets go of every run under way, and of any that starts after, so a command does not outlive
 // the task that started it, whatever becomes of the task's process.
-func secretTools(cl *delivery.Client, ws *workspace.Workspace, env systems.Environment) (tools []verse.Tool, ended func()) {
+func secretTools(cl *delivery.Client, ws *workspace.Workspace, env systems.Environment) (tools []viff.Tool, ended func()) {
 	if !env.Gives(task.StepSecretExec) {
 		return nil, func() {}
 	}
 	runs := &execRuns{runs: map[string]*execRun{}}
-	return []verse.Tool{secretExecToolFor(cl, ws, env, runs), secretExecWaitToolFor(runs), secretExecKillToolFor(runs)}, runs.letGo
+	return []viff.Tool{secretExecToolFor(cl, ws, env, runs), secretExecWaitToolFor(runs), secretExecKillToolFor(runs)}, runs.letGo
 }
 
 // execRun is one run: what kills it, and once done is closed, what it came to, as a call that
@@ -171,10 +171,10 @@ var execParams = map[string]any{
 
 // execStarted is how `secret-exec`'s answer opens for a run that started: the id, these words,
 // then the directory its sockets and files are in, which is the rest of the line. A program
-// reads the two from that line: cmd/verse-secret-exec, which spells the words itself.
+// reads the two from that line: cmd/viff-secret-exec, which spells the words itself.
 const execStarted = ": started, in "
 
-func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems.Environment, runs *execRuns) verse.Tool {
+func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems.Environment, runs *execRuns) viff.Tool {
 	read := func(in map[string]any) (delivery.Exec, int, string) {
 		argv, err := stringList(in["argv"])
 		if err != nil {
@@ -204,7 +204,7 @@ func secretExecToolFor(cl *delivery.Client, ws *workspace.Workspace, env systems
 		}
 		return e, timeout, ""
 	}
-	return verse.Tool{
+	return viff.Tool{
 		Name: secretExecTool,
 		Description: "Start one command with the secret `name` in its environment, under the variable the environment's " +
 			"`secret` block gives it in (`as`). You never read the secret: the runner runs the command in a sandbox of " +
@@ -411,9 +411,9 @@ func writeExecEnd(dir, file, end string) string {
 	return ""
 }
 
-func secretExecWaitToolFor(runs *execRuns) verse.Tool {
+func secretExecWaitToolFor(runs *execRuns) viff.Tool {
 	params := map[string]any{"id": map[string]any{"type": "string"}}
-	return verse.Tool{
+	return viff.Tool{
 		Name: secretExecWaitTool,
 		Description: "Wait for a command `secret-exec` started to end, by the id the run was given (`e1`), and read its " +
 			"end (`exited 3`, `killed after 30s, the timeout`), then each stream's file, size and last " +
@@ -439,9 +439,9 @@ func secretExecWaitToolFor(runs *execRuns) verse.Tool {
 	}
 }
 
-func secretExecKillToolFor(runs *execRuns) verse.Tool {
+func secretExecKillToolFor(runs *execRuns) viff.Tool {
 	params := map[string]any{"id": map[string]any{"type": "string"}}
-	return verse.Tool{
+	return viff.Tool{
 		Name: secretExecKillTool,
 		Description: "Kill a command `secret-exec` started, by the id the run was given (`e1`): the run's output ends " +
 			"and the command is killed, and `" + secretExecWaitTool + "` and the run's `.exit` file say that it was killed. " +

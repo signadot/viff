@@ -18,15 +18,15 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/claude"
-	"github.com/signadot/verse/pkg/runner/runnerd/codex"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/claude"
+	"go.viff.dev/viff/pkg/runner/runnerd/codex"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/mcpclient"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // mcpCalls is what a test server was sent, by tool: each call's arguments as the JSON that
@@ -50,7 +50,7 @@ func (c *mcpCalls) of(tool string) []string {
 
 // mcpTestTools is the schema of each tool of the test server, as a server writes one: Linear's
 // shapes, near enough. with_ref has a `$ref`, top_oneof a `oneOf` at the top, with_input a
-// parameter named what verse-call-tool reserves, and the last a name longer than Claude takes.
+// parameter named what viff-call-tool reserves, and the last a name longer than Claude takes.
 var mcpTestTools = map[string]map[string]any{
 	"get_issue": {"type": "object", "properties": map[string]any{"id": map[string]any{"type": "string", "description": "the issue"}},
 		"required": []any{"id"}},
@@ -66,7 +66,7 @@ var mcpTestTools = map[string]map[string]any{
 	"top_oneof":  {"type": "object", "oneOf": []any{map[string]any{"required": []any{"a"}}, map[string]any{"required": []any{"b"}}}},
 	"with_input": {"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string"}}},
 	"a_tool_whose_name_is_longer_than_claude_takes_once": {"type": "object", "properties": map[string]any{}},
-	// Schemas verse-call-tool's check cannot carry: any object, arguments beside the properties,
+	// Schemas viff-call-tool's check cannot carry: any object, arguments beside the properties,
 	// a required name the properties lack. And one it can: a tool taking nothing, as a server's
 	// list_* tools are written.
 	"any_args":   {"type": "object"},
@@ -160,7 +160,7 @@ func TestTheMCPToolsAreTheServersListAsTheDoerTakesIt(t *testing.T) {
 		t.Error("a server with no instructions, nothing cut and no failure adds to the brief")
 	}
 
-	names := func(tools []verse.Tool) []string {
+	names := func(tools []viff.Tool) []string {
 		var out []string
 		for _, tl := range tools {
 			out = append(out, tl.Name)
@@ -178,7 +178,7 @@ func TestTheMCPToolsAreTheServersListAsTheDoerTakesIt(t *testing.T) {
 		"mcp: linear: the tool with_ref is left out: its schema has a `$ref`",
 		"mcp: linear: the tool top_oneof is left out: its schema has a `oneOf` at the top",
 		`mcp: linear: the tool a tool is left out: "a tool" is no tool's name`,
-		"mcp: linear: the tool a_tool_whose_name_is_longer_than_claude_takes_once is left out: claude reads the tool as mcp__verse__mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once, 73 characters, and takes a name of 64 at most",
+		"mcp: linear: the tool a_tool_whose_name_is_longer_than_claude_takes_once is left out: claude reads the tool as mcp__viff__mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once, 73 characters, and takes a name of 64 at most",
 	} {
 		if !strings.Contains(log.String(), want) {
 			t.Errorf("the log:\n%s\nwant %q", log.String(), want)
@@ -187,10 +187,10 @@ func TestTheMCPToolsAreTheServersListAsTheDoerTakesIt(t *testing.T) {
 	log.Reset()
 	if got, want := names(mcpTools(cl, lists, takesTool(ScriptDoer), &log)), []string{"mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once",
 		"mcp-linear-create_issue", "mcp-linear-delete_issue", "mcp-linear-get_issue", "mcp-linear-no_args"}; !slices.Equal(got, want) {
-		t.Errorf("a script's tools: %v, want %v: the long name and the tool taking nothing in, and out what verse-call-tool's check cannot carry", got, want)
+		t.Errorf("a script's tools: %v, want %v: the long name and the tool taking nothing in, and out what viff-call-tool's check cannot carry", got, want)
 	}
 	for _, want := range []string{
-		`the tool with_input is left out: it has a parameter named "input", which verse-call-tool reserves`,
+		`the tool with_input is left out: it has a parameter named "input", which viff-call-tool reserves`,
 		"the tool any_args is left out: its schema names no properties and bounds none out, so it takes any object",
 		"the tool set_fields is left out: its schema takes arguments beside its properties (`additionalProperties`)",
 		`the tool needs_more is left out: its schema requires "team", which is none of its properties`,
@@ -205,7 +205,7 @@ func TestTheMCPToolsAreTheServersListAsTheDoerTakesIt(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"mcp-linear-get.issue", "mcp-linear-" + strings.Repeat("x", 54)} {
-		if claude.TakesTool(name) == nil || codex.TakesTool(name) == nil || verse.TakesTool(name) == nil {
+		if claude.TakesTool(name) == nil || codex.TakesTool(name) == nil || viff.TakesTool(name) == nil {
 			t.Errorf("%q is taken by a doer whose API would not", name)
 		}
 	}
@@ -216,7 +216,7 @@ func TestTheMCPToolsAreTheServersListAsTheDoerTakesIt(t *testing.T) {
 		t.Errorf("offered under an empty environment: %v", names(got))
 	}
 
-	var create verse.Tool
+	var create viff.Tool
 	for _, tl := range forClaude {
 		if tl.Name == "mcp-linear-create_issue" {
 			create = tl
@@ -295,9 +295,9 @@ func TestAnApprovalOfTheArgumentsPerformsThem(t *testing.T) {
 	args := `{"assignee": null, "draft": true, "estimate": 3, "labels": ["bug", "roof"], ` +
 		`"meta": {"list": [], "none": {}, "ok": "true", "ratio": 0.5, "ref": "007"}, "note": "héllo ☃", "team": "ENG", "title": "the roof leaks"}`
 	script := "#!/bin/sh\n" +
-		"verse-call-tool mcp-linear-create_issue -input '" + args + "'\necho \"exit=$?\"\n" +
-		"verse-call-tool mcp-linear-get_issue -input '{\"id\": \"ENG-7\"}'\necho \"exit=$?\"\n" +
-		"verse-call-tool mcp-linear-delete_issue -input '{\"id\": \"ENG-7\"}'\necho \"exit=$?\"\n"
+		"viff-call-tool mcp-linear-create_issue -input '" + args + "'\necho \"exit=$?\"\n" +
+		"viff-call-tool mcp-linear-get_issue -input '{\"id\": \"ENG-7\"}'\necho \"exit=$?\"\n" +
+		"viff-call-tool mcp-linear-delete_issue -input '{\"id\": \"ENG-7\"}'\necho \"exit=$?\"\n"
 	rt.Launch(runner.Launch{ID: "s1", Script: script, Environment: env, Autonomy: task.Autonomy{
 		{Name: "file", Match: &task.Match{System: "mcp", Verb: "call", Params: map[string]*ir.Node{"tool": ir.FromString("create_issue")}}, Then: task.Then{Mode: task.ThenAsk}},
 		{Then: task.Then{Mode: task.ThenAllow}}}})

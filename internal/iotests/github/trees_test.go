@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/github"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/github"
 )
 
 // AN OPEN PULL REQUEST CARRIES THE TREES IT CHANGES: the sha of each configured directory at the
@@ -17,7 +17,7 @@ import (
 // asked about.
 func TestAnOpenPullRequestCarriesTheTreesItChanges(t *testing.T) {
 	f := newFake()
-	r := f.repo("signadot/verse")
+	r := f.repo("signadot/viff")
 	r.pr(1, "changes the charters", "open", "2026-10-01T00:00:00Z", "head1")
 	r.pr(2, "removes the charters", "open", "2026-10-01T00:00:00Z", "head2")
 	r.pr(5, "changes something else", "open", "2026-10-01T00:00:00Z", "head5")
@@ -25,24 +25,24 @@ func TestAnOpenPullRequestCarriesTheTreesItChanges(t *testing.T) {
 	r.pr(3, "merged long ago", "closed", "2026-09-01T00:00:00Z", "head3")
 	r.pr(4, "branched before the charters last changed", "open", "2026-10-01T00:00:00Z", "head4")
 	r.trees = map[string][]fakeEntry{
-		"head1":  {{".verse", "tree", "verse1"}, {"README", "blob", "r1"}},
-		"verse1": {{"charters", "tree", "charters1"}},
-		"head2":  {{"README", "blob", "r2"}},
-		"head3":  {{".verse", "tree", "verse1"}},
-		"head4":  {{".verse", "tree", "verse0"}},
-		"base0":  {{".verse", "tree", "verse0"}},
-		"verse0": {{"charters", "tree", "charters0"}},
-		"head5":  {{".verse", "tree", "verse0"}, {"README", "blob", "r5"}},
-		"head6":  {{"README", "blob", "r6"}},
-		"base6":  {{"README", "blob", "r0"}},
+		"head1": {{".viff", "tree", "viff1"}, {"README", "blob", "r1"}},
+		"viff1": {{"charters", "tree", "charters1"}},
+		"head2": {{"README", "blob", "r2"}},
+		"head3": {{".viff", "tree", "viff1"}},
+		"head4": {{".viff", "tree", "viff0"}},
+		"base0": {{".viff", "tree", "viff0"}},
+		"viff0": {{"charters", "tree", "charters0"}},
+		"head5": {{".viff", "tree", "viff0"}, {"README", "blob", "r5"}},
+		"head6": {{"README", "blob", "r6"}},
+		"base6": {{"README", "blob", "r0"}},
 	}
 	// Every open head branched from base0, whose charters are charters0; main has since moved on.
 	r.mergeBases = map[string]string{"head1": "base0", "head2": "base0", "head4": "base0", "head5": "base0", "head6": "base6"}
-	tree, err := github.ParseTree(".verse/charters")
-	if err != nil || tree.Name != "charters" || tree.Path != ".verse/charters" {
+	tree, err := github.ParseTree(".viff/charters")
+	if err != nil || tree.Name != "charters" || tree.Path != ".viff/charters" {
 		t.Fatalf("ParseTree = %+v, %v", tree, err)
 	}
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}, Trees: []github.Tree{tree}})
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}, Trees: []github.Tree{tree}})
 	reflect := func() map[string]entity.Obj {
 		t.Helper()
 		rn, err := src.Reflect(context.Background(), entity.Ref{})
@@ -52,11 +52,11 @@ func TestAnOpenPullRequestCarriesTheTreesItChanges(t *testing.T) {
 		return payloads(rn)
 	}
 	got := reflect()
-	pr := func(n int) entity.Obj { return got[src.ItemRef("pr", "signadot/verse", n).String()] }
+	pr := func(n int) entity.Obj { return got[src.ItemRef("pr", "signadot/viff", n).String()] }
 	if tr, _ := pr(1)["changes"].(map[string]any); tr["charters"] != "charters1" {
 		t.Fatalf("pull request 1's changes = %v, want charters1", pr(1)["changes"])
 	}
-	if tr, _ := pr(2)["changes"].(map[string]any); tr["charters"] != verseio.EmptyTree {
+	if tr, _ := pr(2)["changes"].(map[string]any); tr["charters"] != viffio.EmptyTree {
 		t.Errorf("a pull request removing the directory changes = %v, want the empty tree", pr(2)["changes"])
 	}
 	for _, n := range []int{5, 6} {
@@ -83,7 +83,7 @@ func TestAnOpenPullRequestCarriesTheTreesItChanges(t *testing.T) {
 			t.Errorf("ParseTree(%q) was taken", bad)
 		}
 	}
-	if tr, err := github.ParseTree("ch=.verse/charters"); err != nil || tr.Name != "ch" {
+	if tr, err := github.ParseTree("ch=.viff/charters"); err != nil || tr.Name != "ch" {
 		t.Errorf("a named tree = %+v, %v", tr, err)
 	}
 }

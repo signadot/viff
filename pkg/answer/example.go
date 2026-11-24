@@ -8,7 +8,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // Example renders a document that would satisfy this contract — an INSTANCE of the shape, beside
@@ -21,8 +21,8 @@ import (
 // unquoted string, then a list written YAML-style — and every attempt was a reasonable reading of
 // a specification by something that needed an example.
 //
-// IT IS JSON, and that is deliberate against the grain of the rest of verse, which refuses to
-// render json at all (codec.Writable). That refusal is about verse's OUTPUT SURFACES: json cannot
+// IT IS JSON, and that is deliberate against the grain of the rest of viff, which refuses to
+// render json at all (codec.Writable). That refusal is about viff's OUTPUT SURFACES: json cannot
 // carry a tag, so rendering a stored document as json silently flattens `!delete` and `!fact` into
 // ordinary keys, and a reader cannot tell. Neither risk exists here. An example carries no tags by
 // construction — stripping them to representative values is exactly what this does — and json is

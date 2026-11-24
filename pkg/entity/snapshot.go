@@ -2,7 +2,7 @@ package entity
 
 import "github.com/signadot/tony-format/go-tony/ir"
 
-// Reader is the READ half of a Store: what it takes to evaluate a predicate over the verse
+// Reader is the READ half of a Store: what it takes to evaluate a predicate over the viff
 // and to select the entities satisfying one. It exists so that "evaluate this against the
 // store" and "evaluate this against the store as it stood at commit C" are the same call
 // with a different receiver, rather than two code paths that must be kept saying the same
@@ -16,7 +16,7 @@ type Reader interface {
 	// read could be performed at all. See Store.Get — the distinction is the point.
 	Get(ref Ref) (Entity, bool, error)
 	// List enumerates the stored entities whose ref satisfies pred (nil = all), at the fixed walk
-	// depth listWalkArity names, one deeper in verse's own half — a depth the tree has not shed.
+	// depth listWalkArity names, one deeper in viff's own half — a depth the tree has not shed.
 	// ListAt takes the depth from the caller instead.
 	List(pred func(Ref) bool) []Entity
 	// ListAt enumerates the nodes at a STATED depth under a prefix — whatever stands there, and
@@ -25,7 +25,7 @@ type Reader interface {
 	// The depth is the caller's because nothing else knows it: a document holding `{a: {b: {c:
 	// {stage: open}}}}` has an entity at `a.b.c` or at `a.b`, and which one is a property of
 	// the question rather than of the store. `at` is the literal
-	// prefix to read under and `depth` counts segments from the root, so `ListAt([verse-dev,
+	// prefix to read under and `depth` counts segments from the root, so `ListAt([viff-dev,
 	// drift, head], 4, …)` answers the entities one level below that path.
 	ListAt(at []string, depth int, pred func(Ref) bool) []Entity
 	// ReadAt is THE READ: the node standing at a path — an object with everything beneath it, an
@@ -49,12 +49,12 @@ type Snapshot interface {
 	Rev() int64
 }
 
-// docSnapshot is a Snapshot over one root-rooted document read at a commit — the whole verse
+// docSnapshot is a Snapshot over one root-rooted document read at a commit — the whole viff
 // as it stood, in hand. Both reads are then pure functions of that node: no further round
 // trip, and no way for a later commit to be visible to one read and not another.
 //
-// Holding the whole document is the right trade at verse's scale and is what the substrate
-// hands back anyway (one MatchAt over the root). If a verse ever outgrows that, the
+// Holding the whole document is the right trade at viff's scale and is what the substrate
+// hands back anyway (one MatchAt over the root). If a viff ever outgrows that, the
 // interface is what stays: a snapshot that reads lazily at a pinned commit satisfies it
 // identically.
 type docSnapshot struct {

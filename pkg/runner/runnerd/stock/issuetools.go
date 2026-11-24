@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // AN ISSUE TRACKER IS A SYSTEM WITH A NAME, and each tool here is one verb of one system
@@ -41,7 +41,7 @@ var (
 // under its environment's `git-issue`, github-issue's for the repositories of its `git` where the runner's
 // forge is a GitHub (github), and linear-issue's where the runner holds a Linear credential
 // (linear-issue).
-func issueTools(cl *delivery.Client, ws *workspace.Workspace, trackers []runner.Tracker, github, linear bool) []verse.Tool {
+func issueTools(cl *delivery.Client, ws *workspace.Workspace, trackers []runner.Tracker, github, linear bool) []viff.Tool {
 	var all, forge []string
 	for _, t := range ws.Trees {
 		if slices.ContainsFunc(trackers, func(tr runner.Tracker) bool { return tr.Repo == t.Repo.Repo.Repo }) {
@@ -51,7 +51,7 @@ func issueTools(cl *delivery.Client, ws *workspace.Workspace, trackers []runner.
 			forge = append(forge, t.Repo.Name())
 		}
 	}
-	var out []verse.Tool
+	var out []viff.Tool
 	if len(all) > 0 {
 		out = append(out, gitIssueCreate(ws, all), gitIssueComment(ws, all), gitIssueClose(ws, all),
 			gitIssuePull(cl, ws, all), gitIssuePush(cl, ws, all))
@@ -93,8 +93,8 @@ func noSuchRepo(in map[string]any, names []string) string {
 // gitIssueCreate files an issue in a repository's own tracker, in this checkout: a ref, as `git
 // issue create` here would write, and nothing has left until `git-issue-push`. In the task's
 // process, with no credential, as a commit is; a step all the same, which a row decides.
-func gitIssueCreate(ws *workspace.Workspace, names []string) verse.Tool {
-	return verse.Tool{
+func gitIssueCreate(ws *workspace.Workspace, names []string) viff.Tool {
+	return viff.Tool{
 		Name: gitIssueCreateTool,
 		Description: "File an issue in a repository's own git-issue tracker (the issues `git issue` keeps as refs " +
 			"in the repository), with the title and body given. It is written here, in the checkout, like a " +
@@ -134,9 +134,9 @@ func gitIssueCreate(ws *workspace.Workspace, names []string) verse.Tool {
 // localIssueVerb is a verb on the checkout's own tracker, by the issue's id: performed here, as
 // a commit is, and the step a row decides by the repo and the issue.
 func localIssueVerb(ws *workspace.Workspace, names []string, name, step, what string, params map[string]any, required []string,
-	do func(t *workspace.Tree, in map[string]any) (string, bool, error)) verse.Tool {
+	do func(t *workspace.Tree, in map[string]any) (string, bool, error)) viff.Tool {
 	params["issue"] = map[string]any{"type": "string"}
-	return verse.Tool{
+	return viff.Tool{
 		Name:        name,
 		Description: what + " Repositories: " + strings.Join(names, ", ") + ".",
 		Params:      repoParams(names, params),
@@ -162,7 +162,7 @@ func localIssueVerb(ws *workspace.Workspace, names []string, name, step, what st
 	}
 }
 
-func gitIssueComment(ws *workspace.Workspace, names []string) verse.Tool {
+func gitIssueComment(ws *workspace.Workspace, names []string) viff.Tool {
 	return localIssueVerb(ws, names, gitIssueCommentTool, task.StepGitIssueComment,
 		"Comment on an issue in a repository's own git-issue tracker, by the issue's id (or an unambiguous "+
 			"prefix of it), with the body given. Written here, in the checkout: `git-issue-push` sends it.",
@@ -179,7 +179,7 @@ func gitIssueComment(ws *workspace.Workspace, names []string) verse.Tool {
 		})
 }
 
-func gitIssueClose(ws *workspace.Workspace, names []string) verse.Tool {
+func gitIssueClose(ws *workspace.Workspace, names []string) viff.Tool {
 	return localIssueVerb(ws, names, gitIssueCloseTool, task.StepGitIssueClose,
 		"Close an issue in a repository's own git-issue tracker, by the issue's id (or an unambiguous prefix "+
 			"of it), naming the commit that closed it when there is one. Written here, in the checkout: "+
@@ -197,8 +197,8 @@ func gitIssueClose(ws *workspace.Workspace, names []string) verse.Tool {
 // gitIssuePull brings a repository's tracker into this checkout: the runner fetches the issue
 // refs into its mirror and sets them here, under their own names, so `git issue list` and `git
 // issue show <id>` in the checkout read what the remote holds. A read, and a step a row decides.
-func gitIssuePull(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
-	return verse.Tool{
+func gitIssuePull(cl *delivery.Client, ws *workspace.Workspace, names []string) viff.Tool {
+	return viff.Tool{
 		Name: gitIssuePullTool,
 		Step: task.StepGitIssuePull,
 		Fields: func(in map[string]any) (map[string]string, bool) {
@@ -234,8 +234,8 @@ func gitIssuePull(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 // gitIssuePush sends this checkout's tracker to the repository's remote: every issue the task
 // filed or changed here, as one push the runner makes with its credential. It is the act that
 // makes an issue leave, and the step a gate decides.
-func gitIssuePush(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
-	return verse.Tool{
+func gitIssuePush(cl *delivery.Client, ws *workspace.Workspace, names []string) viff.Tool {
+	return viff.Tool{
 		Name: gitIssuePushTool,
 		Description: "Send this checkout's git-issue tracker to the repository's remote: every issue filed or " +
 			"changed here (`git-issue-create`, or `git issue` in your shell) goes, as one push the runner makes " +
@@ -264,8 +264,8 @@ func gitIssuePush(cl *delivery.Client, ws *workspace.Workspace, names []string) 
 // githubIssueCreate opens an issue at the GitHub repository a workspace repository is on, with the
 // runner's token, as `github-create-pr` and `github-update-pr` do. Offered for a repository at the
 // forge whatever the task may push to it: an issue is not a branch.
-func githubIssueCreate(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
-	return verse.Tool{
+func githubIssueCreate(cl *delivery.Client, ws *workspace.Workspace, names []string) viff.Tool {
+	return viff.Tool{
 		Name: githubIssueCreateTool,
 		Description: "Open an issue at the GitHub repository, with the title and body given. The runner opens it " +
 			"with its own token; what you read back is the issue's number and url. " +
@@ -299,7 +299,7 @@ func githubIssueCreate(cl *delivery.Client, ws *workspace.Workspace, names []str
 
 // githubIssueVerb is a comment on or a close of an issue at the forge, by number, performed by
 // the runner with its token.
-func githubIssueVerb(cl *delivery.Client, ws *workspace.Workspace, names []string, name, op, step string) verse.Tool {
+func githubIssueVerb(cl *delivery.Client, ws *workspace.Workspace, names []string, name, op, step string) viff.Tool {
 	what := "Close an issue at the GitHub repository, by its number. The runner closes it with its own token. " +
 		"A pull request's number is refused: github-issue does not close a pull request."
 	params := map[string]any{"issue": map[string]any{"type": "integer"}}
@@ -312,7 +312,7 @@ func githubIssueVerb(cl *delivery.Client, ws *workspace.Workspace, names []strin
 		required = append(required, "body")
 	}
 	all := repoParams(names, params)
-	return verse.Tool{
+	return viff.Tool{
 		Name:        name,
 		Description: what + " Repositories: " + strings.Join(names, ", ") + ".",
 		Params:      all,
@@ -369,8 +369,8 @@ func numberIn(in map[string]any, key string) (int, bool) {
 
 // linearIssueCreate creates a Linear issue in a team named by its key, with the credential the
 // runner holds. It needs no repository: a tracker is not a checkout.
-func linearIssueCreate(cl *delivery.Client) verse.Tool {
-	return verse.Tool{
+func linearIssueCreate(cl *delivery.Client) viff.Tool {
+	return viff.Tool{
 		Name: linearIssueCreateTool,
 		Description: "Create a Linear issue in a team, named by its key (`ENG`), with the title and description " +
 			"given. The runner creates it with its own credential; what you read back is the issue's " +
@@ -404,7 +404,7 @@ func linearIssueCreate(cl *delivery.Client) verse.Tool {
 
 // linearIssueVerb is a comment on or a close of a Linear issue, by identifier, performed by the
 // runner with its credential.
-func linearIssueVerb(cl *delivery.Client, name, op, step string) verse.Tool {
+func linearIssueVerb(cl *delivery.Client, name, op, step string) viff.Tool {
 	what := "Close a Linear issue, by its identifier (`ENG-42`): it moves to its team's completed state. The " +
 		"runner does it with its own credential."
 	params := map[string]any{"issue": map[string]any{"type": "string"}}
@@ -415,7 +415,7 @@ func linearIssueVerb(cl *delivery.Client, name, op, step string) verse.Tool {
 		params["body"] = map[string]any{"type": "string"}
 		required = append(required, "body")
 	}
-	return verse.Tool{
+	return viff.Tool{
 		Name: name, Description: what, Params: params, Required: required,
 		Step: step,
 		Fields: func(in map[string]any) (map[string]string, bool) {

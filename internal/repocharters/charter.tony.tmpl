@@ -5,23 +5,23 @@
 # MAIN, in what follows and in the records' names, is the branch the repository's charters
 # follow, which for this rendering is `{{.Branch}}`.
 #
-# WHAT IT KEEPS TRUE: what runs in verse is the last state of the repository's charters directory
+# WHAT IT KEEPS TRUE: what runs in viff is the last state of the repository's charters directory
 # on main that an ask answered yes to, however it reached main. These records keep the states
 # apart, and every rule's subject is one of them or an effect of one:
 #
 #   repo-charters.{{.Repo}}.state.main           what is on main: {sha, tree}
-#   repo-charters.{{.Repo}}.state.live           what refs/verse/live holds: {sha, tree, from}
+#   repo-charters.{{.Repo}}.state.live           what refs/viff/live holds: {sha, tree, from}
 #   repo-charters.{{.Repo}}.candidate.<tree>     one per charters tree ever on main or proposed by
 #                                                a pull request to main: {tree, ask, title, seen},
 #                                                `sha` where main carries it, `checked` once
 #                                                checked, `askedAt` once asked, then `answer`
-#   repo-charters.{{.Repo}}.verdict.<tree>       what verse says about the tree on a pull request
+#   repo-charters.{{.Repo}}.verdict.<tree>       what viff says about the tree on a pull request
 #                                                that proposes it: {decision, check, text}
 #   repo-charters.{{.Repo}}.pull.<number>        what an open pull request to main proposes now:
 #                                                {pr, head, tree}, `tree` empty for nothing
-#   repo-charters.{{.Repo}}.livecheck.live       the minute's check of refs/verse/live against what
+#   repo-charters.{{.Repo}}.livecheck.live       the minute's check of refs/viff/live against what
 #                                                is installed, and the git io's answer beside it
-#   repo-charters.{{.Repo}}.running              verse's note of its last install: {sha, tree, from}
+#   repo-charters.{{.Repo}}.running              viff's note of its last install: {sha, tree, from}
 #
 # A tree is the sha of the charters directory's tree object, as the git io reflects it with
 # `-tree <path>` (`tree.{{.Tree}}` on every ref): the identity of the directory's contents, the
@@ -45,10 +45,10 @@
 #
 # ON THE PULL REQUEST TO MAIN, first: a pull request to main that changes the charters (the github
 # io's `-tree`, against the head's merge base) proposes the tree at its head, and the question is
-# asked there, where the change is reviewed, beside its `verse` status (the answer) and its
-# `verse/check` status (the check) on the head. Verse holds nothing: the merge is the repository's,
+# asked there, where the change is reviewed, beside its `viff` status (the answer) and its
+# `viff/check` status (the check) on the head. Viff holds nothing: the merge is the repository's,
 # under whatever review it asks for, and the gate is the install. Neither status can be a required
-# check: verse says them only on a pull request that changes the charters, and a required check
+# check: viff says them only on a pull request that changes the charters, and a required check
 # would hold every other pull request to main. What it says follows the tree the pull request
 # proposes NOW: pushed on to another tree, it is asked about that one in the same comment; once it
 # leaves the charters alone, the comment says so. The answer stands for the tree, so a yes given
@@ -56,43 +56,43 @@
 # unanswered is asked on the candidate's issue.
 #
 # THE CANDIDATE'S ISSUE is for a change that reached main without that answer (an ordinary push, a
-# pull request merged around verse): the question is asked on an issue, where the repository's
+# pull request merged around viff): the question is asked on an issue, where the repository's
 # people read, saying what main carries against what runs and how to see the difference, with the
-# answer heard there and verse's commit status on main's commit saying what verse waits for and
-# then what it decided. It is opened only once verse/live stands, while the candidate is main's
-# and not what verse/live holds, closed as superseded when main moves on, and closed once its tree
+# answer heard there and viff's commit status on main's commit saying what viff waits for and
+# then what it decided. It is opened only once viff/live stands, while the candidate is main's
+# and not what viff/live holds, closed as superseded when main moves on, and closed once its tree
 # is installed; its question stands either way. A no closes it with the commit status failed.
 #
 # THE CHECK is apart from the decision and from the install: each candidate tree is checked against
-# what runs by the verse's charter check, which installs nothing, and its verdict is a status of
-# its own on either pull request (`verse/check`); while main's tree would be refused an issue says
+# what runs by the viff's charter check, which installs nothing, and its verdict is a status of
+# its own on either pull request (`viff/check`); while main's tree would be refused an issue says
 # so, and it closes when main's tree passes.
 #
-# verse/live IS A RECORD, `refs/verse/live` (iod reference, a record): a chain of commits the git
+# viff/live IS A RECORD, `refs/viff/live` (iod reference, a record): a chain of commits the git
 # io writes, each holding a charters tree as its whole tree, its parent the entry before, and the
 # commit of main it came from as its `From:` trailer. Not a branch: nothing checks it out or
-# builds it, and `git log refs/verse/live` is what ran, when, and from where. The tree is its
+# builds it, and `git log refs/viff/live` is what ran, when, and from where. The tree is its
 # identity, as it is everywhere here: an entry is appended only for a tree the last does not hold.
 #
-# THE INSTALL FOLLOWS verse/live, which is what runs: the git io reflects the record, and a tree
+# THE INSTALL FOLLOWS viff/live, which is what runs: the git io reflects the record, and a tree
 # it holds whose candidate was answered yes is installed, by the git io, from its own copy of the
 # repository, at `{{.InstallAt}}`, as itself, pruning what the tree leaves out (iod reference, the
 # out half of git). So a commit to main that leaves the charters alone changes nothing the install
-# reads, and installs nothing. A yes on main's tree appends it to verse/live (the git io, as the
+# reads, and installs nothing. A yes on main's tree appends it to viff/live (the git io, as the
 # App): the record made at the first install, appended to on a later yes or a rollback. The io's
 # status says what it installed, for which entry and from which commit, and the rules read that:
 # what runs is recorded, the candidate's issue is closed, and the commit status on main's commit
 # passes. An install the io refuses is a GitHub issue, closed by the next install that succeeds,
-# and the commit status fails. A tree on verse/live nobody answered yes to is not installed.
+# and the commit status fails. A tree on viff/live nobody answered yes to is not installed.
 #
-# A REFUSED INSTALL IS ASKED AGAIN when the verse moves, not only when the repository does: what
-# refused it may have been the verse's (no runner offering a spawn yet, a build behind the
-# charters, an io not registered), and the minute's check of verse/live finds when the tree would
-# install. Each time that check's verdict begins to be `installs` for an entry of verse/live, the
+# A REFUSED INSTALL IS ASKED AGAIN when the viff moves, not only when the repository does: what
+# refused it may have been the viff's (no runner offering a spawn yet, a build behind the
+# charters, an io not registered), and the minute's check of viff/live finds when the tree would
+# install. Each time that check's verdict begins to be `installs` for an entry of viff/live, the
 # install of what the entry holds is asked again, once; the io does nothing for an install that
 # stands.
 #
-# NOTHING STANDS UNSAID. Each way main, verse/live and the installed charters can disagree has an
+# NOTHING STANDS UNSAID. Each way main, viff/live and the installed charters can disagree has an
 # outcome somebody sees:
 #
 #   main's tree unanswered          its question, on the candidate's issue
@@ -100,12 +100,12 @@
 #   main's check refused            an issue, open until main's tree passes
 #   an install refused              an issue, open until an install succeeds, and the install
 #                                   asked again when the minute's check says it would
-#   verse/live not what runs        an issue, open until verse/live is back in step: the installed
-#                                   charters are checked against verse/live's tree every minute
+#   viff/live not what runs        an issue, open until viff/live is back in step: the installed
+#                                   charters are checked against viff/live's tree every minute
 #                                   (the reconciler's own schedule), and two rounds differing at
 #                                   one commit open it, so an install under way is not taken for
 #                                   it. Not restored: the ask comes with a pull request to fix it.
-#                                   A verse/live that is gone is the same issue.
+#                                   A viff/live that is gone is the same issue.
 #   a question nothing proposes     settled `obsolete` by the git io's sweep, every minute, and
 #                                   asked again if its tree is proposed again
 #
@@ -116,11 +116,11 @@
 
 # ONE PACKAGE PER REPOSITORY, at `repo-charters.<repo>`, so a deployment reconciling two
 # repositories installs two packages, and every outbox below is a plain name inside the package:
-# a `from` is relative, and one spelled with the repository's id in front (`verse.install`) reads
-# as verse's own half when the repository is called `verse`.
+# a `from` is relative, and one spelled with the repository's id in front (`viff.install`) reads
+# as viff's own half when the repository is called `viff`.
 at: repo-charters.{{.Repo}}
-reads: [git.{{.Repo}}, github.{{.GitHubOrg}}.{{.GitHubName}}, verse.schedule]
-# Every minute: verse/live is checked against what is installed, and the questions about trees
+reads: [git.{{.Repo}}, github.{{.GitHubOrg}}.{{.GitHubName}}, mirror.schedule]
+# Every minute: viff/live is checked against what is installed, and the questions about trees
 # nothing proposes any more are settled `obsolete`.
 schedules:
 - name: minute
@@ -138,9 +138,9 @@ sends:
 - from: out.github
   to: github.{{.GitHubOrg}}.{{.GitHubName}}.out
 # The levels, lowest first: what the git io reflects, the pull requests the github io reflects,
-# what is on main and on verse/live, the checks and their verdicts, the candidates, what verse
+# what is on main and on viff/live, the checks and their verdicts, the candidates, what viff
 # says about each tree on a pull request, what each pull request proposes now, the minute's ticks,
-# the check of verse/live against what is installed, the install the git io is asked for and its
+# the check of viff/live against what is installed, the install the git io is asked for and its
 # answer, what runs, and the effects. A derive lands strictly
 # above its rule, and a read inside a derive at or below it.
 strata:
@@ -167,7 +167,7 @@ strata:
   match: {path: "repo-charters.{{.Repo}}.pull"}
 - name: ticks
   level: 8
-  match: {path: 'verse.schedule."repo-charters.{{.Repo}}:minute".tick'}
+  match: {path: 'mirror.schedule."repo-charters.{{.Repo}}:minute".tick'}
 - name: livecheck
   level: 9
   match: {path: "repo-charters.{{.Repo}}.livecheck"}
@@ -200,10 +200,10 @@ rules:
     - path: "repo-charters.{{.Repo}}.check"
       id: '.[subject.value.tree["{{.Tree}}"]]'
       value: {to: "check.{{.InstallAt}}", tree: '.[subject.value.tree["{{.Tree}}"]]', sha: .[subject.value.sha]}
-# What verse/live holds, which is what runs once installed: its last entry, the charters tree it
+# What viff/live holds, which is what runs once installed: its last entry, the charters tree it
 # holds, and the commit of main the tree came from. An entry the git io wrote names that commit;
 # anybody who can push can write one that does not, and its `from` is empty: what it holds is
-# what verse/live holds all the same, with no commit of main to say statuses on.
+# what viff/live holds all the same, with no commit of main to say statuses on.
 - name: live
   stratum: reflected
   condition:
@@ -221,7 +221,7 @@ rules:
 # does one branched before main's charters last changed; one that removes the directory proposes
 # the empty tree. What each open pull request to main proposes NOW is a record of its own,
 # `pull.<number>`, with an empty `tree` where it proposes nothing: a pull request moves between
-# trees, and what verse says on it follows the tree it proposes, not one it proposed before.
+# trees, and what viff says on it follows the tree it proposes, not one it proposed before.
 - name: pull
   stratum: pulls
   condition:
@@ -250,9 +250,9 @@ rules:
     - path: "repo-charters.{{.Repo}}.pull"
       id: .[subject.value.number]
       value: {pr: .[subject.value.number], head: .[subject.value.headSha], tree: ""}
-# THE CHECK, apart from the decision: the git io asks the verse's charter check what an install
+# THE CHECK, apart from the decision: the git io asks the viff's charter check what an install
 # of a tree would do (iod reference, the out half of git), and its verdict is written onto the
-# candidate, where the pull requests' `verse/check` statuses are drawn from. The check input
+# candidate, where the pull requests' `viff/check` statuses are drawn from. The check input
 # carries the commit the tree was seen at (`sha`), so a new commit asks again: a pull request's
 # tree can reach the git io before its copy has fetched the branch.
 - name: checked
@@ -299,7 +299,7 @@ rules:
         to: issue
         open:
           title: "charters: {{.Branch}}'s charters would be refused"
-          body: "verse's charter check says an install of the charters on {{.Branch}} (tree $[subject.value.tree]) into {{.InstallAt}} would be refused:\n\n$[subject.value.refusal]\n\nThis issue closes when the charters on {{.Branch}} pass the check."
+          body: "viff's charter check says an install of the charters on {{.Branch}} (tree $[subject.value.tree]) into {{.InstallAt}} would be refused:\n\n$[subject.value.refusal]\n\nThis issue closes when the charters on {{.Branch}} pass the check."
         closed: false
 - name: main-passed
   stratum: checks
@@ -382,11 +382,11 @@ rules:
           network: {mode: open}
           question: {}
       script: |
-        verse-call-tool question-ask -question "$ASK" -options proceed -options deny -options obsolete{{if .Answerers}}{{.AnswererFlags}}{{end}}
+        viff-call-tool question-ask -question "$ASK" -options proceed -options deny -options obsolete{{if .Answerers}}{{.AnswererFlags}}{{end}}
     onDone:
       patch: {answer: .[result]}
-# WHAT VERSE SAYS ABOUT A TREE on any pull request that proposes it, from its answer and its
-# check: the decision (the `verse` status) and the check (the `verse/check` status, and the
+# WHAT VIFF SAYS ABOUT A TREE on any pull request that proposes it, from its answer and its
+# check: the decision (the `viff` status) and the check (the `viff/check` status, and the
 # comment's text, which says why a refused tree would be refused). Neither holds the merge.
 # A NEW TREE'S VERDICT is written whole, pending on both counts, in one derive: the rule drawing
 # a pull request from it reads every field, and one that found half a verdict would fail and
@@ -410,7 +410,7 @@ rules:
           state: pending
           description: "not answered yet; merging does not wait for it"
         check: {state: pending, description: "checking against what runs"}
-        text: "This pull request changes the charters verse runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge."
+        text: "This pull request changes the charters viff runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge."
 - name: verdict-yes
   stratum: candidates
   condition:
@@ -451,7 +451,7 @@ rules:
       id: .[subject.value.tree]
       value:
         check: {state: success, description: "installs cleanly over what runs"}
-        text: "This pull request changes the charters verse runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge."
+        text: "This pull request changes the charters viff runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge."
 - name: verdict-refused
   stratum: candidates
   condition:
@@ -464,8 +464,8 @@ rules:
       id: .[subject.value.tree]
       value:
         check: {state: failure, description: "would be refused; see the comment"}
-        text: "This pull request changes the charters verse runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge.\n\nverse's charter check says these charters would be refused if installed into {{.InstallAt}}:\n\n$[subject.value.refusal]"
-# ON THE PULL REQUEST TO MAIN, what verse says about the tree it proposes now: the comment with
+        text: "This pull request changes the charters viff runs for this repository. A yes to the question below installs them once this merges; merging does not wait for it, and unanswered, the question is asked again on an issue after the merge.\n\nviff's charter check says these charters would be refused if installed into {{.InstallAt}}:\n\n$[subject.value.refusal]"
+# ON THE PULL REQUEST TO MAIN, what viff says about the tree it proposes now: the comment with
 # the question, and both statuses on its head, drawn from that tree's verdict. Re drawn when any
 # verdict changes (`when`), since what is read in an action is copied, not followed. One input per
 # pull request, so a pull request that moves to another tree is asked about that tree in the same
@@ -488,11 +488,11 @@ rules:
         text: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: text}
         asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$[subject.value.tree]~2"
         commitStatus:
-          verse:
+          viff:
             state: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: decision.state}
             description: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: decision.description}
             sha: .[subject.value.head]
-          "verse/check":
+          "viff/check":
             state: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: check.state}
             description: !get-path {at: [repo-charters, {{.Repo}}, verdict, .[subject.value.tree]], path: check.description}
             sha: .[subject.value.head]
@@ -511,15 +511,15 @@ rules:
       id: .[subject.value.pr]
       value:
         tree: ""
-        text: "This pull request no longer changes the charters verse runs, so verse asks nothing here."
+        text: "This pull request no longer changes the charters viff runs, so viff asks nothing here."
         asks: []
         commitStatus:
-          verse: {state: success, description: "changes no charters", sha: .[subject.value.head]}
-          "verse/check": {state: success, description: "changes no charters", sha: .[subject.value.head]}
+          viff: {state: success, description: "changes no charters", sha: .[subject.value.head]}
+          "viff/check": {state: success, description: "changes no charters", sha: .[subject.value.head]}
 # ON THE CANDIDATE'S ISSUE, for a change that reached main without an answer: while a candidate is
 # asked about, its question rides an issue saying what main carries against what runs, with the
-# answer heard there, and verse's commit status pending on main's commit. Only once verse/live
-# stands, and only while the candidate is main's and not what verse/live holds; one main has moved
+# answer heard there, and viff's commit status pending on main's commit. Only once viff/live
+# stands, and only while the candidate is main's and not what viff/live holds; one main has moved
 # past is closed as superseded, and one installed is closed by the install.
 - name: candidate-issue
   stratum: candidates
@@ -530,7 +530,7 @@ rules:
         let:
         - mainTree: !get-path {at: [repo-charters, {{.Repo}}, state, main], path: tree}
         - mainSha: !get-path {at: [repo-charters, {{.Repo}}, state, main], path: sha}
-        # A read of what does not stand matches nothing, so this rule waits for verse/live.
+        # A read of what does not stand matches nothing, so this rule waits for viff/live.
         - liveTree: !get-path {at: [repo-charters, {{.Repo}}, state, live], path: tree}
         in: !and
         - !not.has-path answer
@@ -545,10 +545,10 @@ rules:
         to: issue
         open:
           title: "charters: $[subject.value.title]"
-          body: "{{.Branch}} at $[subject.value.sha] carries the charters tree $[subject.value.tree], which is not what runs at {{.InstallAt}}, and nobody has answered for it yet. An answer here installs it.\n\nWhat it changes, against what runs:\n\n    git fetch origin refs/verse/live\n    git diff FETCH_HEAD $[subject.value.tree]\n\nThis issue closes once the tree is installed, or once {{.Branch}} carries another."
+          body: "{{.Branch}} at $[subject.value.sha] carries the charters tree $[subject.value.tree], which is not what runs at {{.InstallAt}}, and nobody has answered for it yet. An answer here installs it.\n\nWhat it changes, against what runs:\n\n    git fetch origin refs/viff/live\n    git diff FETCH_HEAD $[subject.value.tree]\n\nThis issue closes once the tree is installed, or once {{.Branch}} carries another."
         text: "What is on {{.Branch}} against what runs. An answer here installs it."
         asks: "repo-charters.{{.Repo}}:propose@repo-charters.{{.Repo}}.candidate.$[subject.value.tree]~2"
-        commitStatus: {verse: {state: pending, description: "waiting for an answer to the question on the candidate's issue", sha: .[subject.value.sha]}}
+        commitStatus: {viff: {state: pending, description: "waiting for an answer to the question on the candidate's issue", sha: .[subject.value.sha]}}
         closed: false
 # The check's verdict on main's commit of a tree main carries, while it is asked about on the
 # candidate's issue.
@@ -563,7 +563,7 @@ rules:
     - path: "repo-charters.{{.Repo}}.out.github"
       id: .[subject.value.tree]
       value:
-        commitStatus: {"verse/check": {state: success, description: "installs cleanly over what runs", sha: .[subject.value.sha]}}
+        commitStatus: {"viff/check": {state: success, description: "installs cleanly over what runs", sha: .[subject.value.sha]}}
 - name: live-check-refused
   stratum: candidates
   condition:
@@ -575,7 +575,7 @@ rules:
     - path: "repo-charters.{{.Repo}}.out.github"
       id: .[subject.value.tree]
       value:
-        commitStatus: {"verse/check": {state: failure, description: "would be refused; see the issue", sha: .[subject.value.sha]}}
+        commitStatus: {"viff/check": {state: failure, description: "would be refused; see the issue", sha: .[subject.value.sha]}}
 - name: candidate-superseded
   stratum: candidates
   condition:
@@ -592,7 +592,7 @@ rules:
     - path: "repo-charters.{{.Repo}}.out.github"
       id: .[subject.value.tree]
       value: {closed: true}
-# A no closes the candidate's issue, with verse's commit status failed on main's commit: the record
+# A no closes the candidate's issue, with viff's commit status failed on main's commit: the record
 # of the decision, where the question was asked.
 - name: candidate-denied
   stratum: candidates
@@ -606,11 +606,11 @@ rules:
       id: .[subject.value.tree]
       value:
         closed: true
-        commitStatus: {verse: {state: failure, description: "denied: $[subject.value.answer]", sha: .[subject.value.sha]}}
-# A yes on main's tree makes verse/live hold it: the record made holding it where verse/live does
+        commitStatus: {viff: {state: failure, description: "denied: $[subject.value.answer]", sha: .[subject.value.sha]}}
+# A yes on main's tree makes viff/live hold it: the record made holding it where viff/live does
 # not stand yet (the first install), and the tree appended where it holds another (a later yes,
 # or a rollback to a tree answered before), each entry naming the candidate's commit. Two inputs
-# for the one record, because a read of verse/live is nothing before it stands, and a rule reading
+# for the one record, because a read of viff/live is nothing before it stands, and a rule reading
 # nothing never fires.
 - name: live-made
   stratum: candidates
@@ -645,10 +645,10 @@ rules:
     - path: "repo-charters.{{.Repo}}.out.git"
       id: live
       value: {to: "record.live", tree: .[subject.value.tree], from: .[subject.value.sha]}
-# The tree verse/live holds is installed, where its candidate was answered yes: the git io is
-# asked to install it, for verse/live's entry. The input is named for the tree and carries the
+# The tree viff/live holds is installed, where its candidate was answered yes: the git io is
+# asked to install it, for viff/live's entry. The input is named for the tree and carries the
 # entry and the commit of main it came from, so the io does nothing for a tree it already
-# installed for that entry, and a commit to main moves nothing here: only verse/live moving does.
+# installed for that entry, and a commit to main moves nothing here: only viff/live moving does.
 - name: install
   stratum: candidates
   condition:
@@ -669,7 +669,7 @@ rules:
         from: !get-path {at: [repo-charters, {{.Repo}}, state, live], path: from}
 # The io's answer: the tree it installed, for which entry and from which commit. What runs is
 # recorded, the candidate's issue is closed, and the commit status on main's commit passes. ONLY
-# THE ANSWER FOR verse/live's ENTRY: a rule fires for every status it selects at every commit
+# THE ANSWER FOR viff/live's ENTRY: a rule fires for every status it selects at every commit
 # under its place, and what runs is one record, so the statuses of earlier installs must not be
 # selected, or whichever fired last would be what runs.
 - name: installed
@@ -693,15 +693,15 @@ rules:
     - path: "repo-charters.{{.Repo}}.out.github"
       id: .[subject.value.tree]
       value:
-        commitStatus: {verse: {state: success, description: "installed into {{.InstallAt}}", sha: .[subject.value.from]}}
+        commitStatus: {viff: {state: success, description: "installed into {{.InstallAt}}", sha: .[subject.value.from]}}
         closed: true
     # A refused install's issue is closed by an install that succeeds.
     - path: "repo-charters.{{.Repo}}.out.github"
       id: install-failed
       value: {closed: true}
-# An install the io refused for good is an issue in the repository, saying what the verse said,
+# An install the io refused for good is an issue in the repository, saying what the viff said,
 # and the commit status on main's commit fails. The issue and the status stand until an install
-# succeeds: a fix on main is a new tree, a new candidate and a new question, and a verse that has
+# succeeds: a fix on main is a new tree, a new candidate and a new question, and a viff that has
 # moved under the tree is the install asked again (install-again).
 - name: install-failed
   stratum: install
@@ -718,13 +718,13 @@ rules:
       value:
         to: issue
         open:
-          title: "charters: the install of what verse/live holds failed"
-          body: "verse refused to install the charters tree $[subject.value.tree], refs/verse/live's entry $[subject.value.sha], into {{.InstallAt}}:\n\n$[subject.value.error]\n\nverse asks again when its minute check finds the tree would install. This issue closes when an install succeeds."
+          title: "charters: the install of what viff/live holds failed"
+          body: "viff refused to install the charters tree $[subject.value.tree], refs/viff/live's entry $[subject.value.sha], into {{.InstallAt}}:\n\n$[subject.value.error]\n\nviff asks again when its minute check finds the tree would install. This issue closes when an install succeeds."
         closed: false
     - path: "repo-charters.{{.Repo}}.out.github"
       id: .[subject.value.tree]
       value:
-        commitStatus: {verse: {state: failure, description: "the install failed; see the issue", sha: .[subject.value.from]}}
+        commitStatus: {viff: {state: failure, description: "the install failed; see the issue", sha: .[subject.value.from]}}
 # MAIN'S CHARTERS ANSWERED NO: what runs stays as it was, and an issue says so while main holds the
 # denied tree. It closes when main's charters are anything else.
 - name: main-denied
@@ -760,15 +760,15 @@ rules:
     - path: "repo-charters.{{.Repo}}.out.github"
       id: main-denied
       value: {closed: true}
-# EVERY MINUTE, verse/live against what is installed: the git io reads the record in its own copy
-# and asks the verse's charter check what installing its tree would change (iod reference, the
-# check of a record). Only once verse/live has stood: before the first install there is nothing
+# EVERY MINUTE, viff/live against what is installed: the git io reads the record in its own copy
+# and asks the viff's charter check what installing its tree would change (iod reference, the
+# check of a record). Only once viff/live has stood: before the first install there is nothing
 # to compare.
 - name: live-check
   stratum: ticks
   condition:
     subject:
-      path: 'verse.schedule."repo-charters.{{.Repo}}:minute".tick.*'
+      path: 'mirror.schedule."repo-charters.{{.Repo}}:minute".tick.*'
       value: !let
         let:
         - liveSha: !get-path {at: [repo-charters, {{.Repo}}, state, live], path: sha}
@@ -779,8 +779,8 @@ rules:
       id: live
       value: {to: "check.{{.InstallAt}}", record: live, round: .[subject.value.due]}
 # A REFUSED INSTALL ASKED AGAIN: each time the minute's check finds that what an entry of
-# verse/live holds would install, where it did not find so before, the install of that tree is
-# asked again, once. What refused it may have been the verse's and not the tree's: no runner
+# viff/live holds would install, where it did not find so before, the install of that tree is
+# asked again, once. What refused it may have been the viff's and not the tree's: no runner
 # offering a spawn yet, a build behind the charters, an io not registered. The io says since when
 # the verdict has held at the entry (`verdictSince`), which is the same round after round while it
 # holds and begins again at a new entry, so the install's input changes once each time the verdict
@@ -799,9 +799,9 @@ rules:
     - path: "repo-charters.{{.Repo}}.install"
       id: .[subject.value.tree]
       value: {again: .[subject.value.verdictSince]}
-# verse/live HOLDING SOMETHING OTHER THAN WHAT RUNS is an open issue: not restored. The ask comes
+# viff/live HOLDING SOMETHING OTHER THAN WHAT RUNS is an open issue: not restored. The ask comes
 # when somebody opens a pull request to fix it; what runs back in step closes it. Two rounds in a
-# row at one entry, so an install verse is making is not taken for it.
+# row at one entry, so an install viff is making is not taken for it.
 - name: live-in-step
   stratum: livecheck
   condition:
@@ -826,8 +826,8 @@ rules:
       value:
         to: issue
         open:
-          title: "charters: verse/live is not what runs"
-          body: "refs/verse/live (entry $[subject.value.sha], tree $[subject.value.tree]) differs from the charters installed at {{.InstallAt}} by $[subject.value.changes] charter(s).\n\nOpen a pull request to {{.Branch}} to change the charters, or put what runs back in step with it; this issue closes when they agree."
+          title: "charters: viff/live is not what runs"
+          body: "refs/viff/live (entry $[subject.value.sha], tree $[subject.value.tree]) differs from the charters installed at {{.InstallAt}} by $[subject.value.changes] charter(s).\n\nOpen a pull request to {{.Branch}} to change the charters, or put what runs back in step with it; this issue closes when they agree."
         closed: false
 - name: live-refused
   stratum: livecheck
@@ -842,8 +842,8 @@ rules:
       value:
         to: issue
         open:
-          title: "charters: verse/live is not what runs"
-          body: "refs/verse/live (entry $[subject.value.sha], tree $[subject.value.tree]) holds charters an install at {{.InstallAt}} would refuse:\n\n$[subject.value.refusal]\n\nOpen a pull request to {{.Branch}} to change the charters; this issue closes when what it holds would install and runs."
+          title: "charters: viff/live is not what runs"
+          body: "refs/viff/live (entry $[subject.value.sha], tree $[subject.value.tree]) holds charters an install at {{.InstallAt}} would refuse:\n\n$[subject.value.refusal]\n\nOpen a pull request to {{.Branch}} to change the charters; this issue closes when what it holds would install and runs."
         closed: false
 - name: live-missing
   stratum: livecheck
@@ -858,17 +858,17 @@ rules:
       value:
         to: issue
         open:
-          title: "charters: verse/live is not what runs"
-          body: "refs/verse/live is gone from the repository, so nothing records what runs at {{.InstallAt}} there.\n\nPut it back at the entry verse wrote last; this issue closes when it is."
+          title: "charters: viff/live is not what runs"
+          body: "refs/viff/live is gone from the repository, so nothing records what runs at {{.InstallAt}} there.\n\nPut it back at the entry viff wrote last; this issue closes when it is."
         closed: false
 # EVERY MINUTE, the questions about trees nothing proposes now are settled `obsolete` by the git io:
-# what is proposed is main's tree, verse/live's, and each open pull request to main's change, read
+# what is proposed is main's tree, viff/live's, and each open pull request to main's change, read
 # at the tick, and only questions posed by the tick are settled.
 - name: obsolete-sweep
   stratum: ticks
   condition:
     subject:
-      path: 'verse.schedule."repo-charters.{{.Repo}}:minute".tick.*'
+      path: 'mirror.schedule."repo-charters.{{.Repo}}:minute".tick.*'
   action:
     derive:
     - path: "repo-charters.{{.Repo}}.out.git"

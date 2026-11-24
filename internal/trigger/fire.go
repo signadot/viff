@@ -9,12 +9,12 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/schedule"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/schedule"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // countFire records that one entity was acted on. It is a counter and nothing more: what
@@ -192,7 +192,7 @@ func (e *Engine) deadlineOf(g Gate, v entity.Payload) (*task.Deadline, error) {
 	}
 	// AtFrom rides WITH the instant: whoever arms the clock reads the date again as it arms, so
 	// an edit landing between this firing and the posting is not lost to a question that had
-	// not been written yet when the edit was followed (versed armQuestion).
+	// not been written yet when the edit was followed (viffd armQuestion).
 	return &task.Deadline{At: at.UTC().Format(time.RFC3339Nano), AtFrom: g.Deadline.AtFrom,
 		Default: g.Deadline.Default}, nil
 }

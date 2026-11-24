@@ -12,18 +12,18 @@ func num(name, desc string) Param {
 
 func need(p Param, why string) Param { p.Need = why; return p }
 
-// THE ASK VERBS mirror `verse ask`, the asker's side.
+// THE ASK VERBS mirror `viff ask`, the asker's side.
 var (
 	AskCreate = &Verb{
-		Name: "ask-create", Tool: "verse_ask_create",
-		Lead: "Ask somebody something", CLI: "`verse ask [<name>] -q <question>`",
+		Name: "ask-create", Tool: "viff_ask_create",
+		Lead: "Ask somebody something", CLI: "`viff ask [<name>] -q <question>`",
 		Does: "the question, who is asked, when it settles if nobody answers, and what follows its answer, " +
 			"which runs on the asker's authority. It does not wait: the call answers `raised question <id>: " +
 			"<question>`, and {ask-get} <id> reads the ask back.",
-		MCPNote:  "Answers come back through verse_wait.",
+		MCPNote:  "Answers come back through viff_wait.",
 		TaskNote: "It stands after this task ends. To ask something and wait for the answer yourself, use question-ask.",
 		Params: []Param{
-			text("name", "what the ask is called; its id is derived from it and answered. Absent, verse names it"),
+			text("name", "what the ask is called; its id is derived from it and answered. Absent, viff names it"),
 			need(text("question", "what is asked, in the words the answerers read"), "an ask needs a question"),
 			text("to", "who is asked: a name or a comma-separated list, in the grammar a grant uses "+
 				"(user:ana@example.com, ana@example.com, group:leads); absent, anyone may answer"),
@@ -40,38 +40,38 @@ var (
 		},
 	}
 	AskGet = &Verb{
-		Name: "ask-get", Tool: "verse_ask_get", Reads: true,
-		Lead: "Read back one of the asks raised", CLI: "`verse ask <name|id>`",
+		Name: "ask-get", Tool: "viff_ask_get", Reads: true,
+		Lead: "Read back one of the asks raised", CLI: "`viff ask <name|id>`",
 		Does: "by the name it was asked under or the id {ask-create} answered: whether it was answered " +
 			"(`status`, and `answer`, pending until it settles, or `why` where it settled with no answer), " +
 			"what it asked and of whom, its due, and what its on ran.",
-		MCPNote: "What waits on you is verse_question.",
+		MCPNote: "What waits on you is viff_question.",
 		Params: []Param{
 			need(text("name_or_id", "one ask, by the name it was asked under or its id"), "name the ask, by its name or its id"),
 		},
 	}
 	AskList = &Verb{
-		Name: "ask-list", Tool: "verse_ask_list", Reads: true,
-		Lead: "List the asks raised", CLI: "`verse ask`",
+		Name: "ask-list", Tool: "viff_ask_list", Reads: true,
+		Lead: "List the asks raised", CLI: "`viff ask`",
 		Does: "each with its id, question, who is asked, its due, its `status`, and its `answer`, pending " +
 			"until it settles. {ask-get} reads one of them.",
-		MCPNote: "What waits on you is verse_question.",
+		MCPNote: "What waits on you is viff_question.",
 	}
 )
 
-// THE DATA VERBS mirror `verse data`: the verse at an address.
+// THE DATA VERBS mirror `viff data`: the viff at an address.
 var (
 	DataGet = &Verb{
-		Name: "data-get", Tool: "verse_data", Reads: true,
-		Lead: "Read the verse at an address", CLI: "`verse data`",
+		Name: "data-get", Tool: "viff_data", Reads: true,
+		Lead: "Read the viff at an address", CLI: "`viff data`",
 		Does: "the document stored there, or with paths the addresses beneath it. What is not in view, " +
 			"because nothing stands there or it may not be read, is answered alike. Where the address may " +
 			"not be read into at all, the read is refused, naming the nearest owner on record, whom to ask, " +
 			"whether or not anything stands there.",
 		Params: []Param{
 			text("at", "the address as a kinded path, as a document prints it: demo.pr.1, demo.pr.*.stage; "+
-				"empty is all of the verse that may be read"),
-			text("if", "only entities whose payload matches this tony pattern, chosen by verse before anything is sent: {stage: open}"),
+				"empty is all of the viff that may be read"),
+			text("if", "only entities whose payload matches this tony pattern, chosen by viff before anything is sent: {stage: open}"),
 			text("if_at", "root the if pattern at this dot-separated field path inside the payload (labels)"),
 			text("trim", "write only the parts of each entity this match document names, as a key set: {id status}"),
 			flag("paths", "answer one kinded path per line instead of the document"),
@@ -80,8 +80,8 @@ var (
 		},
 	}
 	DataPut = &Verb{
-		Name: "data-put", Tool: "verse_data_put",
-		Lead: "Write a value at an address", CLI: "`verse data <address> --put`",
+		Name: "data-put", Tool: "viff_data_put",
+		Lead: "Write a value at an address", CLI: "`viff data <address> --put`",
 		Does: "merged into what stands there; with create, update or expect, only on that condition. " +
 			"Answers what stands there after the write.",
 		Params: []Param{
@@ -92,13 +92,13 @@ var (
 			flag("create", "only if nothing stands there yet: the write loses a race rather than clobbering"),
 			flag("update", "only if something already stands there"),
 			text("expect", "only if what stands there matches this tony pattern"),
-			text("grants", "what the node this write creates holds out, as verse perms --grants takes it: "+
+			text("grants", "what the node this write creates holds out, as viff perms --grants takes it: "+
 				"[{read: [ana@example.com]}], or [] for nothing; refused where the node stands"),
 		},
 	}
 	DataRm = &Verb{
-		Name: "data-rm", Tool: "verse_data_rm", Takes: true,
-		Lead: "Remove what stands at an address", CLI: "`verse data <address> --rm`",
+		Name: "data-rm", Tool: "viff_data_rm", Takes: true,
+		Lead: "Remove what stands at an address", CLI: "`viff data <address> --rm`",
 		Does: "an entity, or one field of one.",
 		Params: []Param{
 			need(text("at", "what to remove, as a kinded path: an entity (demo.pr.1) or one field of one "+
@@ -107,19 +107,19 @@ var (
 	}
 )
 
-// THE CHARTER VERBS mirror `verse charter`: its read, --check, -a and -r (-R stays on the
+// THE CHARTER VERBS mirror `viff charter`: its read, --check, -a and -r (-R stays on the
 // command line).
 var (
 	CharterGet = &Verb{
-		Name: "charter-get", Tool: "verse_charter", Reads: true,
-		Lead: "Read the charter at a path", CLI: "`verse charter`",
+		Name: "charter-get", Tool: "viff_charter", Reads: true,
+		Lead: "Read the charter at a path", CLI: "`viff charter`",
 		Does: "an installed charter as its file (at, reads, ttl, strata, schedules, rules), a rule or level " +
 			"of one as it stands, or with paths one line per rule and level. What the file cannot say follows " +
 			"it as notes: a rule held, suspended or in trouble, and the charters under the address.",
 		Params: []Param{
-			text("path", "the charter's path as a kinded path: an address (verse-dev.drift), then a reach into "+
-				"what stands there (verse-dev.drift.rules.watcher); empty is baseline's charter, and what is under it"),
-			text("at", "where the address ends, when verse cannot tell: a package whose address ends in rules, "+
+			text("path", "the charter's path as a kinded path: an address (viff-dev.drift), then a reach into "+
+				"what stands there (viff-dev.drift.rules.watcher); empty is baseline's charter, and what is under it"),
+			text("at", "where the address ends, when viff cannot tell: a package whose address ends in rules, "+
 				"strata or schedules. path is then read beneath it"),
 			num("depth", "how far under the address to go: 0 is the address alone, 1 adds its immediate children; "+
 				"without it, everything"),
@@ -129,8 +129,8 @@ var (
 		},
 	}
 	CharterCheck = &Verb{
-		Name: "charter-check", Tool: "verse_charter_check", Reads: true,
-		Lead: "Ask whether charters would install at an address", CLI: "`verse charter --check`",
+		Name: "charter-check", Tool: "viff_charter_check", Reads: true,
+		Lead: "Ask whether charters would install at an address", CLI: "`viff charter --check`",
 		Does: "each charter's verdict, and what the install would add, change and take away. Nothing is " +
 			"installed; a refusal is the answer, not an error.",
 		Params: []Param{
@@ -140,18 +140,18 @@ var (
 			need(text("charters", "the charters, in tony, each a document saying its own at: (at or under the "+
 				"address) with reads, ttl, strata, schedules and rules as a charter file does; several are "+
 				"separated by lines of ---"), "a check carries the charters"),
-			flag("runners-to-come", "hold a spawn no runner offers for a runner still to come, as verse does for "+
-				"a rule it restores, where an install refuses it: for a verse whose runners are not up yet"),
+			flag("runners-to-come", "hold a spawn no runner offers for a runner still to come, as viff does for "+
+				"a rule it restores, where an install refuses it: for a viff whose runners are not up yet"),
 		},
 	}
 	CharterInstall = &Verb{
-		Name: "charter-install", Tool: "verse_charter_install", Takes: true,
-		Lead: "Install charters", CLI: "`verse charter -a`",
+		Name: "charter-install", Tool: "viff_charter_install", Takes: true,
+		Lead: "Install charters", CLI: "`viff charter -a`",
 		Does: "one at an address, or several each at its own at:, and with prune what they leave out at and " +
 			"under the address goes, all in one step. Answers what went where, the rules held and the notes " +
 			"on them; {charter-check} asks first.",
 		TaskNote: "Each spawn among the rules reaches no further than this task does, less installing " +
-			"charters, under autonomy no looser and with this task's credential, on any runner: verse " +
+			"charters, under autonomy no looser and with this task's credential, on any runner: viff " +
 			"refuses one that would. A rule's patch and derive are theirs, as any charter's are.",
 		Params: []Param{
 			text("at", "where, as a kinded path: the address one charter, rule or level is installed at "+
@@ -167,14 +167,14 @@ var (
 		},
 	}
 	CharterRemove = &Verb{
-		Name: "charter-remove", Tool: "verse_charter_remove", Takes: true,
-		Lead: "Remove a package, or one rule, level or schedule of one", CLI: "`verse charter -r`",
+		Name: "charter-remove", Tool: "viff_charter_remove", Takes: true,
+		Lead: "Remove a package, or one rule, level or schedule of one", CLI: "`viff charter -r`",
 		Does:    "what it wrote stays.",
 		MCPNote: "A place and everything under it is removed from the command line, with -R.",
 		Params: []Param{
-			text("path", "what to remove, as a kinded path: a package's address (verse-dev.drift), or one rule, "+
-				"level or schedule of it (verse-dev.drift.rules.watcher). What it wrote stays"),
-			text("at", "where the address ends, when verse cannot tell: a package whose address ends in rules, "+
+			text("path", "what to remove, as a kinded path: a package's address (viff-dev.drift), or one rule, "+
+				"level or schedule of it (viff-dev.drift.rules.watcher). What it wrote stays"),
+			text("at", "where the address ends, when viff cannot tell: a package whose address ends in rules, "+
 				"strata or schedules. path is then read beneath it, and without path the package at at is removed"),
 		},
 		AnyOf: []string{"path", "at"},

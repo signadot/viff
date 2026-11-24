@@ -7,10 +7,10 @@ import (
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // bind is s.Bind(b), for a binding that must expand.
@@ -25,7 +25,7 @@ func bind(t *testing.T, s Spec, b Binding) Spec {
 
 func TestBindExpandsSubject(t *testing.T) {
 	s := Spec{
-		Agent:    &runner.Agent{Name: "verse"},
+		Agent:    &runner.Agent{Name: "viff"},
 		Prompt:   "review $[subject.ref] and report",
 		Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 	}
@@ -34,7 +34,7 @@ func TestBindExpandsSubject(t *testing.T) {
 	if got.Prompt != `review demo.pr."1" and report` {
 		t.Fatalf("Prompt = %q", got.Prompt)
 	}
-	if got.Agent.Name != "verse" || got.Autonomy.Default() != task.ThenAllow {
+	if got.Agent.Name != "viff" || got.Autonomy.Default() != task.ThenAllow {
 		t.Fatalf("plain fields changed: %+v", got)
 	}
 }
@@ -67,9 +67,9 @@ func TestBindReadsAWholeName(t *testing.T) {
 // The agent's annotations, the shapes and the autonomy are words from fixed sets, chosen by the
 // charter: not expanded either; nor is anything of the network.
 func TestBindLeavesTheScriptAndTheWordsAndBindsTheEnvironment(t *testing.T) {
-	const script = `for b in x; do verse-call-tool git-push -branch "$BRANCH"; echo "$b"; done`
+	const script = `for b in x; do viff-call-tool git-push -branch "$BRANCH"; echo "$b"; done`
 	s := Spec{Script: script,
-		Agent: &runner.Agent{Name: "verse", Settings: map[string]string{"model": "$[model]"}, Annotations: map[string]string{"verse.portkey/virtual-key": "$[sneaky]"}},
+		Agent: &runner.Agent{Name: "viff", Settings: map[string]string{"model": "$[model]"}, Annotations: map[string]string{"viff.portkey/virtual-key": "$[sneaky]"}},
 		Environment: systems.Environment{
 			Vars: map[string]string{"BRANCH": "$[subject.head]"},
 			Systems: systems.Systems{
@@ -89,20 +89,20 @@ func TestBindLeavesTheScriptAndTheWordsAndBindsTheEnvironment(t *testing.T) {
 		t.Fatalf("model = %q, want it bound", got.Agent.Model())
 	}
 	net := got.Environment.Systems["network"][0]
-	if got.Agent.Annotations["verse.portkey/virtual-key"] != "$[sneaky]" || systems.Words(got.Autonomy[0].Match.Params["ref"]) != "$[sneaky]" ||
+	if got.Agent.Annotations["viff.portkey/virtual-key"] != "$[sneaky]" || systems.Words(got.Autonomy[0].Match.Params["ref"]) != "$[sneaky]" ||
 		got.Autonomy[0].Then.Ask.Answerers[0] != "$[sneaky]" || systems.Words(got.Environment.Systems["git"][0].Verbs["push"][0]["ref"]) != "refs/heads/$[sneaky]" ||
 		net.Attributes["mode"] != "$[sneaky]" || systems.Words(net.Verbs["tcp-client"][0]["host"]) != "$[sneaky]" {
 		t.Fatalf("a word was expanded: %+v", got)
 	}
-	got.Agent.Annotations["verse.portkey/virtual-key"] = "changed"
+	got.Agent.Annotations["viff.portkey/virtual-key"] = "changed"
 	got.Environment.Systems["git"][0].Verbs["push"][0]["ref"] = ir.FromString("changed")
-	if s.Agent.Annotations["verse.portkey/virtual-key"] != "$[sneaky]" || systems.Words(s.Environment.Systems["git"][0].Verbs["push"][0]["ref"]) != "refs/heads/$[sneaky]" {
+	if s.Agent.Annotations["viff.portkey/virtual-key"] != "$[sneaky]" || systems.Words(s.Environment.Systems["git"][0].Verbs["push"][0]["ref"]) != "refs/heads/$[sneaky]" {
 		t.Fatal("Bind aliased the receiver's annotations or shapes")
 	}
 }
 
 func TestAnswerContractIsADocumentWithItsOperators(t *testing.T) {
-	const src = "agent: {name: verse}\nanswer:\n  severity: !or [low, high]\n  note: !irtype string\n"
+	const src = "agent: {name: viff}\nanswer:\n  severity: !or [low, high]\n  note: !irtype string\n"
 	var s Spec
 	if err := codec.Unmarshal([]byte(src), &s, codec.Tony); err != nil {
 		t.Fatalf("decode: %v", err)

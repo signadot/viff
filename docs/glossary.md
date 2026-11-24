@@ -1,6 +1,6 @@
 # Glossary
 
-This page defines each term of verse once. The terms are grouped by subject, and an
+This page defines each term of viff once. The terms are grouped by subject, and an
 alphabetical index is at the end.
 
 Where one thing has several names, the entry lists the others under "Also written". Where one
@@ -10,11 +10,11 @@ name means several things, each meaning has its own entry, with a qualifier in p
 
 ### store
 
-The store is the one tree in which a verse keeps its data. It is durable, and it can be
-watched. One store is shared by everyone in the verse, people and agents, and every commit to it
+The store is the one tree in which a viff keeps its data. It is durable, and it can be
+watched. One store is shared by everyone in the viff, people and agents, and every commit to it
 names who made it.
 
-Also written: entity store, entity-verse, the verse.
+Also written: entity store, entity-viff, the viff.
 
 See [The store](reference/store.md).
 
@@ -40,7 +40,7 @@ See [Data](reference/entities.md#addressing).
 ### step
 
 A step is one segment of an address, typed as one word on the command line:
-`verse data demo pr 1`.
+`viff data demo pr 1`.
 
 See [Data](reference/entities.md#addressing).
 
@@ -54,7 +54,7 @@ See [Data](reference/entities.md#addressing).
 ### descent
 
 A descent is `..` in a pattern. It reaches every depth beneath where it stands, the node itself
-included: `verse data demo '..' stage` reads every `stage` beneath `demo`. Reads, watches and the
+included: `viff data demo '..' stage` reads every `stage` beneath `demo`. Reads, watches and the
 subjects of rules take a descent. A write, a claim, a grant and a permissions record each name one
 place, and refuse it.
 
@@ -76,11 +76,11 @@ See [Data](reference/entities.md).
 
 ### data
 
-Data is what verse knows about the world: a pull request, a CI run, a person, a running task.
+Data is what viff knows about the world: a pull request, a CI run, a person, a running task.
 Each piece of data stands at an [address](#address) and holds a [payload](#payload).
-`verse data demo pr 1` reads the data at `demo.pr.1`, and
-`verse data demo pr 1 -put '{stage: open}'` writes it. A rule reacts to a change in data
-whoever made it: a person, an iod, a rule or verse itself.
+`viff data demo pr 1` reads the data at `demo.pr.1`, and
+`viff data demo pr 1 -put '{stage: open}'` writes it. A rule reacts to a change in data
+whoever made it: a person, an iod, a rule or viff itself.
 
 See [Data](reference/entities.md).
 
@@ -94,18 +94,18 @@ See [Data](reference/entities.md).
 ### root (of the store)
 
 The root of the store is the node above every other node. Its address is empty. Its
-[record](#record) says who may create a node at the top: `verse perms --root` shows it.
+[record](#record) says who may create a node at the top: `viff perms --root` shows it.
 
 In a page about permissions, "the root" has this meaning.
 
 See [Permissions](perms.md#the-top-of-the-tree).
 
-### verse's own half
+### viff's own half
 
-Verse's own half is the part of the store under the first segment `verse`, such as
-`verse.task.instance.review-1`. Verse keeps its own records there.
+Viff's own half is the part of the store under the first segment `viff`, such as
+`mirror.task.instance.review-1`. Viff keeps its own records there.
 
-See [Permissions](perms.md#verses-own-half).
+See [Permissions](perms.md#viffs-own-half).
 
 ### commit
 
@@ -116,7 +116,7 @@ See [Change events](change-events.md#one-commit-many-entities-the-entity-is-the-
 ### revision
 
 A revision is the number of a commit. Revisions grow, and the numbers have gaps, so a reader
-uses one only as a cursor: `verse watch -since 42`.
+uses one only as a cursor: `viff watch -since 42`.
 
 Also written: rev, cursor (of the store).
 
@@ -124,7 +124,7 @@ See [Data](reference/entities.md#watching).
 
 ### scope
 
-A scope is a named copy-on-write view of the store: `verse data -scope me demo x 1`. A write
+A scope is a named copy-on-write view of the store: `viff data -scope me demo x 1`. A write
 lands in the scope only. A read sees the scope on top of the rest of the store.
 
 See [Scopes](reference/scopes.md#scopes).
@@ -140,7 +140,7 @@ See [Scopes](reference/scopes.md#scopes).
 
 ### charter
 
-A charter is the [rules](#rule) you install at one address, from one file: `verse charter -a
+A charter is the [rules](#rule) you install at one address, from one file: `viff charter -a
 -f charter.tony`. The file lists the rules under `rules:`. It may also hold `strata:` and
 `schedules:`. A package's file says where it goes with `at:`, and what it reads with `reads:`.
 
@@ -150,8 +150,8 @@ See [The charter](reference/charter.md).
 
 A rule is one entry of a charter: a name, a [condition](#condition), a list of
 [gates](#gate-of-a-rule) and an [action](#action). When the condition holds and every gate
-passes, the action fires. An installed rule is data at `verse.trigger.rule.<name>`, or
-`verse.trigger.rule."<address>:<name>"` for a rule of a package.
+passes, the action fires. An installed rule is data at `mirror.trigger.rule.<name>`, or
+`mirror.trigger.rule."<address>:<name>"` for a rule of a package.
 
 Also written: trigger (the Go type `trigger.Trigger`, and the output of an install).
 
@@ -160,13 +160,13 @@ See [The charter reference](trigger-model.md#the-rule).
 ### baseline charter
 
 The baseline charter is the charter installed at no address. Its rules may write anywhere.
-`verse flow -charter :review` names its rule `review`.
+`viff flow -charter :review` names its rule `review`.
 
 See [Control](control.md#the-flags).
 
 ### package
 
-A package is a charter installed at an address: `verse charter -a notes -f notes.tony`. It
+A package is a charter installed at an address: `viff charter -a notes -f notes.tony`. It
 runs in an engine of its own, and its rules write only inside that address.
 
 See [The charter](reference/charter.md#a-charter-can-be-installed-at-an-address).
@@ -174,7 +174,7 @@ See [The charter](reference/charter.md#a-charter-can-be-installed-at-an-address)
 ### reads declaration
 
 The `reads:` line of a package names what its rules read outside its own address, such as
-`reads: [git]`. Verse refuses to install a rule that reads what the package does not declare.
+`reads: [git]`. Viff refuses to install a rule that reads what the package does not declare.
 
 See [The charter](reference/charter.md#a-charter-can-be-installed-at-an-address).
 
@@ -202,8 +202,8 @@ See [The condition of a rule](reference/condition.md#what-a-match-can-say).
 
 ### operator
 
-An operator is a tag, written `!name`, that changes how verse reads a value in a predicate or
-a patch: `!glob "hotfix-*"`, `!delete`. Verse refuses a tag that it does not know.
+An operator is a tag, written `!name`, that changes how viff reads a value in a predicate or
+a patch: `!glob "hotfix-*"`, `!delete`. Viff refuses a tag that it does not know.
 
 See [The condition of a rule](reference/condition.md#what-a-match-can-say).
 
@@ -239,7 +239,7 @@ See [The condition of a rule](reference/condition.md#on-and-when-the-cause-and-t
 
 ### level rule
 
-A level rule is a rule with no `on`. Verse considers it at every commit that touches what the
+A level rule is a rule with no `on`. Viff considers it at every commit that touches what the
 rule reads.
 
 This "level" is the opposite of an edge. For the other meanings, see
@@ -264,7 +264,7 @@ See [The action of a rule](reference/action.md#action-what-fires).
 
 ### patch
 
-`patch` changes the payload of the subject: `patch: {stage: reviewing}`. Verse merges it into
+`patch` changes the payload of the subject: `patch: {stage: reviewing}`. Viff merges it into
 the payload.
 
 See [The action of a rule](reference/action.md#action-what-fires).
@@ -280,7 +280,7 @@ See [Strata](strata.md#derive-identity-not-state).
 
 `spawn` starts a [task](#task). Its fields say what the work is, who does it, what it works in
 and how each step is decided: `prompt` or `script`, `agent`, `environment`, `autonomy`, `answer`,
-`timeout` and `runner`. `verse task run -f <file>` and a row of an ask's `on`, `then: {spawn: …}`,
+`timeout` and `runner`. `viff task run -f <file>` and a row of an ask's `on`, `then: {spawn: …}`,
 take the same spawn.
 
 Also written: launch spec (the Go type `launch.Spec`).
@@ -305,7 +305,7 @@ and [The gates of a rule](reference/gates.md#ondenied-what-a-no-means).
 ### latch
 
 A latch is a write, by the action of a rule, that takes the subject out of what the rule
-selects. A rule that selects `{stage: open}` and patches `{stage: reviewing}` has one. Verse
+selects. A rule that selects `{stage: open}` and patches `{stage: reviewing}` has one. Viff
 refuses a rule that spawns and has no latch.
 
 See [Convergence](convergence.md#what-ends-a-firing).
@@ -329,7 +329,7 @@ See [Strata](strata.md#path-reads-inside-a-derive).
 
 The answer contract of a task is a pattern that the final message of the task must match. A
 task that never matches it fails. It is `answer:` in a `spawn`, which is also what the file of
-`verse task run -f` holds.
+`viff task run -f` holds.
 
 See [Tasks](reference/tasks.md#answer-what-finished-means).
 
@@ -347,7 +347,7 @@ See [The action of a rule](reference/action.md#chains-and-ids).
 
 A chain of firings is a sequence, about one subject, in which the write of each firing causes
 the next. The number of installed rules bounds its depth. A firing beyond the bound is a
-trip: verse delays it and logs the cycle.
+trip: viff delays it and logs the cycle.
 
 A chain of this kind has a depth.
 
@@ -372,7 +372,7 @@ See [Strata](strata.md#two-rules-and-they-are-the-whole-thing).
 
 A held rule is a rule that is installed but not armed: it names a stratum that is not
 installed, or it was restored with a spawn no runner offers yet. It fires on nothing until what
-it waits for arrives, and verse arms it then. `verse charter` prints it with `held: <what it waits for>`.
+it waits for arrives, and viff arms it then. `viff charter` prints it with `held: <what it waits for>`.
 
 A held rule is not under a [hold](#hold).
 
@@ -380,22 +380,22 @@ See [Strata](strata.md#installing-and-the-order-it-does-not-depend-on).
 
 ### trouble
 
-`trouble` is what `verse charter` prints on a rule whose firings went wrong. Its kinds are
+`trouble` is what `viff charter` prints on a rule whose firings went wrong. Its kinds are
 `failed` and `unread`.
 
 See [The charter reference](trigger-model.md#when-a-rule-does-nothing).
 
 ### schedule
 
-A schedule is a record, `verse.schedule.<name>`, that holds a period. Each time the period
-passes, verse writes a [tick](#tick).
+A schedule is a record, `mirror.schedule.<name>`, that holds a period. Each time the period
+passes, viff writes a [tick](#tick).
 
 See [Schedules](reference/schedules.md).
 
 ### tick
 
 A tick is the node that a schedule writes when it is due, at
-`verse.schedule.<name>.tick.<due>`. A rule takes the tick as its subject.
+`mirror.schedule.<name>.tick.<due>`. A rule takes the tick as its subject.
 
 See [Schedules](reference/schedules.md).
 
@@ -406,7 +406,7 @@ See [Schedules](reference/schedules.md).
 A gate of a rule is a check that a firing passes before the action fires:
 `gates: [{name: approval, mode: ask}]`. Every gate of the rule must pass.
 
-`verse question` prints the question of such a gate with `where: engine`.
+`viff question` prints the question of such a gate with `where: engine`.
 
 Also written: charter gate, trigger gate.
 
@@ -427,7 +427,7 @@ See [Tasks](reference/tasks.md#a-rows-question).
 ### gate (raised by a worker)
 
 A worker on a runner raises the gates of its task's autonomy itself. It reports a `pending`
-frame, and verse puts the question on the docket. A worker never answers its own gate.
+frame, and viff puts the question on the docket. A worker never answers its own gate.
 
 See [Tasks](reference/tasks.md#running-one).
 
@@ -441,7 +441,7 @@ See [The gates of a rule](reference/gates.md#gates-whether-it-proceeds).
 ### ask
 
 An ask is something asked of somebody, with a clock and with what follows the answer, in one
-record at `verse.ask.<id>`. A person raises one with `verse ask`. A rule's gate raises one when its
+record at `mirror.ask.<id>`. A person raises one with `viff ask`. A rule's gate raises one when its
 mode is not `auto`, and a task raises one with its `question-ask` tool. Once it has settled it stands for its
 keep, a week unless said otherwise, and is then removed.
 
@@ -449,17 +449,17 @@ See [Asking](asking.md).
 
 ### question
 
-A question is an [ask](#ask) as whom it asks sees it: one waiting on you. `verse question` lists
-them. The record is the ask's, at `verse.ask.<id>`.
+A question is an [ask](#ask) as whom it asks sees it: one waiting on you. `viff question` lists
+them. The record is the ask's, at `mirror.ask.<id>`.
 
-`verse gate` is kept as an alias of `verse question`.
+`viff gate` is kept as an alias of `viff question`.
 
 See [Tasks](reference/tasks.md#the-question-record).
 
 ### docket
 
 The docket is every pending ask you can read, whoever raised it and whoever it waits on.
-`verse question --all` prints it.
+`viff question --all` prints it.
 
 See [Questions](tutorial/questions.md#who-sees-it).
 
@@ -521,8 +521,8 @@ See [The gates of a rule](reference/gates.md#a-deadline-settles).
 ### resolver
 
 A resolver is an installed service that answers asks for whoever grants it: a person, at
-`verse.for.<person>`, or a place, by its owner. Its `match` says which of their asks it watches.
-It stands at `verse.resolvers.<name>`.
+`viff.for.<person>`, or a place, by its owner. Its `match` says which of their asks it watches.
+It stands at `mirror.resolvers.<name>`.
 
 See [Resolvers](attached-resolvers.md).
 
@@ -543,7 +543,7 @@ See [Resolvers](attached-resolvers.md#onward-asks).
 
 ### task
 
-A task is a unit of work that verse governs and that you can steer. An agent, a shell command,
+A task is a unit of work that viff governs and that you can steer. An agent, a shell command,
 a worker or a person does the work. The id of a task names the work, and not one run.
 
 See [Tasks](reference/tasks.md).
@@ -569,28 +569,28 @@ See [Tasks](reference/tasks.md#one-id-many-runs).
 | `running` | the work is in progress |
 | `paused` | a hold stopped the run at a boundary, until somebody resumes it |
 | `done` | the task finished |
-| `failed` | the task ran and did not succeed, or verse and its runner lost each other, which its record says as `orphaned: true` |
+| `failed` | the task ran and did not succeed, or viff and its runner lost each other, which its record says as `orphaned: true` |
 | `cancelled` | an operator stopped the task |
 
 See [architecture.md](platform/architecture.md#data-and-failure-model), in the repository.
 
 ### instance record
 
-The instance record of a task is the data at `verse.task.instance.<id>`. It holds the state of
+The instance record of a task is the data at `mirror.task.instance.<id>`. It holds the state of
 the latest run: the status, the last output, the result, the runner.
 
 See [Tasks](reference/tasks.md#the-mirror).
 
 ### run record
 
-The run record of a run is the data at `verse.task.run.<id>@<occurrence>`. Verse writes it
+The run record of a run is the data at `mirror.task.run.<id>@<occurrence>`. Viff writes it
 when the run starts and when the run ends.
 
 See [Tasks](reference/tasks.md#one-id-many-runs).
 
 ### mirror (of tasks)
 
-The mirror is the part of verse that writes the state of each task into the store, as the
+The mirror is the part of viff that writes the state of each task into the store, as the
 instance record and the run records. It writes as `system:mirror`.
 
 In a page about tasks, "the mirror" has this meaning.
@@ -608,7 +608,7 @@ See [External tasks](external-tasks.md#a-task-is-a-contract-not-a-runtime).
 ### tool
 
 A tool is a named action that a task may take: an agent's, such as `read_file` or `run_bash`,
-or one a script calls with `verse-call-tool`, such as `git-push` or `question-ask`. The runner
+or one a script calls with `viff-call-tool`, such as `git-push` or `question-ask`. The runner
 offers those whose verb the task's [environment](#environment) gives. The task's
 [autonomy](#autonomy) decides each use of a tool that is a [step](#step-of-a-task).
 
@@ -636,7 +636,7 @@ never adds to it: a step outside the environment is refused before any row is re
 that can match nothing the environment gives is refused where it is written. Under a network of
 `allow`, each connection is decided too, and a row on the network allows or denies, never asks.
 The autonomy can be replaced while the task runs:
-`verse task autonomy <id> '[{match: {system: commands}, then: allow}, {then: ask}]'`. A row on
+`viff task autonomy <id> '[{match: {system: commands}, then: allow}, {then: ask}]'`. A row on
 `files` or `commands` is advisory: it decides the act as the agent names it, and a write through
 the shell is a command ([why](systems/inside.md#a-row-on-files-or-commands-is-advisory)).
 
@@ -657,11 +657,11 @@ See [Tasks](reference/tasks.md#the-doer).
 
 ### system
 
-A system is something outside verse that verse reads or acts on: a repository (`git`), its
+A system is something outside viff that viff reads or acts on: a repository (`git`), its
 issue tracker (`git-issue`), a forge (`github`), Linear (`linear-issue`), Slack (`slack`). An
 iod writes the system's state into the store, and carries a rule's writes back out to it. A
-task calls the system's verbs through a runner. Verse keeps one document per system at
-`verse.systems.<name>`, naming its verbs and their params.
+task calls the system's verbs through a runner. Viff keeps one document per system at
+`mirror.systems.<name>`, naming its verbs and their params.
 
 See [Systems](systems/README.md).
 
@@ -672,10 +672,10 @@ runner holds for it. It is written as an environment is, blocks of the system's 
 verbs, each attribute a tony match pattern, under `systems.<name>.ceiling` in the runner's configuration,
 and it lists what it allows: a system with no ceiling is closed, the network apart. The runner
 publishes it with its offers, beside what it `builds` of the system by its nature. A spawn's
-[environment](#environment) lies within it: verse refuses to install one beyond it, and the
+[environment](#environment) lies within it: viff refuses to install one beyond it, and the
 runner holds it again at the launch and at each act.
 
-See [the verse runner](reference/runnerd.md#what-it-offers).
+See [the viff runner](reference/runnerd.md#what-it-offers).
 
 ### step (of a task)
 
@@ -699,7 +699,7 @@ See [Task control](task-control.md#the-event-envelope-and-the-cursor).
 ### seam
 
 A seam is a place where what does the work can change and the commands stay the same. Where a
-task runs is a seam: in the verse process or on a runner, and every `verse task` command works
+task runs is a seam: in the viff process or on a runner, and every `viff task` command works
 on both.
 
 See [where a task runs is a seam](reference/tasks.md#where-a-task-runs-is-a-seam). How the
@@ -707,12 +707,12 @@ seams are built is in [Seams](seams.md), in the repository.
 
 ### runner
 
-A runner is a place where verse runs a task. Verse connects to it.
+A runner is a place where viff runs a task. Viff connects to it.
 
 | Runner | What it is |
 |---|---|
-| `verse.runners.local` | the local runner: the `runnerd` `verse up` starts beside itself and registers, unless `localRunner: false` |
-| an installed runner | another host, at a URL. It stands at `verse.runners.<name>`, which keeps what the runner offers: the agents and scripts it runs, as the runner described itself when it was installed or last checked. |
+| `mirror.runners.local` | the local runner: the `runnerd` `viff up` starts beside itself and registers, unless `localRunner: false` |
+| an installed runner | another host, at a URL. It stands at `mirror.runners.<name>`, which keeps what the runner offers: the agents and scripts it runs, as the runner described itself when it was installed or last checked. |
 
 See [Runners](runners.md).
 
@@ -729,7 +729,7 @@ See [Task control](task-control.md).
 ### claim (of a worker)
 
 A claim is how a worker becomes the one working a task: the runner known at the spawn, or the
-name a running status carries. Verse then grants that worker `read-write` and `control` on the
+name a running status carries. Viff then grants that worker `read-write` and `control` on the
 task, and writes every report as it.
 
 A claim of this kind is about one task.
@@ -738,11 +738,11 @@ See [Runners](runners.md).
 
 ### agent
 
-An agent is a registered program that works a prompt one turn at a time. `verse` is verse's
+An agent is a registered program that works a prompt one turn at a time. `viff` is viff's
 own agent. A runner offers others by name, such as `claude` or `codex`, each with the settings it
 takes. A spawn names one, with its settings beside the name: `agent: {name: codex, model:
-gpt-5-codex}`. A prompt that names none is for verse's default agent, `verse` unless the config's
-`defaultAgent` says another, and verse routes it to a runner that offers it.
+gpt-5-codex}`. A prompt that names none is for viff's default agent, `viff` unless the config's
+`defaultAgent` says another, and viff routes it to a runner that offers it.
 
 See [Tasks](reference/tasks.md#the-doer).
 
@@ -757,8 +757,8 @@ See [Tasks](reference/tasks.md#the-doer).
 ### virtual key
 
 A virtual key is the model credential that a task runs under. A spawn names it by address, as
-`virtualKey: acme.keys.review`; verse reads the address as whoever named it, and the runner
-gets it as the annotation `verse.portkey/virtual-key`.
+`virtualKey: acme.keys.review`; viff reads the address as whoever named it, and the runner
+gets it as the annotation `viff.portkey/virtual-key`.
 
 See [the spawn](reference/action.md#action-what-fires).
 
@@ -766,10 +766,10 @@ See [the spawn](reference/action.md#action-what-fires).
 
 ### iod
 
-An iod is a program that connects verse to one external system, such as a git repository, in
+An iod is a program that connects viff to one external system, such as a git repository, in
 both directions. It has two halves: a [source](#source) writes what the system holds into the
 store, and a [sink](#sink) carries what a rule writes back out to the system. An installed iod stands at
-`verse.iods.<name>`.
+`mirror.iods.<name>`.
 
 Also written: connector, source (in the Go source, for the whole iod), registration.
 
@@ -778,14 +778,14 @@ See [Iods](io.md).
 ### root (of an iod)
 
 The root of an iod is the first segment of every address that the iod writes, such as `git`.
-`verse iod add` takes it as `-root git`.
+`viff iod add` takes it as `-root git`.
 
 See [Iods (reference)](reference/io.md).
 
 ### claim (of an iod)
 
 A claim of an iod is a pattern that names what only that iod may write:
-`owns: [{at: "git.verse"}]`. Verse refuses an iod whose claims overlap the claims of another.
+`owns: [{at: "git.viff"}]`. Viff refuses an iod whose claims overlap the claims of another.
 
 Also written: owns, ownership claim.
 
@@ -793,19 +793,19 @@ See [Iods (reference)](reference/io.md#ownership).
 
 ### probe
 
-A probe is the question verse asks an iod or a runner when it is installed: what are you?
+A probe is the question viff asks an iod or a runner when it is installed: what are you?
 `GET /io` asks an iod. The answer is one of `a source`, `not a source` and `unreachable`, and
-only `not a source` refuses the install. `verse iod add -no-probe` skips it, and `verse iod
+only `not a source` refuses the install. `viff iod add -no-probe` skips it, and `viff iod
 -probe` asks every iod again without recording the answer.
 
 See [Iods (reference)](reference/io.md#routes).
 
 ### source
 
-A source is the in half of an iod. Verse asks it what is true in the external system, and it
+A source is the in half of an iod. Viff asks it what is true in the external system, and it
 answers with a [reflection](platform/glossary.md#reflection). It does not write to the store.
 
-See [Iods](io.md#the-seam-a-source-answers-verse-converges).
+See [Iods](io.md#the-seam-a-source-answers-viff-converges).
 
 ### reflect
 
@@ -816,8 +816,8 @@ See [Iods](io.md).
 
 ### hint
 
-A hint is a message from an iod to verse that says which addresses went stale. It writes
-nothing. Verse answers it by reflecting those addresses again.
+A hint is a message from an iod to viff that says which addresses went stale. It writes
+nothing. Viff answers it by reflecting those addresses again.
 
 See [Iods](io.md#the-core-law-a-hint-is-a-hint-reconcile-is-the-truth).
 
@@ -833,7 +833,7 @@ See [Iods (reference)](reference/io.md#the-out-half).
 
 An input is a request written for a [sink](#sink): a node with a `to` field, anywhere under the
 iod's out place or in an [outbox](#outbox), such as
-`verse data slack acme out hello -put '{to: "user:ana@acme.test", text: "…"}'`. Whoever writes
+`viff data slack acme out hello -put '{to: "user:ana@acme.test", text: "…"}'`. Whoever writes
 it decides where it stands.
 
 See [Iods (reference)](reference/io.md#what-is-asked-and-what-became-of-it).
@@ -852,14 +852,14 @@ See [Iods (reference)](reference/io.md#what-is-asked-and-what-became-of-it).
 
 A principal is who acts. It is a name with its kind in front, such as `user:ana@example.com`.
 Every write names one. A principal is the name that the request gives, or the person that the
-request's token proves where the verse names an identity provider.
+request's token proves where the viff names an identity provider.
 
 See [Permissions](perms.md#principals-and-grantees).
 
 ### kinds of principal
 
 A principal is of one of six kinds: `user:`, `agent:`, `runner:`, `system:`, `via:` and
-`pair:`. A request presents the first three, and verse makes the other three. `pair:<asker>
+`pair:`. A request presents the first three, and viff makes the other three. `pair:<asker>
 <rule>` is a rule's task acting for whoever owns its subject.
 
 See [Permissions reference](reference/perms.md#the-grammar).
@@ -867,15 +867,15 @@ See [Permissions reference](reference/perms.md#the-grammar).
 ### local user
 
 The local user is the principal `user:<login>@localhost`. The CLI acts as the local user
-toward a verse on the same machine, when no user is configured.
+toward a viff on the same machine, when no user is configured.
 
 See [Permissions, walked](perms-guide.md#before-the-first-step-who-you-are).
 
 ### identity provider
 
-An identity provider is a party that signs a statement of who a person is, and the verse
+An identity provider is a party that signs a statement of who a person is, and the viff
 accepts that statement. It is an OpenID Connect issuer that the deployment names under
-`auth.principal.providers`. `verse account login` logs in there, and the verse verifies the
+`auth.principal.providers`. `viff account login` logs in there, and the viff verifies the
 token. The deployment's own iods are verified
 the same way against their workload issuer (`auth.iod`), and so is a runner whose registration
 names its token's subject. Slack and GitHub are not identity providers here; their accounts are
@@ -887,8 +887,8 @@ See [Who a request is from](reference/perms.md#who-a-request-is-from).
 
 An account binding is the record that an account in another system is a principal: a Slack
 member, a GitHub login, or an account at an identity provider. Only the system writes it, from
-evidence it checked, at `verse.identity.<provider>.account.<id>`. A person makes their own
-with `verse account -link <provider>`, by saying a nonce from the account or by logging in. An iod
+evidence it checked, at `mirror.identity.<provider>.account.<id>`. A person makes their own
+with `viff account -link <provider>`, by saying a nonce from the account or by logging in. An iod
 that acts for a person is admitted only through one. One account is one principal.
 
 See [Accounts in other systems](reference/perms.md#accounts-in-other-systems).
@@ -897,7 +897,7 @@ See [Accounts in other systems](reference/perms.md#accounts-in-other-systems).
 
 The claimant of an account binding is how the person who proved it was authenticated: the
 identity provider that verified them, or `asserted` for a person who was whoever their request
-said. It is what lets a reader, and a verse that verifies people, tell the two kinds of binding
+said. It is what lets a reader, and a viff that verifies people, tell the two kinds of binding
 apart.
 
 See [Accounts in other systems](reference/perms.md#accounts-in-other-systems).
@@ -929,8 +929,8 @@ See [Permissions reference](reference/perms.md#the-grammar).
 
 ### group
 
-A group is a named set of grantees, with an owner: `verse group add payments ana@example.com`.
-It stands at `verse.principal.group.<name>`.
+A group is a named set of grantees, with an owner: `viff group add payments ana@example.com`.
+It stands at `mirror.principal.group.<name>`.
 
 See [Permissions](perms.md#grants).
 
@@ -944,9 +944,9 @@ See [Permissions](perms.md#ownership).
 
 ### record
 
-A record is what verse keeps about the permissions of one node. It holds the `owner` of the
+A record is what viff keeps about the permissions of one node. It holds the `owner` of the
 node, its `grants` and its `child-grants`, and on a question `under`, the address of what asked
-it. `verse perms <path>` shows it. A node with no
+it. `viff perms <path>` shows it. A node with no
 record follows the nearest record above it.
 
 Also written: permissions record, perms record.
@@ -955,15 +955,15 @@ See [Permissions reference](reference/perms.md#records).
 
 ### seed
 
-The seed is the records that verse writes from the config at its first start: the root's record,
-the record on `verse`, and the `admin` group. Verse writes them only where they are absent, so an
-operator's later edit stands. `verse up -reseed-perms` writes them again over what stands.
+The seed is the records that viff writes from the config at its first start: the root's record,
+the record on `viff`, and the `admin` group. Viff writes them only where they are absent, so an
+operator's later edit stands. `viff up -reseed-perms` writes them again over what stands.
 
-See [Starting a verse](reference/up.md#configuration).
+See [Starting a viff](reference/up.md#configuration).
 
 ### mirror (of permissions)
 
-In the Go source, the perms mirror is the set of all records, under `verse.perms`. The docs
+In the Go source, the perms mirror is the set of all records, under `mirror.perms`. The docs
 say "the records".
 
 See [Permissions reference](reference/perms.md#records).
@@ -1003,8 +1003,8 @@ See [Permissions](perms.md#grants).
 ### child-grants
 
 `child-grants` is the field of a record that says which grants a node created beneath it
-starts with. Verse copies it when the node is created, unless its creator gives the node grants
-of their own (`verse data … -put … -grants`).
+starts with. Viff copies it when the node is created, unless its creator gives the node grants
+of their own (`viff data … -put … -grants`).
 
 See [Permissions](perms.md#grants).
 
@@ -1012,7 +1012,7 @@ See [Permissions](perms.md#grants).
 
 ### control plane
 
-The control plane is the part of verse that steers. Verse serves it before observation, and it
+The control plane is the part of viff that steers. Viff serves it before observation, and it
 never travels on the stream of changes.
 
 For the permission level, see [control (permission level)](#control-permission-level).
@@ -1024,19 +1024,19 @@ See [Deployment and steering](deployment-and-steering.md#two-planes).
 To steer is to act on work in progress: to answer a gate, to hold or resume, to `say`, to
 cancel, to change the autonomy.
 
-See [Basic concepts](concepts.md#what-verse-is-made-of).
+See [Basic concepts](concepts.md#what-viff-is-made-of).
 
 ### flow
 
-A flow is the live tasks about one subject, or about the subjects that a pattern names. Verse
-keeps no record of it: `verse flow show demo.pr.1` builds it.
+A flow is the live tasks about one subject, or about the subjects that a pattern names. Viff
+keeps no record of it: `viff flow show demo.pr.1` builds it.
 
 See [Control](control.md).
 
 ### hold
 
 A hold stops one run at its next boundary, until somebody resumes the run:
-`verse flow suspend -task <id>`. It does not last across a restart of verse.
+`viff flow suspend -task <id>`. It does not last across a restart of viff.
 
 Also written: pause.
 
@@ -1051,7 +1051,7 @@ See [Control](control.md#a-suspension).
 
 ## Terms of the platform
 
-These terms belong to running, extending or changing verse. Each is defined in
+These terms belong to running, extending or changing viff. Each is defined in
 [the platform glossary](platform/glossary.md), in the repository.
 
 ### converge
@@ -1082,9 +1082,9 @@ See [reflection](platform/glossary.md#reflection), in the repository.
 
 See [reflector](platform/glossary.md#reflector), in the repository.
 
-### root (of verse up)
+### root (of viff up)
 
-See [root (of verse up)](platform/glossary.md#root-of-verse-up), in the repository.
+See [root (of viff up)](platform/glossary.md#root-of-viff-up), in the repository.
 
 ### tombstone
 
@@ -1290,7 +1290,7 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [root (of the store)](#root-of-the-store)
 
-+ [root (of verse up)](#root-of-verse-up)
++ [root (of viff up)](#root-of-viff-up)
 
 + [rule](#rule)
 
@@ -1348,7 +1348,7 @@ See [tombstone](platform/glossary.md#tombstone), in the repository.
 
 + [trusted iod](#trusted-iod)
 
-+ [verse's own half](#verses-own-half)
++ [viff's own half](#viffs-own-half)
 
 + [virtual key](#virtual-key)
 

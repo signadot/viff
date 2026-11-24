@@ -14,12 +14,12 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/systems/systemstest"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // workEnv is the environment codex runs in: its shell, its edits and its questions, which it
@@ -34,12 +34,12 @@ var workEnv = systems.Environment{Systems: systems.Systems{
 // re-executed (TestMain) with fakeEnvVar naming a scenario. The stand-in speaks
 // the same JSON-RPC over stdio the real one does — the message shapes come from the schema the
 // real binary generates — and writes what it was told to a log the test reads back. So what is
-// asserted is the conversation: what verse answered codex, and what codex's answers became on
-// verse's side.
+// asserted is the conversation: what viff answered codex, and what codex's answers became on
+// viff's side.
 
 const (
-	fakeEnvVar = "VERSE_RUNNER_FAKE_CODEX"
-	fakeLogVar = "VERSE_RUNNER_FAKE_LOG"
+	fakeEnvVar = "VIFF_RUNNER_FAKE_CODEX"
+	fakeLogVar = "VIFF_RUNNER_FAKE_LOG"
 )
 
 // fakeServer is the stand-in. It handles the client's requests inline and runs each turn
@@ -85,7 +85,7 @@ func fakeServer() {
 		case "initialize":
 			// How this process was given its login, for the test that asserts the shape.
 			auth := map[string]any{"codexHome": os.Getenv("CODEX_HOME"), "keyInEnv": os.Getenv("OPENAI_API_KEY") != ""}
-			auth["credentialFile"] = os.Getenv("VERSE_CREDENTIAL_FILE")
+			auth["credentialFile"] = os.Getenv("VIFF_CREDENTIAL_FILE")
 			if b, err := os.ReadFile(filepath.Join(os.Getenv("CODEX_HOME"), "auth.json")); err == nil {
 				var a map[string]any
 				_ = json.Unmarshal(b, &a)
@@ -248,7 +248,7 @@ func (f *fake) turn(scenario, turn, text string) {
 		f.record(map[string]any{"approval": "c1", "decision": res})
 		c1 := map[string]any{"id": "c1", "type": "commandExecution", "command": "go test ./...", "cwd": cwd}
 		if strings.Contains(string(res), "accept") {
-			c1["status"], c1["exitCode"], c1["aggregatedOutput"] = "completed", 0, "ok\tverse\t0.1s\n"
+			c1["status"], c1["exitCode"], c1["aggregatedOutput"] = "completed", 0, "ok\tviff\t0.1s\n"
 		} else {
 			c1["status"] = "declined"
 		}
@@ -959,8 +959,8 @@ func TestConfigIsChecked(t *testing.T) {
 
 // greetTool is a runner tool for the tests: a command run, so a gate on commands can stop it, and
 // it says hello.
-func greetTool() verse.Tool {
-	return verse.Tool{
+func greetTool() viff.Tool {
+	return viff.Tool{
 		Name: "greet", Description: "say hello to somebody",
 		Params:   map[string]any{"name": map[string]any{"type": "string"}},
 		Required: []string{"name"},
@@ -982,7 +982,7 @@ func TestCodexIsOfferedTheRunnersTools(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
 	tk, err := Task(runner.Launch{ID: "run-codex-8", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv,
-		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
+		Autonomy: allowAll}, reg, creds, fakeEnv(), t.TempDir(), []viff.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1022,7 +1022,7 @@ func TestARefusedToolCallIsCodexsToRead(t *testing.T) {
 	reg := task.NewRegistry()
 	creds, logPath := fakeCreds(t, "tool")
 	tk, err := Task(runner.Launch{ID: "run-codex-9", Prompt: "greet", Agent: &runner.Agent{Name: Agent}, Environment: workEnv, Autonomy: namedGates},
-		reg, creds, fakeEnv(), t.TempDir(), []verse.Tool{greetTool()}, systemstest.Open(workEnv))
+		reg, creds, fakeEnv(), t.TempDir(), []viff.Tool{greetTool()}, systemstest.Open(workEnv))
 	if err != nil {
 		t.Fatal(err)
 	}

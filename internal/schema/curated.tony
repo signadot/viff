@@ -21,7 +21,7 @@
 # the wire is the whole value of publishing these.
 #
 # Remove an entry as soon as codegen can produce it, and the endpoint will serve the
-# generated one instead. That has already happened once: verse-entity and verse-event were
+# generated one instead. That has already happened once: viff-entity and viff-event were
 # curated because the schema mapper did not consult TextMarshaler and called entity.Ref an
 # int; go-tony v0.0.93 fixed it, so they are generated now and their entries are gone.
 
@@ -45,17 +45,17 @@ define:
   path: .[array(tony-base:ir)]
   value: .[tony-base:ir]
 signature:
-  name: verse-match
+  name: viff-match
 ---
-# trigger.Formula — a match asked of the verse as it moves: `on` at two revisions, `when`
+# trigger.Formula — a match asked of the viff as it moves: `on` at two revisions, `when`
 # at one. It emits the MATCH, unwrapped, so a condition reads back the way it was written;
 # codegen published it as `{op, req}`, the Go struct behind the codec, a shape that never
 # appears on the wire. The match signature is what a reader of the schema should follow.
 context:
 - tony-format/context
-define: !verse-match null
+define: !viff-match null
 signature:
-  name: verse-formula
+  name: viff-formula
 ---
 # trigger.Requirement — a formula's leaf, a match. It never appears on the wire of its own:
 # Formula's codec renders the match it holds, so there is nothing here to describe.
@@ -63,7 +63,7 @@ context:
 - tony-format/context
 define: {}
 signature:
-  name: verse-requirement
+  name: viff-requirement
 ---
 # trigger.Condition — the one custom-codec type whose FIELD NAMES codegen got right; only the
 # types were wrong. It emits `{subject: <match>, on: <formula>, when: <formula>}` — subject
@@ -76,11 +76,11 @@ signature:
 context:
 - tony-format/context
 define:
-  on: .[nullable(verse-formula)]
-  when: .[nullable(verse-formula)]
-  subject: !verse-match null
+  on: .[nullable(viff-formula)]
+  when: .[nullable(viff-formula)]
+  subject: !viff-match null
 signature:
-  name: verse-condition
+  name: viff-condition
 ---
 # trigger.Stratum — one level of the declared ordering. Two of its three fields codegen gets
 # right; `match` is the correction. It is a UNION of match patterns, written bare when there
@@ -88,7 +88,7 @@ signature:
 # of them. codegen saw the Go slice and said `.[array(object)]`, which describes neither the
 # bare form nor the address-string spelling a match may itself take.
 #
-# `level` orders and `name` addresses: the record is verse.trigger.strata.<name>, so two strata
+# `level` orders and `name` addresses: the record is mirror.trigger.strata.<name>, so two strata
 # cannot share a name by construction, and sharing a LEVEL is refused at install because the
 # number is the whole ordering.
 context:
@@ -99,11 +99,11 @@ define:
   level: .[int]
   match: .[tony-base:ir]
 signature:
-  name: verse-stratum
+  name: viff-stratum
 ---
-# entity.Doc — the verse's state at a path, and the one signature whose `define` is empty
+# entity.Doc — the viff's state at a path, and the one signature whose `define` is empty
 # because the SHAPE is the answer rather than a record with fields. The document is one tree,
-# its keys whatever the verse happens to hold, and a path into it answers with the node standing
+# its keys whatever the viff happens to hold, and a path into it answers with the node standing
 # there — an object, an array, a scalar, a null. None of that is enumerable here.
 #
 # codec=custom for the same reason: the Go type wraps a node so the schema can NAME what a read
@@ -113,21 +113,21 @@ context:
 - tony-format/context
 define: {}
 signature:
-  name: verse-state
+  name: viff-state
 ---
 # task.Match — the calls a policy row is about, written FLAT: `{system: git, verb: push, ref:
 # main}`. `system` and `verb` are the two keys every match may carry, and the rest are the
-# step's fields as patterns, which the systems' documents name (verse.systems.<name>); codegen
+# step's fields as patterns, which the systems' documents name (mirror.systems.<name>); codegen
 # saw the Go struct, `{System, Verb, Params}`, and described a `params` field that never
 # appears on the wire.
 context:
 - tony-format/context
 define: .[object(string)]
 signature:
-  name: verse-task-policy-match
+  name: viff-task-policy-match
 ---
 # task.Then — what a policy row does with a call: the word `deny`, `ask` or `allow`, or an
-# object `{ask: <verse-task-policy-ask>}`, an ask with its shape. A UNION of a string and an
+# object `{ask: <viff-task-policy-ask>}`, an ask with its shape. A UNION of a string and an
 # object, so the wire form is either; codegen saw the Go struct, `{Mode, Ask}`, which never
 # appears on the wire.
 context:
@@ -135,7 +135,7 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define: .[tony-base:ir]
 signature:
-  name: verse-task-policy-then
+  name: viff-task-policy-then
 ---
 # runner.Agent — the agent a prompt is for, written FLAT: `{name: codex, model: gpt-5-codex,
 # effort: high, annotations: {…}}`. `name` and `annotations` are the two keys it is written
@@ -147,7 +147,7 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define: .[tony-base:ir]
 signature:
-  name: verse-runner-agent
+  name: viff-runner-agent
 ---
 # io.Failure — a source's last error and when it started: written as `{error, when?}`, and read
 # also as the bare string a registration written before `when` existed carries. A UNION of a
@@ -157,4 +157,4 @@ context:
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define: .[tony-base:ir]
 signature:
-  name: verse-iod-failure
+  name: viff-iod-failure

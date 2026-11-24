@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // A `child-owner` line is the right to CREATE, and these are about the other half of that: a
@@ -18,7 +18,7 @@ const (
 	carol   = "user:carol@example.com"
 )
 
-// standing is an open verse with one node in it that the system made, which leaves no record:
+// standing is an open viff with one node in it that the system made, which leaves no record:
 // it is the root owner's.
 func standing(t *testing.T, at entity.Ref, v entity.Obj) entity.Store {
 	t.Helper()
@@ -45,7 +45,7 @@ func TestANodeThatStandsIsNotAnybodysWhoMayCreateThere(t *testing.T) {
 	// The line holds `owner` out at this very address, which is why the check alone cannot
 	// decide it and the write carries the condition.
 	if ok, _ := entity.MayCreate(store, mallory, doc); !ok {
-		t.Fatal("the fixture is wrong: the open verse does not hold shared.doc out to be created")
+		t.Fatal("the fixture is wrong: the open viff does not hold shared.doc out to be created")
 	}
 	_, err := writeAs(store, mallory, doc.At(), entity.Obj{"title": "mallory's"}.Payload())
 	if !errors.Is(err, entity.ErrForbidden) {

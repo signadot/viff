@@ -5,24 +5,24 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A spawn's autonomy is the task's own: which call each row is about, what happens to it, and for
 // an ask how many approvals, who answers, how long it stands and what silence settles on, and
-// what the question says about itself. The runner carries the rows whole; verse keeps what the
+// what the question says about itself. The runner carries the rows whole; viff keeps what the
 // runner never reads.
 func TestASpawnCarriesItsAutonomy(t *testing.T) {
 	var spec Spec
 	err := codec.Unmarshal([]byte(`{
-		agent: {name: verse}, prompt: "review $[subject.ref]",
+		agent: {name: viff}, prompt: "review $[subject.ref]",
 		autonomy: [
 		  {name: release, match: {system: git, verb: push, ref: refs/heads/main}, then: {ask: {need: 2, answerers: ["user:*"],
 		   within: "4h", default: deny, labels: {slack: C0EXAMPLE000}}}},
 		  {name: shell, match: {system: commands, verb: run}, then: ask},
-		  {match: {system: git, verb: push, ref: !glob "refs/heads/verse/*"}, then: deny},
+		  {match: {system: git, verb: push, ref: !glob "refs/heads/viff/*"}, then: deny},
 		  {then: allow},
 		],
 	}`), &spec, codec.Tony)

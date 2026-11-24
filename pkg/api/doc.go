@@ -1,6 +1,6 @@
-// Package api is the Operator API: versed's HTTP surface, as the routes it serves and the
-// requests and answers that are its own. The CLI, the iods and any program that drives a verse
-// import these declarations, and versed decodes and writes them, so a field renamed on one side
+// Package api is the Operator API: viffd's HTTP surface, as the routes it serves and the
+// requests and answers that are its own. The CLI, the iods and any program that drives a viff
+// import these declarations, and viffd decodes and writes them, so a field renamed on one side
 // is a build failure on the other rather than a key dropped in silence. A runner's API is
 // package runner's. An iod's registration and the rows about it are package io's, and a
 // resolver's package resolver's, since each record lives in the package that owns it.
@@ -9,12 +9,12 @@
 //
 // Each route's request and answer, and the file in this package that holds them; a type from
 // another package is named with it. Each type's comment opens with the route it crosses on.
-// GET /api serves the same table from the registrations (internal/versed/server.go), and a test holds this
-// one to it (internal/versed/apidoc_test.go). A response of `204` is no body.
+// GET /api serves the same table from the registrations (internal/viffd/server.go), and a test holds this
+// one to it (internal/viffd/apidoc_test.go). A response of `204` is no body.
 //
 //	Route                                     Request               Response                     File
 //
-//	The verse
+//	The viff
 //	GET    /status                            -                     Status                       status.go
 //	GET    /healthz                           -                     Health                       status.go
 //	GET    /api                               -                     Routes                       routes.go
@@ -128,13 +128,13 @@
 // What a route answers is named for what it is. A record a route installs is named for the thing
 // (Runner, io.Entity, resolver.Resolver), and a GET by name answers exactly that record, so it
 // can be edited and installed again: the install refuses a field it doesn't know. A listing row
-// embeds the record and adds what verse knows of it now (RunnerRow, io.Row, resolver.Row,
+// embeds the record and adds what viff knows of it now (RunnerRow, io.Row, resolver.Row,
 // GroupRow), and an install answers the row its listing shows, with what a runner described and
 // any warning the install has for the operator. A claim of an account is not an install, so it
-// answers what to do next (AccountClaimed). A registration this verse can't decode is listed as
+// answers what to do next (AccountClaimed). A registration this viff can't decode is listed as
 // a row saying why (`unreadable`), its GET by name answers 500, and its removal takes it out by
 // its name. GET /asks answers each ask as the keys api.AskRecord names, and only those: a check in
-// versed's tests holds every ask they leave to the type, and versed logs a key it drops. Every ask
+// viffd's tests holds every ask they leave to the type, and viffd logs a key it drops. Every ask
 // says its parties the same way: who raised it (`from`), whom it is put to (`to`), and who settled
 // it (`by`). A request
 // that is an act is named for the act (Resolve, Say, SetAutonomy, FlowSelect), and says who did it
@@ -158,11 +158,11 @@
 //
 // # Headers
 //
-// Verse-Principal names who a request is from, where the verse takes names as asserted or beside
-// a verified bearer token (PrincipalHeader). Verse-Version is the build each side was made from
-// (VersionHeader). Verse-Resolver makes a request as a resolver its sender installed
-// (ResolverHeader). Verse-For-Principal is the account an io saw, for a person it relays
-// (ForPrincipalHeader). Verse-Task is the task a runner carries a request for, beside the
+// Viff-Principal names who a request is from, where the viff takes names as asserted or beside
+// a verified bearer token (PrincipalHeader). Viff-Version is the build each side was made from
+// (VersionHeader). Viff-Resolver makes a request as a resolver its sender installed
+// (ResolverHeader). Viff-For-Principal is the account an io saw, for a person it relays
+// (ForPrincipalHeader). Viff-Task is the task a runner carries a request for, beside the
 // runner's own token (TaskHeader).
 //
 // # Not yet one shape

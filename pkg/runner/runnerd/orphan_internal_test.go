@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A TASK HAS ONE END, on its stream and its snapshot alike, when its own end and its lease's

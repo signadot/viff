@@ -15,7 +15,7 @@ import (
 
 // Request / Reply are the whole protocol, and each op is an act the runner performs for the
 // task (ops): a `push` WRITES the world, a `fetch` READS it, and the rest are named for the step
-// each is, `slack.post`, `github-issue.create`, `verse.data-put`. Nothing crosses but requests
+// each is, `slack.post`, `github-issue.create`, `viff.data-put`. Nothing crosses but requests
 // and answers: the credential stays in the runner, used where it lives. Length-prefixed frames
 // rather than newline-delimited ones because tony is a multi-line format: framing a document by
 // newlines would work until the first document that had one.
@@ -47,7 +47,7 @@ type Request struct {
 	// be trusted about what it may touch.
 	Fields map[string]string `tony:"field=fields,omitzero"`
 	// Body is the act's document, where it has one: a pull request's or an issue's body, a
-	// message's text, what a verse verb writes or installs, in tony.
+	// message's text, what a viff verb writes or installs, in tony.
 	Body string `tony:"field=body,omitzero"`
 
 	// op is the op performing the request, on the runner's side: what its reading of a name is

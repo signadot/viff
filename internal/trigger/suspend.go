@@ -21,14 +21,14 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// SuspensionKind is where the records live: verse.trigger.suspension.<id>.
+// SuspensionKind is where the records live: mirror.trigger.suspension.<id>.
 const SuspensionKind = "suspension"
 
 // Every is the wildcard a suspension spells for "every charter", "every rule" and "every
@@ -40,12 +40,12 @@ const Recursive = ".**"
 
 // SuspensionRef names the record of one suspension.
 func SuspensionRef(id string) entity.Ref {
-	return entity.VerseRef(charter.System, SuspensionKind, id)
+	return entity.ViffRef(charter.System, SuspensionKind, id)
 }
 
 // IsSuspension reports whether an address is a suspension's record.
 func IsSuspension(r entity.Ref) bool {
-	return r.ChildOf(entity.VerseRoot, charter.System, SuspensionKind)
+	return r.ChildOf(entity.ViffRoot, charter.System, SuspensionKind)
 }
 
 // Suspension is one record: what it covers, the scope it was made in, and who holds it.
@@ -84,7 +84,7 @@ type Holder struct {
 //
 // The record spells every part: every charter and every subject are Every, an empty charter is
 // baseline's, and an empty subject is refused. A flag left out on the command line is filled in
-// before it gets here (versed's selectionOf), since an empty charter already means baseline's.
+// before it gets here (viffd's selectionOf), since an empty charter already means baseline's.
 func NewSuspension(charter, rule, subject string, recursive bool) (Suspension, error) {
 	s := Suspension{Recursive: recursive}
 	switch charter {
@@ -356,7 +356,7 @@ func (s Suspension) CharterFlag() string {
 }
 
 // ParseCharterFlag splits `--charter <address>[:<rule>]` on its last colon, since a rule's name
-// holds none: `verse-dev.drift:claim`, `:claim` for baseline's rule, `:` for all of baseline's
+// holds none: `viff-dev.drift:claim`, `:claim` for baseline's rule, `:` for all of baseline's
 // rules, and an address alone for every rule of the charter there.
 func ParseCharterFlag(s string) (charter, rule string) {
 	if i := strings.LastIndex(s, AtSep); i >= 0 {
@@ -670,7 +670,7 @@ func (err SuspendedError) Error() string {
 // the same id, joining what was cast, with the time it had left on its clock. Mootness still ends
 // a suspended firing, since the pose sits under it.
 func (e *Engine) ask(wctx context.Context, fl *flight, t Trigger, subj entity.Ref, d task.GateQuestion) (task.Resolution, error) {
-	tool := task.ToolUse{Name: "verse:trigger:" + t.Name}
+	tool := task.ToolUse{Name: "viff:trigger:" + t.Name}
 	for withdrawn := false; ; {
 		if !e.awaitLift(wctx, t.Name, subj) {
 			return task.Resolution{By: task.ByCancelled, Question: d}, context.Cause(wctx)

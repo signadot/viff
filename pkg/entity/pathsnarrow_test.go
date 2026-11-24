@@ -5,8 +5,8 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 func listed(t *testing.T, store entity.Store, path string, pattern entity.Payload) ([]string, bool) {

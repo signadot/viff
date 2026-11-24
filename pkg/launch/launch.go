@@ -5,19 +5,19 @@
 // substrate; it is pure data + binding.
 //
 // Every field is a *reference* to something named elsewhere, or text the authoring party wrote
-// for this spawn — the same index-not-warehouse discipline as the rest of the verse: the spec
+// for this spawn — the same index-not-warehouse discipline as the rest of the viff: the spec
 // points at native semantics; the runner that builds the task resolves the references against
 // its own offer. It maps onto the spawn spec's axes:
 //
 //	Prompt      → the job, for an agent; or
 //	Script      → a script, which is its own doer
-//	Agent       → which agent a prompt is for, and how it works (absent: verse's default agent)
+//	Agent       → which agent a prompt is for, and how it works (absent: viff's default agent)
 //	Environment → what the run can reach, fixed when it starts (systems.Environment)
 //	Autonomy    → what happens to each step within it: denied, asked about (approvals,
 //	              deadline, answerers, labels), or allowed; the last row is the dial
 //
-// Nothing says where it runs: verse finds a runner that offers the doer and holds the
-// environment (versed's routing).
+// Nothing says where it runs: viff finds a runner that offers the doer and holds the
+// environment (viffd's routing).
 //
 // What a run can reach is its environment, never the autonomy: a turn of the dial decides
 // within it and never widens it, and the runner refuses what the environment did not give.
@@ -34,10 +34,10 @@ import (
 
 	tonyeval "github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/exprs"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/exprs"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // AsSubject is the one value `as` takes: the owner of the record the firing is about.
@@ -47,7 +47,7 @@ const AsSubject = "subject"
 // expressions (e.g. "$[subject.ref]") that Bind expands against a concrete event, turning a
 // generic action into a specific launch. All fields are optional; a runner supplies defaults for any left blank.
 //
-//tony:schemagen=verse-launch-spec,notag,comment=Doc,lineComment=Note
+//tony:schemagen=viff-launch-spec,notag,comment=Doc,lineComment=Note
 type Spec struct {
 	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
 	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
@@ -59,7 +59,7 @@ type Spec struct {
 	// Script is a script's text, its own doer; data reaches it as the environment's vars, and
 	// it is not expanded (bindSpec).
 	Script string `tony:"field=script,omitzero"`
-	// Agent is the agent a prompt is for, and how it works; absent is verse's default agent
+	// Agent is the agent a prompt is for, and how it works; absent is viff's default agent
 	// (`defaultAgent`), bound at the spawn.
 	// Its name and its settings take expressions.
 	Agent *runner.Agent `tony:"field=agent,omitzero"`
@@ -80,7 +80,7 @@ type Spec struct {
 	// Not expanded: a row's match names a step and its fields, and an expression in one could
 	// only name a repository or a ref chosen by whoever last wrote the entity being matched.
 	Autonomy task.Autonomy `tony:"field=autonomy,omitzero"`
-	// Timeout bounds the run: a duration ("1h"). Verse enforces it by cancelling, so it holds
+	// Timeout bounds the run: a duration ("1h"). Viff enforces it by cancelling, so it holds
 	// on every runner. Empty is no bound.
 	Timeout string `tony:"field=timeout,omitzero"`
 	// Lease is how long the task runs with nobody asking after it before its runner ends it: a
@@ -89,11 +89,11 @@ type Spec struct {
 	// VirtualKey is the ADDRESS of the model credential this work runs under —
 	// `acme.keys.review` — and the node standing there holds the key's name.
 	//
-	// AN ADDRESS RATHER THAN A NAME, because verse already has one namespace and it is the
-	// tree. THE READ IS THE AUTHORITY: versed resolves this as WHOEVER NAMED IT
-	// (versed.credentialAt) before the task starts, so a charter naming an address its own
+	// AN ADDRESS RATHER THAN A NAME, because viff already has one namespace and it is the
+	// tree. THE READ IS THE AUTHORITY: viffd resolves this as WHOEVER NAMED IT
+	// (viffd.credentialAt) before the task starts, so a charter naming an address its own
 	// owner may not read is refused rather than run; what reaches the runner is the key's
-	// name, as the doer's `verse.portkey/virtual-key` annotation. THE NODE HOLDS THE NAME, so
+	// name, as the doer's `viff.portkey/virtual-key` annotation. THE NODE HOLDS THE NAME, so
 	// re-pointing a budget is a write and every charter naming that address follows.
 	//
 	// Empty = the runner's default credential.
@@ -131,10 +131,10 @@ type Spec struct {
 	//
 	// A task id names the WORK, deliberately: it is derived from the chain and the subject so
 	// that a re-fire is idempotent, a completion hook is scoped to the run that raised it, and
-	// `verse flow demo:pr:1` has something to address. Nothing named the RUN, and one record
+	// `viff flow demo:pr:1` has something to address. Nothing named the RUN, and one record
 	// per id would let a second run overwrite the first (git-issue gjv063rrh12ksvgnfsn0). A
 	// revision rather than a sequence number or a timestamp: an operator asking "which run" is
-	// holding a commit, not a count. Zero when nothing caused it — an ad-hoc `verse task run`
+	// holding a commit, not a count. Zero when nothing caused it — an ad-hoc `viff task run`
 	// stamps the store's own revision at spawn instead.
 	//
 	// It rides to the RECORD and stops there: not a value a charter can read (see
@@ -163,8 +163,8 @@ type Spec struct {
 	// launch and sets it only from `as`, because a charter that could write it would name whoever
 	// it liked to act as.
 	ActsFor string `tony:"field=actsFor,omitzero"`
-	// Credential asks verse to vouch for this task to a system outside it: a short-lived token,
-	// signed by this verse as an issuer, that says which rule's gate let the work through and how:
+	// Credential asks viff to vouch for this task to a system outside it: a short-lived token,
+	// signed by this viff as an issuer, that says which rule's gate let the work through and how:
 	// on the ballots people cast, on its deadline, or as a gate written `auto`. Absent, the task
 	// gets none.
 	//
@@ -179,9 +179,9 @@ type Spec struct {
 	Passed []Passed `tony:"field=passed,omitzero"`
 }
 
-// Credential is what a spawn asks verse to vouch for its task with.
+// Credential is what a spawn asks viff to vouch for its task with.
 //
-//tony:schemagen=verse-launch-credential,notag
+//tony:schemagen=viff-launch-credential,notag
 type Credential struct {
 	// Audience is the system the token is for — `github`, `jira` — as the token's `aud`. A
 	// system that checks a token checks that it was minted for it and not another.
@@ -200,7 +200,7 @@ const (
 
 // Passed is one gate the firing passed, as a credential states it.
 //
-//tony:schemagen=verse-launch-passed,notag
+//tony:schemagen=viff-launch-passed,notag
 type Passed struct {
 	// Gate is the gate's name in its rule; Question the id of the question it posed, when it
 	// posed one.
@@ -232,7 +232,7 @@ type Binding map[string]any
 // charter reaches other data through `!get-path` and `!list-paths`, whose reads a rule tracks.
 // They are callable only where an expansion is given a position (ExpandValue's is the value's
 // own), and are refused by name wherever they are. AN OBJECT OR A LIST IS TONY in a string, the
-// format the rest of verse writes, so a prompt carrying a ledger carries something a person and a
+// format the rest of viff writes, so a prompt carrying a ledger carries something a person and a
 // parser can both read.
 var exprOptions = tonyeval.EvalOptions{
 	DisableBuiltins: []string{"now", "date", "getpath", "listpath", "getenv", "whereami"},
@@ -344,7 +344,7 @@ func (s Spec) Bind(b Binding) (Spec, error) {
 	return out, nil
 }
 
-// CheckByHand is what a spawn written by hand — `verse task run -f`, an ask's `then: {spawn}` —
+// CheckByHand is what a spawn written by hand — `viff task run -f`, an ask's `then: {spawn}` —
 // has to be beside Launch.Check: nothing fires for it, so it sets none of what a firing sets
 // (chain, occurrence, as, actsFor, credential, passed), and an expression, `$[…]`, in a field that
 // names something is refused rather than left as written, since there is nothing to bind it. The
@@ -384,7 +384,7 @@ func (s Spec) CheckByHand() error {
 }
 
 // Who is who does the work, as a record says it: the agent's name, "script", or "" for a spawn
-// as written that names no agent, which takes verse's default agent when it is bound.
+// as written that names no agent, which takes viff's default agent when it is bound.
 func (s Spec) Who() string {
 	switch {
 	case s.Script != "":
@@ -457,20 +457,20 @@ func (x *binder) environment(e systems.Environment) systems.Environment {
 	return out
 }
 
-// AnnotationVirtualKey is the agent annotation the verse runner reads its Portkey virtual key
-// from: the name verse resolved a spawn's `virtualKey` address to.
-const AnnotationVirtualKey = "verse.portkey/virtual-key"
+// AnnotationVirtualKey is the agent annotation the viff runner reads its Portkey virtual key
+// from: the name viff resolved a spawn's `virtualKey` address to.
+const AnnotationVirtualKey = "viff.portkey/virtual-key"
 
-// CheckAnnotations refuses an agent whose annotations name the virtual key. Verse writes that one
-// itself, from `virtualKey`, once whoever named the address may read it (versed.credentialAt):
+// CheckAnnotations refuses an agent whose annotations name the virtual key. Viff writes that one
+// itself, from `virtualKey`, once whoever named the address may read it (viffd.credentialAt):
 // a key written straight into the annotations would be spent without that read.
 func CheckAnnotations(a *runner.Agent) error {
 	if a == nil {
 		return nil
 	}
 	if _, ok := a.Annotations[AnnotationVirtualKey]; ok {
-		return fmt.Errorf("agent.annotations: %s is verse's to write: name the credential's address "+
-			"as `virtualKey`, and verse resolves it as whoever named it", AnnotationVirtualKey)
+		return fmt.Errorf("agent.annotations: %s is viff's to write: name the credential's address "+
+			"as `virtualKey`, and viff resolves it as whoever named it", AnnotationVirtualKey)
 	}
 	return nil
 }

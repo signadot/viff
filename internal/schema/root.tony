@@ -1,12 +1,12 @@
-# THE ROOT — what a verse looks like, by top-level path.
+# THE ROOT — what a viff looks like, by top-level path.
 #
 # This is the one part of the schema that no Go type declares. Every other definition is the
 # wire shape of a struct somewhere (generated) or a correction to one (curated.tony); this one
 # says what the surface IS: the top-level paths, and the shape served at each.
 #
-# It is HAND-WRITTEN, and that is the trade. It used to be derived from versed's route table,
+# It is HAND-WRITTEN, and that is the trade. It used to be derived from viffd's route table,
 # which made it unable to lie and also made the whole schema unobtainable without a server —
-# you could not read what a verse looks like without running one. Now the schema stands alone
+# you could not read what a viff looks like without running one. Now the schema stands alone
 # and the API is what has to agree with it, which is a test (TestTheRootIsTheServedSurface)
 # rather than a construction.
 #
@@ -15,39 +15,39 @@
 #
 # What is missing, and why:
 #
-#   watch   — a stream of server-sent events, not a document. The frames carry verse-event, but
+#   watch   — a stream of server-sent events, not a document. The frames carry viff-event, but
 #             the WIRE form of the stream is not described yet; that is worth adding, and this
 #             is where it goes when it is.
 #   schema  — this document's own shape, which is likewise not a named type.
-#   charter — the installed charter, addressed like the verse itself and answering the same
+#   charter — the installed charter, addressed like the viff itself and answering the same
 #             shape at every node (writes/reads/triggers/strata/children). It is a document
 #             this server BUILDS rather than a struct's wire form, so there is no generated
-#             type to point at; it belongs here the day one exists. `verse-trigger` and
-#             `verse-stratum` still describe what is INSIDE it, and GET /charter/{name}
+#             type to point at; it belongs here the day one exists. `viff-trigger` and
+#             `viff-stratum` still describe what is INSIDE it, and GET /charter/{name}
 #             answers one of them.
 #
-# The control plane is absent by construction: POST /flow/suspend is something you DO to a verse,
+# The control plane is absent by construction: POST /flow/suspend is something you DO to a viff,
 # not part of what one looks like.
 context:
 - tony-format/context
 define:
-  accounts: .[array(verse-account)]
-  asks: .[array(verse-ask-row)]
-  api: .[verse-routes]
-  entity: .[verse-entity]
-  groups: .[array(verse-group-row)]
-  healthz: .[verse-health]
-  iods: .[array(verse-iod-row)]
-  outboxes: .[array(verse-outbox)]
-  perms: .[verse-perms-record]
-  resolvers: .[array(verse-resolver-row)]
-  runners: .[array(verse-runner-row)]
-  flows: .[array(verse-flow-row)]
-  schedules: .[array(verse-schedule-row)]
-  tasks: .[array(verse-instance)]
-  state: .[verse-state]
-  status: .[verse-status]
-  whoami: .[verse-whoami]
+  accounts: .[array(viff-account)]
+  asks: .[array(viff-ask-row)]
+  api: .[viff-routes]
+  entity: .[viff-entity]
+  groups: .[array(viff-group-row)]
+  healthz: .[viff-health]
+  iods: .[array(viff-iod-row)]
+  outboxes: .[array(viff-outbox)]
+  perms: .[viff-perms-record]
+  resolvers: .[array(viff-resolver-row)]
+  runners: .[array(viff-runner-row)]
+  flows: .[array(viff-flow-row)]
+  schedules: .[array(viff-schedule-row)]
+  tasks: .[array(viff-instance)]
+  state: .[viff-state]
+  status: .[viff-status]
+  whoami: .[viff-whoami]
 
 signature:
   name: root

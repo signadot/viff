@@ -1,7 +1,7 @@
 // Package tasktest is a conformance suite for producers of task.Snapshot.
 //
-// verse reports a task through one shape wherever it runs — `verse task`, `task get` and the
-// mirrored entity all read task.Snapshot (`task get` as verse's api.Task, which carries
+// viff reports a task through one shape wherever it runs — `viff task`, `task get` and the
+// mirrored entity all read task.Snapshot (`task get` as viff's api.Task, which carries
 // it) — but that shape is PRODUCED independently by each runner: runnerd projects it from a
 // hosted task, a remote runner from its own worker's reported state. Nothing made two
 // producers agree. Every field is a plain struct member, so a producer that never sets one
@@ -40,7 +40,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Spec describes the task a producer should start, and how (or whether) to drive it to a
@@ -152,7 +152,7 @@ func completionIsAResult(t *testing.T, p Producer) {
 //
 // The reason is the entire point of raising a gate rather than deciding: it is what the
 // resolver reads. It reached the read plane and was dropped from the snapshot, so
-// `verse question` listed the escalation with a blank where the justification belonged.
+// `viff question` listed the escalation with a blank where the justification belonged.
 func gateReasonSurvives(t *testing.T, p Producer) {
 	if !p.Caps().ExecutorGates {
 		t.Skip("producer cannot raise a gate from outside the driver")

@@ -1,7 +1,7 @@
-// Package slack reflects a Slack workspace into the `slack:*` slice of the entity-verse.
+// Package slack reflects a Slack workspace into the `slack:*` slice of the entity-viff.
 //
 // It is a deployed source: a program holding a bot token, serving the two routes
-// source/iod serves, with verse dialling it and converging its answers. It cannot be an
+// source/iod serves, with viff dialling it and converging its answers. It cannot be an
 // in-process source for the same reason it does not have to be — the credential is the whole
 // difference between it and the git source, and a credential belongs where it is already the
 // operator's problem to hold one (docs/io.md, "nothing new about credentials").
@@ -18,7 +18,7 @@
 //	slack.acme.message.C0193."17000…"  that channel's window, newest last
 //	slack.acme.user.U04AB              the people
 //
-// So a channel and its history are one subtree — `verse data slack acme message C0193` is the
+// So a channel and its history are one subtree — `viff data slack acme message C0193` is the
 // window — and the workspace is one claim rather than a prefix inside every id.
 package slack
 
@@ -28,8 +28,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // Root is the entity slice a Slack source owns and is the single writer of.
@@ -90,7 +90,7 @@ type Slack struct {
 	log       func(string, ...any)
 }
 
-var _ verseio.Source = (*Slack)(nil)
+var _ viffio.Source = (*Slack)(nil)
 
 // New builds a Slack source and asks the token who it is.
 //
@@ -161,8 +161,8 @@ func (s *Slack) Root() string { return s.root }
 // `slack.<workspace>`, so the claim is where its entities live rather than a pattern over ids.
 // A bot token is issued for one workspace, so a source is one workspace's, and two sources are
 // two workspaces — two places, disjoint because they are different places.
-func (s *Slack) Owns() []verseio.Own {
-	return []verseio.Own{{At: s.WorkspaceRef().String()}}
+func (s *Slack) Owns() []viffio.Own {
+	return []viffio.Own{{At: s.WorkspaceRef().String()}}
 }
 
 // place is the address segments this workspace's entities stand under, followed by more.
@@ -204,7 +204,7 @@ func (s *Slack) Workspace() string { return s.workspace }
 
 // Reflect reads the workspace and returns what `slack:*` should hold. A zero ref reads every
 // watched channel (the full pass); a channel or message ref reads just that channel.
-func (s *Slack) Reflect(ctx context.Context, ref entity.Ref) (verseio.Reflection, error) {
+func (s *Slack) Reflect(ctx context.Context, ref entity.Ref) (viffio.Reflection, error) {
 	channel, full := s.target(ref)
 	if full {
 		return s.reflectAll(ctx)
@@ -213,7 +213,7 @@ func (s *Slack) Reflect(ctx context.Context, ref entity.Ref) (verseio.Reflection
 		// A ref in another workspace's slice. An EMPTY reflection with no covers, not an
 		// error: it claims nothing, so converge writes nothing and tombstones nothing, which
 		// is the honest answer to a question about somebody else's slice.
-		return verseio.Reflection{}, nil
+		return viffio.Reflection{}, nil
 	}
 	return s.reflectChannel(ctx, channel)
 }
@@ -249,10 +249,10 @@ func (s *Slack) target(ref entity.Ref) (channel string, full bool) {
 
 // reflectAll is the full pass: every channel the bot is in, each one's window, and — when
 // asked for — the people.
-func (s *Slack) reflectAll(ctx context.Context) (verseio.Reflection, error) {
+func (s *Slack) reflectAll(ctx context.Context) (viffio.Reflection, error) {
 	channels, err := s.api.conversations(ctx)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	// Declared BEFORE the read and unconditionally, exactly as the git source declares its
 	// per-repo covers: a workspace the bot was removed from every channel of must still cover
@@ -261,9 +261,9 @@ func (s *Slack) reflectAll(ctx context.Context) (verseio.Reflection, error) {
 	// PLACES, not predicates. The workspace is a level of the address, so "this workspace's
 	// channels" is `slack.<ws>.channel.*` — where an id carrying the workspace needed a payload
 	// predicate to say it, and a reader had to trust every entity to carry the field.
-	rn := verseio.Reflection{Covers: []entity.Pattern{
-		verseio.Cover(s.place("channel", "*")...),
-		verseio.Cover(s.place("message", "*", "*")...),
+	rn := viffio.Reflection{Covers: []entity.Pattern{
+		viffio.Cover(s.place("channel", "*")...),
+		viffio.Cover(s.place("message", "*", "*")...),
 	}}
 	for _, c := range channels {
 		if !s.watched(c) {
@@ -271,7 +271,7 @@ func (s *Slack) reflectAll(ctx context.Context) (verseio.Reflection, error) {
 		}
 		s.addChannel(&rn, c)
 		if err := s.addMessages(ctx, &rn, c.ID); err != nil {
-			return verseio.Reflection{}, err
+			return viffio.Reflection{}, err
 		}
 	}
 	if s.users {
@@ -286,7 +286,7 @@ func (s *Slack) reflectAll(ctx context.Context) (verseio.Reflection, error) {
 			s.log("slack: users not reflected this pass (%v) — the `users:read` scope is what "+
 				"this needs; channels are unaffected", err)
 		} else {
-			rn.Covers = append(rn.Covers, verseio.Cover(s.place("user", "*")...))
+			rn.Covers = append(rn.Covers, viffio.Cover(s.place("user", "*")...))
 			for _, u := range users {
 				s.addUser(&rn, u)
 			}
@@ -297,16 +297,16 @@ func (s *Slack) reflectAll(ctx context.Context) (verseio.Reflection, error) {
 
 // reflectChannel is the targeted pass a hint asks for: one channel, and the covers narrowed to
 // it so the answer cannot tombstone another channel's messages.
-func (s *Slack) reflectChannel(ctx context.Context, id string) (verseio.Reflection, error) {
+func (s *Slack) reflectChannel(ctx context.Context, id string) (viffio.Reflection, error) {
 	c, err := s.api.conversationInfo(ctx, id)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	// NARROWED BY THE PATH ITSELF: the channel node, and the messages under that channel — so
 	// this pass cannot tombstone another channel's window.
-	rn := verseio.Reflection{Covers: []entity.Pattern{
-		verseio.Cover(s.place("channel", id)...),
-		verseio.Cover(s.place("message", id, "*")...),
+	rn := viffio.Reflection{Covers: []entity.Pattern{
+		viffio.Cover(s.place("channel", id)...),
+		viffio.Cover(s.place("message", id, "*")...),
 	}}
 	if !s.watched(c) {
 		// Narrowed out of what this source reflects: the covers stand, the entities do not, so
@@ -316,7 +316,7 @@ func (s *Slack) reflectChannel(ctx context.Context, id string) (verseio.Reflecti
 	}
 	s.addChannel(&rn, c)
 	if err := s.addMessages(ctx, &rn, id); err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	return rn, nil
 }
@@ -329,7 +329,7 @@ func (s *Slack) watched(c channel) bool {
 	return s.only[c.Name] || s.only[c.ID]
 }
 
-func (s *Slack) addChannel(rn *verseio.Reflection, c channel) {
+func (s *Slack) addChannel(rn *viffio.Reflection, c channel) {
 	p := entity.Obj{
 		"workspace": s.workspace,
 		"channel":   c.ID,
@@ -353,7 +353,7 @@ func (s *Slack) addChannel(rn *verseio.Reflection, c channel) {
 }
 
 // addMessages reads one channel's window, and the threads hanging off it.
-func (s *Slack) addMessages(ctx context.Context, rn *verseio.Reflection, id string) error {
+func (s *Slack) addMessages(ctx context.Context, rn *viffio.Reflection, id string) error {
 	msgs, err := s.api.history(ctx, id, s.depth)
 	if err != nil {
 		return err
@@ -381,7 +381,7 @@ func (s *Slack) addMessages(ctx context.Context, rn *verseio.Reflection, id stri
 	return nil
 }
 
-func (s *Slack) addMessage(rn *verseio.Reflection, channel string, m message) {
+func (s *Slack) addMessage(rn *viffio.Reflection, channel string, m message) {
 	p := entity.Obj{
 		"workspace": s.workspace,
 		"channel":   channel,
@@ -427,7 +427,7 @@ func (s *Slack) addMessage(rn *verseio.Reflection, channel string, m message) {
 	rn.Add(s.MessageRef(channel, m.TS), p)
 }
 
-func (s *Slack) addUser(rn *verseio.Reflection, u user) {
+func (s *Slack) addUser(rn *viffio.Reflection, u user) {
 	p := entity.Obj{
 		"workspace": s.workspace,
 		"user":      u.ID,

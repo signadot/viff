@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/io/slack"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/io/slack"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // SLACK IS A SYSTEM, and each tool here is one of its verbs (package systems): `slack-post`,
@@ -26,8 +26,8 @@ var (
 )
 
 // slackTools are the Slack tools a task has where the runner holds a bot token.
-func slackTools(cl *delivery.Client) []verse.Tool {
-	return []verse.Tool{
+func slackTools(cl *delivery.Client) []viff.Tool {
+	return []viff.Tool{
 		slackTool(cl, slackPostTool, delivery.OpSlackPost, task.StepSlackPost,
 			"Post a message in a Slack channel the runner's bot is in, named as Slack shows it (`deploys` or "+
 				"`#deploys`, never its id). The runner posts it with its own token, and the message ends with a "+
@@ -57,7 +57,7 @@ func slackTools(cl *delivery.Client) []verse.Tool {
 // fields cannot be derived from is refused before any gate, and Do says so rather than send it;
 // what Do sends is what the fields named, so a post carries no thread a reply would be asked
 // about.
-func slackTool(cl *delivery.Client, name, op, step, what string, params map[string]any, required []string) verse.Tool {
+func slackTool(cl *delivery.Client, name, op, step, what string, params map[string]any, required []string) viff.Tool {
 	params["channel"] = map[string]any{"type": "string"}
 	fields := func(in map[string]any) (map[string]string, bool) {
 		if _, stray := untaken(name, in, params); stray {
@@ -81,7 +81,7 @@ func slackTool(cl *delivery.Client, name, op, step, what string, params map[stri
 		}
 		return fields, true
 	}
-	return verse.Tool{
+	return viff.Tool{
 		Name: name, Description: what, Params: params, Required: append([]string{"channel"}, required...),
 		Step: step, Fields: fields,
 		Do: func(ctx context.Context, tu task.ToolUse) (string, bool, error) {

@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// A commit's TRAILERS reach the verse; its body does not.
+// A commit's TRAILERS reach the viff; its body does not.
 //
 // The trailer block is the one part of a commit message that is structured enough to condition
 // on — `Tier:`, `Breaks:`, `Co-Authored-By:`, and the provenance a coding runner writes about
@@ -25,7 +25,7 @@ func TestReflectCarriesCommitTrailers(t *testing.T) {
 	// A message with a body AND a trailer block — the shape this exists for. The body is
 	// deliberately multi-line, which is what breaks a line-per-commit scan.
 	msg := "fix the thing\n\nA body that runs\nover several lines.\n\n" +
-		"Verse-Task: p1\nTier: change\nCo-Authored-By: A <a@x>\nCo-Authored-By: B <b@x>\n"
+		"Viff-Task: p1\nTier: change\nCo-Authored-By: A <a@x>\nCo-Authored-By: B <b@x>\n"
 	tcommit(t, dir, "a.txt", "one", msg)
 	// A second commit, with no trailers, AFTER the multi-line one: if the scan mis-frames the
 	// first message it loses this one, which is the failure mode that matters.
@@ -43,7 +43,7 @@ func TestReflectCarriesCommitTrailers(t *testing.T) {
 		t.Errorf("subject = %q — %%s must stay the subject even though %%B is now fetched", cs[1].msg)
 	}
 	want := map[string]string{
-		"Verse-Task":     "p1",
+		"Viff-Task":      "p1",
 		"Tier":           "change",
 		"Co-Authored-By": "A <a@x> B <b@x>", // repeated keys join, as git's own separator does
 	}
@@ -106,7 +106,7 @@ func TestParseTrailers(t *testing.T) {
 	}, {
 		// Not a bug to fix here: a trailer block is a heuristic over the last paragraph, and
 		// git's own parser reports this one too. It is the argument for the convention living
-		// in the key NAMESPACE — `Verse-Task` is safe to match on, bare `Status` never was.
+		// in the key NAMESPACE — `Viff-Task` is safe to match on, bare `Status` never was.
 		name: "prose shaped like a trailer is indistinguishable from one",
 		msg:  "subject\n\nSome preamble.\n\nStatus: proposal, nothing here runs.",
 		want: map[string]string{"Status": "proposal, nothing here runs."},

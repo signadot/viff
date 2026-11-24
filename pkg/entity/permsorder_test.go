@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // WHAT IS SERVED FROM A REVISION IS CHECKED AGAINST PERMS AS OF THAT REVISION, AT LEAST: a record
@@ -59,7 +59,7 @@ func delayed(in <-chan entity.Commit, hold func()) <-chan entity.Commit {
 	return out
 }
 
-// openTracked is a verse whose root holds `read` out to everyone beneath it, with the mirror
+// openTracked is a viff whose root holds `read` out to everyone beneath it, with the mirror
 // loaded and watched through the system's view; raw is the store underneath, written around it.
 func openTracked(t *testing.T, raw entity.Store) entity.Store {
 	t.Helper()
@@ -79,8 +79,8 @@ func createPrivate(t *testing.T, writer entity.Store, id string) entity.Ref {
 	rec := entity.Obj{entity.OwnerField: alice, entity.GrantsField: entity.GrantsPayload(node.Segs(), nil)}.Payload()
 	mirror := entity.Obj{entity.PermsSystem: entity.Obj{entity.PermsKind: entity.Obj{node.String(): rec}.Payload()}.Payload()}.Payload()
 	if _, _, err := writer.Write(entity.Write{At: entity.RefAt().At(), Value: entity.Obj{
-		"demo":           entity.Obj{id: entity.Obj{"secret": id}.Payload()}.Payload(),
-		entity.VerseRoot: mirror,
+		"demo":          entity.Obj{id: entity.Obj{"secret": id}.Payload()}.Payload(),
+		entity.ViffRoot: mirror,
 	}.Payload()}); err != nil {
 		t.Fatalf("writing %s with its record: %v", node, err)
 	}
@@ -247,7 +247,7 @@ const (
 )
 
 func perms(at []string) bool {
-	return len(at) >= 2 && at[0] == entity.VerseRoot && at[1] == entity.PermsSystem
+	return len(at) >= 2 && at[0] == entity.ViffRoot && at[1] == entity.PermsSystem
 }
 
 func (s *stalling) WatchSubtreeProgress(depth int, prefix ...string) (<-chan entity.Commit, func(), func(context.Context) (int64, error), error) {

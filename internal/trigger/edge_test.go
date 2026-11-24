@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // ci writes a ci:status entity at a state.
@@ -137,7 +137,7 @@ func TestOnIsGuardedByWhen(t *testing.T) {
 	waitStage(t, store, one, "shipped")
 }
 
-// An `on` trigger does NOT act on the backlog. Installed over a verse where its predicate
+// An `on` trigger does NOT act on the backlog. Installed over a viff where its predicate
 // already holds, there is no rising edge to observe — which is exactly the opposite of a
 // subject-dispatched trigger, whose level-triggered seed acts on everything already standing.
 // Both readings are defensible; the difference is what `on` MEANS, and it is worth pinning.
@@ -369,7 +369,7 @@ func TestAWriteAboveWhatARuleReadsTouchesIt(t *testing.T) {
 		{entity.RefAt("demo", "issue"), false},
 		{entity.RefAt("demo", "issue", "1"), false},
 		{entity.RefAt("other"), false},
-		{entity.RefAt(entity.VerseRoot), false},
+		{entity.RefAt(entity.ViffRoot), false},
 	} {
 		commit := entity.Commit{Rev: 1, Changes: []entity.Event{{Ref: c.ref, Op: entity.Delete, Rev: 1}}}
 		if got := rule.touches(commit); got != c.want {

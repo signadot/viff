@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A TASK ENDS WHEN ITS RECORD SAYS SO, AND ONLY THEN. A task's event stream closing with no end
@@ -27,7 +27,7 @@ func TestATaskEndsOnItsRecordAndNotOnItsStream(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {

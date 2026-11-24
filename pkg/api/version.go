@@ -7,15 +7,15 @@ import (
 	"strings"
 )
 
-// VersionHeader is what each side of a verse conversation stamps its own version in — the
+// VersionHeader is what each side of a viff conversation stamps its own version in — the
 // client on every request, the server on every response.
 //
-// It exists because the wire contract is a moving one. The schema says what a verse looks
+// It exists because the wire contract is a moving one. The schema says what a viff looks
 // like, and a client reading it from its own binary is reading the shapes THAT binary was
-// built against; the verse it is talking to may have been built against others. Nothing else
+// built against; the viff it is talking to may have been built against others. Nothing else
 // notices: a field that moved comes back missing, a route that changed answers 404, and both
 // look like ordinary emptiness. This is the one place the two builds can say who they are.
-const VersionHeader = "Verse-Version"
+const VersionHeader = "Viff-Version"
 
 // PrincipalHeader carries who is asking: the principal every request from the api is made as,
 // which the server stamps on every write the request makes (entity.Write.Principal), spelled
@@ -27,42 +27,42 @@ const VersionHeader = "Verse-Version"
 //
 // A PERSON IS VERIFIED BY A BEARER INSTEAD, where the deployment names an identity provider:
 // `Authorization: Bearer <id_token>` is checked at the door ahead of this header, and the request
-// is made as the principal the token's account is bound to (versed's auth.go). The header beside
+// is made as the principal the token's account is bound to (viffd's auth.go). The header beside
 // a verified bearer names that same principal or is left off; naming another is refused 403.
 //
 // A request without either names nobody, and may read: every method but GET and HEAD is refused
-// 400 (versed's principals), since what nobody writes would be the system's. One carrying a name
-// the grammar does not read, or a name versed makes — `via:`, `system:` — is refused 400 too.
-const PrincipalHeader = "Verse-Principal"
+// 400 (viffd's principals), since what nobody writes would be the system's. One carrying a name
+// the grammar does not read, or a name viffd makes — `via:`, `system:` — is refused 400 too.
+const PrincipalHeader = "Viff-Principal"
 
 // ResolverHeader names the resolver a request is made AS: its name, or its address. The request
-// presents whoever installed it (PrincipalHeader), and versed acts as `via:` the resolver only
+// presents whoever installed it (PrincipalHeader), and viffd acts as `via:` the resolver only
 // where that principal owns it (9ce3bva0, S1) — a resolver acts as whoever installed it, and its
 // service is them acting as it.
-const ResolverHeader = "Verse-Resolver"
+const ResolverHeader = "Viff-Resolver"
 
 // ForPrincipalHeader names the principal a request is made for, when its caller acts for somebody
 // else, as the caller knows them. It is the one shape for a request made for another, whoever the
 // caller is. An io relaying a person it identified names the account, `<provider>:<id>`: the
 // Slack member who typed, the GitHub login who commented. The io's own bearer proves the io, this
-// header is what the io saw, and PrincipalHeader is who it concluded; versed admits the request as
+// header is what the io saw, and PrincipalHeader is who it concluded; viffd admits the request as
 // that person only through the account's binding, and only from an io the deployment trusts for
 // the provider. A principal acting for another principal by name is delegation, which the door
 // does not admit.
-const ForPrincipalHeader = "Verse-For-Principal"
+const ForPrincipalHeader = "Viff-For-Principal"
 
-// TaskHeader names the task a runner's request is made for: a verb the task performs on verse,
-// carried by the runner that hosts it. The runner's own bearer proves the runner, and versed
-// admits the request as the task's owner through the task's record, which versed wrote at the
+// TaskHeader names the task a runner's request is made for: a verb the task performs on viff,
+// carried by the runner that hosts it. The runner's own bearer proves the runner, and viffd
+// admits the request as the task's owner through the task's record, which viffd wrote at the
 // spawn and which names the runner: the record's `runnerName` is the runner's registration, its
 // `runnerSubject` the registration's subject, and the task has not ended. The owner is the
 // record's, so the runner names nobody; PrincipalHeader beside it names that owner or is left off.
 // Only a runner's bearer carries it: from anyone else it is refused.
-const TaskHeader = "Verse-Task"
+const TaskHeader = "Viff-Task"
 
-// Version is this binary's own verse version, read from its build info — the version that
+// Version is this binary's own viff version, read from its build info — the version that
 // actually shipped, not one written down somewhere and left behind. It is "(devel)" for a
-// build from a checkout, which is what `go run ./cmd/verse` and every test binary report, and
+// build from a checkout, which is what `go run ./cmd/viff` and every test binary report, and
 // "" when the build info cannot be read at all.
 func Version() string {
 	bi, ok := debug.ReadBuildInfo()
@@ -72,7 +72,7 @@ func Version() string {
 	return bi.Main.Version
 }
 
-// Skew is how far apart two verse versions are.
+// Skew is how far apart two viff versions are.
 type Skew int
 
 const (
@@ -90,7 +90,7 @@ const (
 
 // VersionSkew reports how far apart a client and a server are, and says it in one line. The
 // line names BOTH versions, always: the failure a skew produces is a missing field or a 404,
-// neither of which says "your verse is older than the one you are talking to".
+// neither of which says "your viff is older than the one you are talking to".
 //
 // The rule is semver's, taken plainly. A different MAJOR is incompatible — that is the whole
 // content of the number. A different MINOR is drift: one side has features the other does not,
@@ -107,7 +107,7 @@ const (
 // A version that does not parse — "(devel)", or empty because the build info would not read —
 // cannot be compared, so any DIFFERENCE is drift and nothing is ever incompatible. That is the
 // live case today and it is deliberately the mild one: two checkouts of different vintages are
-// the normal way verse is developed, and refusing to talk would make the tool unusable long
+// the normal way viff is developed, and refusing to talk would make the tool unusable long
 // before a tag exists to make the judgement on.
 func VersionSkew(client, server string) (Skew, string) {
 	if client == server {

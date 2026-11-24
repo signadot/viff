@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/task"
 
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // mustMatch decodes a charter-authored match, in whichever dialect it was written.
@@ -68,11 +68,11 @@ func TestUpstreamIgnoresUnknownTags(t *testing.T) {
 // root now, so the operator is not something to reject, it is the thing being evaluated.
 // A PATH IS A KINDED PATH, and an operator cannot be written in one. What a `!glob` on a segment
 // used to say is said by a predicate on the payload, which is where both live charters already
-// say it (`value: {name: !glob "verse/auto/*/*"}`) — and a predicate is where a reader looks for
+// say it (`value: {name: !glob "viff/auto/*/*"}`) — and a predicate is where a reader looks for
 // a condition on what a node HOLDS.
 //
 // A path holding a match was the only thing the list form carried, and the list form is gone with
-// it: one spelling for an address, the same one `verse data -at` takes.
+// it: one spelling for an address, the same one `viff data -at` takes.
 func TestAPathTakesNoOperatorAndNoList(t *testing.T) {
 	for _, src := range []string{
 		`{path: [demo, pr, "*"]}`,              // the list form
@@ -296,7 +296,7 @@ func TestNullIdiomsSurviveTheCharterLayer(t *testing.T) {
 
 // A tag in a `value` predicate that names no operator is refused where the rule is read, with
 // the tag named: tony would skip it and compare by equality, so the rule would install and
-// fire on nothing. An operator, and verse's own path reads, are read as what they are.
+// fire on nothing. An operator, and viff's own path reads, are read as what they are.
 func TestAPredicateNamingNoOperatorIsRefused(t *testing.T) {
 	for _, src := range []string{
 		`{path: "demo.pr.*", value: {stage: !gloob "op*"}}`,
@@ -312,8 +312,8 @@ func TestAPredicateNamingNoOperatorIsRefused(t *testing.T) {
 		`{path: "demo.pr.*", value: {stage: !glob "op*"}}`,
 		`{path: "demo.pr.*", value: {stage: !or [open, merged]}}`,
 		`{path: "demo.pr.*", value: !not {stage: merged}}`,
-		`{path: "demo.pr.*", value: {covers: !get-path {path: "git.verse.head"}}}`,
-		`{path: "demo.pr.*", value: {files: !list-paths {path: "git.verse.files"}}}`,
+		`{path: "demo.pr.*", value: {covers: !get-path {path: "git.viff.head"}}}`,
+		`{path: "demo.pr.*", value: {files: !list-paths {path: "git.viff.files"}}}`,
 	} {
 		var m Match
 		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {

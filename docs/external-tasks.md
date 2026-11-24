@@ -1,6 +1,6 @@
 # External tasks
 
-Verse hosts work that it does not run in its own process. The work can be one of two kinds:
+Viff hosts work that it does not run in its own process. The work can be one of two kinds:
 
 - a command on another machine;
 - an agent that runs elsewhere.
@@ -18,7 +18,7 @@ Both follow one model. Three criteria decide the model:
 
 ## A task is a contract, not a runtime
 
-Verse does not define a [task](glossary.md#task) as "an LLM loop". Verse defines a task as a
+Viff does not define a [task](glossary.md#task) as "an LLM loop". Viff defines a task as a
 contract, and anything can fulfil the contract. The contract has six parts:
 
 | Part | What it does |
@@ -28,7 +28,7 @@ contract, and anything can fulfil the contract. The contract has six parts:
 | the [environment](glossary.md#environment) and the [autonomy](glossary.md#autonomy) | decide a step before it runs: one outside the environment is refused, and otherwise the first row of the autonomy that matches it denies it, asks about it or allows it. A step is what an action is about to do, such as `commands.run` with its command. |
 | the [event stream](glossary.md#event-stream) | streams structured `Event`s: `EventSay` narration, `EventExec` results, `EventPending` waits on a gate, `EventStatus` lifecycle and `EventBoundary` cursor |
 | the [control plane](glossary.md#control-plane) | applies steering at a [boundary](glossary.md#boundary): `Pause`, `Resume`, `Cancel`, `Say` and `SetAutonomy`. Its rule is "stop between actions, never undo one". |
-| the [mirror](glossary.md#mirror-of-tasks) | writes the task into the [store](glossary.md#store) as a `verse.task.instance.*` [entity](glossary.md#entity). The task ends with a terminal outcome and a result. |
+| the [mirror](glossary.md#mirror-of-tasks) | writes the task into the [store](glossary.md#store) as a `mirror.task.instance.*` [entity](glossary.md#entity). The task ends with a terminal outcome and a result. |
 
 The contract does not say *where* the driver or the executor runs. An external task is
 therefore not a second system. **An external task is the same contract, fulfilled by an
@@ -37,7 +37,7 @@ the external party connects.
 
 ## Where the seam can go
 
-**Seam 1, an external leaf.** Verse runs the `Task` loop, the gates and the event stream
+**Seam 1, an external leaf.** Viff runs the `Task` loop, the gates and the event stream
 locally. Only `Driver.Next` or `Executor.Execute` calls out. A unix command is an `Executor`
 that `exec`s the command and streams its output. A remote model is a `Driver` that makes an RPC
 to a host.
@@ -45,24 +45,24 @@ to a host.
 Boundaries, gates, cancel between actions and the mirror all work as before, because they are
 local. But the external party must answer for each step. A `Next` or an `Execute` can block for
 a long time. It then holds a goroutine and a context for that time, and it does not survive a
-restart of verse. Seam 1 therefore suits live, short work. It does not suit long work.
+restart of viff. Seam 1 therefore suits live, short work. It does not suit long work.
 
 **Seam 2, an external loop.** The whole `Task` runs elsewhere, on another host. The external
 party reports events, gate requests and its terminal into the store. It receives control from
-verse. The side of verse is a proxy over the mirror.
+viff. The side of viff is a proxy over the mirror.
 
 Seam 2 survives a lost connection and a restart, because the durable state is only entities.
 It is the natural design for remote agents. Seam 2 gives up gating in real time of each action
-of the external party. Verse sees the effects and checkpoints that the party reports, not each
+of the external party. Viff sees the effects and checkpoints that the party reports, not each
 syscall.
 
-Seam 1 is a special case of Seam 2, where the external party never disconnects. Verse therefore
+Seam 1 is a special case of Seam 2, where the external party never disconnects. Viff therefore
 builds the general design on Seam 2. Seam 1 follows from it for a party that is always
 connected.
 
 ## How the external party connects
 
-Verse reaches a [runner](glossary.md#runner) at a URL, and holds a live stream from it. Verse
+Viff reaches a [runner](glossary.md#runner) at a URL, and holds a live stream from it. Viff
 relays control one way and reads events the other way in real time. A live connection makes
 real unix semantics possible:
 
@@ -71,11 +71,11 @@ real unix semantics possible:
 - stdin;
 - a `say` with low latency.
 
-A live connection needs connectivity, and a rule that verse already follows says what the
+A live connection needs connectivity, and a rule that viff already follows says what the
 connection is. **A live stream is a hint, and the entity state is the truth.** It is the same
 split as `Observe : Since` and `webhook : reconcile`. The durable entity contract is the
 authority. The live attachment is the way to go fast, and it is never the source of record. On
-a disconnect, verse connects again from the cursor it kept on the entity, and the runner
+a disconnect, viff connects again from the cursor it kept on the entity, and the runner
 replays what it missed. There is one truth, with two speeds of access.
 
 ## unix and agent on one contract
@@ -96,9 +96,9 @@ replays what it missed. There is one truth, with two speeds of access.
 
 Two things follow from the table.
 
-First, **the control plane of verse is job control.** A [hold](glossary.md#hold), a resume and
+First, **the control plane of viff is job control.** A [hold](glossary.md#hold), a resume and
 a cancel at a boundary match STOP, CONT, and TERM at a safe point. "Stop between actions, never
-undo" means the same as "deliver signals between syscalls". Verse therefore steers a unix
+undo" means the same as "deliver signals between syscalls". Viff therefore steers a unix
 process and an agent in the same way, as long as the control plane does not depend on the
 transport.
 
@@ -123,7 +123,7 @@ Every external kind declares its boundaries. A boundary is a safe point where co
 The boundary is where steering lands, for every kind. How far apart the boundaries are sets the
 latency of control.
 
-## The two shapes, and the one verse runs
+## The two shapes, and the one viff runs
 
 **A, in-process external leaf.** An executor runs a command, streams stdout and stderr as
 events, and turns the exit into a step result. A driver makes an RPC to a model host. Shape A
@@ -131,9 +131,9 @@ is the simplest, and it reuses everything. But it blocks on each step, and it do
 a restart. Shape A is the unix adapter, not the model.
 
 **B, attached remote runtime.** `runnerd`, or any program serving the same contract, hosts a
-task. It exposes the event stream over SSE and control over HTTP, and verse connects to it.
+task. It exposes the event stream over SSE and control over HTTP, and viff connects to it.
 Shape B is rich, live and native to unix: it gives a pty, stdin and an exit. A lost connection
-does not lose the truth, because verse mirrors the stream into the entity as it reads it and
+does not lose the truth, because viff mirrors the stream into the entity as it reads it and
 resumes from the cursor it kept.
 
 | | A leaf | B attached |
@@ -144,7 +144,7 @@ resumes from the cursor it kept.
 | control granularity | per-step | per-step |
 | new machinery | little | a stream |
 
-Verse runs shape B, with one rule and no exceptions. **The entity is the only truth, and the
+Viff runs shape B, with one rule and no exceptions. **The entity is the only truth, and the
 stream is never the authority.**
 
 ## Permissions
@@ -161,7 +161,7 @@ is the runner, not the task's process.
   command) is held by stopping what the agent proposes: a prompt, said so on
   [inside](systems/inside.md), until a seam below the task makes it a bound.
 - **What the runner reports is the record.** Every call is an event on the task's stream,
-  naming the step and its fields, the row that decided it, and whoever answered. Verse holds
+  naming the step and its fields, the row that decided it, and whoever answered. Viff holds
   the stream and the entity; it does not re-derive a step from outside the process.
 - **The existing mechanism carries it.** The task's `Autonomy`, the `Registry` and the `Resolver`
   let a person answer an agent's question, and a task on a runner raises the same question

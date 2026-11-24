@@ -6,13 +6,13 @@
 # and one that lives on a single laptop is one nobody else can use.
 !.claude/skills/
 .worktrees/
-/verse
+/viff
 /o
 /sourced
 /iod
 /runnerd
-/verse-call-tool
-/verse-secret-exec
+/viff-call-tool
+/viff-secret-exec
 dist/
 # mkdocs build output (`mkdocs build` defaults here; `mkdocs serve` needs nothing)
 site/
@@ -23,5 +23,5 @@ scripts/mermaid/node_modules/
 scratchpad/
 __pycache__/
 
-# pitchfork.toml is the local verse; a personal override goes here
+# pitchfork.toml is the local viff; a personal override goes here
 pitchfork.local.toml

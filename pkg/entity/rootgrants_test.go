@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // WHO COMES TO OWN A FRESH TOP-LEVEL NAME IS THE ROOT'S TO SAY. An owner record is written only

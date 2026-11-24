@@ -7,12 +7,12 @@
 // `<system>.<verb>` (`git.push`, what a row matches), and a step's fields are its block's
 // attributes and its verb's fields.
 //
-// The documents (documents/*.tony) are the one place a system is said. Verse installs them in
-// its store at start, under `verse.systems.<name>`, so what a charter may name is readable where
+// The documents (documents/*.tony) are the one place a system is said. Viff installs them in
+// its store at start, under `mirror.systems.<name>`, so what a charter may name is readable where
 // the charter is; a runner's code claims the verbs it implements by asking for their names
 // (Tool, Step), and Check at its start says which documented verb nothing claimed, so a
 // document and the code that honours it cannot drift apart silently. The package depends on
-// nothing of verse's: package task reads it for the steps, and a runner for the tools.
+// nothing of viff's: package task reads it for the steps, and a runner for the tools.
 package systems
 
 //go:generate go tool tony-codegen -dir .

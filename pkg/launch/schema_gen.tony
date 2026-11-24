@@ -4,7 +4,7 @@ context:
 define:
   audience: .[string]
 signature:
-  name: verse-launch-credential
+  name: viff-launch-credential
 ---
 context:
 - tony-format/context
@@ -17,24 +17,24 @@ define:
   question: .[string]
   via: .[string]
 signature:
-  name: verse-launch-passed
+  name: viff-launch-passed
 ---
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
-- runner: github.com/signadot/verse/pkg/runner
+- runner: go.viff.dev/viff/pkg/runner
 define:
   actsFor: .[string]
-  agent: .[nullable(runner:verse-runner-agent)]
+  agent: .[nullable(runner:viff-runner-agent)]
   answer: .[tony-base:ir]
   as: .[string]
   autonomy: !irtype {}
   chain: .[string]
-  credential: .[nullable(verse-launch-credential)]
+  credential: .[nullable(viff-launch-credential)]
   environment: !irtype {}
   lease: .[string]
   occurrence: .[int]
-  passed: .[array(verse-launch-passed)]
+  passed: .[array(viff-launch-passed)]
   person: .[string]
   prompt: .[string]
   retain: .[int]
@@ -43,4 +43,4 @@ define:
   timeout: .[string]
   virtualKey: .[string]
 signature:
-  name: verse-launch-spec
+  name: viff-launch-spec

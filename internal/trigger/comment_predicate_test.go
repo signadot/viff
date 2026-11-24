@@ -8,11 +8,11 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A COMMENT MUST NOT CHANGE WHAT A RULE DOES, and it did: a `!get-path` written under one was
@@ -31,7 +31,7 @@ import (
 // In a codebase whose charters are more comment than rule, that is the worst possible place for
 // a walk to stop.
 func TestACommentDoesNotHideAReadFromTheWalks(t *testing.T) {
-	const let = "- !let\n  let: [{tip: !get-path {at: \"git.head.verse\", path: sha}}]\n  in: {sha: .[tip]}\n"
+	const let = "- !let\n  let: [{tip: !get-path {at: \"git.head.viff\", path: sha}}]\n  in: {sha: .[tip]}\n"
 	for _, tc := range []struct{ name, src string }{
 		{"no comment", "!and\n- !has-path branches\n" + let},
 		{"a comment above the read", "!and\n- !has-path branches\n# why this clause is here\n" + let},
@@ -71,16 +71,16 @@ func TestACommentDoesNotHideAReadFromTheWalks(t *testing.T) {
 func TestARuleWithCommentsAroundItsReadFires(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	setPayload(t, store, entity.RefAt("git", "head", "verse"), `{repo: verse, sha: aaa111}`)
+	setPayload(t, store, entity.RefAt("git", "head", "viff"), `{repo: viff, sha: aaa111}`)
 	// The id an engine writes, colons and all — the shape the live charter's subjects have.
-	subj := entity.RefAt("verse-dev", "merge", "train", "train-cut@git.head.verse@aaa111")
+	subj := entity.RefAt("viff-dev", "merge", "train", "train-cut@git.head.viff@aaa111")
 	setPayload(t, store, subj, `{sha: aaa111, branches: [one]}`)
 
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: run
   condition:
     subject:
-      path: "verse-dev.merge.train.*"
+      path: "viff-dev.merge.train.*"
       value: !and
       # PRESENT AND NON-EMPTY, in that order.
       - !has-path branches
@@ -90,7 +90,7 @@ func TestARuleWithCommentsAroundItsReadFires(t *testing.T) {
       # AND ABOUT THE MAIN THAT IS ACTUALLY THERE: the address carries the sha, so a new main
       # is a new train and a new question.
       - !let
-        let: [{tip: !get-path {at: "git.head.verse", path: sha}}]
+        let: [{tip: !get-path {at: "git.head.viff", path: sha}}]
         in: {sha: .[tip]}
   action:
     patch: {hit: yes}

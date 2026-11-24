@@ -1,6 +1,6 @@
 # Why: The charter
 
-The reasons behind [The charter](../reference/charter.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [The charter](../reference/charter.md). They are for somebody changing viff; the page itself says what viff does.
 
 ## Confinement belongs to the engine
 

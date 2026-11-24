@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // The two routes an external source serves. They are the whole contract: one question about
@@ -38,7 +38,7 @@ type Descriptor struct {
 }
 
 // Owner is the optional face a source uses to declare what it claims to be the single writer
-// of. It is separate from Source because a source deployed alone, into a verse with no other
+// of. It is separate from Source because a source deployed alone, into a viff with no other
 // source of its root, needs nothing from it.
 type Owner interface {
 	Owns() []Own
@@ -88,11 +88,11 @@ var _ Source = (*Client)(nil)
 // The root is passed rather than discovered, and that is not a shortcut. `Source.Root()`
 // cannot fail — it is asked on every converge — while discovering it costs a call that can,
 // so a client that learned it lazily would have to answer the question wrongly or block on a
-// network at an unrelated moment. The registration names it (its `root` field), so verse
+// network at an unrelated moment. The registration names it (its `root` field), so viff
 // always has it; whether the far side AGREES is a separate question, asked once at install by
 // Probe, where an operator is present to hear the answer.
 //
-// tr is the transport, and it is the only thing that changes for a source verse cannot dial:
+// tr is the transport, and it is the only thing that changes for a source viff cannot dial:
 // a dial-in source's transport opens a connection the source itself made, and everything below
 // stays as it is. nil takes http.DefaultTransport.
 func HTTP(root, baseURL string, tr http.RoundTripper) *Client {
@@ -180,7 +180,7 @@ func (c *Client) get(ctx context.Context, path string, v any) error {
 	}
 	// Parsed to a NODE and stripped of its layout hints before it becomes a value, which is
 	// the same thing codec.Read does for a request body and for the same reason: this is the
-	// boundary where somebody else's document becomes something verse holds and compares.
+	// boundary where somebody else's document becomes something viff holds and compares.
 	//
 	// The hint that matters is `!bracket`. It says the object was written inline — `{a: 1}`
 	// rather than a block — and the WIRE form writes everything inline, so every object in
@@ -199,7 +199,7 @@ func (c *Client) get(ctx context.Context, path string, v any) error {
 	return nil
 }
 
-// Reach is what a url said when asked, and it is the whole of what verse knows about a
+// Reach is what a url said when asked, and it is the whole of what viff knows about a
 // source's health. There is no fourth state: a probe is answered live, reported, and
 // discarded.
 type Reach int

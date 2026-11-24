@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // Linear's GraphQL API, as much of it as a reflection needs.
 //
 // encoding/json rather than codec, and this file is on scripts/check-json.sh's allowlist for
-// the reason pkg/runner/runnerd/verse/llm.go is: it is somebody else's wire format,
+// the reason pkg/runner/runnerd/viff/llm.go is: it is somebody else's wire format,
 // and re-rendering it through codec would buy nothing but a second place for it to be wrong.
 //
 // One endpoint, one verb, three queries. A generated GraphQL client would be a build step and
@@ -74,7 +74,7 @@ func (a *api) query(ctx context.Context, q string, vars map[string]any, out any)
 	}
 	// Named, because it is the answer a source gets for asking too often, it fixes itself, and
 	// reading it as anything else sends an operator looking at their API key. See
-	// verseio.Throttle for the side that prevents it — Linear's budget is hourly, so a source
+	// viffio.Throttle for the side that prevents it — Linear's budget is hourly, so a source
 	// that spends it in the first ten minutes reflects nothing for the next fifty.
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return fmt.Errorf("linear: rate limited (reset %s)",
@@ -102,7 +102,7 @@ func (a *api) query(ctx context.Context, q string, vars map[string]any, out any)
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("linear: %s: %s", resp.Status, snippet(raw))
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusRequestTimeout {
-			return verseio.Permanent(err) // a 4xx is not asked again (verseio.Permanent)
+			return viffio.Permanent(err) // a 4xx is not asked again (viffio.Permanent)
 		}
 		return err
 	}
@@ -118,7 +118,7 @@ func (a *api) query(ctx context.Context, q string, vars map[string]any, out any)
 		// A REFUSAL, where Linear says the error is the request's (`userError`); one it does not
 		// say that of is asked again, as before.
 		if refused {
-			return verseio.Permanent(err)
+			return viffio.Permanent(err)
 		}
 		return err
 	}
@@ -338,7 +338,7 @@ func (a *api) issueID(ctx context.Context, identifier string) (string, error) {
 		return "", err
 	}
 	if r.Issue == nil || r.Issue.ID == "" {
-		return "", verseio.Permanent(fmt.Errorf("linear: no issue %s this credential can see", identifier))
+		return "", viffio.Permanent(fmt.Errorf("linear: no issue %s this credential can see", identifier))
 	}
 	return r.Issue.ID, nil
 }

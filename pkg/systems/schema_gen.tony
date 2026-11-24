@@ -10,7 +10,7 @@ define:
   unique: .[bool]
   values: .[array(string)]
 signature:
-  name: verse-system-attribute
+  name: viff-system-attribute
 ---
 context:
 - tony-format/context
@@ -22,23 +22,23 @@ define:
   required: .[bool]
   values: .[array(string)]
 signature:
-  name: verse-system-field
+  name: viff-system-field
 ---
 context:
 - tony-format/context
 define:
   description: .[string]
-  fields: .[array(verse-system-field)]
+  fields: .[array(viff-system-field)]
   name: .[string]
 signature:
-  name: verse-system-verb
+  name: viff-system-verb
 ---
 context:
 - tony-format/context
 define:
-  attributes: .[array(verse-system-attribute)]
+  attributes: .[array(viff-system-attribute)]
   description: .[string]
   name: .[string]
-  verbs: .[array(verse-system-verb)]
+  verbs: .[array(viff-system-verb)]
 signature:
-  name: verse-system
+  name: viff-system

@@ -24,7 +24,7 @@ import (
 const FormatParam = "format"
 
 // RequestFormat is the format a request BODY is written in. JSON is fine here — it says
-// what the bytes are, and verse reads them.
+// what the bytes are, and viff reads them.
 func RequestFormat(r *http.Request) Format {
 	if f, ok := paramFormat(r); ok {
 		return f
@@ -36,13 +36,13 @@ func RequestFormat(r *http.Request) Format {
 }
 
 // ResponseFormat is the format a response body should be written in, or an error naming
-// the rendering the client asked for and verse does not produce — `?format=json` or
+// the rendering the client asked for and viff does not produce — `?format=json` or
 // `Accept: application/json`. Callers turn that into a 406; nothing else in the package
 // can, because only the caller knows whether a status line has already gone out.
 func ResponseFormat(r *http.Request) (Format, error) {
 	// An unwritable ?format= is refused, while an UNPARSEABLE one is still ignored. The
 	// difference is what the sender can be told: "tny" is a typo whose best guess is
-	// obvious, "json" is a specific thing verse will not do and should hear about.
+	// obvious, "json" is a specific thing viff will not do and should hear about.
 	if v := r.URL.Query().Get(FormatParam); v != "" {
 		if f, err := Parse(v); err == nil {
 			if !Writable(f) {
@@ -97,12 +97,12 @@ func Write(w http.ResponseWriter, r *http.Request, code int, v any) {
 // docd and `o` already use it. The pretty rendering is a presentation of a document, and
 // presentation has hazards a machine has no use for: it is indentation-sensitive, it chooses
 // block scalars for multi-line strings, and a string ending a line in whitespace once made the
-// next sibling key land at column zero — a document verse could not read back, sent by a source
+// next sibling key land at column zero — a document viff could not read back, sent by a source
 // that thought it had answered (source/github, and item 21 of
 // tony-format#f69agjyeh12ksa25cnn0). Wire has no indentation to get wrong.
 //
 // The FORMAT is still negotiated, because wire-ness is orthogonal to it: a client asking for
-// YAML gets compact YAML, and one asking for something verse does not render still gets 406.
+// YAML gets compact YAML, and one asking for something viff does not render still gets 406.
 func WriteWire(w http.ResponseWriter, r *http.Request, code int, v any) {
 	node, err := ToNode(v)
 	if err != nil {
@@ -126,7 +126,7 @@ func WriteWire(w http.ResponseWriter, r *http.Request, code int, v any) {
 
 // WriteNode writes an already-built document.
 //
-// A client that demanded a rendering verse does not produce gets 406 rather than the
+// A client that demanded a rendering viff does not produce gets 406 rather than the
 // document in some other format: it asked a specific question, and answering a different
 // one under its content type is how a JSON client ends up parsing tony.
 func WriteNode(w http.ResponseWriter, r *http.Request, code int, n *ir.Node) {
@@ -151,7 +151,7 @@ func WriteNode(w http.ResponseWriter, r *http.Request, code int, n *ir.Node) {
 // decode being a no-op, so this returns nil and leaves v alone. Malformed input is still an
 // error — the distinction is "nothing was sent" versus "something unreadable was".
 //
-// The bracket hint is dropped here, at the one point where a document becomes a value verse
+// The bracket hint is dropped here, at the one point where a document becomes a value viff
 // holds (StripBrackets). Doing it per-route would mean finding every field that is an opaque
 // tony node — a charter's `patch`, a match's `fields`, an entity payload, whatever the next
 // one is — and missing one is invisible until someone notices their braces coming back.

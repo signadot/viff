@@ -7,10 +7,10 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // A COMMIT'S PARENTS ARE A LIST, which is what they are: none for a root commit, two for a
@@ -36,13 +36,13 @@ func TestCommitParentsAreAList(t *testing.T) {
 	mergeSha := revParse(t, dir, "HEAD")
 
 	store := entitytest.Store(t)
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("R", dir)
-	if err := verseio.NewReflector(g, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
+	if err := viffio.NewReflector(g, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 	parentsOf := func(sha string) *ir.Node {
-		e, ok, _ := store.Get(entity.RefAt(verseio.GitRoot, "R", "commit", sha))
+		e, ok, _ := store.Get(entity.RefAt(viffio.GitRoot, "R", "commit", sha))
 		if !ok {
 			t.Fatalf("missing git.R.commit.%s", sha)
 		}
@@ -88,9 +88,9 @@ func TestCommitParentsAreAList(t *testing.T) {
 		if err != nil {
 			t.Fatalf("pattern: %v", err)
 		}
-		e, _, _ := store.Get(entity.RefAt(verseio.GitRoot, "R", "commit", of))
+		e, _, _ := store.Get(entity.RefAt(viffio.GitRoot, "R", "commit", of))
 		return (entity.Pattern{Predicate: pat}).MatchEvent(entity.Event{
-			Ref: entity.RefAt(verseio.GitRoot, "R", "commit", of), Op: entity.Set, To: e.Payload,
+			Ref: entity.RefAt(viffio.GitRoot, "R", "commit", of), Op: entity.Set, To: e.Payload,
 		})
 	}
 	if !match(second, mergeSha) || !match(side, mergeSha) {

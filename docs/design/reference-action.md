@@ -1,6 +1,6 @@
 # Why: The action of a rule
 
-The reasons behind [The action of a rule](../reference/action.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [The action of a rule](../reference/action.md). They are for somebody changing viff; the page itself says what viff does.
 
 ## An install acts on the world
 
@@ -25,7 +25,7 @@ tag makes a path read, and a plain key stays data.
 ## The answer contract
 
 A charter that patches `.[data.class]` onto its subject depends on the task producing a `class`.
-Without a contract, verse checks that dependency at patch time. The work is done then, and the
+Without a contract, viff checks that dependency at patch time. The work is done then, and the
 tokens are spent. What is left is a hook error on the task entity, and a subject stuck at a stage
 that no rule matches.
 
@@ -51,7 +51,7 @@ The three hooks are named fields, and not an `on map[status]*Action`. So an unkn
 be written, and nothing needs validating. The cost is that a fourth terminal status is a change of
 schema, and a misspelled `onDoen` is dropped like any other unknown field.
 
-Orphaned is not a status and has no hook. A task that verse and its runner lost is `failed` with
+Orphaned is not a status and has no hook. A task that viff and its runner lost is `failed` with
 `orphaned: true` on its record, so one hook covers every failure and reads which kind it was.
 
 ## A sequence, and no `par`
@@ -73,24 +73,24 @@ stack. This keeps the idempotence of a re-fire a predicate, and not a search.
 ## Ids drop the brackets
 
 Brackets break on a shell. `zsh` rejects `review.seq[2]@demo.pr.1` with `no matches found` before
-verse sees it, and people paste ids onto command lines all the time. The join is `@` and not `-`,
+viff sees it, and people paste ids onto command lines all the time. The join is `@` and not `-`,
 because rule names use `-` too, and a `-` join could not be decoded back.
 
 ## One reserved name
 
 The progress facts use one reserved name, not a family. Flat keys for each rule, like
 `review.step`, would reserve an open set of names out of a payload that is the author's own
-document. A single `verse` root reserves one name, and documents it once, as `flow` is one
+document. A single `viff` root reserves one name, and documents it once, as `flow` is one
 reserved key on task entities. Nested predicates keep it readable.
 
 The two halves under it are separate because they grow differently. `charter` gains a key for
 each rule. `meta` gains a field for each concern of the lifecycle. Flat, they would collide: a
 rule *named* `vanishing` would write its progress exactly where the marker of the lifecycle goes.
 
-The name is plain `verse`, and that is not settled. A sigil would say "reserved" at a glance, and
-give the word back to authors. `@verse`, `~verse` and `$verse` all parse unquoted, address through
-kpath, and round-trip through the yaml renderer. `.verse` does not, and is the one to avoid:
-kpath reads `.verse.meta.vanishing` back as `verse.meta.vanishing`, and drops the sigil without a
+The name is plain `viff`, and that is not settled. A sigil would say "reserved" at a glance, and
+give the word back to authors. `@viff`, `~viff` and `$viff` all parse unquoted, address through
+kpath, and round-trip through the yaml renderer. `.viff` does not, and is the one to avoid:
+kpath reads `.@sys.meta.vanishing` back as `@sys.meta.vanishing`, and drops the sigil without a
 word instead of refusing it.
 
 ## `done` and `ended` are published
@@ -105,4 +105,4 @@ not start to match a run that gave up.
 
 `shape` is a hash and not a stored copy, because these sequences can run for a long time. A
 snapshot kept for each live sequence is a floor of retention that the store can never compact
-past. To refuse to continue, verse needs to detect the change, not to reconstruct it.
+past. To refuse to continue, viff needs to detect the change, not to reconstruct it.

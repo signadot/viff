@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A CANCELLED TASK IS CANCELLED, not failed.
@@ -15,13 +15,13 @@ import (
 // folded that as `status = Failed`, throwing away what the machine had just decided and emitted
 // as its terminal frame.
 //
-// It is not cosmetic. verse splits the two everywhere it matters: a charter's `onCancelled` and
-// `onFailed` are different actions, and verse-dev's merge train says why in its own words
+// It is not cosmetic. viff splits the two everywhere it matters: a charter's `onCancelled` and
+// `onFailed` are different actions, and viff-dev's merge train says why in its own words
 // — a cancel decided nothing, so the gate is asked again, where a failed run must not
 // re-ask anybody anything. With the fold, a cancelled run fired onFailed and the question was
 // never re-posed.
 //
-// Driven by hand first: `verse task run --driver scripted "sleep 5"`, `verse task cancel <id>`,
+// Driven by hand first: `viff task run --driver scripted "sleep 5"`, `viff task cancel <id>`,
 // and the entity read `status: failed` with `err: "cancelled: cancelled via daemon"` — the
 // record disagreeing with itself in two adjacent fields.
 func TestACancelledTaskIsNotReportedAsFailed(t *testing.T) {

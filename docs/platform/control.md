@@ -18,8 +18,8 @@ lifted. What an operator does with one, and how it differs from holding a run, i
 [a suspension](../control.md#a-suspension). This section is what a suspension does to rules.
 
 ```tony
-# verse.trigger.suspension."repos.verse.drift.**:*@git.*.head"
-charter: repos.verse.drift      # an installed charter's address; "*" for every charter; "" for baseline's
+# mirror.trigger.suspension."repos.viff.drift.**:*@git.*.head"
+charter: repos.viff.drift      # an installed charter's address; "*" for every charter; "" for baseline's
 recursive: true               # …and every charter installed beneath it
 rule: "*"                     # a rule's name in it, or "*"
 subject: git.*.head           # an address, * open in any segment, covering at or beneath; "*" for every subject
@@ -53,10 +53,10 @@ engine's reap loop never waits on one. A sequence waits at a parked step as at a
 keeps its claim, its facts say how far it got, and the task the lift starts carries it on. A
 parked step that starts no task at the lift ends the run with `ended: error` and the reason.
 
-**A parked launch is recorded**, in scratch at `verse.task.parked.<id>` for the task it would
+**A parked launch is recorded**, in scratch at `mirror.task.parked.<id>` for the task it would
 start: its chain, its subject, its occurrence, the gates its firing passed and what its spawn's
 expressions read. It is written when the launch parks and removed when the lift starts it. An
-engine reads its own as it opens, before it settles the claims the last verse left, so a claim
+engine reads its own as it opens, before it settles the claims the last viff left, so a claim
 waiting on a parked launch is in flight and not a debt. A record whose action is no longer in the
 charter, or whose task has a record of that occurrence, is removed and parks nothing.
 
@@ -66,12 +66,12 @@ withdrawn questions are asked again — and only then is it removed and every ru
 again, its watermark first moved below the head, the path an install and a restart take. So a rule
 acts on the world as it stands when the suspension lifts, and nothing that happened meanwhile is
 replayed: a level rule still matching acts once, one whose condition came and went does nothing,
-and an `on` edge that rose during the suspension is not seen, as an install over a verse where the
+and an `on` edge that rose during the suspension is not seen, as an install over a viff where the
 predicate already holds sees none.
 
 **Whose it is.** Each scope's suspensions are one table in memory, written only by the route that
 writes their records and loaded before the scope's tasks are re-attached or its charter armed;
-until it has loaded it holds everything. A rule `derive` aimed at `verse.trigger.suspension` is
+until it has loaded it holds everything. A rule `derive` aimed at `mirror.trigger.suspension` is
 refused at install, since no table would see it. What a suspension covers is decided each time it
 would apply, against the holder's `control` over the work's charter or at its subject, and a rule
 the system installed (owned by `system:charter`) is the system's alone to suspend

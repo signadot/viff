@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/slack"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/slack"
 )
 
 func newSource(t *testing.T, f *fakeSlack, cfg slack.Config) *slack.Slack {
@@ -23,7 +23,7 @@ func newSource(t *testing.T, f *fakeSlack, cfg slack.Config) *slack.Slack {
 	return src
 }
 
-func payloads(rn verseio.Reflection) map[string]entity.Obj {
+func payloads(rn viffio.Reflection) map[string]entity.Obj {
 	out := map[string]entity.Obj{}
 	for _, e := range rn.Entities {
 		out[e.Ref.String()] = entity.ToObj(e.Payload)
@@ -232,7 +232,7 @@ func TestSlackTheWindowSlidesAndTombstonesWhatFellOutOfIt(t *testing.T) {
 	f.say("C1", "1700000002.000100", "U1", "two")
 
 	src := newSource(t, f, slack.Config{Depth: 2})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestSlackTheWindowSlidesAndTombstonesWhatFellOutOfIt(t *testing.T) {
 	// A second pass over an unchanged workspace writes NOTHING: converge skips what has not
 	// changed, or every resync re-fires every trigger over the slice.
 	var wrote int
-	rf.OnPass(func(p verseio.Pass) { wrote = p.Wrote })
+	rf.OnPass(func(p viffio.Pass) { wrote = p.Wrote })
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -276,15 +276,15 @@ func TestSlackTheWindowSlidesAndTombstonesWhatFellOutOfIt(t *testing.T) {
 func TestSlackOwnershipIsOnePlacePerWorkspace(t *testing.T) {
 	f := newFake()
 	src := newSource(t, f, slack.Config{})
-	owns := verseio.Describe(src).Owns
+	owns := viffio.Describe(src).Owns
 	if len(owns) != 1 || owns[0].At != "slack.Acme" {
 		t.Fatalf("owns %v", owns)
 	}
-	ok, err := verseio.Disjoint(owns, []verseio.Own{{At: "slack.Other"}})
+	ok, err := viffio.Disjoint(owns, []viffio.Own{{At: "slack.Other"}})
 	if err != nil || !ok {
 		t.Fatalf("two workspaces were not provably disjoint (%v, %v)", ok, err)
 	}
-	if ok, _ := verseio.Disjoint(owns, []verseio.Own{{At: "slack.Acme"}}); ok {
+	if ok, _ := viffio.Disjoint(owns, []viffio.Own{{At: "slack.Acme"}}); ok {
 		t.Fatal("a workspace was proved disjoint from itself")
 	}
 	// Every ref this source writes is inside what it claims — which is the bound on what a
@@ -334,12 +334,12 @@ func TestSlackNarrowingToChannels(t *testing.T) {
 }
 
 // claims reports whether an ownership list owns anything at ref. Parsed once and asserted on,
-// because the parse is where a malformed claim is supposed to stop — see verseio.ParseOwns.
-func claims(t *testing.T, owns []verseio.Own, ref entity.Ref) bool {
+// because the parse is where a malformed claim is supposed to stop — see viffio.ParseOwns.
+func claims(t *testing.T, owns []viffio.Own, ref entity.Ref) bool {
 	t.Helper()
-	cs, err := verseio.ParseOwns(owns)
+	cs, err := viffio.ParseOwns(owns)
 	if err != nil {
 		t.Fatalf("parsing %v: %v", owns, err)
 	}
-	return len(verseio.Claimed(cs, ref)) > 0
+	return len(viffio.Claimed(cs, ref)) > 0
 }

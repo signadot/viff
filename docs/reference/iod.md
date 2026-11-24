@@ -1,7 +1,7 @@
 # iod
 
-`iod` is the binary that holds the five [iods](../glossary.md#iod) that verse ships. An iod is a
-program that connects verse to one external system. It has two halves.
+`iod` is the binary that holds the five [iods](../glossary.md#iod) that viff ships. An iod is a
+program that connects viff to one external system. It has two halves.
 
 | Half | What it does |
 |---|---|
@@ -13,10 +13,10 @@ This page says how to run each of the five. Other pages hold the rest.
 | Subject | Page |
 |---|---|
 | what an iod is, its two halves, and which side opens each connection | [../io.md](../io.md) |
-| the installed iod, the ownership patterns, and the routes that verse serves | [io.md](io.md) |
+| the installed iod, the ownership patterns, and the routes that viff serves | [io.md](io.md) |
 | an iod for a system that is not on this page | [examples/io](examples/io/main.go), which is a program that you copy |
 
-`iod` is a binary of its own. It is in the same image as `verse` and `o`. It has five
+`iod` is a binary of its own. It is in the same image as `viff` and `o`. It has five
 subcommands, and each subcommand serves one external system:
 
 ```
@@ -27,7 +27,7 @@ iod linear    [flags]   Linear teams
 iod github    [flags]   GitHub repositories
 ```
 
-Each subcommand serves the two routes that verse calls, `GET /io` and `GET /reflect`. The
+Each subcommand serves the two routes that viff calls, `GET /io` and `GET /reflect`. The
 subcommands `slack`, `linear` and `github` also serve a route that receives deliveries. A
 *delivery* is a message that the external system sends when something changes there, such as
 a webhook call.
@@ -36,8 +36,8 @@ You install one of the five as you install any other iod:
 
 ```sh
 iod slack -addr :9801
-verse iod add slack http://localhost:9801 -root slack
-verse iod
+viff iod add slack http://localhost:9801 -root slack
+viff iod
 ```
 
 ## Common flags
@@ -48,38 +48,38 @@ Every subcommand accepts these flags.
 |---|---|---|---|
 | `-addr` | `SOURCED_ADDR` | `:9801` | the address that the iod listens on |
 | `-admin-addr` | `SOURCED_ADMIN_ADDR` | the port of `-addr`, plus 1 | the address of the admin listener, which serves pprof. The value `off` disables it. |
-| `-min-interval` | | off | a window of time. When verse asks again inside the window, the iod answers from its last reflection. |
-| `-hint-url` | `VERSE_HINT_URL` | none | the hint route of verse for this installed iod: `http://verse:9797/iods/<name>/hint` |
+| `-min-interval` | | off | a window of time. When viff asks again inside the window, the iod answers from its last reflection. |
+| `-hint-url` | `VIFF_HINT_URL` | none | the hint route of viff for this installed iod: `http://viff:9797/iods/<name>/hint` |
 | `-root` | | the name of the subcommand | the [root](../glossary.md#root-of-an-iod) of the iod: the first segment of every [address](../glossary.md#address) that it writes |
-| `-verse-addr` | `VERSE_ADDR` | the host of `-hint-url` | the verse that the out half reads and writes, as `host:port` |
+| `-viff-addr` | `VIFF_ADDR` | the host of `-hint-url` | the viff that the out half reads and writes, as `host:port` |
 | `-as` | | `agent:<root>-iod`, such as `agent:slack-iod` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
 | `-out-every` | | `5s` | how often the out half reads what is asked of it |
-| `-token-file` | `VERSE_TOKEN_FILE` | none | the file holding the iod's own credential toward verse: on Kubernetes, the pod's projected service-account token, which verse's `auth.iod` names the iod by ([iods at the door](perms.md#iods-at-the-door)). Read on every request, since the kubelet rotates it. Without it, the iod is whoever `-as` says. |
+| `-token-file` | `VIFF_TOKEN_FILE` | none | the file holding the iod's own credential toward viff: on Kubernetes, the pod's projected service-account token, which viff's `auth.iod` names the iod by ([iods at the door](perms.md#iods-at-the-door)). Read on every request, since the kubelet rotates it. Without it, the iod is whoever `-as` says. |
 
 With `-token-file`, every request the iod makes carries the token, and one it makes as a person
 (the Slack out half reading their ask, a reply in a thread answering it) carries the person and
-their Slack account beside it, `slack:<user id>`, so that a verse which verifies people admits
+their Slack account beside it, `slack:<user id>`, so that a viff which verifies people admits
 it through the account's binding and the ballot says which iod it came through
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)).
 
-The default of `-as` is the iod of its root, as `verse iod add`'s is, and the install writes the
+The default of `-as` is the iod of its root, as `viff iod add`'s is, and the install writes the
 out half's grants for that principal. So an iod given a `-root` of its own, such as
 `iod git -root git-buildhost`, acts as `agent:git-buildhost-iod` on both sides, and needs no
 `-as`.
 
-`-verse-addr`, `-as`, `-out-every` and `-token-file` configure the out half. Four subcommands
+`-viff-addr`, `-as`, `-out-every` and `-token-file` configure the out half. Four subcommands
 have an out half, `git`, `slack`, `linear` and `github`, and each starts it with `-out`.
 `git-issue` accepts the flags and does not use them.
 
-`-out` needs the address of the verse. It refuses to start without one of `-verse-addr`,
-`VERSE_ADDR` and `-hint-url`. `git` has no hint url, since its hint is a hook, so its out half
+`-out` needs the address of the viff. It refuses to start without one of `-viff-addr`,
+`VIFF_ADDR` and `-hint-url`. `git` has no hint url, since its hint is a hook, so its out half
 is given the address outright.
 
-**`-min-interval`** is the rate limit of the iod itself. Verse asks each iod for a full
+**`-min-interval`** is the rate limit of the iod itself. Viff asks each iod for a full
 reflection at a constant interval of one minute ([the reflector](io.md#the-reflector)). The
 budget of an external API is not a constant, so the iod sets its own limit.
 
-**`-hint-url`**. A [hint](../glossary.md#hint) is a message from an iod to verse that says
+**`-hint-url`**. A [hint](../glossary.md#hint) is a message from an iod to viff that says
 which addresses went stale. Without `-hint-url`, the iod verifies each delivery and then drops
 it. Only the full reflection of every minute then
 [converges](../glossary.md#converge) the store.
@@ -132,8 +132,8 @@ iod git -repo   [<id>=]<dir>    a repository already on disk (repeatable, comma-
                                     of charters asked for under git.<repo>.out (see below)
 ```
 
-**`-repo`** is for a machine that already has the repository. Verse can also reflect a local
-repository with no program at all: `verse iod add -dir`.
+**`-repo`** is for a machine that already has the repository. Viff can also reflect a local
+repository with no program at all: `viff iod add -dir`.
 
 **`-mirror`** is for a deployed iod. A
 [mirror](../glossary.md#mirror-of-a-git-repository) is a copy of a remote repository, kept
@@ -147,7 +147,7 @@ every reflection.
 - An unreachable remote, or a missing credential, is a failure at **startup**. It is not a
   failure of each reflection.
 
-**The hint** is a git hook (`io.Git.InstallHook`). The hook posts to verse directly, so
+**The hint** is a git hook (`io.Git.InstallHook`). The hook posts to viff directly, so
 `iod git` receives nothing. A mirror has no hook, because nobody pushes to a mirror. A mirror
 converges at the full reflection of every minute.
 
@@ -156,11 +156,11 @@ converges at the full reflection of every minute.
 | Address | Payload |
 |---|---|
 | `git.<repo>.ref.<name>` | `repo, name, sha, type`, and `tree` for each directory `-tree` names: `tree: {<name>: <object sha>}`, the empty tree where the directory is not there, and `trailers` when the ref is an annotated tag whose message has any. These are branches, tags and remote-tracking branches, and nothing else. |
-| `git.<repo>.record.<name>` | `repo, name, sha, tree, from`: a [record](#a-record) the out half keeps, `refs/verse/<name>`, with `tree` its last entry's whole tree and `from` its `From:` trailer, empty where it has none |
+| `git.<repo>.record.<name>` | `repo, name, sha, tree, from`: a [record](#a-record) the out half keeps, `refs/viff/<name>`, with `tree` its last entry's whole tree and `from` its `From:` trailer, empty where it has none |
 | `git.<repo>.head` | `repo, ref, sha, dirty`, and `ahead`/`behind` when an upstream is set |
 | `git.<repo>.commit.<sha>` | `repo, sha, msg, author, parents`, and `trailers` when the commit has any. `parents` is a list of shas: empty for a root commit, two for a merge, first parent first. No [cover](../glossary.md#cover-of-a-reflection) reaches a commit, so history stays. |
 
-A cover is a pattern under which a reflection is complete. Verse
+A cover is a pattern under which a reflection is complete. Viff
 [tombstones](../glossary.md#tombstone) stored data that a cover reaches and that the
 reflection does not hold.
 
@@ -171,10 +171,10 @@ The iod claims `git.<repo>` for each repository. The claim is one address, with 
 install writes an owner [record](../glossary.md#record) at that address for the installer.
 Every ref and every commit beneath the address is owned through that record.
 
-A ref name keeps its slashes inside one segment: `git.verse.ref."origin/main"`.
+A ref name keeps its slashes inside one segment: `git.viff.ref."origin/main"`.
 
 **The iod names three ref spaces.** It asks git for `refs/heads`, `refs/tags` and
-`refs/remotes` as refs, and for its own records under `refs/verse`, and for nothing else. The
+`refs/remotes` as refs, and for its own records under `refs/viff`, and for nothing else. The
 tip of a pull request is
 `github.<org>.<name>.pr.<n>.headSha`, from the iod that owns pull requests.
 [Three ref spaces are named](#three-ref-spaces-are-named) gives the reason.
@@ -191,23 +191,23 @@ none on its ref; its tip's are on the commit.
 ```tony
 condition:
   subject:
-    path: "git.verse.commit.*"
+    path: "git.viff.commit.*"
     value:
       trailers:
         Tier: change
 ```
 
 `!glob "*"` in place of a value matches any commit that declared the key at all. A charter
-finds the pushes of a coding runner in this way, by their `Verse-Task`.
+finds the pushes of a coding runner in this way, by their `Viff-Task`.
 
 **The iod reflects every key and interprets none.** It has no allowlist. `trailers` is absent
 when a commit has no trailer block. It is not an empty object on every commit.
 
-Match a key that has a **namespace**, such as `Verse-Task`. Do not match a bare `Status`.
+Match a key that has a **namespace**, such as `Viff-Task`. Do not match a bare `Status`.
 [Every trailer key is reflected](#every-trailer-key-is-reflected) gives the reason.
 
 **`tree`** is the sha of a directory's tree object at the ref, for each directory `-tree`
-names, under the name given it (`-tree .verse/charters` is `tree.charters`). A tree's sha is the
+names, under the name given it (`-tree .viff/charters` is `tree.charters`). A tree's sha is the
 identity of the directory's contents: two refs that differ only outside the directory carry the
 same one, and so does the same change after a squash or a rebase. A charter that keeps a
 repository's rules installed compares this, not the commit (git-issue j9vbwvja).
@@ -220,7 +220,7 @@ to it, and installing the empty tree with the out half removes every charter at 
 ```tony
 condition:
   subject:
-    path: "git.verse.ref.\"origin/main\""
+    path: "git.viff.ref.\"origin/main\""
     value:
       tree:
         charters: !glob "*"
@@ -237,20 +237,20 @@ an **input** under the repository's out place, `git.<repo>.out`, and the iod ans
 | `{to: tag.<name>, sha}` | makes the tag at the commit | `ref, sha, at` |
 | `{to: branch.<name>, sha}` | moves the branch to the commit, forward or back | `ref, sha, at`, and `was`, the sha it stood at |
 | `{to: branch.<name>, sha, create: true}` | makes the branch at the commit where there is none, and leaves one that stands alone; a tag takes `create` too | `ref, sha, at`, and `kept: true` where it stood already |
-| `{to: record.<name>, tree, from}` | appends an entry holding the tree to the [record](#a-record) `refs/verse/<name>`, where its last entry holds another tree; `from`, optional, is the commit the tree was taken from; `create: true` makes the record where there is none and leaves one that stands alone | `ref, sha, tree, at`, and `was`, the entry before; `kept: true` where it stood already |
-| `{to: install.<address>, tree, sha, from}` | installs the charters in the tree object into the verse at the address, as `verse c -a <address> -d <dir> --prune` would, from the iod's own copy of the repository; `sha` is the commit it is installed for, and `from`, optional, the commit the tree came from | `tree, sha, from, address, at`, and `charters`, how many |
-| `{to: check.<address>, tree}` | asks the verse's charter check what an install of the tree at the address would do, and installs nothing | `tree, address, checkedAt`, and the check's `verdict` (`installs` or `refused`), `refusal`, `packages` and `pruned` |
+| `{to: record.<name>, tree, from}` | appends an entry holding the tree to the [record](#a-record) `refs/viff/<name>`, where its last entry holds another tree; `from`, optional, is the commit the tree was taken from; `create: true` makes the record where there is none and leaves one that stands alone | `ref, sha, tree, at`, and `was`, the entry before; `kept: true` where it stood already |
+| `{to: install.<address>, tree, sha, from}` | installs the charters in the tree object into the viff at the address, as `viff c -a <address> -d <dir> --prune` would, from the iod's own copy of the repository; `sha` is the commit it is installed for, and `from`, optional, the commit the tree came from | `tree, sha, from, address, at`, and `charters`, how many |
+| `{to: check.<address>, tree}` | asks the viff's charter check what an install of the tree at the address would do, and installs nothing | `tree, address, checkedAt`, and the check's `verdict` (`installs` or `refused`), `refusal`, `packages` and `pruned` |
 | `{to: check.<address>, ref, of, round}` | the same check for the tree a ref holds now in the iod's own copy (`of` names the `-tree` directory, and may be left out where there is one), made again whenever `round` changes | as above, with `ref`, `sha` and `round`; `changes`, how many charters the install would add, change, remove or prune (0 is in step with what runs); `differingFor`, the rounds in a row it has differed at one commit; `verdictSince`, the round from which the verdict has been what it is at that commit; a ref the repository lacks is the verdict `missing` |
 | `{to: check.<address>, record, round}` | the same, for the tree a record's last entry holds | as above, with `record` in place of `ref` |
 | `{to: obsolete, prefix, keep, before}` | answers `obsolete`, as the iod, every pending question waiting on it whose id begins with `prefix`, whose key (the id after the prefix, up to `~`) is none of the strings under `keep`, posed by `before`, and offering `obsolete` | `obsoleted`, the ids answered; `sweptAt`, `before` |
 
 ```sh
-verse data git verse out release -put '{to: tag.v1.3, sha: 4f668c1c}'
-verse data git verse out head -put '{to: branch.verse/next, sha: 4f668c1c}'
-verse data git verse out live -put '{to: record.live, tree: 9d5e2b71, from: 4f668c1c}'
-verse data git verse out install -put '{to: install.repos.verse, tree: 9d5e2b71, sha: 4f668c1c}'
-verse data git verse out check -put '{to: check.repos.verse, tree: 9d5e2b71}'
-verse data git verse out livecheck -put '{to: check.repos.verse, record: live, round: "1"}'
+viff data git viff out release -put '{to: tag.v1.3, sha: 4f668c1c}'
+viff data git viff out head -put '{to: branch.viff/next, sha: 4f668c1c}'
+viff data git viff out live -put '{to: record.live, tree: 9d5e2b71, from: 4f668c1c}'
+viff data git viff out install -put '{to: install.repos.viff, tree: 9d5e2b71, sha: 4f668c1c}'
+viff data git viff out check -put '{to: check.repos.viff, tree: 9d5e2b71}'
+viff data git viff out livecheck -put '{to: check.repos.viff, record: live, round: "1"}'
 ```
 
 - **A check is not an install.** It reads the tree's charter files as the install does and asks
@@ -258,9 +258,9 @@ verse data git verse out livecheck -put '{to: check.repos.verse, record: live, r
   it: a verdict, and per package what it adds, changes, removes and holds. A verdict of
   `refused`, a file that does not parse among them, is an answer on the status and not a failed
   input; a tree the repository lacks is asked about again on the next pass, since a pull request's
-  tree can be asked about before this iod has fetched it, and a verse that cannot be reached is
+  tree can be asked about before this iod has fetched it, and a viff that cannot be reached is
   tried again. A tree checked already costs nothing. Checked by `record` with a `round`, it is
-  the repo-charters reconciler's minute check that `refs/verse/live` is what is installed.
+  the repo-charters reconciler's minute check that `refs/viff/live` is what is installed.
 - **An obsolete sweep settles what nothing proposes.** The charter that asked decides what is
   still proposed and names it in `keep`; the iod only applies it, and only to questions posed by
   `before`, the instant `keep` was read at, so a question about something newer is left for the
@@ -270,9 +270,9 @@ verse data git verse out livecheck -put '{to: check.repos.verse, record: live, r
   charter file in it (a README is left alone), and makes one request as itself: every charter in
   the tree or none, and what the tree leaves out under the address removed. A tree with no
   charter file, the empty tree among them, removes every charter at the address. So the iod has to own
-  the address, or hold `child-owner` above it (`verse perms repos --grants '[{child-owner:
+  the address, or hold `child-owner` above it (`viff perms repos --grants '[{child-owner:
   [agent:git-iod]}]'` on a deployment). A tree the repository lacks, a file that does not parse, or
-  a charter the verse refuses is refused for good until the input changes; a verse that cannot be
+  a charter the viff refuses is refused for good until the input changes; a viff that cannot be
   reached is tried again. A tree already installed for the same commit costs nothing. It is how
   the repo-charters reconciler installs what the team said yes to (git-issue dzxn44gw).
 
@@ -289,18 +289,18 @@ verse data git verse out livecheck -put '{to: check.repos.verse, record: live, r
 
 #### A record
 
-A **record** is a ref of verse's own, `refs/verse/<name>`: a chain of commits, each holding a
+A **record** is a ref of viff's own, `refs/viff/<name>`: a chain of commits, each holding a
 tree as its whole tree, with the entry before as its parent and the commit the tree was taken
 from as its `From:` trailer. It is not a branch, so nothing checks it out, builds it, or opens a
-pull request onto it, and `git log refs/verse/<name>` is its history. The tree is what it
+pull request onto it, and `git log refs/viff/<name>` is its history. The tree is what it
 records: an entry is appended only for a tree its last entry does not hold, so the same tree
 from another commit is the same record. An entry is appended with a lease on the one before,
 and pushed where the iod reads, as a branch is moved. A mirror clone fetches every ref, so the
 iod's own copy carries the record; anybody else fetches it by name (`git fetch origin
-refs/verse/live:refs/verse/live`). Anybody who can push to the repository can also write it, so
+refs/viff/live:refs/viff/live`). Anybody who can push to the repository can also write it, so
 an entry may have no `From:`, and the reflection then says `from` empty.
 
-This half is what the repo-charters reconciler uses to keep `refs/verse/live` holding the tree
+This half is what the repo-charters reconciler uses to keep `refs/viff/live` holding the tree
 the team said yes to, and to install the tree it holds
 ([the example](examples/repo-charters/repo-charters.tony)). The one commit it makes is a
 record's entry, and it writes no tree.
@@ -377,7 +377,7 @@ first `=`, and a key holds one value. So `git-issue-phase=planned` is
 ```tony
 condition:
   subject:
-    path: "git-issue.verse.issue.*"
+    path: "git-issue.viff.issue.*"
     value:
       keys:
         git-issue-phase: planned
@@ -424,7 +424,7 @@ has one `reference-transaction` hook, and `iod git` usually holds it. So `iod gi
 not take it. An operator who wants a shorter delay adds a line to the hook:
 
 ```sh
-curl -fsS -X POST "$VERSE_HINT_URL?at=git-issue.<id>" >/dev/null 2>&1 || true
+curl -fsS -X POST "$VIFF_HINT_URL?at=git-issue.<id>" >/dev/null 2>&1 || true
 ```
 
 A mirror has no hook, because nobody pushes to a mirror.
@@ -456,12 +456,12 @@ iod slack -workspace <name>    the id prefix (default: the team name the token b
               -users               reflect the people (default true; needs users:read)
               -out                 also say in Slack what is written under slack.<ws>.out, and answer
                                    the questions those messages ask (see below)
-              -verse-addr <addr>   the verse the out half reads and writes (VERSE_ADDR; default: -hint-url's host)
+              -viff-addr <addr>   the viff the out half reads and writes (VIFF_ADDR; default: -hint-url's host)
               -as <principal>      who the out half reads and writes as (default agent:slack-iod)
               -out-every <d>       how often the out half reads what is asked (default 5s)
 ```
 
-`-verse-addr`, `-as` and `-out-every` are [common flags](#common-flags). `iod slack` is one
+`-viff-addr`, `-as` and `-out-every` are [common flags](#common-flags). `iod slack` is one
 of the four subcommands that use them.
 
 The iod acts as the **bot user** of a Slack app. The bot needs these scopes to reflect.
@@ -500,7 +500,7 @@ The app subscribes to the bot events for what it reflects (`message.channels`,
 | `slack.<ws>.user.<U…>` | `workspace, user, name, bot, deleted`, and `real, display, email, title, tz` |
 
 **The workspace is a level of the address.** A message stands under its channel, so a channel
-and its history are one subtree. `verse data slack acme message C123` is the window of that
+and its history are one subtree. `viff data slack acme message C123` is the window of that
 channel. A timestamp is quoted because it looks like a number.
 
 `reactions` is an object that maps a name to a count. So `{reactions: {shipit: null}}` is how
@@ -532,12 +532,12 @@ a **status** beside the input.
 | status | the sibling `<name>~status` | the iod alone | `channel, ts, thread, permalink, postedAt, updatedAt, posted`, and `error` while an error stands. `posted` is the fingerprint of the message. |
 
 ```sh
-verse data slack acme out hello   -put '{to: "user:ana@acme.test", text: "the review is waiting on you"}'
-verse data slack acme out release -put '{to: C0456, text: "v1.3 is out"}'
-verse data slack acme out 'hello~status'
+viff data slack acme out hello   -put '{to: "user:ana@acme.test", text: "the review is waiting on you"}'
+viff data slack acme out release -put '{to: C0456, text: "v1.3 is out"}'
+viff data slack acme out 'hello~status'
 ```
 
-`to` is a Slack id, or somebody that verse knows.
+`to` is a Slack id, or somebody that viff knows.
 
 | `to` | Who it is | What the iod does |
 |---|---|---|
@@ -577,21 +577,21 @@ structure does not collide with the status. The iod never reads a name that ends
 as an input. When somebody removes an input, its status stays, and the message stays as it
 is.
 
-**Only the iod writes a status, and the permissions of verse enforce it.** The iod reads and
+**Only the iod writes a status, and the permissions of viff enforce it.** The iod reads and
 writes the store as its own principal. The principal is `-as`, and it is `agent:slack-iod` by
 default.
 
 **The install writes the grants.** You name the out half when you install the iod, with three
-flags of `verse iod add` ([the out half](io.md#the-out-half)).
+flags of `viff iod add` ([the out half](io.md#the-out-half)).
 
-| Flag of `verse iod add` | What it names |
+| Flag of `viff iod add` | What it names |
 |---|---|
 | `-out` | the address under which the out half reads inputs |
 | `-as` | the principal that the out half acts as. The default is `agent:<root>-iod`. |
 | `-requesters` | who may write an input, as a list of [grantees](../glossary.md#grantee) with commas between them |
 
 ```sh
-verse iod add slack http://localhost:9801 -root slack \
+viff iod add slack http://localhost:9801 -root slack \
   -out slack.acme.out -as agent:slack-iod -requesters group:acme-dev
 ```
 
@@ -610,21 +610,21 @@ of the out address writes that grant by hand. Written by hand, the four grants a
 commands:
 
 ```sh
-verse perms slack acme out --grant '{read-write: [<askers>]}' --below
-verse perms slack acme out --grant '{read: [agent:slack-iod]}' --below
-verse perms slack acme out --grant '{child-owner: [agent:slack-iod]}'
-verse perms slack acme out --child-grants '{read: ["*"]}'
+viff perms slack acme out --grant '{read-write: [<askers>]}' --below
+viff perms slack acme out --grant '{read: [agent:slack-iod]}' --below
+viff perms slack acme out --grant '{child-owner: [agent:slack-iod]}'
+viff perms slack acme out --child-grants '{read: ["*"]}'
 ```
 
 The iod holds `child-owner`, so it owns each status that it creates. The owner record of a
 status stops the grant of the requesters from above. So the requesters can read a status and
 cannot write it.
 
-The grant of the requesters is `--below`, and not a child grant. Verse copies a child grant
+The grant of the requesters is `--below`, and not a child grant. Viff copies a child grant
 onto every record that is created beneath, and so onto the records of the statuses too.
 
 Nothing stops a requester who creates a node with the name of a status first. A grant says
-who may create beneath a node. It never says which name belongs to whom. Verse then refuses
+who may create beneath a node. It never says which name belongs to whom. Viff then refuses
 the write of the iod, and the iod logs the refusal.
 
 The out address stands outside the covers of the reflection (`channel`, `message`, `user`).
@@ -636,14 +636,14 @@ An input may name one question, or several, that it is about. The message then s
 each question says at that moment, and how to answer it:
 
 ```sh
-verse data slack acme out review -put '{
+viff data slack acme out review -put '{
   to: "user:ana@acme.test",
   text: "review asks: approve demo.pr.1?",
-  asks: "verse.trigger.review.approval~efcf56b5"}'
+  asks: "mirror.trigger.review.approval~efcf56b5"}'
 ```
 
 The iod writes those lines itself, because the words of the writer could say anything. At
-every pass the iod reads each question from its ask, `verse.ask.<id>`, which everyone may read.
+every pass the iod reads each question from its ask, `mirror.ask.<id>`, which everyone may read.
 
 | the question | the line, and what follows it |
 |---|---|
@@ -677,7 +677,7 @@ channel, everyone sees the verdict and who gave it, and not only the person who 
 
 With `SLACK_APP_TOKEN` set, a reply in the thread of a message answers the question, when the
 reply says one of the options of the question. The iod connects to Slack in Socket Mode. So
-the app needs no public url, and the verse needs no Ingress. The reply arrives as an ordinary
+the app needs no public url, and the viff needs no Ingress. The reply arrives as an ordinary
 message event.
 
 The iod decides two things, and it decides them separately.
@@ -692,7 +692,7 @@ The iod decides two things, and it decides them separately.
 | The reply is addressed | What the iod reads |
 |---|---|
 | to the thread | One word. The reply must say an option: the word of the question itself, or `y`/`yes` and `n`/`no` for the two options that every question has. |
-| to the bot by name, such as `@verse approve it pls` | A sentence. |
+| to the bot by name, such as `@viff approve it pls` | A sentence. |
 
 Everyday words stand for the two options that every question has: `approve`, `yes`, `lgtm`,
 `ship`, `go`; and `reject`, `no`, `block`, `hold`. An option that the gate defines is said by
@@ -719,30 +719,30 @@ the iod tells them what became of the question.
 
 **The iod answers as the person who typed the reply.** `users.info` turns the Slack id of the
 person into `user:<email>` (`users:read.email`). The answer goes to `POST /asks/{id}/answer` as
-that person, so the permissions of verse decide whether the person may answer.
+that person, so the permissions of viff decide whether the person may answer.
 
 | Outcome | Where the iod says it |
 |---|---|
 | the answer is accepted | in the thread, where everyone who reads the thread can see it |
-| the answer is refused: the person is not an [answerer](../glossary.md#answerer), or somebody answered first | to the person alone, in the words of verse. A refusal is about the person, and not about the question. |
+| the answer is refused: the person is not an [answerer](../glossary.md#answerer), or somebody answered first | to the person alone, in the words of viff. A refusal is about the person, and not about the question. |
 
 The iod never answers as `-as`. An answer recorded as `agent:slack-iod` is an answer that
 nobody gave. An answer also asks for a pass at once, so the iod draws the message again while
 the person looks at it.
 
-#### Linking: `/verse link <nonce>`
+#### Linking: `/viff link <nonce>`
 
-A person who is a verse user proves to the app which one they are by saying, from their Slack
-account, a nonce their verse gave them: `verse account -link slack` prints `/verse link <nonce>`.
-Said as a slash command (the app registers `/verse`), typed in a DM to the app, or at the bot
-(`@verse link <nonce>`), the iod reports to the verse, as itself, that this account said it
-(`POST /accounts/slack/heard`), and the verse binds the account to whoever claimed the nonce
+A person who is a viff user proves to the app which one they are by saying, from their Slack
+account, a nonce their viff gave them: `viff account -link slack` prints `/viff link <nonce>`.
+Said as a slash command (the app registers `/viff`), typed in a DM to the app, or at the bot
+(`@viff link <nonce>`), the iod reports to the viff, as itself, that this account said it
+(`POST /accounts/slack/heard`), and the viff binds the account to whoever claimed the nonce
 ([accounts in other systems](perms.md#accounts-in-other-systems)). The person alone is told what
 became of it. From then on a reply of theirs is relayed through the binding, which is the only
 way in where the provider names no `domains`.
 
 The Slack id is the word of Slack, on a connection that the app token opened. What the iod
-tells the verse is that id, as the person's account, beside its own token; the verse admits the
+tells the viff is that id, as the person's account, beside its own token; the viff admits the
 request as the person only through the account's binding, and never on the iod's say-so alone
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)).
 
@@ -783,7 +783,7 @@ In Linear, set Settings → API → Webhooks to `https://<host>/linear/webhook`.
 | `linear.project.<uuid>.owners.<KEY>` | `team, id, name, url, …`. There is one node for each team that owns the project, and nothing at the project itself. |
 
 **The team is a level of the address.** Everything that a team has alone stands under the
-team, and `verse data linear ENG` is all of it. The number of a cycle is quoted because it
+team, and `viff data linear ENG` is all of it. The number of a cycle is quoted because it
 looks like a number.
 
 Match on **`stateType`**, and not on `state`. The type is one of the words of Linear itself:
@@ -792,7 +792,7 @@ is the name that somebody gave to a column, and anybody may change that name.
 
 The iod claims `linear.<KEY>` and `linear.project.*.owners.<KEY>` for each team. These are two
 addresses, and neither has a `*` inside a segment. `linear.ENG` and `linear.ENGINE` are
-different addresses, because verse compares names, and not prefixes of strings.
+different addresses, because viff compares names, and not prefixes of strings.
 
 **The iod reads a team to the end.** A team with more issues than `-max-issues` is an error.
 The iod does not cut the list short. The answer covers the whole team, and a partial list
@@ -909,8 +909,8 @@ A rule reaches the replies in a thread by `inReplyTo`, and a task answers in the
 `github-comment-pr`.
 
 **A repository is two levels of the address**, because it is two levels at GitHub. Everything
-that `signadot/verse` reflects stands under `github.signadot.verse`. A number is quoted where
-it is written: `github.signadot.verse.pr."42"`.
+that `signadot/viff` reflects stands under `github.signadot.viff`. A number is quoted where
+it is written: `github.signadot.viff.pr."42"`.
 
 The iod claims `github.<org>.<name>` for each repository. The claim is one address, so
 `acme.app` and `acme.app2` are apart and nothing more must be said. The install writes an
@@ -994,14 +994,14 @@ same way. Without `-alerts` the iod asks GitHub nothing about alerts, covers non
 
 **Reflecting the alerts widens who can see them.** GitHub shows a repository's Dependabot
 alerts only to its admins and to security managers, and to whoever else they grant access.
-Once the iod reflects them, anyone who can read `github.<org>.<name>.*` in verse can read them
+Once the iod reflects them, anyone who can read `github.<org>.<name>.*` in viff can read them
 too. Turn on `-alerts` only where the people who read that subtree may see the repository's
 vulnerabilities.
 
 ### The out half of github
 
 With `-out`, `iod github` comments on issues and pull requests, opens, merges and reviews pull
-requests, puts verse's commit status on a pull request it opened, files issues, and closes either. It
+requests, puts viff's commit status on a pull request it opened, files issues, and closes either. It
 reads inputs under one
 address for each repository, `github.<org>.<name>.out`, and in the
 [outboxes](../glossary.md#outbox) that packages declare for it. Each address is inside the
@@ -1017,20 +1017,20 @@ default, proving itself with `-token-file` where it has one.
 
 **A question asked on a pull request.** An input carrying `asks`, one
 [question](../glossary.md#question) id or a list, keeps a comment that says what each question
-asks and how to answer it: a comment on the pull request saying `/verse <option>` on a line of
+asks and how to answer it: a comment on the pull request saying `/viff <option>` on a line of
 its own, with any words after the option kept as what the answerer said. Each pass reads the
 replies after the iod's own comment, as the iod itself reflects them under the pull request, and
 answers one **as its author**: the author's GitHub account
 is looked up for who they are ([accounts in other systems](perms.md#accounts-in-other-systems)),
-and the answer is made as that person with the account beside it, which a verse that verifies
+and the answer is made as that person with the account beside it, which a viff that verifies
 people admits through the binding and records on the ballot
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)). It is never
-made as the iod. An author verse does not know, or a command naming no option the question
-offers, is told so in one reply and not again. A reply that says `/verse link <nonce>` on a line
-of its own is the author proving the account is theirs (`verse account -link github -account
-<login>` printed it): the iod reports to the verse, as itself, that this account said it
+made as the iod. An author viff does not know, or a command naming no option the question
+offers, is told so in one reply and not again. A reply that says `/viff link <nonce>` on a line
+of its own is the author proving the account is theirs (`viff account -link github -account
+<login>` printed it): the iod reports to the viff, as itself, that this account said it
 (`POST /accounts/github/heard`), and tells the author what became of it, once. The same line said
-anywhere else in a reflected repository is read by verse itself, when `verse account -link github`
+anywhere else in a reflected repository is read by viff itself, when `viff account -link github`
 asks it to (`POST /accounts/github/verify`). The comment is redrawn as the question settles.
 A reply reaches the reflection on the comment's delivery, which also asks the out half for a pass,
 or on the resync; a reply older than the in half's comment window is not in the reflection and
@@ -1047,7 +1047,7 @@ is not seen.
 branch:
 
 ```tony
-to: branch.verse/repo-charter-review-x     # everything after the first dot is the branch
+to: branch.viff/repo-charter-review-x     # everything after the first dot is the branch
 open: {base: main, title: "…", body: "…"}  # base defaults to the repository's default branch
 ```
 
@@ -1068,15 +1068,15 @@ as `comment`, `commentUrl`, `commentPosted`, `commentAt`); `merge` merges it at 
 on, as below; `closed: true` closes it unmerged, once. The iod never merges or closes a pull
 request it adopted.
 
-**Commit statuses on the pull request.** An `open` input carrying `commitStatus` keeps verse's
+**Commit statuses on the pull request.** An `open` input carrying `commitStatus` keeps viff's
 commit statuses on the pull request's head, linking to the pull request. It maps GitHub's
 context, the name a status stands under on the page, to the status asked for under it, so two
 things said about one pull request stand side by side and neither overwrites the other:
 
 ```tony
 commitStatus:
-  verse:         {state: pending, description: "waiting for an answer", sha: <head>}   # sha defaults to the head GitHub reports
-  "verse/check": {state: success, description: "installs cleanly over what runs"}
+  viff:         {state: pending, description: "waiting for an answer", sha: <head>}   # sha defaults to the head GitHub reports
+  "viff/check": {state: success, description: "installs cleanly over what runs"}
 ```
 
 `state` is `pending`, `success`, `failure` or `error`. Its status holds `commitStatus.<context>`:
@@ -1112,7 +1112,7 @@ Its status holds `merged: true`, the merge commit as `commit`, `head` and `merge
 |---|---|
 | is open, and its head is `sha` | It merges it, with GitHub's own check that the head is still `sha`. |
 | is open, and its head is another commit | It refuses, naming both: a head that moved is a different change. |
-| is already merged | It records `merged: true` with no `commit`. That is how a merge made around verse shows. A merge the iod made whose status write was lost shows the same way, because the next pass cannot tell the two apart (git-issue nj9fce9dh, open). |
+| is already merged | It records `merged: true` with no `commit`. That is how a merge made around viff shows. A merge the iod made whose status write was lost shows the same way, because the next pass cannot tell the two apart (git-issue nj9fce9dh, open). |
 | is merged, by an earlier pass | Nothing, and no request to GitHub. |
 
 **A close.** An input that carries `close` asks for an issue or a pull request to be closed:
@@ -1129,7 +1129,7 @@ A pull request is closed unmerged.
 |---|---|
 | is open, and is the kind that `to` names | It closes it. |
 | is the other kind (`to: pr.7`, and #7 is an issue) | It refuses, naming what #7 is. GitHub numbers both in one sequence, so a wrong kind is a wrong item. |
-| is already closed | It records `closed: true` with `already: true`. That is how a close made around verse shows. |
+| is already closed | It records `closed: true` with `already: true`. That is how a close made around viff shows. |
 | is closed, by an earlier pass | Nothing, and no request to GitHub. |
 
 **A review.** An input that carries `review` asks for the iod's own review on a pull request,
@@ -1183,8 +1183,8 @@ and the merge held until it is answered:
 to: pr.42
 text: "The charters change here."
 asks: <question id>
-review: {event: request-changes, body: "verse: waiting for an answer to the question below"}
-commitStatus: {verse: {state: pending, description: "waiting for an answer"}}
+review: {event: request-changes, body: "viff: waiting for an answer to the question below"}
+commitStatus: {viff: {state: pending, description: "waiting for an answer"}}
 ```
 
 A comment that cannot be made fails the input and is tried again. A review or a status GitHub
@@ -1208,12 +1208,12 @@ switches each manifest on, such as `-e slackIod=true`, or
 `make deploy SELECT=tier=iods` selects on that label.
 
 A readiness probe asks each iod `GET /io`. This is the route by which an iod says what it is.
-So a pod is ready exactly when it can answer what verse asks it.
+So a pod is ready exactly when it can answer what viff asks it.
 
-[deploy/README.md](https://github.com/signadot/verse/blob/main/deploy/README.md) describes
+[deploy/README.md](https://github.com/signadot/viff/blob/main/deploy/README.md) describes
 the credentials, the ingress and the install.
 
-The install stays a command that somebody runs. An install carries a claim, and verse checks
+The install stays a command that somebody runs. An install carries a claim, and viff checks
 the claim against what already stands in the store.
 
 ## Why it is this way
@@ -1249,7 +1249,7 @@ A trailer block is a *heuristic* over the last paragraph of a message. A message
 ends with something of the form `Status: proposal` gives the key `Status`, in the parser of
 git itself too.
 
-So the convention belongs in the **namespace** of the key. To match `Verse-Task` is safe. To
+So the convention belongs in the **namespace** of the key. To match `Viff-Task` is safe. To
 match a bare `Status` is not safe.
 
 ### A separate subcommand

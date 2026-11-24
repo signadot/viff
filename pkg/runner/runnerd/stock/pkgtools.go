@@ -3,10 +3,10 @@ package stock
 import (
 	"context"
 
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // pkgInstallTool is the pkg system's tool, named for its step.
@@ -22,11 +22,11 @@ var pkgParams = map[string]any{
 
 // pkgTools is the pkg system's tool: an install the runner performs into the task's read-only
 // prefix, asked for over the channel. Offered where the environment gives the step (offered).
-func pkgTools(cl *delivery.Client) []verse.Tool {
+func pkgTools(cl *delivery.Client) []viff.Tool {
 	read := func(in map[string]any) (delivery.Install, string) {
 		return delivery.ReadInstall(str(in, "pkg"), str(in, "version"), str(in, "as"))
 	}
-	return []verse.Tool{{
+	return []viff.Tool{{
 		Name: pkgInstallTool,
 		Description: "Install one package into your read-only prefix, onto your PATH. The runner resolves `pkg` against " +
 			"the signed index of the repositories its operator trusts, fetches by the index's hash, extracts it with none " +

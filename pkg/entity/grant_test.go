@@ -7,8 +7,8 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/parse"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 func mustParse(t *testing.T, src string) entity.Payload {
@@ -25,9 +25,9 @@ func mustParse(t *testing.T, src string) entity.Payload {
 // readable is refused where it is written.
 func TestParseGrants(t *testing.T) {
 	gs, err := entity.ParseGrants(nil, mustParse(t, `{grants: [
-	  {at: [verse, task, instance], child-owner: ["*"]},
+	  {at: [viff, task, instance], child-owner: ["*"]},
 	  {at: 'spaces."walter@example.com".shared', read-write: [ana@example.com, "user:*"]},
-	  {at: verse.task.instance.t1, read-write: [runner:bot], control: [runner:bot]},
+	  {at: mirror.task.instance.t1, read-write: [runner:bot], control: [runner:bot]},
 	]}`))
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestParseGrants(t *testing.T) {
 	if len(gs) != 3 {
 		t.Fatalf("parsed %d grants, want 3", len(gs))
 	}
-	if !gs[0].Below || strings.Join(gs[0].At, ".") != "verse.task.instance" || gs[0].To[entity.OwnerLevel][0] != "*" {
+	if !gs[0].Below || strings.Join(gs[0].At, ".") != "mirror.task.instance" || gs[0].To[entity.OwnerLevel][0] != "*" {
 		t.Fatalf("list spelling: %+v", gs[0])
 	}
 	if gs[1].Below || strings.Join(gs[1].At, "|") != "spaces|walter@example.com|shared" ||
@@ -54,16 +54,16 @@ func TestParseGrants(t *testing.T) {
 	// ON A RECORD, a line about the record's own node says no `at`, and `below` is the one other
 	// thing it says about where. Spelled back for that node, the address is not repeated; spelled
 	// for no node, it is.
-	node := []string{"verse", "task", "instance", "t1"}
+	node := []string{"mirror", "task", "instance", "t1"}
 	own, err := entity.ParseGrants(node, mustParse(t, `{grants: [
 	  {read-write: [runner:bot], control: [runner:bot]},
 	  {below: true, read: [user:ana@example.com]},
-	  {at: [verse, task, instance, t1], read: ["*"]},
+	  {at: [viff, task, instance, t1], read: ["*"]},
 	]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(own) != 3 || strings.Join(own[0].At, ".") != "verse.task.instance.t1" || own[0].Below || !own[1].Below || own[2].Below {
+	if len(own) != 3 || strings.Join(own[0].At, ".") != "mirror.task.instance.t1" || own[0].Below || !own[1].Below || own[2].Below {
 		t.Fatalf("lines about the node: %+v", own)
 	}
 	spelled := entity.GrantsPayload(node, own)
@@ -115,12 +115,12 @@ func TestParseGrants(t *testing.T) {
 	}
 
 	for _, bad := range []string{
-		`{grants: [{at: [verse, "*", instance], read: ["*"]}]}`, // a star not at the end
-		`{grants: [{at: "verse.ta*", read: ["*"]}]}`,            // a glob, not a whole segment
-		`{grants: [{read: ["*"]}]}`,                             // no path
-		`{grants: [{at: [demo]}]}`,                              // no level
-		`{grants: [{at: [demo], read: "*"}]}`,                   // grantees are a list
-		`{grants: {at: [demo], read: ["*"]}}`,                   // grants are a list
+		`{grants: [{at: [viff, "*", instance], read: ["*"]}]}`, // a star not at the end
+		`{grants: [{at: "viff.ta*", read: ["*"]}]}`,            // a glob, not a whole segment
+		`{grants: [{read: ["*"]}]}`,                            // no path
+		`{grants: [{at: [demo]}]}`,                             // no level
+		`{grants: [{at: [demo], read: "*"}]}`,                  // grantees are a list
+		`{grants: {at: [demo], read: ["*"]}}`,                  // grants are a list
 	} {
 		if _, err := entity.ParseGrants(nil, mustParse(t, bad)); err == nil {
 			t.Errorf("%s: parsed, want a refusal", bad)
@@ -130,8 +130,8 @@ func TestParseGrants(t *testing.T) {
 	// default, and the refusal says the grammar.
 	for _, bad := range []string{
 		`{grants: [{at: [demo], read: [user]}]}`,
-		`{grants: [{at: [demo], read: [verse.principal.group.release]}]}`,
-		`{grants: [{at: [demo], control: [verse-runner]}]}`,
+		`{grants: [{at: [demo], read: [mirror.principal.group.release]}]}`,
+		`{grants: [{at: [demo], control: [viff-runner]}]}`,
 	} {
 		if _, err := entity.ParseGrants(nil, mustParse(t, bad)); err == nil || !strings.Contains(err.Error(), entity.Grammar()) {
 			t.Errorf("%s: %v, want a refusal quoting the grammar", bad, err)
@@ -176,17 +176,17 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 	rw := func(to ...string) map[entity.Level][]string { return map[entity.Level][]string{entity.ReadWrite: to} }
 
 	// The seed: anyone may create a task; a person may answer a question.
-	tasks := entity.VerseRef("task", "instance")
+	tasks := entity.ViffRef("task", "instance")
 	seedRecord(t, system, tasks, "", entity.Grant{
 		At: tasks.Segs(), Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {entity.Everyone}},
 	})
-	questions := entity.VerseRef("gate", "question")
+	questions := entity.ViffRef("gate", "question")
 	seedRecord(t, system, questions, "", entity.Grant{At: questions.Segs(), Below: true, To: rw(entity.UserKind)})
 
-	t1 := entity.VerseRef("task", "instance", "t1")
+	t1 := entity.ViffRef("task", "instance", "t1")
 	// A creation grant reaches beneath the path and not the path itself.
 	if !mayCreate(t, system, alice, t1) || holds(t, system, alice, entity.ReadWrite, tasks) {
-		t.Fatal("the `verse.task.instance.*` grant is about creating beneath it")
+		t.Fatal("the `mirror.task.instance.*` grant is about creating beneath it")
 	}
 	// The unattributed request is everyone too.
 	if !mayCreate(t, system, "", t1) {
@@ -219,8 +219,8 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 	if !holds(t, system, bot, entity.ReadWrite, entity.RefAt(append(t1.Segs(), "report")...)) {
 		t.Fatal("a grant without a star covers the node and what is beneath it")
 	}
-	q := entity.VerseRef("gate", "question", "t1~d1")
-	seedRecord(t, system, q, entity.SystemDocket) // posed by versed: its own record
+	q := entity.ViffRef("gate", "question", "t1~d1")
+	seedRecord(t, system, q, entity.SystemDocket) // posed by viffd: its own record
 	if holds(t, system, bot, entity.Read, q) {
 		t.Fatal("the runner reaches the question its task raised")
 	}
@@ -229,7 +229,7 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 	// them; a principal of another kind, a name with no kind, and the unattributed request do
 	// not.
 	carol := "user:carol@example.com"
-	q2 := entity.VerseRef("gate", "question", "t2~d1")
+	q2 := entity.ViffRef("gate", "question", "t2~d1")
 	seedRecord(t, system, q2, entity.SystemDocket)
 	// The grants on the record above the question hang above an owner record, and do not
 	// cross it: the seed's `user` grant reaches a question only through the question's own
@@ -244,7 +244,7 @@ func TestWhoHoldsWhatWhere(t *testing.T) {
 	}
 
 	// A place acting holds what its owner holds.
-	rule := entity.VerseRef("trigger", "rule", "review")
+	rule := entity.ViffRef("trigger", "rule", "review")
 	seedRecord(t, system, rule, alice)
 	if !holds(t, system, entity.Via(rule), entity.OwnerLevel, t1) || holds(t, system, entity.Via(rule), entity.Read, q) {
 		t.Fatal("a firing of alice's rule does not act as alice")

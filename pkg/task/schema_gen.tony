@@ -8,7 +8,7 @@ define:
   need: .[int]
   within: .[string]
 signature:
-  name: verse-task-policy-ask
+  name: viff-task-policy-ask
 ---
 context:
 - tony-format/context
@@ -18,7 +18,7 @@ define:
   default: .[string]
   within: .[string]
 signature:
-  name: verse-deadline
+  name: viff-deadline
 ---
 context:
 - tony-format/context
@@ -27,7 +27,7 @@ define:
   need: .[int]
   says: .[string]
 signature:
-  name: verse-option
+  name: viff-option
 ---
 context:
 - tony-format/context
@@ -38,14 +38,14 @@ define:
   by: .[string]
   choice: .[string]
   cursor: .[int]
-  deadline: .[nullable(verse-deadline)]
+  deadline: .[nullable(viff-deadline)]
   dropped: .[int]
   err: .[string]
   fields: .[tony-base:ir]
   gate: .[string]
   id: .[string]
   kind: .[string]
-  options: .[array(verse-option)]
+  options: .[array(viff-option)]
   orphaned: .[bool]
   proceed: .[bool]
   seq: .[int]
@@ -54,7 +54,7 @@ define:
   text: .[string]
   tool: .[string]
 signature:
-  name: verse-task-event
+  name: viff-task-event
 ---
 context:
 - tony-format/context
@@ -65,7 +65,7 @@ define:
   Verb: .[string]
   VerbPattern: .[tony-base:ir]
 signature:
-  name: verse-task-policy-match
+  name: viff-task-policy-match
 ---
 context:
 - tony-format/context
@@ -80,24 +80,24 @@ define:
   step: .[string]
   tool: .[string]
 signature:
-  name: verse-pending-gate
+  name: viff-pending-gate
 ---
 context:
 - tony-format/context
 define:
-  Ask: .[nullable(verse-task-policy-ask)]
+  Ask: .[nullable(viff-task-policy-ask)]
   Mode: .[string]
 signature:
-  name: verse-task-policy-then
+  name: viff-task-policy-then
 ---
 context:
 - tony-format/context
 define:
-  match: .[nullable(verse-task-policy-match)]
+  match: .[nullable(viff-task-policy-match)]
   name: .[string]
-  then: !verse-task-policy-then null
+  then: !viff-task-policy-then null
 signature:
-  name: verse-task-policy-row
+  name: viff-task-policy-row
 ---
 context:
 - tony-format/context
@@ -109,7 +109,7 @@ define:
   id: .[string]
   occurrence: .[int]
   orphaned: .[bool]
-  pending: .[array(verse-pending-gate)]
+  pending: .[array(viff-pending-gate)]
   prompt: .[string]
   refused: .[object(int)]
   result: .[string]
@@ -117,4 +117,4 @@ define:
   started: .[string]
   status: .[string]
 signature:
-  name: verse-task-snapshot
+  name: viff-task-snapshot

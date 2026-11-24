@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A CONDITION ORDERS NUMBERS, one field against another in the same payload: go-tony's `!ge`,
-// scaled, over its `!get-path(root)`. verse's own `!get-path` is a store read and is spotted by
+// scaled, over its `!get-path(root)`. viff's own `!get-path` is a store read and is spotted by
 // the HEAD of a tag chain (pathKind), so `!ge(0.8).get-path(root)` reaches tony as the match it
 // is rather than being taken for a read of `caps.monthlySandboxes`.
 //

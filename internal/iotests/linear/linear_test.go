@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/linear"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/linear"
 )
 
 func newSource(t *testing.T, f *fakeLinear, cfg linear.Config) *linear.Linear {
@@ -23,7 +23,7 @@ func newSource(t *testing.T, f *fakeLinear, cfg linear.Config) *linear.Linear {
 	return src
 }
 
-func payloads(rn verseio.Reflection) map[string]entity.Obj {
+func payloads(rn viffio.Reflection) map[string]entity.Obj {
 	out := map[string]entity.Obj{}
 	for _, e := range rn.Entities {
 		out[e.Ref.String()] = entity.ToObj(e.Payload)
@@ -235,8 +235,8 @@ func TestLinearOwnershipIsTwoPlacesPerTeam(t *testing.T) {
 	src := newSource(t, f, linear.Config{Teams: []string{"ENG"}})
 	other := newSource(t, f, linear.Config{Teams: []string{"ENGINE"}})
 
-	owns := verseio.Describe(src).Owns
-	want := []verseio.Own{{At: "linear.ENG"}, {At: "linear.project.*.owners.ENG"}}
+	owns := viffio.Describe(src).Owns
+	want := []viffio.Own{{At: "linear.ENG"}, {At: "linear.project.*.owners.ENG"}}
 	if len(owns) != len(want) {
 		t.Fatalf("owns %v, want %v", owns, want)
 	}
@@ -245,7 +245,7 @@ func TestLinearOwnershipIsTwoPlacesPerTeam(t *testing.T) {
 			t.Fatalf("owns[%d] = %v, want %v", i, owns[i].At, w.At)
 		}
 	}
-	ok, err := verseio.Disjoint(owns, verseio.Describe(other).Owns)
+	ok, err := viffio.Disjoint(owns, viffio.Describe(other).Owns)
 	if err != nil || !ok {
 		t.Fatalf("ENG and ENGINE were not provably disjoint (%v, %v)", ok, err)
 	}
@@ -282,9 +282,9 @@ func TestLinearConvergesATeamThroughTheReflector(t *testing.T) {
 	f.issue("ENG", "ENG-2", "two", "Todo", "unstarted")
 
 	src := newSource(t, f, linear.Config{})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	var wrote int
-	rf.OnPass(func(p verseio.Pass) { wrote = p.Wrote })
+	rf.OnPass(func(p viffio.Pass) { wrote = p.Wrote })
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -314,19 +314,19 @@ func TestLinearConvergesATeamThroughTheReflector(t *testing.T) {
 		t.Fatalf("ENG-1 = %+v, want the new state", p)
 	}
 	if _, ok := get("ENG-2"); ok {
-		t.Fatal("ENG-2 is gone from Linear and still standing in the verse")
+		t.Fatal("ENG-2 is gone from Linear and still standing in the viff")
 	}
 }
 
 // claims reports whether an ownership list owns anything at ref. Parsed once and asserted on,
-// because the parse is where a malformed claim is supposed to stop — see verseio.ParseOwns.
-func claims(t *testing.T, owns []verseio.Own, ref entity.Ref) bool {
+// because the parse is where a malformed claim is supposed to stop — see viffio.ParseOwns.
+func claims(t *testing.T, owns []viffio.Own, ref entity.Ref) bool {
 	t.Helper()
-	cs, err := verseio.ParseOwns(owns)
+	cs, err := viffio.ParseOwns(owns)
 	if err != nil {
 		t.Fatalf("parsing %v: %v", owns, err)
 	}
-	return len(verseio.Claimed(cs, ref)) > 0
+	return len(viffio.Claimed(cs, ref)) > 0
 }
 
 // THE CASE THAT PRODUCED THE FINDING, end to end.
@@ -350,13 +350,13 @@ func TestTwoTeamsShareAProjectWithoutTombstoningEachOther(t *testing.T) {
 	shared := entity.RefAt("linear", "project", "p-shared")
 	engOnly := entity.RefAt("linear", "project", "p-eng")
 
-	reflector := func(team string) *verseio.Reflector {
-		return verseio.NewReflector(newSource(t, f, linear.Config{Teams: []string{team}}), store, 0)
+	reflector := func(team string) *viffio.Reflector {
+		return viffio.NewReflector(newSource(t, f, linear.Config{Teams: []string{team}}), store, 0)
 	}
 	eng, ops := reflector("ENG"), reflector("OPS")
-	pass := func(rf *verseio.Reflector) int {
+	pass := func(rf *viffio.Reflector) int {
 		n := -1
-		rf.OnPass(func(p verseio.Pass) {
+		rf.OnPass(func(p viffio.Pass) {
 			if p.Err != nil {
 				t.Fatalf("pass: %v", p.Err)
 			}
@@ -446,7 +446,7 @@ func TestOneSourceOverTwoTeamsWritesBothOwners(t *testing.T) {
 
 	store := entitytest.Store(t)
 	src := newSource(t, f, linear.Config{Teams: []string{"ENG", "OPS"}})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}

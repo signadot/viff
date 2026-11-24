@@ -17,7 +17,7 @@ import (
 func TestADropReopensWatchesAFewAtATime(t *testing.T) {
 	docd := startDocd(t, startLogd(t))
 	g := newGate(t, docd.ClientTCPAddr())
-	s, err := OpenLogdStore(LogdConfig{Addr: g.addr(), ClientID: "verse-test", WatchSlots: 2})
+	s, err := OpenLogdStore(LogdConfig{Addr: g.addr(), ClientID: "viff-test", WatchSlots: 2})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestADropReopensWatchesAFewAtATime(t *testing.T) {
 // to the first's path that may never come.
 func TestAWatchOnNothingHoldsNoSlot(t *testing.T) {
 	docd := startDocd(t, startLogd(t))
-	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "verse-test", WatchSlots: 1})
+	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "viff-test", WatchSlots: 1})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestAWatchOnNothingHoldsNoSlot(t *testing.T) {
 // watch waits its turn.
 func TestAProgressWatchOpensAheadOfTheLine(t *testing.T) {
 	docd := startDocd(t, startLogd(t))
-	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "verse-test", WatchSlots: 1})
+	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "viff-test", WatchSlots: 1})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestAProgressWatchOpensAheadOfTheLine(t *testing.T) {
 // for: the off switch, for a deployment where the line turns out to be in the way.
 func TestNoLineOpensEveryWatchAtOnce(t *testing.T) {
 	docd := startDocd(t, startLogd(t))
-	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "verse-test", WatchSlots: -1})
+	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "viff-test", WatchSlots: -1})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

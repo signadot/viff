@@ -8,18 +8,18 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // AN UPDATE KEEPS THE BASE IT DOES NOT NAME: a proposal opens into the branch the checkout started
 // from, but an update that says nothing about the base leaves the pull request's where it is, and
 // a policy sees a base only when the update moves it.
 func TestAnUpdateKeepsTheBaseItDoesNotName(t *testing.T) {
-	ws := &workspace.Workspace{Branch: "verse/auto/t1",
+	ws := &workspace.Workspace{Branch: "viff/auto/t1",
 		Trees: []*workspace.Tree{{Repo: workspace.Repo{Repo: runner.Repo{Repo: "acme/app", From: "main"}}}}}
 	names := []string{ws.Trees[0].Repo.Name()}
 	create, update := prTool(nil, ws, names, createPRTool), prTool(nil, ws, names, updatePRTool)
@@ -37,7 +37,7 @@ func TestAnUpdateKeepsTheBaseItDoesNotName(t *testing.T) {
 // A PROPOSAL'S BASE IS A BRANCH'S NAME however the spawn wrote where the checkout starts: a row
 // on `base: main` decides a proposal from a checkout of `refs/heads/main`.
 func TestAProposalsBaseIsABranchsName(t *testing.T) {
-	ws := &workspace.Workspace{Branch: "verse/auto/t1",
+	ws := &workspace.Workspace{Branch: "viff/auto/t1",
 		Trees: []*workspace.Tree{{Repo: workspace.Repo{Repo: runner.Repo{Repo: "acme/app", From: "refs/heads/main"}}}}}
 	create := prTool(nil, ws, []string{ws.Trees[0].Repo.Name()}, createPRTool)
 	if f, _ := create.Fields(map[string]any{}); f["base"] != "main" {
@@ -62,9 +62,9 @@ func TestAFetchIsAStep(t *testing.T) {
 // read. Each is the step its verb is, on the fields the runner fills — the repository, and the
 // number as one spelling however the model wrote it, so an ask row's answer meets the act.
 func TestThePullRequestReadsAreOfferedAsTheirSteps(t *testing.T) {
-	ws := &workspace.Workspace{Branch: "verse/auto/t1",
+	ws := &workspace.Workspace{Branch: "viff/auto/t1",
 		Trees: []*workspace.Tree{{Repo: workspace.Repo{Repo: runner.Repo{Repo: "acme/app", From: "main"}}}}}
-	names := func(tools []verse.Tool) (out []string) {
+	names := func(tools []viff.Tool) (out []string) {
 		for _, t := range tools {
 			out = append(out, t.Name)
 		}
@@ -108,7 +108,7 @@ func TestThePullRequestReadsAreOfferedAsTheirSteps(t *testing.T) {
 // `draft: true` allows a create-pr asking for a draft, however the model spelled it, and refuses
 // one opening ready. An update says nothing about it.
 func TestAnEnvironmentCanGiveDraftsOnly(t *testing.T) {
-	ws := &workspace.Workspace{Branch: "verse/auto/t1",
+	ws := &workspace.Workspace{Branch: "viff/auto/t1",
 		Trees: []*workspace.Tree{{Repo: workspace.Repo{Repo: runner.Repo{Repo: "acme/app", From: "main"}}}}}
 	names := []string{ws.Trees[0].Repo.Name()}
 	create, update := prTool(nil, ws, names, createPRTool), prTool(nil, ws, names, updatePRTool)
@@ -137,7 +137,7 @@ func TestAnEnvironmentCanGiveDraftsOnly(t *testing.T) {
 // on `pr: 71` meets the act. A call without a number or an id has no fields, and one without a
 // body is refused before it reaches the runner.
 func TestThePullRequestCommentsAreOfferedAsTheirSteps(t *testing.T) {
-	ws := &workspace.Workspace{Branch: "verse/auto/t1",
+	ws := &workspace.Workspace{Branch: "viff/auto/t1",
 		Trees: []*workspace.Tree{{Repo: workspace.Repo{Repo: runner.Repo{Repo: "acme/app", From: "main"}}}}}
 	var all []string
 	for _, tl := range repoTools(nil, ws, true) {
@@ -165,7 +165,7 @@ func TestThePullRequestCommentsAreOfferedAsTheirSteps(t *testing.T) {
 	if _, ok := reply.Fields(map[string]any{"pr": 71}); ok {
 		t.Error("a reply naming no comment has fields")
 	}
-	for _, tl := range []verse.Tool{comment, reply} {
+	for _, tl := range []viff.Tool{comment, reply} {
 		out, refused, err := tl.Do(context.Background(), task.ToolUse{Input: asTaken(tl.Params, map[string]any{"pr": 71, "comment": 900, "body": "  "})})
 		if err != nil || !refused || !strings.Contains(out, "needs a body") {
 			t.Errorf("%s with no body: %q %v %v", tl.Name, out, refused, err)

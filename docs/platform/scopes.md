@@ -1,6 +1,6 @@
 # Scopes on the platform
 
-This page is how a scope works inside verse: docd, logd and the engine of a scope. What a user
+This page is how a scope works inside viff: docd, logd and the engine of a scope. What a user
 types and sees is in [scopes.md](../reference/scopes.md).
 
 ## Dropping a scope
@@ -8,7 +8,7 @@ types and sees is in [scopes.md](../reference/scopes.md).
 `POST /scope/delete?scope=<name>` removes the overlay in one step, through the `DeleteScope` of
 logd.
 
-The store provides scopes, and the surface of verse does not. logd and docd make the
+The store provides scopes, and the surface of viff does not. logd and docd make the
 copy-on-write overlay, and the route asks the store to drop one. A store without real scopes
 answers 501.
 

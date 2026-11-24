@@ -8,30 +8,30 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// AN ADDRESS AS DEEP AS THE TREE, which is what a charter installed at `verse-dev.drift` needs:
-// its entities are `verse-dev.drift.head.<id>` and `verse-dev.drift.finding.<sym>`, four
+// AN ADDRESS AS DEEP AS THE TREE, which is what a charter installed at `viff-dev.drift` needs:
+// its entities are `viff-dev.drift.head.<id>` and `viff-dev.drift.finding.<sym>`, four
 // segments. A path carries it whole.
 func TestAMatchMayNameAPathOfAnyDepth(t *testing.T) {
-	m, err := ParseSteps([]string{"verse-dev", "drift", "head", "abc"})
+	m, err := ParseSteps([]string{"viff-dev", "drift", "head", "abc"})
 	if err != nil {
 		t.Fatalf("four steps: %v", err)
 	}
 	if got := m.Segs(); len(got) != 4 || got[3] != "abc" {
 		t.Fatalf("Segs = %v", got)
 	}
-	if !m.MatchRef(entity.RefAt("verse-dev", "drift", "head", "abc")) {
+	if !m.MatchRef(entity.RefAt("viff-dev", "drift", "head", "abc")) {
 		t.Error("the address it names does not match")
 	}
 	for _, other := range []entity.Ref{
-		entity.RefAt("verse-dev", "drift", "head", "xyz"),    // a different leaf
-		entity.RefAt("verse-dev", "drift", "finding", "abc"), // a sibling place
-		entity.RefAt("verse-dev", "drift"),                   // shallower
+		entity.RefAt("viff-dev", "drift", "head", "xyz"),    // a different leaf
+		entity.RefAt("viff-dev", "drift", "finding", "abc"), // a sibling place
+		entity.RefAt("viff-dev", "drift"),                   // shallower
 	} {
 		if m.MatchRef(other) {
 			t.Errorf("%s matched a path that does not name it", other)
@@ -39,45 +39,45 @@ func TestAMatchMayNameAPathOfAnyDepth(t *testing.T) {
 	}
 
 	// A wildcard is a POSITION: `*` means "any one segment, then the rest".
-	star, err := ParseSteps([]string{"verse-dev", "drift", "*", "abc"})
+	star, err := ParseSteps([]string{"viff-dev", "drift", "*", "abc"})
 	if err != nil {
 		t.Fatalf("a wildcard step: %v", err)
 	}
 	for _, ref := range []entity.Ref{
-		entity.RefAt("verse-dev", "drift", "head", "abc"),
-		entity.RefAt("verse-dev", "drift", "finding", "abc"),
+		entity.RefAt("viff-dev", "drift", "head", "abc"),
+		entity.RefAt("viff-dev", "drift", "finding", "abc"),
 	} {
 		if !star.MatchRef(ref) {
 			t.Errorf("%s did not match the wildcard position", ref)
 		}
 	}
-	if star.MatchRef(entity.RefAt("verse-dev", "drift", "head", "xyz")) {
+	if star.MatchRef(entity.RefAt("viff-dev", "drift", "head", "xyz")) {
 		t.Error("the wildcard leaked past its own position")
 	}
 
 	// And the watch it opens is the path up to that wildcard — never the leaf, which would see
 	// an entity's own changes and not its appearance.
-	if got := subtreeOf(star).Path(); len(got) != 2 || got[0] != "verse-dev" || got[1] != "drift" {
+	if got := subtreeOf(star).Path(); len(got) != 2 || got[0] != "viff-dev" || got[1] != "drift" {
 		t.Errorf("the watch subtree is %v, want the path up to the wildcard", got)
 	}
 
 	// A shorter path covers what is under it: MatchRef is "at or under".
-	prefix, _ := ParseSteps([]string{"verse-dev"})
-	if !prefix.MatchRef(entity.RefAt("verse-dev", "drift", "head", "abc")) {
+	prefix, _ := ParseSteps([]string{"viff-dev"})
+	if !prefix.MatchRef(entity.RefAt("viff-dev", "drift", "head", "abc")) {
 		t.Error("a one-segment path stopped covering what is under it")
 	}
 }
 
-// THE WHOLE LOOP AT FOUR SEGMENTS, which is what a charter installed at `verse-dev.drift`
-// needs: entities live at `verse-dev.drift.head.<id>`, a rule selects them by path, and the
+// THE WHOLE LOOP AT FOUR SEGMENTS, which is what a charter installed at `viff-dev.drift`
+// needs: entities live at `viff-dev.drift.head.<id>`, a rule selects them by path, and the
 // store answers at the depth the pattern asks for rather than at the three it always had.
 func TestARuleSelectsEntitiesFourSegmentsDeep(t *testing.T) {
 	store := entitytest.Store(t)
-	deep := entity.RefAt("verse-dev", "drift", "head", "abc")
+	deep := entity.RefAt("viff-dev", "drift", "head", "abc")
 	entitytest.Set(t, store, deep, entity.Obj{"reviewed": "pending"}.Payload())
-	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "head", "xyz"),
+	entitytest.Set(t, store, entity.RefAt("viff-dev", "drift", "head", "xyz"),
 		entity.Obj{"reviewed": "done"}.Payload())
-	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "finding", "abc"),
+	entitytest.Set(t, store, entity.RefAt("viff-dev", "drift", "finding", "abc"),
 		entity.Obj{"status": "open"}.Payload())
 
 	// Read back: a four-segment address is an ordinary read.
@@ -86,7 +86,7 @@ func TestARuleSelectsEntitiesFourSegmentsDeep(t *testing.T) {
 	}
 
 	// Select by path, at the pattern's own depth.
-	m, err := ParseSteps([]string{"verse-dev", "drift", "head", "*"})
+	m, err := ParseSteps([]string{"viff-dev", "drift", "head", "*"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestARuleSelectsEntitiesFourSegmentsDeep(t *testing.T) {
 	}
 
 	// The sibling place is a different path, and is not swept in by a wildcard at the leaf.
-	all, err := ParseSteps([]string{"verse-dev", "drift", "head", "*"})
+	all, err := ParseSteps([]string{"viff-dev", "drift", "head", "*"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,12 +111,12 @@ func TestARuleSelectsEntitiesFourSegmentsDeep(t *testing.T) {
 	}
 }
 
-// THE ID THAT IS AN ASTERISK is nameable without an escape of verse's own, which is what keeps
+// THE ID THAT IS AN ASTERISK is nameable without an escape of viff's own, which is what keeps
 // `!raw` where it belongs — it is the STORE's escape, added when a charter is written down and
 // consumed when it is read back, and a charter never writes one.
 //
 // A bare `*` is the wildcard and a quoted `"*"` is the name, which is the address grammar's own
-// escape — the same characters `verse data -at 'demo.pr."*"'` reads. This pins that it survives
+// escape — the same characters `viff data -at 'demo.pr."*"'` reads. This pins that it survives
 // being stored and read back.
 func TestTheIDThatIsAnAsteriskIsNameable(t *testing.T) {
 	store := entitytest.Store(t)
@@ -144,7 +144,7 @@ func TestTheIDThatIsAnAsteriskIsNameable(t *testing.T) {
 	}
 }
 
-// THE CASE THAT STARTED THIS. A charter installed at `verse-dev.drift` writes only inside that
+// THE CASE THAT STARTED THIS. A charter installed at `viff-dev.drift` writes only inside that
 // address — so its tip fact and its ledger of findings cannot be two top-level places.
 //
 // With an address as deep as the tree they are two levels UNDER it, each with a stratum of its
@@ -152,13 +152,13 @@ func TestTheIDThatIsAnAsteriskIsNameable(t *testing.T) {
 func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	eng.Confine(SubtreeAt("verse-dev", "drift"))
+	eng.Confine(SubtreeAt("viff-dev", "drift"))
 	eng.SetReads([]Subtree{SubtreeAt("git")})
 
 	for _, st := range []Stratum{
 		{Name: "reflected", Level: 0, Match: []Match{mm("git")}},
-		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.head"}`)}},
-		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.finding"}`)}},
+		{Name: "tip", Level: 10, Match: []Match{mustPathMatch(t, `{path: "viff-dev.drift.head"}`)}},
+		{Name: "ledger", Level: 20, Match: []Match{mustPathMatch(t, `{path: "viff-dev.drift.finding"}`)}},
 	} {
 		if err := eng.AddStratum(st); err != nil {
 			t.Fatalf("stratum %q: %v", st.Name, err)
@@ -170,10 +170,10 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 - name: head-moved
   stratum: reflected
   condition:
-    subject: git.head.verse
+    subject: git.head.viff
   action:
     derive:
-    - path: "verse-dev.drift.head"
+    - path: "viff-dev.drift.head"
       value: {sha: .[subject.value.sha]}
 `)); err != nil {
 		t.Fatalf("the tip rule did not install: %v", err)
@@ -184,10 +184,10 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 - name: gather
   stratum: tip
   condition:
-    subject: {path: "verse-dev.drift.head.*"}
+    subject: {path: "viff-dev.drift.head.*"}
   action:
     derive:
-    - path: "verse-dev.drift.finding"
+    - path: "viff-dev.drift.finding"
       value: {noted: true}
 `)); err != nil {
 		t.Fatalf("the ledger rule did not install: %v", err)
@@ -198,7 +198,7 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 - name: reach
   stratum: reflected
   condition:
-    subject: git.head.verse
+    subject: git.head.viff
   action:
     derive:
     - path: "somebody-else.notes"
@@ -220,12 +220,12 @@ func TestAPackageKeepsTwoLevelsUnderOneAddress(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "abc"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "head", "viff"), entity.Obj{"sha": "abc"}.Payload())
 
 	// The tip lands four segments deep, and the ledger lands beside it — the cascade crossing a
 	// level inside one package.
-	waitDeep(t, store, []string{"verse-dev", "drift", "head"}, 4)
-	waitDeep(t, store, []string{"verse-dev", "drift", "finding"}, 4)
+	waitDeep(t, store, []string{"viff-dev", "drift", "head"}, 4)
+	waitDeep(t, store, []string{"viff-dev", "drift", "finding"}, 4)
 }
 
 // waitDeep waits until something stands at a depth under an address.
@@ -262,11 +262,11 @@ func mustPathMatch(t *testing.T, src string) Match {
 // `path`, and the field path is the one that was there first.
 func TestAPathReadNamesItsAddressAtDepth(t *testing.T) {
 	store := entitytest.Store(t)
-	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "head", "abc"),
+	entitytest.Set(t, store, entity.RefAt("viff-dev", "drift", "head", "abc"),
 		entity.Obj{"sha": "deadbeef", "reviewed": "done"}.Payload())
-	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "finding", "f1"),
+	entitytest.Set(t, store, entity.RefAt("viff-dev", "drift", "finding", "f1"),
 		entity.Obj{"status": "open", "says": "a comment drifted"}.Payload())
-	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "finding", "f2"),
+	entitytest.Set(t, store, entity.RefAt("viff-dev", "drift", "finding", "f2"),
 		entity.Obj{"status": "closed", "says": "fixed"}.Payload())
 
 	snap, err := store.AsOf(store.Rev())
@@ -275,7 +275,7 @@ func TestAPathReadNamesItsAddressAtDepth(t *testing.T) {
 	}
 
 	// One node, four segments down, reaching a field of it.
-	got, err := readOne(t, `!get-path {at: "verse-dev.drift.head.abc", path: sha}`, snap)
+	got, err := readOne(t, `!get-path {at: "viff-dev.drift.head.abc", path: sha}`, snap)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestAPathReadNamesItsAddressAtDepth(t *testing.T) {
 	}
 
 	// Many, with a wildcard at the leaf and a payload predicate narrowing them.
-	list, err := readOne(t, `!list-paths {at: "verse-dev.drift.finding.*", value: {status: open}, path: says}`, snap)
+	list, err := readOne(t, `!list-paths {at: "viff-dev.drift.finding.*", value: {status: open}, path: says}`, snap)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -293,7 +293,7 @@ func TestAPathReadNamesItsAddressAtDepth(t *testing.T) {
 	}
 
 	// And a get whose leaf globs is refused, because a value slot takes one thing.
-	if _, err := readOne(t, `!get-path {at: "verse-dev.drift.finding."f*"", path: says}`, snap); err == nil {
+	if _, err := readOne(t, `!get-path {at: "viff-dev.drift.finding."f*"", path: says}`, snap); err == nil {
 		t.Error("a get with a globbing leaf was accepted")
 	}
 }
@@ -309,7 +309,7 @@ func readOne(t *testing.T, src string, snap entity.Snapshot) (*ir.Node, error) {
 }
 
 // A LIVE CHANGE four segments down has to wake a rule that selects there. The watch is opened at
-// the literal head of the pattern (`verse-dev.drift.head`), and the store reports changes under
+// the literal head of the pattern (`viff-dev.drift.head`), and the store reports changes under
 // it at the depth an address has always had — so what arrives is a change to the THREE-segment
 // node, and the rule's subject names a four-segment one.
 //
@@ -321,7 +321,7 @@ func TestALiveChangeAtDepthWakesADeepRule(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: notice
   condition:
-    subject: {path: "verse-dev.drift.head.*"}
+    subject: {path: "viff-dev.drift.head.*"}
     value: {reviewed: pending}
   action:
     patch: {reviewed: seen}
@@ -332,12 +332,12 @@ func TestALiveChangeAtDepthWakesADeepRule(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.RefAt("verse-dev", "drift", "head", "abc"),
+	entitytest.Set(t, store, entity.RefAt("viff-dev", "drift", "head", "abc"),
 		entity.Obj{"reviewed": "pending"}.Payload())
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		e, ok, _ := store.Get(entity.RefAt("verse-dev", "drift", "head", "abc"))
+		e, ok, _ := store.Get(entity.RefAt("viff-dev", "drift", "head", "abc"))
 		if ok && entity.Str(e.Payload, "reviewed") == "seen" {
 			return
 		}

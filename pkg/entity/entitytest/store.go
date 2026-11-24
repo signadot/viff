@@ -5,12 +5,12 @@
 // temp dir: a few milliseconds), so every test gets its own rather than sharing a
 // namespace with its neighbours, and t.Cleanup tears them all down.
 //
-// IT IS DOCD-BACKED, because that is what a person runs: `verse up` brings up logd AND
+// IT IS DOCD-BACKED, because that is what a person runs: `viff up` brings up logd AND
 // docd and points the store at docd's client face. A store spoken straight to logd is a
 // configuration nobody deploys, and the two substrates do not accept the same writes —
 // docd decomposes a patch by mount, statically, so it can only route a path made of
 // field names. Tests over logd alone said an array-element write worked; against every
-// real verse it was refused.
+// real viff it was refused.
 //
 // entity's own tests cannot use this (it imports entity); they keep a local copy.
 package entitytest
@@ -23,7 +23,7 @@ import (
 	logdserver "github.com/signadot/tony-format/go-tony/system/logd/server"
 	"github.com/signadot/tony-format/go-tony/system/logd/storage"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // Addr brings up an in-process logd and, over it, a docd — both on ephemeral ports,
@@ -72,7 +72,7 @@ func startLogd(t testing.TB) (*storage.Storage, string) {
 // CompactingStore is Store with a hand on its history: compact erases every commit the store
 // holds so far, as logd's compaction does to whatever is older than its cutoff, so a read at any
 // of those revisions is refused from then on (entity.ErrReplayTooOld) and the head still reads.
-// It is how a test reaches what a long-running verse reaches after its cutoff, without waiting.
+// It is how a test reaches what a long-running viff reaches after its cutoff, without waiting.
 func CompactingStore(t testing.TB) (s *entity.LogdStore, compact func()) {
 	t.Helper()
 	logd, addr := startLogd(t)
@@ -115,7 +115,7 @@ func Store(t testing.TB) *entity.LogdStore {
 // stores (two clients, two scopes) over the same one.
 func StoreAt(t testing.TB, addr string) *entity.LogdStore {
 	t.Helper()
-	s, err := entity.OpenLogdStore(entity.LogdConfig{Addr: addr, ClientID: "verse-test"})
+	s, err := entity.OpenLogdStore(entity.LogdConfig{Addr: addr, ClientID: "viff-test"})
 	if err != nil {
 		t.Fatalf("open logd store: %v", err)
 	}
@@ -142,14 +142,14 @@ func Remove(t testing.TB, s entity.Store, ref entity.Ref) {
 	}
 }
 
-// OpenStore is Store with the record a deployment's seed writes for an OPEN verse: everyone
+// OpenStore is Store with the record a deployment's seed writes for an OPEN viff: everyone
 // holds `owner` beneath the root, so a test writes where it likes and what it creates is its
 // writer's, and everyone reads the root itself.
 //
 // IT IS WRITTEN RATHER THAN ASSUMED, because openness is a deployment's policy and not the
-// check's: a store nobody seeded admits nobody but the system, which is what makes a verse whose
+// check's: a store nobody seeded admits nobody but the system, which is what makes a viff whose
 // seed failed refuse rather than stand wide open. A test that is ABOUT the policy takes Store
-// and writes the record it means (versed's seed writes this one, plus verse's half and the
+// and writes the record it means (viffd's seed writes this one, plus viff's half and the
 // deployment's admins).
 func OpenStore(t testing.TB) *entity.LogdStore {
 	t.Helper()
@@ -158,7 +158,7 @@ func OpenStore(t testing.TB) *entity.LogdStore {
 	return s
 }
 
-// OpenRoot writes the open verse's root record into a store that has none.
+// OpenRoot writes the open viff's root record into a store that has none.
 func OpenRoot(t testing.TB, s entity.Store) {
 	t.Helper()
 	rec := entity.Obj{
@@ -174,19 +174,19 @@ func OpenRoot(t testing.TB, s entity.Store) {
 	}); err != nil {
 		t.Fatalf("opening the root: %v", err)
 	}
-	// AND VERSE'S HALF IS FENCED, as the deployment's seed fences it: a grant does not reach
+	// AND VIFF'S HALF IS FENCED, as the deployment's seed fences it: a grant does not reach
 	// through a node carrying an owner record, and without this one the root's `owner` beneath
-	// it would hand every reader verse's own half and the perms mirror with it. `grants: []`
+	// it would hand every reader viff's own half and the perms mirror with it. `grants: []`
 	// out loud, since a record with an owner and no grants field reads as holding out the
 	// root's default.
 	if _, _, err := seed.Write(entity.Write{
-		At: entity.PermsRef(entity.RefAt(entity.VerseRoot)).At(),
+		At: entity.PermsRef(entity.RefAt(entity.ViffRoot)).At(),
 		Value: entity.Obj{
 			entity.OwnerField:  entity.SystemDefault,
 			entity.GrantsField: entity.GrantsPayload(nil, nil),
 		}.Payload(),
 		Principal: entity.SystemSeed,
 	}); err != nil {
-		t.Fatalf("fencing verse's half: %v", err)
+		t.Fatalf("fencing viff's half: %v", err)
 	}
 }

@@ -17,10 +17,10 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner/runnerd/secretstore"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // THE SECRET SYSTEM IS ONE COMMAND RUN WITH ONE SECRET OF THE RUNNER'S STORE, which the task

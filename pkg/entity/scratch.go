@@ -12,15 +12,15 @@ import (
 // `scratch` operation, tony-format r482sz5r). It is for a fact that is only ever about now — when
 // an out half last passed, what the pass did — which in the document would be a commit per
 // pass into a history nothing reads, replayed and snapshotted for as long as the cutoff keeps
-// it. Nothing can watch scratch, and verse is designed so that nothing ever waits on it: what a
+// it. Nothing can watch scratch, and viff is designed so that nothing ever waits on it: what a
 // consumer must be told about goes in the document, and scratch holds what is read when
 // something else says to read it.
 //
 // A scratch address is spelled as the record's it belongs to, so the report of
-// `verse.iods.github` stands at `verse.iods.github.out` in scratch as its config does in the
+// `mirror.iods.github` stands at `mirror.iods.github.out` in scratch as its config does in the
 // document; the two namespaces are separate in logd, and the one spelling names the one thing
 // in both. Permission is checked at that address by the attributed view, as a write or a read
-// there would be, since docd knows no verse principals. Scratch has no scopes of its own, so a
+// there would be, since docd knows no viff principals. Scratch has no scopes of its own, so a
 // scoped store's scratch stands under a root of the scope's (scratchPath): a scoped record's
 // report beside baseline's, never on it, and gone with the scope.
 type Scratch interface {
@@ -58,8 +58,8 @@ func (s *LogdStore) scratchPath(ref Ref) string {
 	return path
 }
 
-// scopeScratchRoot is the one segment a scope's scratch stands under: `verse@sandbox` for the
-// `sandbox` scope of a store rooted at `verse`. No entity renders there, since every entity
+// scopeScratchRoot is the one segment a scope's scratch stands under: `viff@sandbox` for the
+// `sandbox` scope of a store rooted at `viff`. No entity renders there, since every entity
 // renders under the root itself, and the scope's scratch goes as this one subtree when the
 // scope does (DeleteScope).
 func scopeScratchRoot(root, scope string) string { return seg(root + "@" + scope) }

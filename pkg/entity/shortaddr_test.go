@@ -35,7 +35,7 @@ func TestAListingAnswersExactlyItsDepth(t *testing.T) {
 
 // THE STORE ANSWERS ABOUT WHAT IT HOLDS. A value two segments down is a value two segments
 // down: the write lands there, a read at that address answers with it, and the listing the
-// document is built from carries it — which is what makes `verse data` show a write back.
+// document is built from carries it — which is what makes `viff data` show a write back.
 func TestAShortAddressIsReadBack(t *testing.T) {
 	s := openStore(t)
 	set(t, s, RefAt("t2", "zz"), doc(t, "true"))   // a scalar, two segments down

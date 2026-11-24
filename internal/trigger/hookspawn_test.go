@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // IN A COMPLETION HOOK'S SPAWN, `subject.value` IS THE SUBJECT, as it is in the hook's patch:
@@ -74,7 +74,7 @@ func TestAHookSpawnReadsTheSubject(t *testing.T) {
 
 // A HOOK'S SPAWN FOR A TASK WITH NO FIRING COMMIT READS THE SUBJECT ALL THE SAME: an adopted task
 // whose record says no `occurrence` belongs to no firing, and the hook reads at the head, which is
-// always there. The hook's own patch does not show: the hook reads one world, the verse as it was
+// always there. The hook's own patch does not show: the hook reads one world, the viff as it was
 // when the task ended, and its patch lands after.
 func TestAHookSpawnWithNoFiringCommitReadsTheSubject(t *testing.T) {
 	store := entitytest.Store(t)

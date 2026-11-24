@@ -1,0 +1,121 @@
+# ISSUE-NEXT: every three hours, every open issue in viff's tracker carries a proposal for its
+# next step.
+#
+# A _proposal_ is one entity per issue, `repos.viff.git-issue.next-proposal.<id>`. It says who acts
+# next and what they do, as the label the issue should carry:
+#
+#     viff-next=<who>:<step>
+#         who   viff | world
+#         step  analyze | design | plan | build | push-build | report-build
+#
+# `viff` means viff proposes to take the step itself; `world` means it waits on somebody else.
+#
+# THIS IS THE STUB. It writes the proposal and its label and nothing more: every issue it has
+# not seen before is proposed `viff:analyze`, and no task runs, so it costs no tokens. Two
+# things come after it, and both read what this writes:
+#
+#   - the git-issue io's out half, which puts the proposal's label on the issue;
+#   - the processing task, one viff-runner checkout per sweep, which takes each issue that
+#     changed to its proposed step and writes the step after it.
+#
+# ── A SWEEP, NOT A REACTION ──────────────────────────────────────────────────────────────
+#
+# The unit is the schedule's tick. An issue that moves does not wake anything: the sweep reads
+# the issues in its ACTIONS, and only a condition's reads wake a rule. So a burst of comments
+# costs nothing until the next tick, installing over a backlog costs one sweep, and the work a
+# tick causes is bounded by the open issues rather than by the activity on them.
+#
+#     viff schedule tick sweep --at repos.viff.git-issue --due <instant>     # a sweep now
+#
+# The sweep record (`repos.viff.git-issue.sweep`) is what carries the open set from the tick to
+# the fan-out: a fan-out walks a list a reference names, and a path read is not a reference.
+at: repos.viff.git-issue
+reads: [git-issue, mirror.schedule]
+schedules:
+- name: sweep
+  every: 3h
+strata:
+# The issues, as the git-issue source reflects them. Level 0: this package never writes there.
+- name: issues
+  level: 0
+  match:
+    path: "git-issue"
+# The sweep's own ticks, which the schedule writes. Above the issues, because the sweep reads
+# them: a derive reads at or below the level of its rule.
+- name: ticks
+  level: 5
+  match:
+    path: 'mirror.schedule."repos.viff.git-issue:sweep".tick'
+- name: sweep
+  level: 10
+  match:
+    path: "repos.viff.git-issue.sweep"
+- name: proposals
+  level: 20
+  match:
+    path: "repos.viff.git-issue.next-proposal"
+rules:
+# 1. At each tick, the open issues are listed onto the sweep record.
+#
+# A rule about a tick fires once per tick and needs no latch: only the next tick replaces it.
+# The list is ids only. The issues' facts are read per issue in rule 2, and a list of whole
+# payloads would copy every body and discussion into this record every three hours.
+- name: sweep
+  stratum: ticks
+  condition:
+    subject:
+      path: 'mirror.schedule."repos.viff.git-issue:sweep".tick.*'
+  action:
+    derive:
+    - path: "repos.viff.git-issue"
+      id: sweep
+      value:
+        due: .[subject.value.due]
+        open: !list-paths
+          at: "git-issue.viff.issue.*"
+          value:
+            status: open
+          path: id
+# 2. …and each open issue gets its proposal record, addressed by the issue's id.
+#
+# The derive owns the issue's facts and nothing else, so it rewrites only what the issue says
+# about itself. An issue that did not move since the last sweep derives the same bytes, which is
+# no commit; one that moved gets its new `updatedAt`, which is how the processing task will tell
+# what changed. The record of an issue that closes stays as it was.
+#
+# The rule wakes only when the sweep record changes, at a tick: its condition reads nothing
+# beyond its subject.
+- name: propose
+  stratum: sweep
+  condition:
+    subject:
+      path: "repos.viff.git-issue.sweep"
+  action:
+    derive:
+    - path: "repos.viff.git-issue.next-proposal"
+      value: !each
+        over: .[subject.value.open]
+        id: .[item]
+        value:
+          issue: .[item]
+          title: !get-path
+            at: [git-issue, viff, issue, .[item]]
+            path: title
+          updatedAt: !get-path
+            at: [git-issue, viff, issue, .[item]]
+            path: updatedAt
+# 3. A proposal record with no proposal gets the stub: viff analyzes it next.
+#
+# A separate rule, latched on the absence of `next`, so that the derive above never writes over
+# a proposal. Whatever writes the next one, the processing task or a person, owns `next` and
+# `label` from then on.
+- name: stub
+  stratum: proposals
+  condition:
+    subject:
+      path: "repos.viff.git-issue.next-proposal.*"
+      value: !not.has-path next
+  action:
+    patch:
+      next: "viff:analyze"
+      label: "viff-next=viff:analyze"

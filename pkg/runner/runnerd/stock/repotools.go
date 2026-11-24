@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // The tools a task that names repos is given, beside the agent's own: the verbs of the `git`
@@ -38,7 +38,7 @@ var (
 // repository, and the pull request tools, the writes and the reads, where the runner's forge is
 // a GitHub (github). Each may be called as many times as the work needs, and the task's autonomy
 // decides each call.
-func repoTools(cl *delivery.Client, ws *workspace.Workspace, github bool) []verse.Tool {
+func repoTools(cl *delivery.Client, ws *workspace.Workspace, github bool) []viff.Tool {
 	var all []string
 	for _, t := range ws.Trees {
 		all = append(all, t.Repo.Name())
@@ -46,7 +46,7 @@ func repoTools(cl *delivery.Client, ws *workspace.Workspace, github bool) []vers
 	if len(all) == 0 {
 		return nil
 	}
-	out := []verse.Tool{pushToolFor(cl, ws, all)}
+	out := []viff.Tool{pushToolFor(cl, ws, all)}
 	if github {
 		out = append(out, prTool(cl, ws, all, createPRTool), prTool(cl, ws, all, updatePRTool),
 			listPRsToolFor(cl, ws, all), readPRToolFor(cl, ws, all),
@@ -80,7 +80,7 @@ func oneOf(names []string) []string {
 // pushToolFor is the agent's way to send work out of the sandbox: a branch of one repo, pushed,
 // deleted or rewritten, as the task's autonomy decides. No branch named is the task's own. The
 // runner decides again, knowing more: a deny row refuses there whatever the task sent.
-func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
+func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) viff.Tool {
 	resolve := func(in map[string]any) (t *workspace.Tree, branch, ref string, del, force bool, err error) {
 		if t = treeOf(ws, names, in); t == nil {
 			return nil, "", "", false, false, fmt.Errorf("there is no repository %q here; it has: %s",
@@ -95,10 +95,10 @@ func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) v
 		ref, err = runner.BranchRef(branch)
 		return t, branch, ref, del, force, err
 	}
-	return verse.Tool{
+	return viff.Tool{
 		Name: pushTool,
 		Description: "Push this task's COMMITTED work to a branch of a repository, or delete a branch there. " +
-			"Commit what you want delivered first, every commit ending with the Verse-* trailers " +
+			"Commit what you want delivered first, every commit ending with the Viff-* trailers " +
 			"your brief names, which $" + TrailersEnv + " also holds; uncommitted changes are never delivered, and a commit without the trailers " +
 			"is refused with what is missing, and a commit authored or committed as anyone other than this " +
 			"checkout's identity is refused the same way. `branch` is where it goes; omit it to push your own branch " +
@@ -145,7 +145,7 @@ func pushToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) v
 // named, into the branch its checkout started from when no base is named. The task's autonomy
 // decides it (github.create-pr, github.update-pr), and the runner requires the branch to be one
 // this run pushed.
-func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name string) verse.Tool {
+func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name string) viff.Tool {
 	resolve := func(in map[string]any) (t *workspace.Tree, head, base string, err error) {
 		if t = treeOf(ws, names, in); t == nil {
 			return nil, "", "", fmt.Errorf("there is no repository %q here with pull requests to open; it has: %s",
@@ -188,7 +188,7 @@ func prTool(cl *delivery.Client, ws *workspace.Workspace, names []string, name s
 		baseIs += "; `draft: true` opens it as a draft"
 		params["draft"] = map[string]any{"type": "boolean"}
 	}
-	return verse.Tool{
+	return viff.Tool{
 		Name: name,
 		Description: what + " `head` is the branch, and omitted means your own branch, `" + ws.Branch + "`; " +
 			baseIs + ". Push the branch first: a pull " +
@@ -251,8 +251,8 @@ func draftOf(in map[string]any) bool {
 
 // listPRsToolFor reads a repository's open pull requests at the forge, with the runner's token:
 // a step the autonomy decides (github.list-prs), whatever the task may push.
-func listPRsToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
-	return verse.Tool{
+func listPRsToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) viff.Tool {
+	return viff.Tool{
 		Name: listPRsTool,
 		Description: "Read a GitHub repository's open pull requests, most recently changed first: each one's " +
 			"number, title, author, branches, when it last changed, and whom a review is requested from. " +
@@ -281,8 +281,8 @@ func listPRsToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string
 
 // readPRToolFor reads one pull request at the forge by its number, with its reviews: a step the
 // autonomy decides (github.read-pr), on the repository and the number.
-func readPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
-	return verse.Tool{
+func readPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) viff.Tool {
+	return viff.Tool{
 		Name: readPRTool,
 		Description: "Read one pull request of a GitHub repository by its number: its state, author, " +
 			"branches, when it was opened and last changed, whom a review is requested from, the reviews " +
@@ -316,12 +316,12 @@ func readPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string)
 
 // commentPRToolFor comments on a pull request's conversation by its number, with the runner's
 // token: a step the autonomy decides (github.comment-pr), on the repository and the number.
-func commentPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
+func commentPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) viff.Tool {
 	params := repoParams(names, map[string]any{
 		"pr":   map[string]any{"type": "integer"},
 		"body": map[string]any{"type": "string"},
 	})
-	return verse.Tool{
+	return viff.Tool{
 		Name: commentPRTool,
 		Description: "Comment on a pull request's conversation at a GitHub repository, by its number, with the body " +
 			"given. A number that is an issue is refused (github-issue-comment comments on an issue), and so is " +
@@ -365,14 +365,14 @@ func commentPRToolFor(cl *delivery.Client, ws *workspace.Workspace, names []stri
 // the comment's id: a step the autonomy decides (github.reply-comment), on the repository, the
 // number and the id as the task gave them. The runner checks that the thread is on that pull
 // request.
-func replyCommentToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
+func replyCommentToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) viff.Tool {
 	fields := func(in map[string]any) (t *workspace.Tree, pr, comment int, ok bool) {
 		t = treeOf(ws, names, in)
 		pr, okPR := numberIn(in, "pr")
 		comment, okC := numberIn(in, "comment")
 		return t, pr, comment, t != nil && okPR && okC
 	}
-	return verse.Tool{
+	return viff.Tool{
 		Name: replyCommentTool,
 		Description: "Reply in the thread of an inline review comment (a comment on a pull request's diff), " +
 			"by the pull request's number and the comment's id, with the body given. A reply to a reply goes " +
@@ -412,8 +412,8 @@ func replyCommentToolFor(cl *delivery.Client, ws *workspace.Workspace, names []s
 // fetchToolFor is the agent's way to see upstream move: the runner fetches, and the checkout's
 // `mirror/*` refs and tags move to where upstream's branches and tags are. What to do with them is
 // the agent's own git: rebase, merge, diff, or nothing.
-func fetchToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) verse.Tool {
-	return verse.Tool{
+func fetchToolFor(cl *delivery.Client, ws *workspace.Workspace, names []string) viff.Tool {
+	return viff.Tool{
 		Name: fetchTool,
 		Description: "Bring this checkout's view of a repository's upstream up to date: the runner fetches " +
 			"the remote and moves the `mirror/*` refs here (`mirror/main`, …) and the tags to where its branches " +

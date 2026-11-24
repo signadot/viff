@@ -16,7 +16,7 @@ import (
 // gets the more a listing of it costs -- until the read is refused outright, on exactly the
 // container somebody most wants the names of. The listing builds nothing: logd lists a level
 // from its own tables (tony-format 3kgxprskh12krjrmndn0, a directory of children per container),
-// and verse walks levels, so neither end holds the container.
+// and viff walks levels, so neither end holds the container.
 //
 // The budget is set small here so the difference is visible in a test rather than in a
 // production incident; the shape is the same at 64 MiB.

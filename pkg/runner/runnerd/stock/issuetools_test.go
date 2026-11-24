@@ -17,15 +17,15 @@ import (
 	"github.com/signadot/tony-format/git-issue/ops"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A SCRIPT FILES, COMMENTS ON AND CLOSES AN ISSUE IN ITS CHECKOUT, PUSHES THE TRACKER, AND PULLS
-// IT BACK. End to end through verse-call-tool: the three writes are the script's own and ask
+// IT BACK. End to end through viff-call-tool: the three writes are the script's own and ask
 // nobody, the push is the step a gate on git-issue.push asks about, naming the repo, the approval
 // has the runner send the tracker with its credential, the remote's own store reads the issue
 // closed with its comment, and a pull reports the tracker from the checkout.
@@ -36,12 +36,12 @@ func TestAScriptFilesAGitIssueAndPushesTheTracker(t *testing.T) {
 	rt := serveRepos(t, forge, Secrets{})
 	launchScript(rt, "t1", `#!/bin/sh
 set -e
-out=$(verse-call-tool git-issue-create -title "the roof leaks" -body "when it rains"); echo "$out"
+out=$(viff-call-tool git-issue-create -title "the roof leaks" -body "when it rains"); echo "$out"
 id=$(echo "$out" | sed -n 's/^filed issue \([a-z0-9]*\) .*/\1/p')
-verse-call-tool git-issue-comment -issue "$id" -body "a tarp is on it"
-verse-call-tool git-issue-close -issue "$id"
-verse-call-tool git-issue-push
-verse-call-tool git-issue-pull
+viff-call-tool git-issue-comment -issue "$id" -body "a tarp is on it"
+viff-call-tool git-issue-close -issue "$id"
+viff-call-tool git-issue-push
+viff-call-tool git-issue-pull
 git -C svc for-each-ref --format='%(refname)' refs/git-issues/
 `, task.Row{Name: "filing", Match: &task.Match{System: "git-issue", Verb: "push"}, Then: task.Then{Mode: task.ThenAsk}})
 	q := pending(t, rt, "t1")
@@ -86,8 +86,8 @@ func TestADeniedIssuePushSendsNothing(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	launchScript(rt, "t1", "#!/bin/sh\nverse-call-tool git-issue-create -title no >/dev/null\n"+
-		"verse-call-tool git-issue-push; echo \"exit=$?\"\ngit -C svc for-each-ref refs/git-issues/v1/open | wc -l",
+	launchScript(rt, "t1", "#!/bin/sh\nviff-call-tool git-issue-create -title no >/dev/null\n"+
+		"viff-call-tool git-issue-push; echo \"exit=$?\"\ngit -C svc for-each-ref refs/git-issues/v1/open | wc -l",
 		task.Row{Name: "leaving", Match: &task.Match{System: "git-issue", Verb: "push", Params: map[string]*ir.Node{"repo": systems.Glob("github.com/acme/*")}}, Then: task.Then{Mode: task.ThenAsk}})
 	q := pending(t, rt, "t1")
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Deny, "", "user:ana"); err != nil {
@@ -126,7 +126,7 @@ func TestAScriptFilesALinearIssueWithTheRunnersCredential(t *testing.T) {
 	seed(t, forge, "acme/svc")
 	rt := serveConfigured(t, every(Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge}}, map[string]System{"linear-issue": {}}),
 		Secrets{}, Tokens{Linear: "lin_api_secret", LinearAPI: api.URL})
-	script := "#!/bin/sh\nverse-call-tool linear-issue-create -team eng -title \"the roof leaks\" -description \"when it rains\"\n" +
+	script := "#!/bin/sh\nviff-call-tool linear-issue-create -team eng -title \"the roof leaks\" -description \"when it rains\"\n" +
 		"echo \"exit=$?\"\nenv | grep -c LINEAR || true"
 	launchScript(rt, "t1", script, task.Row{Name: "linear", Match: &task.Match{System: "linear-issue", Verb: "create", Params: map[string]*ir.Node{"team": ir.FromString("ENG")}}, Then: task.Then{Mode: task.ThenAsk}})
 	q := pending(t, rt, "t1")
@@ -149,7 +149,7 @@ func TestAScriptFilesALinearIssueWithTheRunnersCredential(t *testing.T) {
 	}
 
 	none := serveRepos(t, forge, Secrets{})
-	launchScript(none, "t2", "#!/bin/sh\nverse-call-tool | grep -c linear || true")
+	launchScript(none, "t2", "#!/bin/sh\nviff-call-tool | grep -c linear || true")
 	if snap := ended(t, none, "t2"); snap.Status != task.Done || strings.TrimSpace(snap.Result) != "0" {
 		t.Errorf("a runner with no linear section lists: %+v", snap)
 	}
@@ -293,7 +293,7 @@ func asTaken(params, in map[string]any) map[string]any {
 // nothing asks for nothing, and is let by.
 func TestAToolRefusesWhatItDoesNotTake(t *testing.T) {
 	github := &workspace.Tree{Repo: workspace.Repo{Repo: runner.Repo{Repo: "example/app"}, Remote: "https://github.com/example/app.git"}}
-	ws := &workspace.Workspace{Branch: "verse/auto/t1", Trees: []*workspace.Tree{github}}
+	ws := &workspace.Workspace{Branch: "viff/auto/t1", Trees: []*workspace.Tree{github}}
 	names := []string{github.Repo.Name()}
 	cl := &delivery.Client{}
 	byName := map[string]int{}

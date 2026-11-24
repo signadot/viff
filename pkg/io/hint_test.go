@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // A hint carries the refs and NOTHING ELSE — the same shape the `/bin/sh` git hook posts, so
@@ -25,12 +25,12 @@ func TestPostHintCarriesTheRefsAndNoBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	url := verseio.HintURL(srv.URL, "laptop")
+	url := viffio.HintURL(srv.URL, "laptop")
 	if !strings.HasSuffix(url, "/iods/laptop/hint") {
 		t.Fatalf("hint url %q", url)
 	}
-	err := verseio.PostHint(context.Background(), url,
-		entity.RefAt("git", "head", "verse"),
+	err := viffio.PostHint(context.Background(), url,
+		entity.RefAt("git", "head", "viff"),
 		entity.RefAt("git", "head", "tony"))
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestPostHintCarriesTheRefsAndNoBody(t *testing.T) {
 		t.Fatalf("a hint sent a body: %q — there is nothing to send but which slice", body)
 	}
 	refs := got.URL.Query()["at"]
-	if len(refs) != 2 || refs[0] != "git.head.verse" || refs[1] != "git.head.tony" {
+	if len(refs) != 2 || refs[0] != "git.head.viff" || refs[1] != "git.head.tony" {
 		t.Fatalf("refs %v", refs)
 	}
 }
@@ -56,7 +56,7 @@ func TestPostHintWithNoRefsAsksForEverything(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := verseio.PostHint(context.Background(), srv.URL+"/hint"); err != nil {
+	if err := viffio.PostHint(context.Background(), srv.URL+"/hint"); err != nil {
 		t.Fatal(err)
 	}
 	if query != "" {
@@ -74,7 +74,7 @@ func TestPostHintReportsARefusal(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := verseio.PostHint(context.Background(), srv.URL+"/hint")
+	err := viffio.PostHint(context.Background(), srv.URL+"/hint")
 	if err == nil {
 		t.Fatal("a 404 was not an error")
 	}
@@ -92,10 +92,10 @@ func TestHintsLogsWhatItCouldNotDeliver(t *testing.T) {
 	defer srv.Close()
 
 	var logged []string
-	h := verseio.Hints(srv.URL+"/hint", func(f string, a ...any) {
+	h := viffio.Hints(srv.URL+"/hint", func(f string, a ...any) {
 		logged = append(logged, f)
 	})
-	h(context.Background(), entity.RefAt("git", "head", "verse"))
+	h(context.Background(), entity.RefAt("git", "head", "viff"))
 	if len(logged) != 1 {
 		t.Fatalf("logged %v, want one line", logged)
 	}

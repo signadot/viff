@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // installAll installs the two strata these tests share, then every rule in src.

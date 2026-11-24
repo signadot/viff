@@ -1,4 +1,4 @@
-// Package trigger is the ECA core: it observes the entity-verse, matches triggers
+// Package trigger is the ECA core: it observes the entity-viff, matches triggers
 // against each change, gates the ones that match, and fires their actions. This is
 // the loop that makes SDLC flows *emergent* — no one authors the path; it falls
 // out of triggers reacting to state that other actions write.
@@ -7,7 +7,7 @@
 //
 //	Match   — POINT-IN-TIME: which entities satisfy this right now. The atom, and the
 //	          leaf of every Formula. A Subject and a flow address are bare Matches.
-//	Formula — a Match asked of the verse's evolution: at two revisions for a cause (`on`),
+//	Formula — a Match asked of the viff's evolution: at two revisions for a cause (`on`),
 //	          at one for a condition (`when`). Nothing composes it over time.
 //
 // Name entities at an instant → a Match; ask one of the store as it moves → a Formula. See
@@ -22,13 +22,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/exprs"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/exprs"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Trigger is one ECA rule — fully declarative (JSON-serializable, no Go closure), so a
@@ -37,7 +37,7 @@ import (
 // holds and every Gate resolves to proceed, the Action fires. Gates are conjunctive
 // (all-of); an empty Gates fires with no approval.
 //
-//tony:schemagen=verse-trigger,notag,comment=Doc,lineComment=Note
+//tony:schemagen=viff-trigger,notag,comment=Doc,lineComment=Note
 type Trigger struct {
 	// Doc and Note are the comments the rule was WRITTEN with — the lines above it, and the one
 	// beside it — carried through the decode and re-encode a charter makes on its way into the
@@ -111,7 +111,7 @@ type Trigger struct {
 
 	// Task is the task whose tools installed the rule, or "" for one a person or the system
 	// installed. TaskEnvironment is what that task could hand on when it installed the rule, its
-	// launch less installing charters: the rule's spawns stay within it (the verse daemon checks
+	// launch less installing charters: the rule's spawns stay within it (the viff daemon checks
 	// it as each one fires) for as long as the rule stands, whatever becomes of the task's own
 	// record. Both are the record's, beside the spec and never in it, so no file can claim them;
 	// written with the rule and read back with it.
@@ -121,7 +121,7 @@ type Trigger struct {
 
 // Gating is a rule's own gates.
 //
-//tony:schemagen=verse-gating,notag,comment=Doc,lineComment=Note
+//tony:schemagen=viff-gating,notag,comment=Doc,lineComment=Note
 type Gating struct {
 	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
 	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
@@ -156,7 +156,7 @@ func (t Trigger) AllGates() []Gate {
 // fired* when the question is *what is this rule about*. A trigger that acts on whichever
 // disjunct happened to fire is not a rule anyone wrote down.
 //
-//tony:schemagen=verse-condition,notag,codec=custom
+//tony:schemagen=viff-condition,notag,codec=custom
 type Condition struct {
 	// SubjectDoc/OnDoc/WhenDoc are the comments written above those three fields, and the
 	// Notes the ones written beside their values.
@@ -195,13 +195,13 @@ type Condition struct {
 	// Two consequences worth knowing before writing one. An EDGE DOES NOT RE-FIRE while it
 	// stays true: `on: {path: "demo.pr.*", value: {stage: reviewed}}` rises when the
 	// first PR reaches `reviewed` and says nothing about the second, because the predicate was
-	// already true. And an `on` trigger does NOT act on the backlog — installed over a verse
+	// already true. And an `on` trigger does NOT act on the backlog — installed over a viff
 	// where its predicate already holds, there is no rising edge to observe, where a
 	// subject-dispatched trigger acts on everything already standing (see the level-triggered
 	// seed in docs/change-events.md).
 	On *Formula `tony:"field=on,omitzero"`
 	// When fires the trigger. Its atom form is a single match, dispatched on the edge of
-	// one change event; temporal operators relate the verse's evolution instead.
+	// one change event; temporal operators relate the viff's evolution instead.
 	//
 	// Optional, and an omitted When IS the Subject: the ordinary rule reacts to the thing it
 	// is about ("when a pr goes open, review that pr"), so saying the same match twice would
@@ -304,7 +304,7 @@ func (c Condition) validateOn() error {
 // gate's own, and `deadline` says how long the question stands and what it settles on when
 // the clock passes. A gate that says none of these is answered by one person, yes or no.
 //
-//tony:schemagen=verse-trigger-gate,notag,comment=Doc,lineComment=Note
+//tony:schemagen=viff-trigger-gate,notag,comment=Doc,lineComment=Note
 type Gate struct {
 	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
 	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
@@ -364,7 +364,7 @@ type Gate struct {
 	// a spawn's `tools` and `virtualKey` hold, which are never expanded.
 	AnswerersFrom string `tony:"field=answerersFrom,omitzero"`
 	// Labels ride on the gate's question — `team: payments` — for whoever watches asks to match
-	// on. Words the charter's author and the resolvers agree on; verse routes nothing by one.
+	// on. Words the charter's author and the resolvers agree on; viff routes nothing by one.
 	Labels map[string]string `tony:"field=labels,omitzero"`
 	// OnDenied is what a NO means for the subject — an action applied when this gate
 	// refuses, about the same subjects the firing was about.
@@ -471,7 +471,7 @@ func (g Gate) validate() error {
 // threshold, options or a deadline — a question shaped for somebody to answer — and then it
 // is ask.
 // Mode is how a rule's gate decides: `auto` passes the firing without asking, and `ask` poses a
-// question and waits. A rule's gate is verse's own (the firing's), so these are verse's words and
+// question and waits. A rule's gate is viff's own (the firing's), so these are viff's words and
 // not the runner's.
 type Mode string
 
@@ -563,7 +563,7 @@ type occasion struct {
 	// change costs a read at a revision.
 	commit entity.Commit
 	parent int64
-	// snap is the firing's snapshot of the verse at that commit, taken at most once and shared
+	// snap is the firing's snapshot of the viff at that commit, taken at most once and shared
 	// by everything in the action that needs one. A pointer, because an occasion is copied
 	// down the action tree and the whole point is that the copies agree.
 	//
@@ -574,7 +574,7 @@ type occasion struct {
 	// cost is real: see within.
 	snap *snapCache
 	// within is the places that snapshot holds — firingWithin, computed from the rule. Empty
-	// reads the whole verse, which is what a rule reading a place it cannot name leaves as the
+	// reads the whole viff, which is what a rule reading a place it cannot name leaves as the
 	// only safe answer.
 	within [][]string
 	// reader is the store this firing reads through: the engine's, as the rule that is
@@ -606,11 +606,11 @@ type snapCache struct {
 	err  error
 }
 
-// snapshot returns the firing's view of the verse at the commit that caused it.
+// snapshot returns the firing's view of the viff at the commit that caused it.
 func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 	if oc.commit.Rev == 0 {
 		return nil, fmt.Errorf("this firing has no causing commit to read at, so there is no " +
-			"revision to be as of. A completion hook reads at the head, the verse as it is when " +
+			"revision to be as of. A completion hook reads at the head, the viff as it is when " +
 			"its task ends")
 	}
 	if oc.snap == nil {
@@ -624,12 +624,12 @@ func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 
 // firingWithin is the places a firing's snapshot must hold: every place the rule reads anywhere
 // — its condition's subtrees, and the literal prefix of every path read in its action, its gates
-// and its hooks (Trigger.outsideReads). Nil is the whole verse.
+// and its hooks (Trigger.outsideReads). Nil is the whole viff.
 //
-// IT IS WHAT MAKES A FIRING AFFORDABLE, and the difference is not small. A whole-verse snapshot
+// IT IS WHAT MAKES A FIRING AFFORDABLE, and the difference is not small. A whole-viff snapshot
 // costs the log replay to that commit and grows with the store — measured at seconds once a few
 // thousand commits have landed, against tens of milliseconds for a narrowed one, which is flat.
-// A firing that read the whole verse paid for every entity its rule cannot see, on a store that
+// A firing that read the whole viff paid for every entity its rule cannot see, on a store that
 // only grows, against a read budget that does not (entity.sessionBudget).
 //
 // A PREFIX rather than the address, so what it names is a SUPERSET of what the reads can reach:
@@ -647,7 +647,7 @@ func firingWithin(t Trigger) [][]string {
 		for _, s := range segs {
 			// A segment that is a reference is not a place until the firing resolves it, and
 			// `demo."$[kind]".x` narrowed to `demo."$[kind]"` is a narrowing to nothing at all.
-			// Any dollar at all, rather than a well-formed expression: reading the whole verse
+			// Any dollar at all, rather than a well-formed expression: reading the whole viff
 			// for a place named `$5` is the cheap way to be wrong here.
 			if strings.Contains(s, "$") {
 				return false
@@ -695,12 +695,12 @@ func firingWithin(t Trigger) [][]string {
 // The names an action's expressions read: each field of the changed payload by name (`stage`,
 // `path`, …), and `subject`, the RESOLVED subject, set last so a payload field cannot shadow
 // it. A Patch value that is one `.[…]` and nothing else becomes the expression's value, keeping
-// its type (`.[result]`, `.[verse.review.step]`, `.[result.findings[0].id]`) — see deref.go,
+// its type (`.[result]`, `.[viff.review.step]`, `.[result.findings[0].id]`) — see deref.go,
 // which is what lets a task's output become a fact the next `when` can match rather than only
 // text in the next prompt. A `$[…]` inside text is written into the text, in a patch as in a
 // Spawn's strings (launch.Spec.Bind).
 //
-//tony:schemagen=verse-action,notag,comment=Doc,lineComment=Note
+//tony:schemagen=viff-action,notag,comment=Doc,lineComment=Note
 type Action struct {
 	// Doc and Note are the comments this was WRITTEN with — the lines above it, and the one
 	// beside it. See Trigger.Doc: they ride the node rather than being fields of the document,
@@ -767,7 +767,7 @@ type Action struct {
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
 	// chain (review → merge → approve) reads top-to-bottom in one trigger. The engine applies
 	// it scoped to exactly this spawn's task (see Engine.applyHook / hookFor). A task that
-	// ended because verse and its runner lost each other is `failed`, and its record says
+	// ended because viff and its runner lost each other is `failed`, and its record says
 	// `orphaned: true`, which onFailed reads.
 	OnDone      *Action `tony:"field=onDone,omitzero"`      // status done (success)
 	OnFailed    *Action `tony:"field=onFailed,omitzero"`    // status failed
@@ -1115,7 +1115,7 @@ func (a Action) applyClaimed(chain string, oc occasion, subj entity.Ref, e *Engi
 	// EVERYTHING IS RESOLVED BEFORE ANYTHING IS WRITTEN. The patch is what takes the subject
 	// out of the rule's selection, so a patch that lands ahead of a derive that then fails is
 	// a subject latched over a write that never happened: the rule does not fire again to
-	// try, and the verse says the work finished and holds no record of it. What can fail at a
+	// try, and the viff says the work finished and holds no record of it. What can fail at a
 	// firing in the ordinary way — a reference the answer did not carry, a read of an entity
 	// that is not there — is known before any write, from the firing's own snapshot, so it is
 	// found here and the firing writes nothing.
@@ -1127,7 +1127,7 @@ func (a Action) applyClaimed(chain string, oc occasion, subj entity.Ref, e *Engi
 	if a.Patch != nil {
 		// Evaluate expressions against the payload that fired this action, so a patch can
 		// write a value it read (a completed task's `.[result]`, a nested
-		// `.[verse.review.done]`) rather than only a constant. An absent plain path fails the
+		// `.[viff.review.done]`) rather than only a constant. An absent plain path fails the
 		// firing for the same reason a failed write does — and specifically must not be
 		// dropped: the store distinguishes an absent key from a null one, so omitting it would
 		// launder "the task never said" into "the task said nothing", which a match reads as a
@@ -1409,8 +1409,8 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Bindin
 	// and can write the subject down as failed. It is kept on the rule as well, for its author.
 	//
 	// THROUGH THE SPAWNER, with the refusal on the spec (launch.Spec.Refusal), so the task is
-	// recorded where every other refusal is: versed writes a failed record at the task id with
-	// the reason, as it does for a launch it refuses itself, and `verse task get` shows it. The
+	// recorded where every other refusal is: viffd writes a failed record at the task id with
+	// the reason, as it does for a launch it refuses itself, and `viff task get` shows it. The
 	// Spawner starts nothing for it. One that answers no handle still leaves a failed task here,
 	// so the hooks run either way.
 	if refused != nil {

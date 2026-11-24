@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // suspending is an engine over store with a loaded table of its own and the given suspensions in
@@ -53,7 +53,7 @@ func stays(t *testing.T, s entity.Store, ref entity.Ref, field, want string) {
 	}
 }
 
-// A suspension's subject is the selector `verse flow --subject` lists by — `*` open in any segment,
+// A suspension's subject is the selector `viff flow --subject` lists by — `*` open in any segment,
 // covering at or beneath — and its charter is one address, or with recursive that address and
 // every charter beneath it. Two spellings of one path are one record, and the record spells every
 // part: an empty subject is refused rather than read as every one. A subject is a path, so work
@@ -68,7 +68,7 @@ func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 		return s
 	}
 	pr1, pr2, issue1 := entity.RefAt("demo", "pr", "1"), entity.RefAt("demo", "pr", "2"), entity.RefAt("demo", "issue", "1")
-	deep := entity.RefAt("github", "signadot", "verse", "pr", "42")
+	deep := entity.RefAt("github", "signadot", "viff", "pr", "42")
 	for _, c := range []struct {
 		subject string
 		covers  []entity.Ref
@@ -77,7 +77,7 @@ func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 		{"demo.pr.1", []entity.Ref{pr1}, []entity.Ref{pr2, issue1}},
 		{"demo.*.1", []entity.Ref{pr1, issue1}, []entity.Ref{pr2}},
 		{"*.pr.*", []entity.Ref{pr1, pr2}, []entity.Ref{issue1}},
-		{"github.*.verse.pr.*", []entity.Ref{deep}, []entity.Ref{pr1, entity.RefAt("github", "signadot", "verse", "pr")}},
+		{"github.*.viff.pr.*", []entity.Ref{deep}, []entity.Ref{pr1, entity.RefAt("github", "signadot", "viff", "pr")}},
 		{"*", []entity.Ref{pr1, deep}, []entity.Ref{{}}},
 	} {
 		s := sus("*", "", c.subject, false)
@@ -107,23 +107,23 @@ func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 		}
 	}
 
-	drift := sus("verse-dev.drift", "", "*", true)
-	if drift.ID() != "verse-dev.drift.**:*@*" {
+	drift := sus("viff-dev.drift", "", "*", true)
+	if drift.ID() != "viff-dev.drift.**:*@*" {
 		t.Errorf("a recursive charter's id = %s", drift.ID())
 	}
-	for _, at := range [][]string{{"verse-dev", "drift"}, {"verse-dev", "drift", "x"}} {
+	for _, at := range [][]string{{"viff-dev", "drift"}, {"viff-dev", "drift", "x"}} {
 		if !drift.CoversCharter(at, "claim") {
 			t.Errorf("%s does not cover the charter at %v", drift.ID(), at)
 		}
 	}
-	if drift.CoversCharter([]string{"verse-dev"}, "claim") || sus("verse-dev.drift", "", "*", false).CoversCharter([]string{"verse-dev", "drift", "x"}, "claim") {
+	if drift.CoversCharter([]string{"viff-dev"}, "claim") || sus("viff-dev.drift", "", "*", false).CoversCharter([]string{"viff-dev", "drift", "x"}, "claim") {
 		t.Error("a charter covers what stands above it, or a charter not recursive covers what is beneath it")
 	}
 	back, err := SuspensionOf(drift.Payload())
 	if err != nil || back.ID() != drift.ID() {
 		t.Errorf("the record read back as %s (%v), want %s", back.ID(), err, drift.ID())
 	}
-	if !sus("verse-dev.drift", "claim", "demo.pr.1", false).Within(drift) || drift.Within(sus("verse-dev.drift", "", "*", false)) {
+	if !sus("viff-dev.drift", "claim", "demo.pr.1", false).Within(drift) || drift.Within(sus("viff-dev.drift", "", "*", false)) {
 		t.Error("Within does not follow recursive")
 	}
 	if !sus("*", "", "demo.pr.1", false).Within(sus("*", "", "demo.*", false)) {
@@ -131,7 +131,7 @@ func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 	}
 
 	// A row's charter, printed as --charter, reads back as the suspension it came from.
-	for _, flag := range []string{"verse-dev.drift", "verse-dev.drift:claim", ":review", ":", "*", "*:review"} {
+	for _, flag := range []string{"viff-dev.drift", "viff-dev.drift:claim", ":review", ":", "*", "*:review"} {
 		address, rule := ParseCharterFlag(flag)
 		if got := sus(address, rule, "*", false).CharterFlag(); got != flag {
 			t.Errorf("--charter %s reads back as %s", flag, got)
@@ -149,8 +149,8 @@ func TestASuspensionIsAddressedAsAFlowIs(t *testing.T) {
 		charter, subject string
 		recursive        bool
 	}{
-		{"verse-dev.drift", "", false},          // an empty subject is not every subject
-		{"verse-dev.*", "*", false},             // beneath is recursive, not a wildcard
+		{"viff-dev.drift", "", false},           // an empty subject is not every subject
+		{"viff-dev.*", "*", false},              // beneath is recursive, not a wildcard
 		{"", "*", true},                         // baseline and beneath is every charter
 		{"*", "*", true},                        // every charter has nothing beneath it
 		{"*", "demo.pr.1[0]", false},            // an element of a payload is not a subject
@@ -289,14 +289,14 @@ func TestAnotherScopesRuleAboutTheSameSubjectFires(t *testing.T) {
 // A holder's suspension covers work only while the holder may suspend it, asked when it would
 // apply: bob's `demo.pr.*` holds the PR nobody owns, and stops holding the one alice does.
 func TestAWildcardStopsCoveringWhatSomebodyOwns(t *testing.T) {
-	// An OPEN verse, since the whole case is about a place nobody owns: what an untaken place
+	// An OPEN viff, since the whole case is about a place nobody owns: what an untaken place
 	// permits is the root record's to say, and a store with none admits nobody at all.
 	raw := entitytest.OpenStore(t)
 	store := entity.As(raw, entity.SystemDefault)
 	eng, _ := suspending(t, store, "user:bob@example.com", [3]string{"*", "", "demo.pr.*"})
 	// Alice's rule, not the system's: a rule the system installed is the system's alone to
 	// suspend, and a rule acts as whoever owns it, so it is hers to patch her own PR with. Not
-	// written down, since this store holds none of versed's seed rows to admit her record — so
+	// written down, since this store holds none of viffd's seed rows to admit her record — so
 	// the record is put there, a rule nobody owns acting as nobody.
 	if err := eng.addTrigger(reviewRule("review", entity.Obj{"stage": "reviewed"}), "user:alice@example.com", RunnersChecked); err != nil {
 		t.Fatal(err)
@@ -365,7 +365,7 @@ func (h *heldHandle) finish() {
 }
 
 // spawned is a spawner of heldHandles that remembers them by id. With a store it mirrors each
-// one, as versed's spawner does, so that a task's end reaches its record: a test that ends a
+// one, as viffd's spawner does, so that a task's end reaches its record: a test that ends a
 // task and waits on what follows gives it one.
 type spawned struct {
 	mu    sync.Mutex
@@ -423,10 +423,10 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 			Condition: Condition{Subject: prSubject("open")},
 			Action: Action{
 				Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 				OnDone: &Action{
 					Patch: entity.Obj{"stage": "reviewed"}.Payload(),
-					Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge"},
+					Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "merge"},
 				},
 			},
 		},
@@ -435,10 +435,10 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 			Condition: Condition{Subject: prSubject("picking")},
 			Action: Action{
 				Patch: entity.Obj{"stage": "picked"}.Payload(),
-				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "pick"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "pick"},
 				OnDone: &Action{
 					Patch: entity.Obj{"stage": "chosen"}.Payload(),
-					Spawn: &launch.Spec{Prompt: "act", Agent: &runner.Agent{Name: "verse"}},
+					Spawn: &launch.Spec{Prompt: "act", Agent: &runner.Agent{Name: "viff"}},
 				},
 			},
 		},
@@ -447,7 +447,7 @@ func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 			Condition: Condition{Subject: Match{"path": pathOf("demo", "issue", "*"), "value": map[string]any{"stage": "open"}}},
 			Action: Action{
 				Patch:  entity.Obj{"stage": "triaging"}.Payload(),
-				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "triage"},
+				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "triage"},
 				OnDone: &Action{Patch: entity.Obj{"stage": "triaged"}.Payload()},
 			},
 		},
@@ -527,14 +527,14 @@ func TestDrainingRefusesAFiringWhileAParkedLaunchStarts(t *testing.T) {
 			Condition: Condition{Subject: prSubject("open")},
 			Action: Action{
 				Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
-				OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload(), Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "notify"}},
+				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
+				OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload(), Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "notify"}},
 			},
 		},
 		{
 			Name:      "merge",
 			Condition: Condition{Subject: prSubject("reviewed")},
-			Action:    Action{Patch: entity.Obj{"stage": "merging"}.Payload(), Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge"}},
+			Action:    Action{Patch: entity.Obj{"stage": "merging"}.Payload(), Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "merge"}},
 		},
 	} {
 		if err := eng.AddTrigger(trig); err != nil {
@@ -746,7 +746,7 @@ func parking(t *testing.T, spawn func(*spawned) Spawner) (*Engine, *Suspensions,
 }
 
 // deploying is an engine with a suspension table holding shapes, a rule and a spawner, observing
-// a store: one verse over it. The func it answers ends it.
+// a store: one viff over it. The func it answers ends it.
 func deploying(t *testing.T, store entity.Store, rule Trigger, spawn func(*spawned) Spawner, shapes ...[3]string) (*Engine, *Suspensions, *spawned, func()) {
 	t.Helper()
 	eng, tbl := suspending(t, store, "user:tester", shapes...)
@@ -854,8 +854,8 @@ func waitUntilGone(t *testing.T, store entity.Store, id string) {
 	}
 }
 
-// A PARKED LAUNCH OUTLIVES THE VERSE THAT PARKED IT, as the suspension holding it does. A run
-// waits at a parked element and verse restarts: the next verse finds the launch parked, so the
+// A PARKED LAUNCH OUTLIVES THE VIFF THAT PARKED IT, as the suspension holding it does. A run
+// waits at a parked element and viff restarts: the next viff finds the launch parked, so the
 // run still waits, its claim standing and nothing failed. The lift starts the task, with what the
 // launch read when it parked, and its end finishes the run.
 func TestAParkedLaunchOutlivesARestart(t *testing.T) {
@@ -870,10 +870,10 @@ func TestAParkedLaunchOutlivesARestart(t *testing.T) {
 	build.finish()
 	// Parked and recorded: the launch is listed a moment ahead of its record (park).
 	waitFacts(t, store, "its third element parked", func(map[string]any) bool {
-		recs, err := store.ScratchRead(entity.VerseRef(mirror.System, parkedKind))
+		recs, err := store.ScratchRead(entity.ViffRef(mirror.System, parkedKind))
 		return eng.Parked() == 1 && err == nil && len(entity.Fields(recs)) == 1
 	})
-	stop() // verse goes down
+	stop() // viff goes down
 
 	specs := make(chan launch.Spec, 1)
 	next, nextTbl, sp, _ := deploying(t, store, rule, func(sp *spawned) Spawner {
@@ -901,7 +901,7 @@ func TestAParkedLaunchOutlivesARestart(t *testing.T) {
 	ship.finish()
 	waitStage(t, store, prRef("1"), "shipped")
 	waitUntilGone(t, store, runID)
-	if recs, err := store.ScratchRead(entity.VerseRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
+	if recs, err := store.ScratchRead(entity.ViffRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
 		t.Fatalf("the launch's record stands after it started: %v (err %v)", recs, err)
 	}
 }
@@ -935,9 +935,9 @@ func TestAShutEngineStartsNoParkedLaunch(t *testing.T) {
 	}
 }
 
-// A PARKED RECORD WHOSE TASK STARTED PARKS NOTHING. Verse went down between starting a parked
+// A PARKED RECORD WHOSE TASK STARTED PARKS NOTHING. Viff went down between starting a parked
 // launch's task and removing the launch's record: the task's record of that occurrence says it
-// started, so the next verse removes the record and does not start the task again.
+// started, so the next viff removes the record and does not start the task again.
 func TestAParkedRecordWhoseTaskStartedIsRemoved(t *testing.T) {
 	store := entitytest.Store(t)
 	rule := deploy()
@@ -951,7 +951,7 @@ func TestAParkedRecordWhoseTaskStartedIsRemoved(t *testing.T) {
 	if n := next.Parked(); n != 0 || sp.get(id) != nil {
 		t.Fatalf("a launch whose task started was parked again: %d parked, started = %v", n, sp.get(id) != nil)
 	}
-	if recs, err := store.ScratchRead(entity.VerseRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
+	if recs, err := store.ScratchRead(entity.ViffRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
 		t.Fatalf("the record of a launch whose task started stands: %v (err %v)", recs, err)
 	}
 }

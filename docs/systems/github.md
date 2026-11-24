@@ -57,7 +57,7 @@ requests are within reach; the autonomy decides among them.
 
 ```tony
 spawn:
-  agent: {name: verse}
+  agent: {name: viff}
   prompt: "Make the failing check on $[subject.ref] pass, and open a pull request."
   environment:
     systems:
@@ -67,8 +67,8 @@ spawn:
         from: main
         fetch: {}
         push:
-        - {ref: !glob "refs/heads/verse/auto/*", exists: false}
-        - {ref: !glob "refs/heads/verse/auto/*", own: true}
+        - {ref: !glob "refs/heads/viff/auto/*", exists: false}
+        - {ref: !glob "refs/heads/viff/auto/*", own: true}
       github:
       - repo: acme/app
         create-pr: {base: main, own: true}
@@ -96,7 +96,7 @@ branch this run did not push whatever the rows say.
 
 A pull request must come from a branch this run pushed. A pull request from any other branch
 is refused. Its commits carry the task's trailers, so the iod's copy of the pull request can be
-tied to the task that made it. A script calls the same tools with `verse-call-tool`.
+tied to the task that made it. A script calls the same tools with `viff-call-tool`.
 
 The reads are steps too, as a Slack read is: what the forge holds is not the task's until it is
 read, and a row can keep a task from it. A description and a review are other people's words,
@@ -155,7 +155,7 @@ agents:
         ceiling: {repo: !regexp "^github\\.com/acme/", create-pr: {base: main}, update-pr: {}}
 ```
 
-Verse refuses to install a spawn whose environment gives proposals beyond the ceiling, saying
+Viff refuses to install a spawn whose environment gives proposals beyond the ceiling, saying
 what the ceiling gives; the runner holds each proposal at the act to the environment, the row,
 and then the ceiling.
 

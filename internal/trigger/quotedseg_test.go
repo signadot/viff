@@ -3,11 +3,11 @@ package trigger
 import (
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // ONE SPELLING, ONE MEANING, wherever a path is written. `demo.pr."*"` names the node called `*`
-// at a read (`verse data -at`), and it names the same node in a charter — where it used to read
+// at a read (`viff data -at`), and it names the same node in a charter — where it used to read
 // as the WILDCARD, so a rule about one node fired on every node beside it. Tony quoting carries a
 // value's type rather than an escape, so the list form says that name with the match over it
 // (`!or ["*"]`), and the string form now compiles to exactly that.

@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // The hint, from the source's side.
 //
-// verse does not parse deliveries: a source owns its own — it deployed the git hook, it holds
-// the Slack signing secret — and tells verse which refs went stale. That is the whole of the
+// viff does not parse deliveries: a source owns its own — it deployed the git hook, it holds
+// the Slack signing secret — and tells viff which refs went stale. That is the whole of the
 // outbound direction, and it is deliberately the smallest thing that could work: a POST with
 // the refs as query parameters and no body at all.
 //
@@ -44,13 +44,13 @@ func HintPath(name string) string {
 	return "/iods/" + name + "/hint"
 }
 
-// HintURL joins a verse base url to that route: HintURL("http://verse:9797", "acme").
+// HintURL joins a viff base url to that route: HintURL("http://viff:9797", "acme").
 func HintURL(base, name string) string {
 	return strings.TrimRight(base, "/") + HintPath(name)
 }
 
 // Hints posts to hintURL and logs what it could not deliver — the Hinter every deployed source
-// wires into its delivery endpoint, and the only place a source knows verse's address at all.
+// wires into its delivery endpoint, and the only place a source knows viff's address at all.
 func Hints(hintURL string, logf func(string, ...any)) Hinter {
 	return func(ctx context.Context, refs ...entity.Ref) {
 		if err := PostHint(ctx, hintURL, refs...); err != nil && logf != nil {
@@ -61,17 +61,17 @@ func Hints(hintURL string, logf func(string, ...any)) Hinter {
 
 // hintTimeout bounds a hint delivery. Short, and much shorter than a reflect: a hint is a
 // courtesy — the periodic resync is what makes a missed one land eventually — so a source
-// blocking its own event loop on a verse that is rolling out would be paying a real cost for
+// blocking its own event loop on a viff that is rolling out would be paying a real cost for
 // an optimisation.
 const hintTimeout = 10 * time.Second
 
-// PostHint tells verse that the slice each ref names went stale. No refs is a full resync.
+// PostHint tells viff that the slice each ref names went stale. No refs is a full resync.
 //
 // It carries NOTHING but the refs, and that is the law rather than a minimal first version: a
 // hint never writes entities, it schedules a reconcile that reads external truth — so a
 // delivery that is duplicated, reordered or forged costs at most a pass over a slice its
 // sender does not get to choose the contents of. That is what lets the route stay
-// unauthenticated in a wide-open verse, and it is why there is no body to sign here even
+// unauthenticated in a wide-open viff, and it is why there is no body to sign here even
 // though the delivery this hint came FROM was signed.
 //
 // A failure is returned rather than retried. The caller is holding a webhook request it must

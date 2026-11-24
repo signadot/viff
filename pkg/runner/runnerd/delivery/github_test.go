@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // OpenGitHubPR opens a pull request when none is open from the head, and finds the open one
@@ -30,7 +30,7 @@ func TestOpenGitHubPROpensOnceAndThenFinds(t *testing.T) {
 		}
 		switch r.Method {
 		case http.MethodGet:
-			if r.URL.Query().Get("head") != "example:verse/train" || r.URL.Query().Get("state") != "open" {
+			if r.URL.Query().Get("head") != "example:viff/train" || r.URL.Query().Get("state") != "open" {
 				t.Errorf("listed with %q — not this head's open pull requests", r.URL.RawQuery)
 			}
 			json.NewEncoder(w).Encode(open)
@@ -44,7 +44,7 @@ func TestOpenGitHubPROpensOnceAndThenFinds(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	spec := GitHubPR{API: srv.URL, Owner: "example", Repo: "app", Head: "verse/train",
+	spec := GitHubPR{API: srv.URL, Owner: "example", Repo: "app", Head: "viff/train",
 		Base: "master", Title: "drift", Body: "the train"}
 
 	out, err := OpenGitHubPR(context.Background(), srv.Client(), "tok", spec)
@@ -54,7 +54,7 @@ func TestOpenGitHubPROpensOnceAndThenFinds(t *testing.T) {
 	if !strings.Contains(out, "opened pull request #7") {
 		t.Errorf("first push: %q", out)
 	}
-	if posted["head"] != "verse/train" || posted["base"] != "master" || posted["title"] != "drift" || posted["body"] != "the train" || posted["draft"] != false {
+	if posted["head"] != "viff/train" || posted["base"] != "master" || posted["title"] != "drift" || posted["body"] != "the train" || posted["draft"] != false {
 		t.Errorf("opened with %v — not what was asked", posted)
 	}
 	if auth != "Bearer tok" {
@@ -109,7 +109,7 @@ func TestUpdateGitHubPRChangesTheOpenOneOrRefuses(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	spec := GitHubPR{API: srv.URL, Owner: "example", Repo: "app", Head: "verse/train", Title: "retitled"}
+	spec := GitHubPR{API: srv.URL, Owner: "example", Repo: "app", Head: "viff/train", Title: "retitled"}
 	if _, err := UpdateGitHubPR(context.Background(), srv.Client(), "tok", spec); err == nil || !strings.Contains(err.Error(), "no pull request is open") {
 		t.Fatalf("updating with none open: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestOpenGitHubPROpensADraft(t *testing.T) {
 	}))
 	defer srv.Close()
 	out, err := OpenGitHubPR(context.Background(), srv.Client(), "tok", GitHubPR{API: srv.URL, Owner: "example",
-		Repo: "app", Head: "verse/sso", Base: "master", Title: "sso", Draft: true})
+		Repo: "app", Head: "viff/sso", Base: "master", Title: "sso", Draft: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestReadGitHubPRSaysItsHeadsChecks(t *testing.T) {
 		switch r.URL.Path {
 		case "/repos/acme/app/pulls/9":
 			w.Write([]byte(`{"number": 9, "title": "sso", "state": "open", "draft": true, "html_url": "u",
-				"user": {"login": "ana"}, "base": {"ref": "master"}, "head": {"ref": "verse/deliver/sso", "sha": "abcdef1234567"}}`))
+				"user": {"login": "ana"}, "base": {"ref": "master"}, "head": {"ref": "viff/deliver/sso", "sha": "abcdef1234567"}}`))
 		case "/repos/acme/app/pulls/9/reviews":
 			w.Write([]byte(`[]`))
 		case "/repos/acme/app/commits/abcdef1234567/check-runs":

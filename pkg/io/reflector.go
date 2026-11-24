@@ -9,18 +9,18 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// Source reads external truth for a slice of the entity-verse and hands it back. It owns one
+// Source reads external truth for a slice of the entity-viff and hands it back. It owns one
 // root (`git`, `github`, …) and is the single writer of it, which is what lets that
 // slice go without CAS. See docs/io.md.
 //
 // IT IS NOT HANDED A STORE, and that is the whole shape of this interface. Reflect answers
-// with what it read; converging the store with that answer is the Reflector's job, on verse's
+// with what it read; converging the store with that answer is the Reflector's job, on viff's
 // side of the seam. The three laws converge keeps — skip what is unchanged, tombstone only
 // what the answer claims authority over, never tombstone what it does not — are knowledge
-// about the entity-verse rather than about git or GitHub, and a connector author who had to
+// about the entity-viff rather than about git or GitHub, and a connector author who had to
 // hold them would get them wrong in a way nothing notices until a charter fires two hundred
 // times.
 //
@@ -43,7 +43,7 @@ type Reflection struct {
 	//
 	// It is not new information — it is the scoping a reconcile always had, said out loud
 	// instead of held in a parameter. It is also what turns "keep git history" from a branch
-	// in verse's code into a declaration in the source's answer: the git source covers
+	// in viff's code into a declaration in the source's answer: the git source covers
 	// `git.<repo>.ref.*` and `git.<repo>.head` and does NOT cover `git.<repo>.commit.*`, so
 	// commits fall out of the bounded tip window and stay.
 	//
@@ -58,8 +58,8 @@ type Reflection struct {
 }
 
 // Cover is a cover at a place: one segment per level, each a literal name, with a bare `*` any
-// one segment (entity.SegMatches). `Cover("git", "verse", "ref", "*")` is an answer complete
-// for every ref of one repository; `Cover("git", "verse", "head")` for its head alone. A cover
+// one segment (entity.SegMatches). `Cover("git", "viff", "ref", "*")` is an answer complete
+// for every ref of one repository; `Cover("git", "viff", "head")` for its head alone. A cover
 // that also narrows by payload sets Predicate on the result.
 func Cover(segs ...string) entity.Pattern {
 	path := make([]*ir.Node, len(segs))
@@ -109,12 +109,12 @@ func (r Reflection) Check(root string) error {
 	}
 	for _, e := range r.Entities {
 		// The reserved half FIRST, because `Root()` does not say which half a ref is in: a
-		// source registered as `task` answering `verse.task.instance.x` passes the check below,
+		// source registered as `task` answering `mirror.task.instance.x` passes the check below,
 		// and converge writes to the store directly — under the refusal that guards `POST
-		// /entity`. A source reflects the world; what verse keeps about its own running is
+		// /entity`. A source reflects the world; what viff keeps about its own running is
 		// written by the verbs that own it.
 		if e.Ref.Reserved() {
-			return fmt.Errorf("reflection: entity %s is in verse's own half, which no source "+
+			return fmt.Errorf("reflection: entity %s is in viff's own half, which no source "+
 				"reflects — a source writes what the world is about, beside it", e.Ref)
 		}
 		if !e.Ref.Under(root) {
@@ -178,7 +178,7 @@ func (rf *Reflector) OnPass(f func(Pass)) *Reflector { rf.onPass = f; return rf 
 //
 // It is exported because it is the whole of what a reflector does, and because the initial
 // sync, the periodic net and a hint are all this call with different arguments — a caller
-// wanting one pass (a test, a `verse iod sync`) should drive the same path they do rather
+// wanting one pass (a test, a `viff iod sync`) should drive the same path they do rather
 // than a second one that could differ.
 func (rf *Reflector) Reconcile(ctx context.Context, ref entity.Ref) error {
 	p := Pass{Ref: ref}
@@ -257,7 +257,7 @@ func (rf *Reflector) converge(ctx context.Context, rn Reflection) (int, error) {
 		}
 		for _, p := range at {
 			// Compared against the answer AS IT STANDS. This compared against a stripped copy of
-			// it, because verse spelled a removed field with a bare null and hid every bare null
+			// it, because viff spelled a removed field with a bare null and hid every bare null
 			// on read — so a source that legitimately reported one differed from itself on every
 			// pass, forever. Absence is `!delete` now and a null is a null, so there is nothing
 			// to strip here and nothing to mimic.
@@ -390,8 +390,8 @@ func places(covers []entity.Pattern, ref entity.Ref, payload entity.Payload) []s
 // current reads what stands in the store at the places a reflection is about — one read per
 // place, at the depth that place's entities sit at, rather than one List at the root.
 //
-// A PLACE IS WHAT A COVER NAMES, read down to its first wildcard: `git.verse.ref.*` is a read of
-// `git.verse.ref` four deep, and `git.verse.head` is a read of that one entity. An answer is
+// A PLACE IS WHAT A COVER NAMES, read down to its first wildcard: `git.viff.ref.*` is a read of
+// `git.viff.ref` four deep, and `git.viff.head` is a read of that one entity. An answer is
 // complete for exactly those, so they are what a tombstone can be decided from.
 //
 // An entity NO COVER HOLDS is read too, at its parent, because the unchanged-comparison has to
@@ -427,7 +427,7 @@ func (rf *Reflector) current(rn Reflection) (map[entity.Ref]entity.Payload, erro
 	}
 	out := map[entity.Ref]entity.Payload{}
 	for _, p := range distinctPlaces(at) {
-		// Not verse's own half, for the reason Claimed says at length: a root name is not a
+		// Not viff's own half, for the reason Claimed says at length: a root name is not a
 		// half, and this map is what `covered` decides tombstones from.
 		//
 		// EXACTLY AT THE PLACE'S DEPTH, because a listing also reports a value standing above
@@ -526,13 +526,13 @@ func covered(covers []entity.Pattern, current map[entity.Ref]entity.Payload) []s
 
 // Hint schedules a targeted reconcile of each ref, and a full one if given none — the whole of
 // what a hint may do. It writes nothing, whoever delivered it: that is the law, and it is what
-// lets a hint route stay unauthenticated in a wide-open verse, since a delivery carrying no
+// lets a hint route stay unauthenticated in a wide-open viff, since a delivery carrying no
 // data can cost at most a reconcile of a slice its sender does not get to choose the contents
 // of.
 //
-// verse does not PARSE deliveries, and that is why this takes refs rather than a request. A
+// viff does not PARSE deliveries, and that is why this takes refs rather than a request. A
 // source owns its own delivery — it deployed the git hook, it holds the webhook secret — and
-// tells verse which refs went stale; a second implementation of "map a delivery to refs" per
+// tells viff which refs went stale; a second implementation of "map a delivery to refs" per
 // source is exactly how the law comes to be broken in one of two places, and across a network
 // a divergence is least recoverable. The route that reaches this is
 // POST /iods/<name>/hint?at=…

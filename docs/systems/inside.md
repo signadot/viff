@@ -1,6 +1,6 @@
 # files, commands and agent
 
-Three systems are not outside verse. They are what an agent does inside its run: it writes files,
+Three systems are not outside viff. They are what an agent does inside its run: it writes files,
 runs commands and calls sub-agents. A spawn gives them in its environment as it gives `git`, the
 runner intercepts each act for the task's autonomy to decide, and a runner offers them as it
 offers `git`.
@@ -70,7 +70,7 @@ An agent always reaches its model: under `none` or `allow` the runner's proxy le
 host through, outside any step.
 
 A runner says which modes its sandbox builds, under the network's `builds`. One that runs its
-tasks unconfined, such as `verse up`'s or one on macOS, builds only `open`, so a spawn there says
+tasks unconfined, such as `viff up`'s or one on macOS, builds only `open`, so a spawn there says
 `network: {mode: open}` and is refused without it ([what it offers](../reference/runnerd.md#what-it-offers)).
 
 ## A row on files or commands is advisory
@@ -91,14 +91,14 @@ run. Enforcing `files` and `commands` in the kernel is planned in issue bst6zbs0
 
 What the one doing the work does:
 
-- The verse agent writes files, runs commands and calls sub-agents with its own tools, and
+- The viff agent writes files, runs commands and calls sub-agents with its own tools, and
   reaches the network from its shell.
 - Codex does the same through its own sandbox, and Claude Code through its permission prompts.
   The runner stops each at the same places.
 - A script is one action, not a series of steps, so nothing inside it is stopped. Only its
   network is confined.
 
-Verse refuses to install a spawn whose environment gives a system the runner's offer does not
+Viff refuses to install a spawn whose environment gives a system the runner's offer does not
 hold, or one beyond the offer's ceiling. Codex and Claude can't run without `commands.run` and
 `files.write`, which their offers say (`requires`), so a Codex or Claude spawn whose environment
 leaves them out is refused, naming `commands: {}` or `commands: {run: {}}` to add.

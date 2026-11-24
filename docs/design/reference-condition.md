@@ -1,6 +1,6 @@
 # Why: The condition of a rule
 
-The reasons behind [The condition of a rule](../reference/condition.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [The condition of a rule](../reference/condition.md). They are for somebody changing viff; the page itself says what viff does.
 
 ## The subject is required
 
@@ -20,7 +20,7 @@ The subject is therefore always stated.
 A rule is a statement about the world. So the entities that a rule is about cannot depend on
 which entity was written last.
 
-There is also no changed entity to inherit from. Verse asks the rule once for each commit, and
+There is also no changed entity to inherit from. Viff asks the rule once for each commit, and
 not once for each change.
 
 ## A name is a set of one
@@ -39,7 +39,7 @@ charter could predict it.
 
 ## A match has no `op` key
 
-An `op` key would classify a *change*, as `set` or `delete`. Verse asks a match only of
+An `op` key would classify a *change*, as `set` or `delete`. Viff asks a match only of
 *state*, at a revision. State has no such class.
 
 The refusal explains this, and does not say "unknown key". The author wants a distinction that

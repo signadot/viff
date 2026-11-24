@@ -12,13 +12,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // GitRoot is the entity slice a git Source owns and is the single writer of.
 const GitRoot = "git"
 
-// Git reflects one or more git repositories into the git.* slice of the verse — read-only
+// Git reflects one or more git repositories into the git.* slice of the viff — read-only
 // reflection, the inbound half of a Source (docs/io.md). It is the single writer of
 // git.*, so the slice needs no CAS. Reflection is content-addressed, which makes reconcile
 // CURSORLESS: `git for-each-ref` yields a ref→sha map, and comparing shas against the stored
@@ -85,7 +85,7 @@ const EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 // AddTree reflects the tree object of a directory on every ref of every repository, as
 // `tree: {<name>: <object sha>}` on `git.<repo>.ref.<name>`. A ref where the directory is not
 // there carries the empty tree (EmptyTree): no files is a state of the directory like any other,
-// and removing it is a change to that state. spec is `<name>=<path>`, or a bare path whose last segment is the name: `.verse/charters`
+// and removing it is a change to that state. spec is `<name>=<path>`, or a bare path whose last segment is the name: `.viff/charters`
 // is reflected as `tree.charters`. The name is one plain word, so a charter can spell it in a
 // expression (`.[subject.value.tree.charters]`), which a path with a dot or a slash in it cannot be.
 //
@@ -158,7 +158,7 @@ func (g *Git) Root() string { return g.root }
 // included. Two sources reflecting one repo would fight over its commits just as surely as over
 // its branches.
 //
-// A literal place is also what the install takes an owner record at (versed's addSource), so
+// A literal place is also what the install takes an owner record at (viffd's addSource), so
 // everything this source writes under a repository is owned through one record rather than one
 // per ref.
 func (g *Git) Owns() []Own {
@@ -184,16 +184,16 @@ func RepoRef(id string) entity.Ref {
 	return entity.RefAt(GitRoot, id)
 }
 
-// hookMarker identifies the hook verse installs, so we only ever overwrite/remove our own.
-const hookMarker = "# verse git Source hook"
+// hookMarker identifies the hook viff installs, so we only ever overwrite/remove our own.
+const hookMarker = "# viff git Source hook"
 
 // InstallHook writes a reference-transaction hook into repo id's git dir that POSTs a HINT to
-// verse on every ref change — the git-native "webhook". It refuses to clobber a pre-existing
+// viff on every ref change — the git-native "webhook". It refuses to clobber a pre-existing
 // reference-transaction hook that isn't ours. Idempotent for ours.
 //
-// hintURL is the registration's hint route, `<verse>/iods/<name>/hint`. The ref is
+// hintURL is the registration's hint route, `<viff>/iods/<name>/hint`. The ref is
 // appended HERE, because which ref targets a repo is git's knowledge and not the route's: a
-// reconcile of `git.<id>` is a reconcile of that repo. verse never parses this delivery —
+// reconcile of `git.<id>` is a reconcile of that repo. viff never parses this delivery —
 // there is nothing to parse, which is the point.
 func (g *Git) InstallHook(id, hintURL string) error {
 	dir, ok := g.dirOf(id)
@@ -213,7 +213,7 @@ func (g *Git) InstallHook(id, hintURL string) error {
 	}
 	// git runs this three times per transaction (prepared|committed|aborted); act on
 	// committed. It carries no data at all — just which slice went stale — which is what lets
-	// the route it posts to stay unauthenticated in a wide-open verse.
+	// the route it posts to stay unauthenticated in a wide-open viff.
 	script := "#!/bin/sh\n" + hookMarker + "\n" +
 		`[ "$1" = committed ] || exit 0` + "\n" +
 		fmt.Sprintf(`curl -fsS -X POST "%s?at=%s" >/dev/null 2>&1 || true`+"\n",
@@ -348,7 +348,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 		rn.Add(entity.RefAt(g.root, id, "ref", name), p)
 	}
 
-	// Records: refs/verse/<name>, verse's own refs (gitrecord.go) — git.<repo>.record.<name>
+	// Records: refs/viff/<name>, viff's own refs (gitrecord.go) — git.<repo>.record.<name>
 	// {repo, name, sha, tree, from}, the tree being the entry's whole tree.
 	recs, err := gitRecords(ctx, dir)
 	if err != nil {
@@ -383,7 +383,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 		// HAS no parents, and that is a fact about it rather than a field nobody filled in. It
 		// also keeps the field one shape, so a predicate over it never has to ask which.
 		//
-		// Trailers are the one part of a commit BODY that reaches the verse, and only when
+		// Trailers are the one part of a commit BODY that reaches the viff, and only when
 		// there are any — an empty map on every commit is noise in every payload.
 		if len(c.trailers) > 0 {
 			p["trailers"] = c.trailers
@@ -397,7 +397,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 
 // refInfo is one ref: its object, that object's type, and, for an annotated tag, the trailers
 // of the tag's message. A tag is where a release or a deploy says what it is (a deploy tag names
-// the commit of another repository it deployed), and the ref is the only place the verse sees a
+// the commit of another repository it deployed), and the ref is the only place the viff sees a
 // tag. A branch's trailers are its tip commit's, at `git.<repo>.commit.<sha>`, so a branch carries
 // none here.
 type refInfo struct {
@@ -406,7 +406,7 @@ type refInfo struct {
 }
 
 // reflectedRefs is the ref space this source reflects as refs: branches, tags, and remote-tracking
-// branches. Its own records, under refs/verse/, it reflects as records (gitRecords). Everything
+// branches. Its own records, under refs/viff/, it reflects as records (gitRecords). Everything
 // else in a repository is somebody else's namespace.
 //
 // NAMED EXPLICITLY, because `for-each-ref` with no pattern is EVERY ref, and a mirror clone
@@ -588,7 +588,7 @@ func gitRecentCommits(ctx context.Context, dir string, depth int) []commitInfo {
 // trailer block is a heuristic over the last paragraph, so a commit whose body simply ENDS with
 // something shaped like `Status: proposal` yields `Status` as a trailer, in git's parser too.
 // Which is the argument for the convention living in the key NAMESPACE rather than in a curated
-// allowlist here: a charter matching `Verse-Task` is safe, one matching bare `Status` never was.
+// allowlist here: a charter matching `Viff-Task` is safe, one matching bare `Status` never was.
 // This source has no opinion about which keys are meaningful, because it cannot have a better
 // one than the repository it is reflecting.
 func parseTrailers(msg string) map[string]string {

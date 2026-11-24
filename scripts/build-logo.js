@@ -1,4 +1,4 @@
-// Builds the Verse "Halo V" logo files from the same geometry as the canvas artboard.
+// Builds the Viff "Halo V" logo files from the same geometry as the canvas artboard.
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -105,8 +105,8 @@ const mL = mark({ k: 1, id: 'vl' });
 const mD = mark({ k: 1, dark: true, id: 'vd' });
 const markLight = svgDoc(mL.defs + '\n' + mL.body, 512, 512, '0 0 64 64');
 const markDark = svgDoc(mD.defs + '\n' + mD.body, 512, 512, '0 0 64 64');
-fs.writeFileSync(path.join(OUT, 'verse-mark.svg'), markLight);
-fs.writeFileSync(path.join(OUT, 'verse-mark-dark.svg'), markDark);
+fs.writeFileSync(path.join(OUT, 'viff-mark.svg'), markLight);
+fs.writeFileSync(path.join(OUT, 'viff-mark-dark.svg'), markDark);
 
 // 2. Favicon SVG: heavier ring, transparent, adapts to dark tabs via media query on the facet gradients
 const fI = mark({ k: 1.4, id: 'fi' });
@@ -119,7 +119,7 @@ const font = opentype.loadSync(path.join(__dirname, 'fontdl', 'SpaceGrotesk-600.
 function wordmarkPath(x, y, size, tracking) {
   // opentype.js getPath applies kerning; letter-spacing is added per glyph via a manual advance.
   let cursor = x, d = '';
-  const glyphs = font.stringToGlyphs('verse');
+  const glyphs = font.stringToGlyphs('viff');
   glyphs.forEach((g, i) => {
     d += g.getPath(cursor, y, size).toPathData(2) + ' ';
     let adv = g.advanceWidth * size / font.unitsPerEm;
@@ -139,12 +139,12 @@ ${m.defs}
 <path d="${WM.d}" fill="${ink}"/>
 </svg>`;
 }
-fs.writeFileSync(path.join(OUT, 'verse-logo.svg'), lockup({ dark: false }));
-fs.writeFileSync(path.join(OUT, 'verse-logo-dark.svg'), lockup({ dark: true }));
-fs.writeFileSync(path.join(OUT, 'verse-logo-navbar.svg'), lockup({ dark: false, nav: true, ring: 'slate-metal-soft' }));
-fs.writeFileSync(path.join(OUT, 'verse-logo-navbar-flat.svg'), lockup({ dark: false, nav: true }));
+fs.writeFileSync(path.join(OUT, 'viff-logo.svg'), lockup({ dark: false }));
+fs.writeFileSync(path.join(OUT, 'viff-logo-dark.svg'), lockup({ dark: true }));
+fs.writeFileSync(path.join(OUT, 'viff-logo-navbar.svg'), lockup({ dark: false, nav: true, ring: 'slate-metal-soft' }));
+fs.writeFileSync(path.join(OUT, 'viff-logo-navbar-flat.svg'), lockup({ dark: false, nav: true }));
 const mS = mark({ k: 1, dark: true, id: 'vs', accent: 'slate-metal-soft' });
-fs.writeFileSync(path.join(OUT, 'verse-mark-navbar.svg'), svgDoc(mS.defs + '\n' + mS.body, 512, 512, '0 0 64 64'));
+fs.writeFileSync(path.join(OUT, 'viff-mark-navbar.svg'), svgDoc(mS.defs + '\n' + mS.body, 512, 512, '0 0 64 64'));
 
 
 // 4. PNG renders via Chromium
@@ -164,15 +164,15 @@ fs.writeFileSync(path.join(OUT, 'verse-mark-navbar.svg'), svgDoc(mS.defs + '\n' 
   }
 
   // mark PNGs (transparent)
-  for (const s of [1024, 512, 256, 180]) await shot(markLight, s, s, `verse-mark-${s}.png`);
-  await shot(markDark, 512, 512, 'verse-mark-dark-512.png');
+  for (const s of [1024, 512, 256, 180]) await shot(markLight, s, s, `viff-mark-${s}.png`);
+  await shot(markDark, 512, 512, 'viff-mark-dark-512.png');
   // lockups
   // lockup PNGs: full size, plus navbar sizes (height 32 and 64 CSS px at 2x = 64 / 128 px tall)
   for (const h of [640, 128, 64]) {
     const w = Math.round(LOCKUP_W * h / 80);
-    await shot(lockup({ dark: false }), w, h, h === 640 ? 'verse-logo.png' : `verse-logo-h${h}.png`);
-    await shot(lockup({ dark: true }), w, h, h === 640 ? 'verse-logo-dark.png' : `verse-logo-dark-h${h}.png`);
-    await shot(lockup({ dark: false, nav: true, ring: 'slate-metal-soft' }), w, h, h === 640 ? 'verse-logo-navbar.png' : `verse-logo-navbar-h${h}.png`);
+    await shot(lockup({ dark: false }), w, h, h === 640 ? 'viff-logo.png' : `viff-logo-h${h}.png`);
+    await shot(lockup({ dark: true }), w, h, h === 640 ? 'viff-logo-dark.png' : `viff-logo-dark-h${h}.png`);
+    await shot(lockup({ dark: false, nav: true, ring: 'slate-metal-soft' }), w, h, h === 640 ? 'viff-logo-navbar.png' : `viff-logo-navbar-h${h}.png`);
   }
   // GitHub social preview 1280x640, dark
   const soc = mark({ k: 1, dark: true, id: 'sp' });
@@ -180,8 +180,8 @@ fs.writeFileSync(path.join(OUT, 'verse-mark-navbar.svg'), svgDoc(mS.defs + '\n' 
 <defs>${soc.defs.replace('<defs>', '').replace('</defs>', '')}</defs>
 <rect width="1280" height="640" fill="#111317"/>
 <g transform="translate(300 170) scale(4.6875)">${soc.body}</g>
-<text x="640" y="400" font-family="'Space Grotesk', Arial, sans-serif" font-weight="600" font-size="200" letter-spacing="-8" fill="#F4F5F7">verse</text>
-<text x="640" y="470" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="28" fill="#A7ADB8">signadot.github.io/verse</text>
+<text x="640" y="400" font-family="'Space Grotesk', Arial, sans-serif" font-weight="600" font-size="200" letter-spacing="-8" fill="#F4F5F7">viff</text>
+<text x="640" y="470" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="28" fill="#A7ADB8">signadot.github.io/viff</text>
 </svg>`;
   await page.setViewportSize({ width: 1280, height: 640 });
   await page.setContent(`<!doctype html><html><head>
@@ -189,7 +189,7 @@ fs.writeFileSync(path.join(OUT, 'verse-mark-navbar.svg'), svgDoc(mS.defs + '\n' 
 <style>html,body{margin:0}svg{display:block}</style></head><body>${social}</body></html>`);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(300);
-  await page.screenshot({ path: path.join(OUT, 'verse-social-1280x640.png') });
+  await page.screenshot({ path: path.join(OUT, 'viff-social-1280x640.png') });
 
   // favicon PNGs (icon cut, transparent) and the .ico
   const icoSizes = [16, 32, 48];

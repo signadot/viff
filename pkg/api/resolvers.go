@@ -8,9 +8,9 @@ package api
 // grantees off the named levels of every line at the node, leaving the rest standing.
 //
 // AnswerFor is POST /resolvers/{name}/grant and /revoke: whom the resolver answers for. For is
-// the place, as a kinded path; absent, it is the caller, at `verse.for.<caller>`.
+// the place, as a kinded path; absent, it is the caller, at `viff.for.<caller>`.
 //
-//tony:schemagen=verse-answer-for,notag
+//tony:schemagen=viff-answer-for,notag
 type AnswerFor struct {
 	For string `tony:"field=for,omitzero"`
 }

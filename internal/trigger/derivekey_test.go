@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // ONE ENTITY PER VALUE, which is what a plain derive cannot say and what a question asked more
@@ -17,7 +17,7 @@ import (
 // A derive's address is a function of (rule, subject), and a gate's id is a function of (trigger,
 // gate, subject) — so a rule deriving a batch from a moving tip writes ONE entity, and the second
 // batch inherits the first one's answer without anybody being asked. That is the merge train in
-// .verse/charters/comment-drift/merge.tony: main moves, the proposals change, and the motion that decided
+// .viff/charters/comment-drift/merge.tony: main moves, the proposals change, and the motion that decided
 // the previous batch is already settled at the address the new batch lands on.
 //
 // `key:` is the fix, and it is `!each`'s key without the fan-out: the address carries the value,
@@ -38,7 +38,7 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git.head.verse
+    subject: git.head.viff
   action:
     derive:
     - path: "demo.batch"
@@ -52,9 +52,9 @@ func TestAKeyedDeriveIsOneEntityPerValue(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	head := entity.RefAt("git", "head", "verse")
+	head := entity.RefAt("git", "head", "viff")
 	entitytest.Set(t, store, head, entity.Obj{"sha": "aaa111"}.Payload())
-	// `demo.batch`, the rule, the segments of `git.head.verse`, and the key.
+	// `demo.batch`, the rule, the segments of `git.head.viff`, and the key.
 	waitDeep(t, store, []string{"demo", "batch"}, batchDepth)
 
 	// THE TIP MOVES, and the point is that this is a SECOND entity rather than a rewrite of the
@@ -111,7 +111,7 @@ func TestAKeyedDeriveRefusesAKeyThatIsNotAnAddress(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git.head.verse
+    subject: git.head.viff
   action:
     derive:
     - path: "demo.batch"
@@ -133,7 +133,7 @@ func TestAKeyedDeriveRefusesAKeyThatIsNotAnAddress(t *testing.T) {
 
 // AND `id:` IS THE SAME KEY WITHOUT THE COMPOSITION, which is the reader's half of it.
 //
-// A keyed id is `cut@git.head.verse@aaa111` — a function of (rule, subject, key), and nothing
+// A keyed id is `cut@git.head.viff@aaa111` — a function of (rule, subject, key), and nothing
 // in the charter grammar composes one, so every rule that wants that entity has to DESCRIBE it
 // (a `"*"` and a predicate on some field it happens to know) rather than name it. `id:` says
 // the value alone identifies the record, so the address is `demo.batch.aaa111` and a reader
@@ -153,7 +153,7 @@ func TestANamedDeriveIsAddressedByItsValue(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git.head.verse
+    subject: git.head.viff
   action:
     derive:
     - path: "demo.batch"
@@ -166,7 +166,7 @@ func TestANamedDeriveIsAddressedByItsValue(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "aaa111"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "head", "viff"), entity.Obj{"sha": "aaa111"}.Payload())
 	want := entity.RefAt("demo", "batch", "aaa111")
 	for i := 0; i < 100; i++ {
 		if _, ok, _ := store.Get(want); ok {
@@ -193,7 +193,7 @@ func TestADeriveRefusesBothKeyAndID(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git.head.verse
+    subject: git.head.viff
   action:
     derive:
     - path: "git.batch"
@@ -230,7 +230,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 - name: cut
   stratum: reflected
   condition:
-    subject: git.head.verse
+    subject: git.head.viff
   action:
     derive:
     - path: "demo.batch"
@@ -243,7 +243,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 - name: mark
   stratum: reflected
   condition:
-    subject: git.mark.verse
+    subject: git.mark.viff
   action:
     derive:
     - path: "demo.batch"
@@ -258,7 +258,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "aaa111"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "head", "viff"), entity.Obj{"sha": "aaa111"}.Payload())
 	want := entity.RefAt("demo", "batch", "aaa111")
 	for i := 0; i < 100; i++ {
 		if _, ok, _ := store.Get(want); ok {
@@ -266,7 +266,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	entitytest.Set(t, store, entity.RefAt("git", "mark", "verse"),
+	entitytest.Set(t, store, entity.RefAt("git", "mark", "viff"),
 		entity.Obj{"shas": []any{"aaa111", "bbb222"}}.Payload())
 	for i := 0; i < 100; i++ {
 		if e, ok, _ := store.Get(want); ok && entity.ToObj(e.Payload)["marked"] == true {
@@ -293,7 +293,7 @@ func TestANamedFanOutLandsOnAnotherRulesEntities(t *testing.T) {
 	t.Fatalf("%s was never marked: %+v", want, e.Payload)
 }
 
-// batchDepth is where a KEYED derive about `git.head.verse` lands under `demo.batch`: the
+// batchDepth is where a KEYED derive about `git.head.viff` lands under `demo.batch`: the
 // target, the rule that derived, the subject's own segments, and the key. A derived entity is as
 // deep as what it is about, so a listing says so rather than assuming a depth.
 const batchDepth = 2 + 1 + 3 + 1

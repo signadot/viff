@@ -18,13 +18,13 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
-	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/mcpclient"
+	"go.viff.dev/viff/pkg/runner/runnerd/secretstore"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Server is the runner's end of the channel: it holds the mirrors work is staged in and pushed
@@ -60,9 +60,9 @@ type Services struct {
 	GitHubAPI  string
 	SlackToken Credential
 	SlackAPI   string // "" is Slack's own
-	// Verse carries a task's request to the verse the runner serves, a verb of the verse system
-	// (verse.go); nil for a runner with no verse to reach, or no token of its own to reach it with.
-	Verse Verse
+	// Viff carries a task's request to the viff the runner serves, a verb of the viff system
+	// (viff.go); nil for a runner with no viff to reach, or no token of its own to reach it with.
+	Viff Viff
 	// Secrets is the runner's secret store, which a `secret.exec` reads the one secret it runs
 	// a command with from, at the act; nil, or one over no directory, has no secret.
 	Secrets *secretstore.Store
@@ -238,7 +238,7 @@ func (s *Server) Serve(tk Task, conn net.Conn) {
 		// AN ANSWER THE CHANNEL CANNOT CARRY is said to be one, in a frame it can: what was
 		// done is done, and the task reads that its answer did not fit, and why. Not OK, though
 		// the act may have been: a tool that reads Out on OK would read an empty answer as an
-		// empty verse, and say there is nothing where there is too much.
+		// empty viff, and say there is nothing where there is too much.
 		if len(body) > maxFrame {
 			fmt.Fprintf(s.Log, "delivery: %s: the answer to it is %d bytes, over the channel's %d\n", tk.ID, len(body), maxFrame)
 			body, err = codec.Marshal(Reply{ID: rep.ID, Error: "the answer is " + frameTooLarge{len(body)}.Error() +

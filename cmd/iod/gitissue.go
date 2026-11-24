@@ -7,7 +7,7 @@ import (
 	"log"
 	"path/filepath"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // The git-issue source: the issues `git issue` keeps inside a git repository, reflected.
@@ -41,7 +41,7 @@ func gitIssueMain(args []string) error {
 	if err := gitAsApp(ctx, *state); err != nil {
 		return err
 	}
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	gi.SetBodies(*bodies)
 	for _, spec := range repos {
 		id, dir, err := split(spec)
@@ -56,7 +56,7 @@ func gitIssueMain(args []string) error {
 			return fmt.Errorf("-mirror %q: %w", spec, err)
 		}
 		if id == "" {
-			id = verseio.MirrorID(remote)
+			id = viffio.MirrorID(remote)
 		}
 		// The clone happens here, at startup, and a failure ends the task — the same bargain
 		// `iod git` makes, for the same reason: an unreachable remote is something to find

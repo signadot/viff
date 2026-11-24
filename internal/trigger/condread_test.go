@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // proposalCharter is the sweep, as a charter would write it: a proposal is stale exactly when the
@@ -21,7 +21,7 @@ const proposalCharter = `
     subject:
       path: "merge.proposal.*"
       value: !let
-        let: [{tip: !get-path {at: "git.head.verse", path: sha}}]
+        let: [{tip: !get-path {at: "git.head.viff", path: sha}}]
         in:  {state: open, base: !not .[tip]}
   action:
     patch: {state: stale}
@@ -62,7 +62,7 @@ func TestAConditionComparesAgainstAnotherEntity(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	head := entity.RefAt("git", "head", "verse")
+	head := entity.RefAt("git", "head", "viff")
 	fresh := entity.RefAt("merge", "proposal", "fresh")
 	old := entity.RefAt("merge", "proposal", "old")
 
@@ -110,7 +110,7 @@ func TestAConditionReadOfAnAbsentEntitySelectsNothing(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	// git.head.verse does not exist. Touch the proposal to give the engine a commit to consider.
+	// git.head.viff does not exist. Touch the proposal to give the engine a commit to consider.
 	setPayload(t, store, open, `{state: open, base: aaa111, touched: 1}`)
 	if got := field(t, store, open, "state"); got != "open" {
 		t.Fatalf("state = %q — a read of an absent entity should leave the rule selecting nothing", got)
@@ -191,14 +191,14 @@ func TestExpansionKeepsATagOnAString(t *testing.T) {
 	for _, tc := range []struct{ name, src, want string }{
 		{"an operator over a binding", `{base: !not .[tip]}`, "!not"},
 		{"an operator over an expression", `{branch: !glob .[name]}`, "!glob"},
-		{"and one over a plain string", `{branch: !glob "verse/auto/*"}`, "!glob"},
+		{"and one over a plain string", `{branch: !glob "viff/auto/*"}`, "!glob"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pred, err := codec.ParseNode([]byte(tc.src), codec.Tony)
 			if err != nil {
 				t.Fatal(err)
 			}
-			env := refEnv(entity.Obj{"name": "verse/auto/1", "tip": "abc"}.Payload(),
+			env := refEnv(entity.Obj{"name": "viff/auto/1", "tip": "abc"}.Payload(),
 				subjectRecord(entity.RefAt("demo", "pr", "1"), nil, 0), fromSubject)
 			out, err := expandPatch(pred, env, nil)
 			if err != nil {

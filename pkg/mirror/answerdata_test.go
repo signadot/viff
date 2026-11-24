@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // An agent's answer is parsed as tony, so an agent that echoes its contract hands the store
@@ -29,7 +29,7 @@ func TestAnAnswerEchoingItsContractLandsAsData(t *testing.T) {
 	// Stored, and then read back — the read is the assertion, since an operator that reached
 	// the log takes every later read with it, not only this entity's.
 	s := entitytest.Store(t)
-	ref := entity.VerseRef(System, InstanceKind, "run-1")
+	ref := entity.ViffRef(System, InstanceKind, "run-1")
 	entitytest.Set(t, s, ref, entity.Obj{"status": "done", "data": d}.Payload())
 
 	if _, ok, err := s.Get(ref); err != nil || !ok {

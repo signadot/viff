@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // noRecords is a store that refuses every write to the perms mirror, as a store under load
@@ -19,7 +19,7 @@ type noRecords struct {
 }
 
 func (n *noRecords) Write(w entity.Write) (bool, int64, error) {
-	if w.At.Ref.Under(entity.VerseRoot, entity.PermsSystem) {
+	if w.At.Ref.Under(entity.ViffRoot, entity.PermsSystem) {
 		n.refused++
 		return false, 0, errors.New("storage_error: the store refused the write")
 	}
@@ -35,8 +35,8 @@ func TestAQuestionWhoseRecordDidNotLandIsNotPosed(t *testing.T) {
 	inner := &noRecords{Store: entitytest.OpenStore(t)}
 	store := entity.As(inner, entity.SystemDocket)
 	q := task.GateQuestion{
-		ID: "naming.for-verse:verse.trigger.shortlist.approve~1", Gate: "approve",
-		Origin: "shortlist", At: "naming.for-verse", Subject: "naming.for-verse.lumen",
+		ID: "naming.for-viff:mirror.trigger.shortlist.approve~1", Gate: "approve",
+		Origin: "shortlist", At: "naming.for-viff", Subject: "naming.for-viff.lumen",
 		Answerers: []string{"user:judy@example.com", "user:sybil@example.com"},
 	}
 	mirror.PostQuestion(store, task.Pending{Question: q}, "")
@@ -93,7 +93,7 @@ type oneRecordWrite struct {
 }
 
 func (o *oneRecordWrite) Write(w entity.Write) (bool, int64, error) {
-	if w.At.Ref.Under(entity.VerseRoot, entity.PermsSystem) {
+	if w.At.Ref.Under(entity.ViffRoot, entity.PermsSystem) {
 		if o.landed {
 			return false, 0, errors.New("storage_error: the store refused the write")
 		}

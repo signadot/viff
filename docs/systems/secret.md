@@ -114,7 +114,7 @@ them. Each errs toward refusing, as a row on an address does
 a unix socket of their own, with the secret's value replaced by `[secret <name>]` wherever it
 appears whole: an encoding of it, or the value split by the command's own formatting, is not
 caught, which is the shapes' to prevent and not the redaction's. The task's process writes each to
-a file in the workspace, `.verse/exec/<id>.out` and `<id>.err`, cut at 16 MiB and said, and serves
+a file in the workspace, `.viff/exec/<id>.out` and `<id>.err`, cut at 16 MiB and said, and serves
 each while the command runs at `<id>.sock` and `<id>.err.sock` beside them, where a shell of the
 task's can connect and read. A reader reads the stream from its start, however late it connects:
 it is sent the file's part first, and then what comes. One that connects once the file is cut is
@@ -123,7 +123,7 @@ seconds; the run goes on either way, and the file holds what such a reader did n
 that cannot be written, or a socket whose path is too long, is said in the answers, and the run
 goes on.
 
-**The end is a file too.** When the command ends, its end is written to `.verse/exec/<id>.exit`,
+**The end is a file too.** When the command ends, its end is written to `.viff/exec/<id>.exit`,
 one line (`exited 3`, `killed after 30s, the timeout`), before the output's sockets close: a
 reader that reads a stream to its end finds the end there, with no call. `secret-exec-wait`
 answers the same end, then each stream's file, size and last 16 KiB, when the command ends or at
@@ -134,7 +134,7 @@ says nothing of `stdin` means `stdin: false`, in the environment and in the ceil
 interactive run is admitted shape by shape — and the step always says which kind it is, since a
 person who approves one approves a session, not one command line. With it, the task's process
 serves a third unix socket beside the outputs, `<id>.in.sock`: the first connection is the input,
-whole, written along to `.verse/exec/<id>.in` and cut as the outputs are, and closing it is the
+whole, written along to `.viff/exec/<id>.in` and cut as the outputs are, and closing it is the
 command's EOF, its output still flowing. A later connection is closed at once. Nothing is redacted
 on the way in — the input goes to the process that already holds the secret — and nothing
 connected leaves the command waiting on its stdin, with the timeout as the bound.
@@ -149,13 +149,13 @@ other signal: a command that wants a graceful end gets one from its own timeout.
 
 ## From a shell
 
-A script calls the three tools with `verse-call-tool`, and the same environment and rows decide
-the call. `verse-secret-exec` is the call and everything around it, for a command that is to
+A script calls the three tools with `viff-call-tool`, and the same environment and rows decide
+the call. `viff-secret-exec` is the call and everything around it, for a command that is to
 read as if it ran in place:
 
 ```sh
-verse-secret-exec -name npm-token -dir packages/a -- npm publish --ignore-scripts
-printf 'yes\n' | verse-secret-exec -name signadot-key -stdin -- signadot sandbox apply -f -
+viff-secret-exec -name npm-token -dir packages/a -- npm publish --ignore-scripts
+printf 'yes\n' | viff-secret-exec -name signadot-key -stdin -- signadot sandbox apply -f -
 ```
 
 It starts the run, connects its own stdout and stderr to the run's two sockets and, with
@@ -168,16 +168,16 @@ the stream's file, so its output is whole up to the file's 16 MiB cut.
 |---|---|
 | the command's | it exited |
 | 124 | the run's timeout killed it |
-| 125 | `verse-secret-exec` failed, or the run ended another way; stderr says how |
+| 125 | `viff-secret-exec` failed, or the run ended another way; stderr says how |
 | 126 | the call was refused, by a row or by the runner; stderr says why |
-| 128 + the signal's number | a signal to `verse-secret-exec` ended the run |
+| 128 + the signal's number | a signal to `viff-secret-exec` ended the run |
 
 On SIGINT, SIGTERM or SIGHUP it kills the run with `secret-exec-kill`, or gives the call up
 where the command has not started, which withdraws a question still standing about it. The
 signal itself does not reach the command.
 
-It is found where `verse-call-tool` is, on a script's `PATH`, and like it speaks to the socket
-`$VERSE_TOOLS` names, which a script's shell has.
+It is found where `viff-call-tool` is, on a script's `PATH`, and like it speaks to the socket
+`$VIFF_TOOLS` names, which a script's shell has.
 
 **The network bounds where the secret can go.** The command runs under the task's network, so a
 command the shapes admit sends the secret wherever the task's network reaches, configured by
@@ -226,7 +226,7 @@ A ceiling block names its secret as a literal, never a pattern, and a block that
 refused: a name is what a doer is trusted with. `as` it may pattern or leave out. Its `exec`
 shapes match variables closed, as an environment's do: a block that says nothing of `env`, or an
 empty `exec: {}`, gives no variables, and one that gives any says `env: null`. A block whose
-secret is not in the store when the runner starts is left out of the ceiling, and said. Verse
+secret is not in the store when the runner starts is left out of the ceiling, and said. Viff
 refuses to install a spawn whose environment gives a secret, a command or a variable the ceiling
-does not ([the verse runner](../reference/runnerd.md#what-it-offers)), and the runner holds each
+does not ([the viff runner](../reference/runnerd.md#what-it-offers)), and the runner holds each
 run to the ceiling again when it acts, whatever the autonomy said.

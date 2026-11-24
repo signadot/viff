@@ -10,10 +10,10 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // get / list build the two tags. The tag is the whole of the spelling — a plain `{get-path: …}`
@@ -82,18 +82,18 @@ func TestGetPathMustNameOneNode(t *testing.T) {
 	}
 }
 
-// `!verse-path` is not a spelling of an address anywhere, a read's `at:` included: the tag is
+// `!viff-path` is not a spelling of an address anywhere, a read's `at:` included: the tag is
 // refused rather than ignored, so a charter carrying it says what to write instead.
-func TestAReadRefusesVersePath(t *testing.T) {
+func TestAReadRefusesViffPath(t *testing.T) {
 	eng, _ := newEng(t)
 	for _, tag := range []string{GetPathTag, ListPathsTag} {
 		err := eng.AddTrigger(Trigger{
-			Name:      "verse-path-" + tag,
+			Name:      "viff-path-" + tag,
 			Condition: Condition{Subject: mm("demo.pr.*")},
-			Action:    readAction(readOf(`!` + tag + ` {at: !verse-path [git, repo, abc]}`)),
+			Action:    readAction(readOf(`!` + tag + ` {at: !viff-path [git, repo, abc]}`)),
 		})
 		if err == nil {
-			t.Errorf("!%s installed with `at: !verse-path [...]`", tag)
+			t.Errorf("!%s installed with `at: !viff-path [...]`", tag)
 		}
 	}
 }
@@ -308,7 +308,7 @@ func TestOneSnapshotPerFiring(t *testing.T) {
 }
 
 // countingStore counts the snapshots taken through it, and what each one was narrowed to — a
-// whole-verse read being the empty narrowing, whose cost grows with everything anybody has
+// whole-viff read being the empty narrowing, whose cost grows with everything anybody has
 // written rather than with what the rule reads.
 type countingStore struct {
 	entity.Store
@@ -335,8 +335,8 @@ func (c *countingStore) asOf() int {
 	return c.n
 }
 
-// wholeVerse is how many of those snapshots were of the whole verse.
-func (c *countingStore) wholeVerse() int {
+// wholeViff is how many of those snapshots were of the whole viff.
+func (c *countingStore) wholeViff() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.whole
@@ -357,7 +357,7 @@ func (c *countingStore) narrowedTo(place ...string) bool {
 }
 
 // `!get-path` with a `path:` reaches into the payload rather than taking all of it. That is
-// what makes the pair one grammar: a verse is one document, an entity address is a path prefix,
+// what makes the pair one grammar: a viff is one document, an entity address is a path prefix,
 // and `path:` continues it.
 func TestGetPathReachesIntoThePayload(t *testing.T) {
 	eng, store := newEng(t)
@@ -492,7 +492,7 @@ func TestListPathsInADeriveMustBeAtOrBelow(t *testing.T) {
 
 // A PAYLOAD PREDICATE narrows the list to the ones that look like it. The refusal this
 // replaces was written for `!read`, which named exactly one entity — "no ordering to define,
-// no 'it matched three', no truncation, no cost that grows with the verse" — and every one of
+// no 'it matched three', no truncation, no cost that grows with the viff" — and every one of
 // those was paid on the list side when the tag split by cardinality. What is left is the
 // cheaper read: a `*` last segment walks every node at the place, and a predicate is what
 // narrows it.

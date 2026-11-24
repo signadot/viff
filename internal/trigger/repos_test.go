@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // What a spawn says about its repositories is checked when the charter is installed, with its
@@ -28,7 +28,7 @@ func TestASpawnsReposAreCheckedAtInstall(t *testing.T) {
 		return Trigger{
 			Name: "fix", Condition: Condition{Subject: prSubject("open")},
 			Action: Action{Patch: entity.Obj{"stage": "fixing"}.Payload(),
-				Spawn: &launch.Spec{Prompt: "p", Agent: &runner.Agent{Name: "verse"},
+				Spawn: &launch.Spec{Prompt: "p", Agent: &runner.Agent{Name: "viff"},
 					Environment: systems.Environment{Systems: systems.Systems{"git": git}}}},
 		}
 	}

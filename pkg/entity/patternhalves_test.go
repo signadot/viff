@@ -26,15 +26,15 @@ func selected(refs []Ref) []string {
 	return out
 }
 
-// Verse's own half is a place in the tree like any other: a pattern whose path begins with
-// `verse` selects there, and a pattern whose path does not begin with it does not reach it. The
+// Viff's own half is a place in the tree like any other: a pattern whose path begins with
+// `viff` selects there, and a pattern whose path does not begin with it does not reach it. The
 // same segments on either side of the reserved root are different addresses, so a selection
-// over one must not answer with the other — reading verse's own records as the world's is how a
+// over one must not answer with the other — reading viff's own records as the world's is how a
 // rule would act on a task record somebody's fixture happens to share segments with.
 func TestSelectReachesTheHalfItsPathNames(t *testing.T) {
 	s := openStore(t)
 	world := RefAt("task", "instance", "w1")
-	own := RefAt(VerseRoot, "task", "instance", "v1")
+	own := RefAt(ViffRoot, "task", "instance", "v1")
 	set(t, s, world, Obj{"stage": "open"}.Payload())
 	set(t, s, own, Obj{"stage": "open"}.Payload())
 	// A neighbour in another place, which neither selection may reach.
@@ -43,19 +43,19 @@ func TestSelectReachesTheHalfItsPathNames(t *testing.T) {
 	if got := selected(patternAt("task", "instance", "*").Select(s)); len(got) != 1 || got[0] != world.String() {
 		t.Errorf("task.instance.* selected %v, want only the world's %s", got, world)
 	}
-	if got := selected(patternAt(VerseRoot, "task", "instance", "*").Select(s)); len(got) != 1 || got[0] != own.String() {
-		t.Errorf("verse.task.instance.* selected %v, want only verse's own %s", got, own)
+	if got := selected(patternAt(ViffRoot, "task", "instance", "*").Select(s)); len(got) != 1 || got[0] != own.String() {
+		t.Errorf("mirror.task.instance.* selected %v, want only viff's own %s", got, own)
 	}
 }
 
 // A wildcard stands for one segment at its level and nothing more: `task.*.*` selects the nodes
 // three deep under `task`, whatever the middle segment, and stops at `task` — it does not reach
-// verse's own `task` records, which are four deep and under another first segment.
+// viff's own `task` records, which are four deep and under another first segment.
 func TestSelectWildcardsStayInTheirPlace(t *testing.T) {
 	s := openStore(t)
 	set(t, s, RefAt("task", "instance", "w1"), Obj{"a": "1"}.Payload())
 	set(t, s, RefAt("task", "run", "w2"), Obj{"a": "1"}.Payload())
-	set(t, s, RefAt(VerseRoot, "task", "run", "v1"), Obj{"a": "1"}.Payload())
+	set(t, s, RefAt(ViffRoot, "task", "run", "v1"), Obj{"a": "1"}.Payload())
 	set(t, s, RefAt("other", "instance", "x"), Obj{"a": "1"}.Payload())
 
 	got := selected(patternAt("task", "*", "*").Select(s))

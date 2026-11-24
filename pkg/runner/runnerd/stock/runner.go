@@ -12,19 +12,19 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/apt"
-	"github.com/signadot/verse/pkg/runner/runnerd/calltool"
-	"github.com/signadot/verse/pkg/runner/runnerd/cellar"
-	"github.com/signadot/verse/pkg/runner/runnerd/claude"
-	"github.com/signadot/verse/pkg/runner/runnerd/codex"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/apt"
+	"go.viff.dev/viff/pkg/runner/runnerd/calltool"
+	"go.viff.dev/viff/pkg/runner/runnerd/cellar"
+	"go.viff.dev/viff/pkg/runner/runnerd/claude"
+	"go.viff.dev/viff/pkg/runner/runnerd/codex"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Secrets is what the runner reads from its environment. A task's process doesn't have the
@@ -50,7 +50,7 @@ type Secrets struct {
 func SecretsFromEnv(c Config) Secrets {
 	var s Secrets
 	if _, ok := c.Agents[AgentName]; ok {
-		k := verse.Key()
+		k := viff.Key()
 		s.PortkeyAPIKey, s.PortkeyBaseURL, s.PortkeyVirtualKey = k.APIKey, k.BaseURL, k.VirtualKey
 	}
 	if _, ok := c.Agents[codex.Agent]; ok {
@@ -62,17 +62,17 @@ func SecretsFromEnv(c Config) Secrets {
 	return s
 }
 
-// Standalone is the verse runner as a standalone runner, with a runnerd.SubprocessHandler: each
+// Standalone is the viff runner as a standalone runner, with a runnerd.SubprocessHandler: each
 // task in a process of its own, started with command (which calls ServeTask), confined by sb.
 // The process gets the runner's configuration and secrets on its stdin, and an environment with
 // only what its launch's doer's shellEnv names: no task's process holds a variable another
 // doer's shell is given. tokens is what the runner holds that a task never does: its git
-// tokens, for when c checks out repos, and its Linear credential. toVerse is how the runner
-// carries a task's request to the verse it serves, with its own token (runnerd.Guard.Carry); nil
-// for a runner with none, whose tasks are not offered the verse system.
+// tokens, for when c checks out repos, and its Linear credential. toViff is how the runner
+// carries a task's request to the viff it serves, with its own token (runnerd.Guard.Carry); nil
+// for a runner with none, whose tasks are not offered the viff system.
 func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command []string, work, control string,
-	toVerse delivery.Verse, log io.Writer) (*runnerd.SubprocessHandler, error) {
-	c.reachesVerse = toVerse != nil
+	toViff delivery.Viff, log io.Writer) (*runnerd.SubprocessHandler, error) {
+	c.reachesViff = toViff != nil
 	hosts, err := modelHosts(c, s)
 	if err != nil {
 		return nil, err
@@ -175,7 +175,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 				wrap: &apt.Apt{State: filepath.Join(cellarDir, ".apt"), Repos: c.Pkg.Repos}}
 		}
 	}
-	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets, ReachesVerse: c.reachesVerse}, codec.Tony)
+	blob, err := codec.Marshal(taskConfig{Config: c, Secrets: s, CallTool: tool, Networks: nets, ReachesViff: c.reachesViff}, codec.Tony)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +193,7 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 	}
 	if repos != nil {
 		repos.Services = c.services(tokens)
-		repos.Services.Verse = toVerse
+		repos.Services.Viff = toViff
 		// A command run with a secret is confined as the task's process is, over the task's
 		// root and under its network, with what the operator keeps read only.
 		repos.Services.Confine = runnerd.Confiner{Sandbox: sb, ReadOnly: c.ReadOnly,
@@ -260,13 +260,13 @@ func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command 
 }
 
 // modelHosts is where the runner's agents call their models, which they reach whatever their
-// network: the verse agent's gateway where the runner runs it, Codex's API where it runs Codex,
+// network: the viff agent's gateway where the runner runs it, Codex's API where it runs Codex,
 // and Claude's where it runs Claude. A base URL that names no host is refused: no network could
 // let the agent reach it.
 func modelHosts(c Config, s Secrets) ([]string, error) {
 	var hosts []string
 	if _, ok := c.Agents[AgentName]; ok {
-		host, err := verse.ModelHost(s.PortkeyBaseURL)
+		host, err := viff.ModelHost(s.PortkeyBaseURL)
 		if err != nil {
 			return nil, err
 		}
@@ -285,15 +285,15 @@ func modelHosts(c Config, s Secrets) ([]string, error) {
 type taskConfig struct {
 	Config  Config  `tony:"field=config"`
 	Secrets Secrets `tony:"field=secrets"`
-	// CallTool is the verse-call-tool the runner found and bound into the sandbox, "" for none:
+	// CallTool is the viff-call-tool the runner found and bound into the sandbox, "" for none:
 	// the runner's decision is the task's, whatever the task's PATH.
 	CallTool string `tony:"field=callTool,omitzero"`
 	// Networks is the networks the runner's sandbox builds (networks), so the task's process
 	// describes what the runner described.
 	Networks []string `tony:"field=networks,omitzero"`
-	// ReachesVerse is whether the runner carries the verse system to its verse (Standalone's
-	// toVerse), so the task's process offers its tools where it does.
-	ReachesVerse bool `tony:"field=reachesVerse,omitzero"`
+	// ReachesViff is whether the runner carries the viff system to its viff (Standalone's
+	// toViff), so the task's process offers its tools where it does.
+	ReachesViff bool `tony:"field=reachesViff,omitzero"`
 }
 
 // ServeTask is a task's process: it reads the runner's configuration and secrets from stdin,
@@ -311,15 +311,15 @@ func ServeTask(stdin io.Reader, log io.Writer) error {
 	if err != nil {
 		return err
 	}
-	tc.Config.reachesVerse = tc.ReachesVerse
+	tc.Config.reachesViff = tc.ReachesViff
 	r := New(tc.Config, tc.Secrets, dir, log)
 	r.callTool = tc.CallTool
 	return runnerd.ServeTask(r.Build, tc.Config.Describe(tc.Networks), tc.Config.envOf)
 }
 
-// Runner builds the verse runner's tasks from their launch: `agent: verse` is verse's own agent
-// (package verse), and a `script` runs by its #! line. The standalone runner builds it in each
-// task's process (ServeTask), and `verse up` embeds it.
+// Runner builds the viff runner's tasks from their launch: `agent: viff` is viff's own agent
+// (package viff), and a `script` runs by its #! line. The standalone runner builds it in each
+// task's process (ServeTask), and `viff up` embeds it.
 type Runner struct {
 	cfg     Config
 	secrets Secrets
@@ -327,13 +327,13 @@ type Runner struct {
 	log     io.Writer
 	// deliveryFD is where a task that names repos finds its delivery channel.
 	deliveryFD uintptr
-	// callTool is verse-call-tool, which a script calls its tools with, "" for none: the one the
+	// callTool is viff-call-tool, which a script calls its tools with, "" for none: the one the
 	// runner bound, in a task's process (ServeTask), and else beside this process's executable or
-	// on its PATH (FindCallTool), as for `verse up`.
+	// on its PATH (FindCallTool), as for `viff up`.
 	callTool string
 }
 
-// New is the verse runner under c and s, running its tasks in dir. A task's shell sees only the
+// New is the viff runner under c and s, running its tasks in dir. A task's shell sees only the
 // variables c's shellEnv names, never the runner's secrets.
 func New(c Config, s Secrets, dir string, log io.Writer) *Runner {
 	return &Runner{cfg: c, secrets: s, root: dir, log: log, deliveryFD: runnerd.DeliveryFD, callTool: findCallTool()}
@@ -352,7 +352,7 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 	}
 	cleanup = append(cleanup, remove)
 	set = append(envSet(l.Vars()), set...)
-	prompt, tools := l.Prompt, []verse.Tool(nil)
+	prompt, tools := l.Prompt, []viff.Tool(nil)
 	var cl *delivery.Client
 	if r.performs() {
 		// The channel the runner performs over, and the repos it checked out: the tools over
@@ -375,8 +375,8 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 		if slices.Contains(performs, "pkg") {
 			tools = append(tools, pkgTools(cl)...)
 		}
-		if r.cfg.reachesVerse {
-			tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)
+		if r.cfg.reachesViff {
+			tools = append(append(append(tools, viffTools(cl)...), viffDataTools(cl)...), viffCharterTools(cl)...)
 		}
 		// The MCP servers' tools, listed now, each server at once, as the doer takes them;
 		// the brief says what a server said of its tools, and which server did not answer.
@@ -415,8 +415,8 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 	l = r.cfg.withDefaults(l, who)
 	if who == codex.Agent {
 		// The codex agent (package codex): each command and patch it proposes is an action of
-		// this loop, gated and narrated like the verse agent's own, and the runner's tools are
-		// offered to it as its own. The same brief and the same delivery as the verse agent's.
+		// this loop, gated and narrated like the viff agent's own, and the runner's tools are
+		// offered to it as its own. The same brief and the same delivery as the viff agent's.
 		cc := r.cfg.codexConfig()
 		if cc == nil {
 			return ended(task.NewFailed(l.ID, reg, "this runner has no `agents.codex` section, so it cannot run codex"))
@@ -449,14 +449,14 @@ func (r *Runner) Build(l runner.Launch, reg *task.Registry) *task.Task {
 	case who != AgentName || !offered:
 		return ended(task.NewFailed(l.ID, reg, "this runner offers no agent "+who))
 	case r.secrets.PortkeyAPIKey == "":
-		return ended(task.NewFailed(l.ID, reg, "the verse agent has no model key on this runner"))
+		return ended(task.NewFailed(l.ID, reg, "the viff agent has no model key on this runner"))
 	}
-	p := verse.Build(verse.Config{
+	p := viff.Build(viff.Config{
 		ID: l.ID, Prompt: prompt, Root: r.root, Resolver: reg, Log: r.log, Extra: tools,
 		Answer: l.Answer, Environment: l.Environment, Autonomy: l.Autonomy, Ceilings: r.cfg.taskCeilings(who), Env: r.cfg.shellEnv(who),
 		Set: set, ChildSet: envSet(l.Vars()),
 		LLMBaseURL: r.secrets.PortkeyBaseURL, LLMKey: r.secrets.PortkeyAPIKey,
-		LLMVirtualKey: cmp.Or(l.AgentSettings().Annotations[verse.AnnotationVirtualKey], r.secrets.PortkeyVirtualKey),
+		LLMVirtualKey: cmp.Or(l.AgentSettings().Annotations[viff.AnnotationVirtualKey], r.secrets.PortkeyVirtualKey),
 		LLMModel:      l.AgentSettings().Model(),
 		Converse:      l.Converse,
 	})
@@ -480,7 +480,7 @@ func (r *Runner) doerOf(l runner.Launch) string {
 }
 
 // doer is who runs l: a script, the agent it names, or, for a prompt naming none, the first
-// agent the runner offers (Config.agents, as Describe orders them), and the verse agent where it
+// agent the runner offers (Config.agents, as Describe orders them), and the viff agent where it
 // offers none, which then refuses.
 func (c Config) doer(l *runner.Launch) string {
 	if who := l.Who(); who != "" {
@@ -493,10 +493,10 @@ func (c Config) doer(l *runner.Launch) string {
 }
 
 // offered is the runner's tools whose verb the environment gives: a tool is its step
-// (verse.Tool.StepName), and one the environment does not give is not offered, so the doer never
+// (viff.Tool.StepName), and one the environment does not give is not offered, so the doer never
 // sees it.
-func offered(tools []verse.Tool, env systems.Environment) []verse.Tool {
-	return slices.DeleteFunc(slices.Clone(tools), func(t verse.Tool) bool {
+func offered(tools []viff.Tool, env systems.Environment) []viff.Tool {
+	return slices.DeleteFunc(slices.Clone(tools), func(t viff.Tool) bool {
 		st, ok := t.StepName()
 		return ok && !env.Gives(st)
 	})
@@ -559,10 +559,10 @@ func onEnd(p *task.Task, fs []func()) *task.Task {
 
 // TrailersEnv names the variable holding the trailers every commit a task delivers must end
 // with (workspace.RequiredTrailers), one per line, as the last paragraph of a commit message
-// holds them: `git commit -m <subject> -m "$VERSE_TRAILERS"`. It is set where the task has a
+// holds them: `git commit -m <subject> -m "$VIFF_TRAILERS"`. It is set where the task has a
 // checkout. The push checks them against the launch's own values, so knowing them lets a task
 // claim nothing but itself.
-const TrailersEnv = "VERSE_TRAILERS"
+const TrailersEnv = "VIFF_TRAILERS"
 
 // envSet is a launch's `with.env` as a shell's NAME=value list, in name order.
 func envSet(env map[string]string) []string {

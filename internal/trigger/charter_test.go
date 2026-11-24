@@ -10,17 +10,17 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/mergeop"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/answer"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/answer"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// restart stands a second engine up over the same substrate, the way `verse up` does after
-// `verse down`: a fresh store client, a fresh engine, the charter read back from the verse.
+// restart stands a second engine up over the same substrate, the way `viff up` does after
+// `viff down`: a fresh store client, a fresh engine, the charter read back from the viff.
 // The old engine's memory is gone; only what the store holds crosses the gap.
 func restart(t *testing.T, addr string) (*Engine, entity.Store) {
 	t.Helper()
@@ -58,7 +58,7 @@ func logging(eng *Engine) *bytes.Buffer {
 }
 
 // A trigger installed before a restart still fires after it. This is the whole point: a
-// verse whose tasks, sequence positions and claims all survive but whose CHARTER does
+// viff whose tasks, sequence positions and claims all survive but whose CHARTER does
 // not comes back up with its work in progress intact and nothing left to react to it.
 func TestCharterSurvivesARestart(t *testing.T) {
 	addr := entitytest.Addr(t)
@@ -111,8 +111,8 @@ func TestARulesTaskSurvivesARestart(t *testing.T) {
 	}
 }
 
-// A restored trigger acts on the backlog standing in the verse — the same level-triggered
-// replay a fresh install has (docs/change-events.md). So a change that arrived while verse
+// A restored trigger acts on the backlog standing in the viff — the same level-triggered
+// replay a fresh install has (docs/change-events.md). So a change that arrived while viff
 // was down is not lost: the rule that comes back finds it waiting.
 func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {
 	addr := entitytest.Addr(t)
@@ -133,7 +133,7 @@ func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {
 	waitStage(t, store, ref, "reviewed")
 }
 
-// A removal is as durable as an install. Otherwise `verse c rm` is a pause: the
+// A removal is as durable as an install. Otherwise `viff c rm` is a pause: the
 // rule stops firing until the next start, then comes back with nobody having reinstalled it.
 func TestRemovedTriggerStaysRemoved(t *testing.T) {
 	addr := entitytest.Addr(t)
@@ -183,7 +183,7 @@ func TestCharterRoundTripsOperators(t *testing.T) {
 		action: {
 			patch:  {stage: reviewed, tmp: !delete null},
 			spawn:  {
-				agent:  {name: verse},
+				agent:  {name: viff},
 				prompt: "review ",
 				answer: {class: !or [bug, nit], severity: !or [low, high]},
 			},
@@ -318,7 +318,7 @@ func TestUnreadableRuleIsReportedAndSkipped(t *testing.T) {
 
 // A rule whose document disagrees with its address is refused rather than reconciled:
 // installing under the name and deleting under the address would leave a rule that
-// `verse c rm` cannot get rid of.
+// `viff c rm` cannot get rid of.
 func TestRuleNameMustMatchItsAddress(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -348,7 +348,7 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 //
 // trigger-model.md names `value: !not {x: null}` as the latch for a rule whose written value it
 // cannot predict — "ask for the ABSENCE of what the action writes, which latches whatever value
-// lands" — and every spawning rule needs a latch. It could not be stored: verse spelled a
+// lands" — and every spawning rule needs a latch. It could not be stored: viff spelled a
 // removed field with a bare null and hid every bare null it read, at any depth, `!raw` included,
 // so the subject came back as `!not {}`.
 //
@@ -357,7 +357,7 @@ func TestRuleNameMustMatchItsAddress(t *testing.T) {
 // a slice like this is a record, the rule installed cleanly, watched the right subtree, and
 // selected nothing. From the first restart onward, with no error anywhere.
 //
-// This test would have failed on every build verse has ever had.
+// This test would have failed on every build viff has ever had.
 func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
 	store := entitytest.Store(t)
 	src := `
@@ -368,7 +368,7 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
       value: !not
         reviewed: null
   action:
-    spawn: {agent: {name: verse}, prompt: "review it"}
+    spawn: {agent: {name: viff}, prompt: "review it"}
     onDone: {patch: {reviewed: done}}
 `
 	trigs, _, _, _, ok := parseBlock(src)
@@ -397,7 +397,7 @@ func TestAbsenceLatchSurvivesTheCharterStore(t *testing.T) {
 	// And it still means what it said: absent selects, present does not.
 	m := loaded[0].Condition.Subject
 	absent := entity.Event{
-		Ref: entity.RefAt("drift", "head", "verse"),
+		Ref: entity.RefAt("drift", "head", "viff"),
 		To:  entity.Obj{"sha": "abc"}.Payload(),
 	}
 	present := entity.Event{

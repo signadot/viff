@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/signadot/verse/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/systems/systemstest"
 )
 
 // A delegation a row names asks first, and `deny` is a no: the sub-agent never starts.

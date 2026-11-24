@@ -4,8 +4,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // toolsBrief is the paragraph that says what reaches the world from a task: the tools it was
@@ -21,7 +21,7 @@ import (
 // every other system's target is in the name the task is offered (`git-push`, `slack-post`), and
 // `secret-exec` takes its secret as an argument, so a task that is not told the names guesses
 // them, and the variable the secret arrives in is the wrong guess nearest to hand.
-func toolsBrief(tools []verse.Tool, env systems.Environment) string {
+func toolsBrief(tools []viff.Tool, env systems.Environment) string {
 	bySystem := map[string][]string{}
 	for _, t := range tools {
 		st, ok := t.StepName()

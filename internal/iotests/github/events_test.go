@@ -8,8 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/io/github"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/io/github"
 )
 
 const hookSecret = "s3cret"

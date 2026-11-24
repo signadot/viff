@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // A Match round-trips without losing meaning: whatever the authored form, re-reading the
@@ -23,8 +23,8 @@ func TestMatchJSONRoundTrip(t *testing.T) {
 		`"demo.pr.1"`,
 		`{"path":"demo.pr.*","value":{"stage":"open"}}`,
 		`{"path":"demo.pr.*"}`,
-		`{"path":"verse.task.instance.*"}`,
-		`{"path":"verse.task.instance.*","value":{"status":"done"}}`,
+		`{"path":"mirror.task.instance.*"}`,
+		`{"path":"mirror.task.instance.*","value":{"status":"done"}}`,
 		`{}`,
 	} {
 		var m Match
@@ -94,7 +94,7 @@ func TestSelects(t *testing.T) {
 	}
 }
 
-// The string sugar is an ADDRESS, in the same grammar `verse flow <addr>` uses: a kinded path,
+// The string sugar is an ADDRESS, in the same grammar `viff flow <addr>` uses: a kinded path,
 // a whole `*` segment any one. There is no deferred `$var` form: a `$` in an address is a typo
 // now, and fails at install.
 func TestStringFormIsAnAddress(t *testing.T) {
@@ -135,7 +135,7 @@ func TestStringFormIsAnAddress(t *testing.T) {
 
 // REGRESSION: a string-form `when` used to become a {"ref": …}, which no matcher dimension
 // reads — so `"when": "demo.pr.1"` was an unconstrained match that fired on EVERY event in
-// the verse. It must now constrain exactly the address it names.
+// the viff. It must now constrain exactly the address it names.
 func TestStringFormWhenConstrains(t *testing.T) {
 	var m Match
 	if err := codec.Unmarshal([]byte(`"demo.pr.1"`), &m, codec.JSON); err != nil {
@@ -159,8 +159,8 @@ func TestMatchNames(t *testing.T) {
 		`{path: 'demo.pr."1"'}`: entity.RefAt("demo", "pr", "1"),
 		`"demo.pr.1"`:           entity.RefAt("demo", "pr", "1"),
 		// A literal path names one node at whatever length it has.
-		`demo.pr`:                           entity.RefAt("demo", "pr"),
-		`{path: "verse.task.instance.abc"}`: entity.RefAt("verse", "task", "instance", "abc"),
+		`demo.pr`:                            entity.RefAt("demo", "pr"),
+		`{path: "mirror.task.instance.abc"}`: entity.RefAt("mirror", "task", "instance", "abc"),
 	}
 	for in, want := range yes {
 		var m Match
@@ -195,7 +195,7 @@ func TestMatchNames(t *testing.T) {
 func TestMatchRejectsBadShape(t *testing.T) {
 	// A predicate of the wrong SHAPE is NOT here, and deliberately: `value` takes any tony
 	// value, so `{"value":"stage=open"}` is a legal predicate on a string payload rather than
-	// a typo verse can name. See TestMatchValueScalarIsTheWholePayload.
+	// a typo viff can name. See TestMatchValueScalarIsTheWholePayload.
 	cases := map[string]string{
 		"unknown key":      `{"sytem":"demo"}`,
 		"a path as a list": `{"path":["demo","pr","*"]}`,
@@ -241,10 +241,10 @@ func TestDoubleStarIsRefused(t *testing.T) {
 
 // AN ADDRESS IS A PATH, written as the kinded path string or as `path:` — the two mean one thing.
 func TestAnAddressIsAPath(t *testing.T) {
-	want := []string{"verse", "ask", "*"}
+	want := []string{"mirror", "ask", "*"}
 	for _, src := range []string{
-		`"verse.ask.*"`,
-		`{path: "verse.ask.*"}`,
+		`"mirror.ask.*"`,
+		`{path: "mirror.ask.*"}`,
 	} {
 		var m Match
 		if err := codec.Unmarshal([]byte(src), &m, codec.Tony); err != nil {
@@ -258,7 +258,7 @@ func TestAnAddressIsAPath(t *testing.T) {
 }
 
 // Every positional spelling of an address is REFUSED, not compiled to a path: the dimension keys,
-// `at:`, `!verse-path`, and a bare list. The refusal names the key so a charter carrying one says
+// `at:`, `!viff-path`, and a bare list. The refusal names the key so a charter carrying one says
 // what to write instead.
 func TestPositionalAddressSpellingsAreRefused(t *testing.T) {
 	for _, src := range []string{
@@ -266,10 +266,10 @@ func TestPositionalAddressSpellingsAreRefused(t *testing.T) {
 		`{system: demo}`,
 		`{kind: pr}`,
 		`{id: "1"}`,
-		`{root: verse, path: "task.instance.*"}`,
+		`{root: viff, path: "task.instance.*"}`,
 		`{at: demo.pr.1}`,
-		`{at: !verse-path [demo pr 1]}`,
-		`!verse-path [demo pr 1]`,
+		`{at: !viff-path [demo pr 1]}`,
+		`!viff-path [demo pr 1]`,
 		`[demo, pr, 1]`,
 	} {
 		var m Match

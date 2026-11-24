@@ -1,18 +1,18 @@
 # Task control
 
-This page is the contract behind a runner verse routes a spawn to. It is
-the [seam](glossary.md#seam) between verse and where a task runs. It builds on
+This page is the contract behind a runner viff routes a spawn to. It is
+the [seam](glossary.md#seam) between viff and where a task runs. It builds on
 [external tasks](external-tasks.md), where it is the attached shape, and it makes concrete what
-that page calls "wrapping and enforcing the verse invariants".
+that page calls "wrapping and enforcing the viff invariants".
 
 In short, the task-control interface is the `runnerd` HTTP contract behind a base URL, made
 resumable.
 
-- Verse is its client. Verse mirrors it into the durable record at `verse.task.instance.<id>`,
+- Viff is its client. Viff mirrors it into the durable record at `mirror.task.instance.<id>`,
   the [instance record](glossary.md#instance-record).
-- The local runner `verse up` starts is one more `runnerd` behind the same URL contract. It has
+- The local runner `viff up` starts is one more `runnerd` behind the same URL contract. It has
   no privileged shortcut.
-- Anyone else plugs in a URL, completely outside verse: k8s, AWS Lambda, a service for work done
+- Anyone else plugs in a URL, completely outside viff: k8s, AWS Lambda, a service for work done
   by people, or a custom runtime.
 
 [What is built](#what-is-built), at the end, lists the parts that are not built.
@@ -31,16 +31,16 @@ about or allows.
 
 | meaning | interface | wire | flag |
 |---|---|---|---|
-| what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `verse.task.instance` and on `verse status` | `verse runner add`, and routing ([runners.md](runners.md#where-a-spawn-runs)) |
+| what runs a task | `task.Runner`, returning a `task.Handle` | `runner` on a `mirror.task.instance` and on `viff status` | `viff runner add`, and routing ([runners.md](runners.md#where-a-spawn-runs)) |
 | what it may reach | `systems.Environment` | `environment` on a launch | fixed for the run |
-| how much it may do unasked | `task.Autonomy` | `autonomy` on a launch | `verse task autonomy <id>` |
+| how much it may do unasked | `task.Autonomy` | `autonomy` on a launch | `viff task autonomy <id>` |
 
 A policy layer over the engine is a plausible thing to want later. A name "policy" here would
 collide with it.
 
 ## What the interface is
 
-Verse defines a task as a contract, not as "an LLM loop":
+Viff defines a task as a contract, not as "an LLM loop":
 
 1. An agent's driver, or a script's call, proposes an action.
 2. An [executor](glossary.md#executor) performs it.
@@ -48,14 +48,14 @@ Verse defines a task as a contract, not as "an LLM loop":
    it is outside the environment, then by the autonomy.
 4. A read plane streams events.
 5. A control plane steers the task at boundaries.
-6. Verse mirrors the whole task to its record at `verse.task.instance.<id>`, and the task ends
+6. Viff mirrors the whole task to its record at `mirror.task.instance.<id>`, and the task ends
    with a terminal.
 
 Task control is the durable form of the in-process `Supervisor`, which enforces that contract.
 
-In process, verse enforces the contract by interception. The loop cannot `Execute` an action
+In process, viff enforces the contract by interception. The loop cannot `Execute` an action
 until `Supervisor.Check` returns proceed. `Supervisor.Check` derives the step, refuses it
-if the environment does not give it, asks the autonomy which row decides it, and for an ask calls `Resolver.Resolve`. Verse is trusted because it runs the loop
+if the environment does not give it, asks the autonomy which row decides it, and for an ask calls `Resolver.Resolve`. Viff is trusted because it runs the loop
 itself.
 
 On a [runner](glossary.md#runner), the same supervisor runs in the task's process, and the
@@ -67,7 +67,7 @@ runner itself relayed to the task, about that call, once per act; the task's pro
 model, and its word that a question was answered is not taken. A change of autonomy goes to the runner first, which
 refuses a row reaching nothing in the task's environment; what the task's process says of it is
 not what holds the line, since that is the process the autonomy constrains.
-Verse holds the spawn to the runner's offer at install, and its record is what the runner
+Viff holds the spawn to the runner's offer at install, and its record is what the runner
 reports: every call, the row that decided it, and whoever answered.
 
 So there is one control contract, and what a row guarantees depends on who performs its step:
@@ -113,7 +113,7 @@ about steps like this". It does not mean "approve the step already in front of m
 dissolved the pending question, an autonomy change would approve one specific action that nobody
 looked at.
 
-A task-control backend is a reconciler over the task's record at `verse.task.instance.<id>`.
+A task-control backend is a reconciler over the task's record at `mirror.task.instance.<id>`.
 It is not itself a gated task. Governing a task must not require another governed task, or the
 regress never stops.
 
@@ -126,28 +126,28 @@ is a controller, and it is the backend (see
 - `k8s.*` as a source that reflects the cluster in;
 - k8s as a task-control backend that runs tasks as Jobs out.
 
-## Idempotency ⇒ the restart discipline (`verse down; up`)
+## Idempotency ⇒ the restart discipline (`viff down; up`)
 
-A backend is a reconciler. So it must be level-triggered, and verse must be able to rebuild it
+A backend is a reconciler. So it must be level-triggered, and viff must be able to rebuild it
 from the durable record. The same `Observe:Since` and `webhook:reconcile` law holds here as
-everywhere in verse. Two rules follow.
+everywhere in viff. Two rules follow.
 
 **No control state of a task lives only in memory.** Pending gates, the worker of record, the control
 fields and the event cursor are all on the task's record. A restart reads them again.
 
-**`verse up` reconciles, and a resumed task is not an orphan.**
+**`viff up` reconciles, and a resumed task is not an orphan.**
 
 | Task | What `up` does |
 |---|---|
 | an in-process agent whose runtime died | orphans it, because the loop is gone |
-| a task on a runner, such as a k8s Job still running | resumes it. Verse attaches again to the bound runner, and reconciles from the current status. |
+| a task on a runner, such as a k8s Job still running | resumes it. Viff attaches again to the bound runner, and reconciles from the current status. |
 
-The work on a runner went on in the world while verse was down. Verse resumes where the
+The work on a runner went on in the world while viff was down. Viff resumes where the
 work outlived the daemon, and orphans only what died with it.
 
 The work outlives the daemon only within the task's [lease](runners.md#a-tasks-lease). A runner
 stops a task that nobody has asked about for that long, and ends it `failed`,
-`orphaned: true`. A verse that comes back later attaches again all the same, and what it
+`orphaned: true`. A viff that comes back later attaches again all the same, and what it
 reads is that end.
 
 The reconcile reads baseline's tasks. A task that a rule in a [scope](glossary.md#scope) started
@@ -158,14 +158,14 @@ An open question follows the task that asks it.
 
 - A resumed task keeps its pending gates on the [docket](glossary.md#docket), under the same
   ids. An answer to one still reaches the worker.
-- The questions of an orphaned task end with it. Verse settles them `orphaned`. They leave the
+- The questions of an orphaned task end with it. Viff settles them `orphaned`. They leave the
   docket, and you can still read them.
 
 A question listed as answerable, when nothing will read the answer, asks a person to decide for
 nobody.
 
-Verse settles a gate that a *firing* raised, whatever its state. What waited on it was a
-goroutine in the verse process.
+Viff settles a gate that a *firing* raised, whatever its state. What waited on it was a
+goroutine in the viff process.
 
 - If the [rule](glossary.md#rule) still matches, the reinstalled charter replays. It poses the
   same question under the same id, and the question is answerable again within milliseconds.
@@ -175,12 +175,12 @@ goroutine in the verse process.
 ## Everything through the base URL: no privileged local path
 
 The engine is a client of a bound base URL. It spawns there, subscribes to the event stream, and
-mirrors the stream into the task's record. Durability is in verse, and not in the
+mirrors the stream into the task's record. Durability is in viff, and not in the
 runner.
 
 Each spawn binds its runner. The binding is `runner: <name>` in the charter or spec, and names
 an installed runner, as `agent.name` names an agent the runner offers. There is no in-memory
-shortcut: `verse task cancel|say` and `verse flow suspend -task` go through the same dispatch as
+shortcut: `viff task cancel|say` and `viff flow suspend -task` go through the same dispatch as
 for a remote task.
 
 The dispatch is per [scope](glossary.md#scope). With `-scope`, it reaches a task that the scope
@@ -192,7 +192,7 @@ to remote tasks.
 
 The local runner is reached through the same interface, as any registered runner is.
 
-## The verse-facing contract
+## The viff-facing contract
 
 This contract has two endpoints, which are `Observe : Since` again, and control out of band.
 
@@ -208,8 +208,8 @@ seam, `task.ErrUnreachable` and the errors like it carry it.
 
 ```
 GET    /describe                   what the runner offers: its agents, scripts, and what each takes
-       Verse-Runner-Token: <its workload token>, to a verse the runner verified as its own (docs/runners.md, "Who the runner is")
-GET    /ready                      200 as soon as the runner serves, for a readiness probe; whether its verse has heard it is the registration's to say
+       Viff-Runner-Token: <its workload token>, to a viff the runner verified as its own (docs/runners.md, "Who the runner is")
+GET    /ready                      200 as soon as the runner serves, for a readiness probe; whether its viff has heard it is the registration's to say
 GET    /tasks                      every task the runner hosts, as snapshots
 GET    /tasks/{id}                 level truth: current snapshot
 GET    /tasks/{id}/events?since=N  edge stream (SSE): replay cursor>N, then live
@@ -232,23 +232,23 @@ A resolve without a `choice` answers `400`, and the gate stays open.
 ### The bodies
 
 Each body is one Go type: the launch and the requests of the runner's own in package `runner`,
-and a task's snapshot, events and autonomy in package `task`. Verse uses them when it sends
+and a task's snapshot, events and autonomy in package `task`. Viff uses them when it sends
 and the stock runner (`pkg/runner/runnerd`) when it reads. Each is in the schema under its name
-(`verse schema`), which is where a runner in another language reads it.
+(`viff schema`), which is where a runner in another language reads it.
 
 | Route | Type | Schema name |
 |---|---|---|
-| `GET /describe` | `runner.Description` | its parts: `verse-runner-agent-offer`, `verse-runner-setting` and `verse-runner-system`, a ceiling and `builds` being blocks in an environment's form |
-| `POST /tasks` | `runner.Launch` | `verse-runner-launch`, with `verse-runner-agent` and `verse-runner-provenance`; the environment is blocks per system (systems.Environment), and the autonomy the task's own rows (task.Autonomy) |
-| `POST /tasks/{id}/say` | `runner.SayRequest` | `verse-runner-say` |
-| `POST /tasks/{id}/cancel` | `runner.CancelRequest` | `verse-runner-cancel` |
-| `POST /tasks/{id}/pause`, `…/resume` | `runner.PauseRequest`, `runner.ResumeRequest` | `verse-runner-pause`, `verse-runner-resume` |
-| `POST /tasks/{id}/resolve` | `runner.ResolveRequest` | `verse-runner-resolve` |
-| `PUT /tasks/{id}/autonomy` | `runner.AutonomyRequest` | `verse-runner-autonomy` |
-| `GET /tasks`, `GET /tasks/{id}` | `task.Snapshot` | `verse-task-snapshot` |
-| `GET /tasks/{id}/events` | `task.Event` | `verse-task-event` |
+| `GET /describe` | `runner.Description` | its parts: `viff-runner-agent-offer`, `viff-runner-setting` and `viff-runner-system`, a ceiling and `builds` being blocks in an environment's form |
+| `POST /tasks` | `runner.Launch` | `viff-runner-launch`, with `viff-runner-agent` and `viff-runner-provenance`; the environment is blocks per system (systems.Environment), and the autonomy the task's own rows (task.Autonomy) |
+| `POST /tasks/{id}/say` | `runner.SayRequest` | `viff-runner-say` |
+| `POST /tasks/{id}/cancel` | `runner.CancelRequest` | `viff-runner-cancel` |
+| `POST /tasks/{id}/pause`, `…/resume` | `runner.PauseRequest`, `runner.ResumeRequest` | `viff-runner-pause`, `viff-runner-resume` |
+| `POST /tasks/{id}/resolve` | `runner.ResolveRequest` | `viff-runner-resolve` |
+| `PUT /tasks/{id}/autonomy` | `runner.AutonomyRequest` | `viff-runner-autonomy` |
+| `GET /tasks`, `GET /tasks/{id}` | `task.Snapshot` | `viff-task-snapshot` |
+| `GET /tasks/{id}/events` | `task.Event` | `viff-task-event` |
 
-**The launch.** It is the spawn as the charter wrote it, with verse's references resolved, and
+**The launch.** It is the spawn as the charter wrote it, with viff's references resolved, and
 the runner reads it as it is. A runner checks it strictly: an
 unknown key, both or neither of a prompt and a script, an environment or a setting its offer does
 not take is refused with `400` and the reason. A refused launch is a failed spawn, never a task
@@ -256,23 +256,23 @@ run without what it asked for.
 
 | Field | What it is |
 |---|---|
-| `id` | the task's id. Verse mints it, so that it matches the task's record. |
+| `id` | the task's id. Viff mints it, so that it matches the task's record. |
 | `prompt` or `script` | the one job: a prompt, for an agent, or a script, which does its own work. Exactly one. |
-| `agent` | the agent a prompt is for, written flat: `{name: <agent>, <setting>: …, annotations: {…}}`. Verse always names it: it binds its default agent to a prompt that names none before the launch, and a runner refuses a prompt's launch with no agent. Each setting is one the offer declares; `annotations` are verse's or the runner's to write, such as `verse.portkey/virtual-key`, and the runner refuses one it does not know. A script takes none. |
+| `agent` | the agent a prompt is for, written flat: `{name: <agent>, <setting>: …, annotations: {…}}`. Viff always names it: it binds its default agent to a prompt that names none before the launch, and a runner refuses a prompt's launch with no agent. Each setting is one the offer declares; `annotations` are viff's or the runner's to write, such as `viff.portkey/virtual-key`, and the runner refuses one it does not know. A script takes none. |
 | `environment` | what the run may reach: `vars` for its shell, and `systems`, a block per system or repository (`git`, `git-issue`, `network`, …) giving the verbs and their shapes. A step outside it is refused before any row is read. Fixed when the run starts, and within the runner's ceilings. |
-| `autonomy` | what happens to each step within the environment: rows, each a `match` on a step's system, verb and fields and a `then` of `deny`, `ask` or `allow`, the last with no match. An ask's shape rides whole (`need`, `answerers`, `within`, `default`, `labels`); the runner reads the first three and never `default` or `labels`, which are verse's ([a row's question](reference/tasks.md#a-rows-question)). Absent asks about every step. |
+| `autonomy` | what happens to each step within the environment: rows, each a `match` on a step's system, verb and fields and a `then` of `deny`, `ask` or `allow`, the last with no match. An ask's shape rides whole (`need`, `answerers`, `within`, `default`, `labels`); the runner reads the first three and never `default` or `labels`, which are viff's ([a row's question](reference/tasks.md#a-rows-question)). Absent asks about every step. |
 | `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the launch; a script takes none. |
 | `timeout` | how long the task may run, as a duration. Time spent waiting for an answer does not count; time paused does. |
 | `converse` | the run is a conversation: when the agent goes quiet, the person gets the turn as a question, and the run ends when they end it. Only for an offer whose `converse` is true. |
 | `lease` | how long the task may run with nobody asking for its events, as a duration of `1m` or more. Absent is `4m`. The runner counts it, and ends a task whose lease runs out ([a task's lease](runners.md#a-tasks-lease)). |
 | `occurrence` | which run this is: the store revision it is about. The runner says it back on the snapshot. |
 | `provenance` | `{principal?, subject?, chain?}`: on whose account, and about what. A record, never authority. |
-| `credential` | the token verse signed for the task when its rule's gate passed ([gates](reference/gates.md#a-credential-for-what-a-gate-let-through)). It carries a secret. The runner hands it to the task as a file named by `VERSE_CREDENTIAL_FILE`, and never says it back. |
+| `credential` | the token viff signed for the task when its rule's gate passed ([gates](reference/gates.md#a-credential-for-what-a-gate-let-through)). It carries a secret. The runner hands it to the task as a file named by `VIFF_CREDENTIAL_FILE`, and never says it back. |
 
-A row's ask rides whole, but what silence settles on and its `labels` are verse's to act on,
-and a runner reads neither. What stays in verse and is not sent is the scope the task was
+A row's ask rides whole, but what silence settles on and its `labels` are viff's to act on,
+and a runner reads neither. What stays in viff and is not sent is the scope the task was
 spawned into, whom it acts for, and whom its questions naming nobody are held out to. The
-runner says which row matched; verse adds the rest when it poses the question.
+runner says which row matched; viff adds the rest when it poses the question.
 
 **A launch is idempotent by id while the task runs.** A second launch of a live id answers `200`
 with the task that is running. A launch of an id whose task has ended is a new run.
@@ -290,16 +290,16 @@ is a plain sequence number that the runner assigns, and it need not be a global 
 The timestamp `at` is not built: an event carries a cursor and no time (see
 [what is built](#what-is-built)).
 
-Verse keeps its high-water cursor on the task's record. On a restart, it knows where to resume.
+Viff keeps its high-water cursor on the task's record. On a restart, it knows where to resume.
 
-### The canonical kinds → what verse mirrors
+### The canonical kinds → what viff mirrors
 
 | `kind` | key fields | what the record gets |
 |---|---|---|
 | `boundary` | `seq` | a safe point where control lands |
 | `say` | `text, by, id?` | an utterance: `by` empty = the agent's narration → `say` preview; `by` set = a say-to folded in → journal only; `id` is the ask the words were, which settles as `heard` |
 | `exec` | `tool, step?, fields?, text, err` | `lastAction`, `lastOutput` + journal; `step` and `fields` name the call, as its `decision` did |
-| `pending` | `id, gate, step, fields, tool, action, text, options?, deadline?, answerers?` | `pending {id, gate}` — verse routes it to a Resolver; `options` (each `{id, need}`) and `deadline` (`{within}`) shape the question as a charter gate's would, defaulting to proceed or deny at one each |
+| `pending` | `id, gate, step, fields, tool, action, text, options?, deadline?, answerers?` | `pending {id, gate}` — viff routes it to a Resolver; `options` (each `{id, need}`) and `deadline` (`{within}`) shape the question as a charter gate's would, defaulting to proceed or deny at one each |
 | `withdrawn` | `id, text` | clears `pending`, and the question leaves the docket then, `text` saying why (a say, a pause, a cancel, a deadline), not when the task ends; only the question the task is waiting on |
 | `decision` | `id, gate, step?, fields?, choice, proceed, by, text` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no; `gate` is the autonomy's row that decided the call, whether it allowed, denied or asked, or `environment` for a step outside it |
 | `child` | `child, status` | flow-tracking (sub-task spawn/join) |
@@ -319,7 +319,7 @@ What the runner does depends on where N is.
 | inside the kept window | replays `cursor > N` in order, then goes live |
 | below the low-watermark of the runner | answers a single `{"kind":"gap","cursor":C}` frame |
 
-N inside the window is the path of a verse restart. Verse connects again with its last mirrored
+N inside the window is the path of a viff restart. Viff connects again with its last mirrored
 cursor. The runner is still running, and replays the gap. The worker notices nothing.
 
 N below the low-watermark comes from compaction, or from a runner restart in which the runner
@@ -329,7 +329,7 @@ but the current state is exact.
 
 A resync to the snapshot is the general safety net whenever a runner cannot serve a cursor:
 
-- a verse restart;
+- a viff restart;
 - a runner restart;
 - a slow consumer;
 - compaction.
@@ -358,10 +358,10 @@ task on its record as `failed`, `orphaned: true`.
 
 An index that looks confident while it is only stale is worse than one that says it is stale.
 
-The terminal is a `status` event: `done|failed|cancelled`, and `err` where it failed. Verse
+The terminal is a `status` event: `done|failed|cancelled`, and `err` where it failed. Viff
 reads the result from the snapshot, and CAS-writes both once. `?since=<terminal cursor>`
 replays the terminal and closes. The `/events` of a finished task is a finite record that a
-reader can replay. So a verse that restarts *after* completion still learns the outcome. A
+reader can replay. So a viff that restarts *after* completion still learns the outcome. A
 reader that has seen the terminal should stop connecting again, because there is nothing left
 to connect to.
 
@@ -377,7 +377,7 @@ the rule of [deployment and steering](deployment-and-steering.md). The runner em
 application of the control as an event on the one ordered stream. **The POST is the request,
 and the event is the truth.**
 
-The POST returns `204 No Content`. Verse never assumes that control took hold until the
+The POST returns `204 No Content`. Viff never assumes that control took hold until the
 matching event appears at a new cursor. This removes races:
 
 - A `cancel` POSTed after completion never yields a `cancelled` event.
@@ -387,7 +387,7 @@ matching event appears at a new cursor. This removes races:
 The POST does not wait for the effect. The next boundary of a remote worker may be far away.
 
 One ordered stream interleaves reports and control effects by cursor. That gives a single total
-order, which verse replays with nothing else to reconcile. Priority is this ordering. "Steering
+order, which viff replays with nothing else to reconcile. Priority is this ordering. "Steering
 outranks observation" means that the runner drains control at the boundary before the next
 action. So a control-effect event comes before the action it gated, in cursor order.
 
@@ -399,26 +399,26 @@ A control POST carries no idempotency key.
 | an answer to a question that is already answered | refused `404` |
 | `say` | said twice |
 
-Verse dedups events by cursor.
+Viff dedups events by cursor.
 
 The lifecycle of a gate, from end to end, is all on the stream, and a reader can resume it. A
 say-to is a `say` event with `by` set: it is the operator's side of the conversation.
 
 ```
-pending  @40 {id:G, gate:"deploy", step:"git.push", fields:{ref:"refs/heads/main"}, tool:push}   → verse mirrors pending[G]
-   … verse routes G to a Resolver, gets a verdict …
+pending  @40 {id:G, gate:"deploy", step:"git.push", fields:{ref:"refs/heads/main"}, tool:push}   → viff mirrors pending[G]
+   … viff routes G to a Resolver, gets a verdict …
 POST /resolve {id:G, choice:proceed, by:"user:you@example.com", say:["squash first"]}   → 204
-decision @41 {id:G, choice:proceed, proceed:true, by:"user:you@example.com"}   → verse clears pending[G]
+decision @41 {id:G, choice:proceed, proceed:true, by:"user:you@example.com"}   → viff clears pending[G]
 say      @42 {by:"user:you@example.com", text:"squash first"}                  → folded in
 exec     @43 {tool:push, text:"pushed"}                     → worker proceeded
 ```
 
-Suppose verse restarts between @40 and @41. Verse replays `pending@40`, routes it again, and
+Suppose viff restarts between @40 and @41. Viff replays `pending@40`, routes it again, and
 POSTs `resolve` again. If the first answer landed, the runner refuses the second as already
-answered, and the replay carries `decision@41`. Verse dedups by cursor. In either case there is
+answered, and the replay carries `decision@41`. Viff dedups by cursor. In either case there is
 one decision: no gate is lost, and nothing pushes twice.
 
-## Invariants verse CAS-enforces on the record
+## Invariants viff CAS-enforces on the record
 
 Three things hold on the task's record, even when a runner or a worker misbehaves:
 
@@ -426,8 +426,8 @@ Three things hold on the task's record, even when a runner or a worker misbehave
 - writes by the worker of record only;
 - gate-before-the-effect.
 
-For a remote worker, gate-before-the-effect is an attestation that verse timestamps and
-audits. Verse cannot intercept the push itself. A policy outside verse is
+For a remote worker, gate-before-the-effect is an attestation that viff timestamps and
+audits. Viff cannot intercept the push itself. A policy outside viff is
 coarser by nature, and this page says so.
 
 ## What a 3rd-party implementer must satisfy
@@ -436,16 +436,16 @@ For each task, an implementation must:
 
 - assign gapless cursors per task;
 - serve `GET /describe` with what it offers, and refuse a launch outside it;
-- verify its verse's bearer on every call but a bare
+- verify its viff's bearer on every call but a bare
   `GET /describe`, which is public, and answer the describe with its own workload token in
-  `Verse-Runner-Token` to the verse it verified, and to nobody else
+  `Viff-Runner-Token` to the viff it verified, and to nobody else
   ([who the runner is](runners.md#who-the-runner-is)); announce itself at start with
-  `POST /runners/hello` and that token, in a loop until verse answers 2xx, again after a `401` at
-  verse's door and never after a `403`; and serve `GET /ready` as 200 as soon as it serves;
-- where it offers the [verse system](systems/verse.md), carry each of a task's verse calls to
-  verse with its own token and `Verse-Task: <the task's id>`, while the task runs; verse admits
+  `POST /runners/hello` and that token, in a loop until viff answers 2xx, again after a `401` at
+  viff's door and never after a `403`; and serve `GET /ready` as 200 as soon as it serves;
+- where it offers the [viff system](systems/viff.md), carry each of a task's viff calls to
+  viff with its own token and `Viff-Task: <the task's id>`, while the task runs; viff admits
   the call as the task's owner ([a task carried by its runner](reference/perms.md#a-task-carried-by-its-runner)).
-  A runner that reaches no verse does not offer `verse`, and refuses a launch that names it;
+  A runner that reaches no viff does not offer `viff`, and refuses a launch that names it;
 - serve `GET /tasks/{id}` as current truth;
 - serve `GET /events?since=` with replay-then-live, and a `gap` frame below its watermark;
 - emit the kinds above;
@@ -464,8 +464,8 @@ Everything above is built, except what this section names.
 - The seam itself, `task.Runner` and `task.Handle`, carries every task. The engine holds a
   handle, and never a concrete `*Task`.
 - Events carry a per-task cursor with a bounded ring. `GET /events?since=N` replays and then goes
-  live. Verse keeps its high-water cursor on the task's record.
-- `client.HTTP(baseURL)` drives a remote runner over the verse-facing contract.
+  live. Viff keeps its high-water cursor on the task's record.
+- `client.HTTP(baseURL)` drives a remote runner over the viff-facing contract.
 - The reconcile at startup resumes a task where the work outlived the daemon, and does not orphan
   it.
 - Every operator verb works on local and remote tasks alike.

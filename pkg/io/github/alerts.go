@@ -9,8 +9,8 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // Dependabot alerts, reflected with -alerts (Config.Alerts): what GitHub knows about a vulnerable
@@ -82,11 +82,11 @@ func (g *GitHub) targetAlert(ref entity.Ref) (repo string, number int, ok bool) 
 // the 404, most often a 403) answers nothing too: no cover, so what stands is left alone, as the
 // repository pass leaves it. A failure that may pass (a 5xx, a rate limit) is an error, as for a
 // targeted run, so the hint is tried again rather than dropped.
-func (g *GitHub) reflectAlert(ctx context.Context, repo string, number int) (verseio.Reflection, error) {
+func (g *GitHub) reflectAlert(ctx context.Context, repo string, number int) (viffio.Reflection, error) {
 	if !g.alerts {
-		return verseio.Reflection{}, nil
+		return viffio.Reflection{}, nil
 	}
-	rn := verseio.Reflection{Covers: []entity.Pattern{g.cover(repo, "alert", strconv.Itoa(number))}}
+	rn := viffio.Reflection{Covers: []entity.Pattern{g.cover(repo, "alert", strconv.Itoa(number))}}
 	var a alert
 	if err := g.api.get(ctx, "/repos/"+repo+"/dependabot/alerts/"+strconv.Itoa(number), &a); err != nil {
 		switch {
@@ -94,9 +94,9 @@ func (g *GitHub) reflectAlert(ctx context.Context, repo string, number int) (ver
 			return rn, nil // gone: covered and absent, which tombstones it
 		case refused(err):
 			g.log("github: %s: reflecting no Dependabot alert %d: %v", repo, number, err)
-			return verseio.Reflection{}, nil
+			return viffio.Reflection{}, nil
 		}
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	rn.Add(g.AlertRef(repo, a.Number), alertPayload(repo, a))
 	return rn, nil

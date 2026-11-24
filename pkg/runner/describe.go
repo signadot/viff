@@ -13,11 +13,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/systems"
 )
 
-// Description is what a runner answers on GET /describe: what it offers. Verse reads it when the
+// Description is what a runner answers on GET /describe: what it offers. Viff reads it when the
 // runner is registered, and whenever the runner restarts or reports a change, and keeps it with
 // the registration.
 //
@@ -25,7 +25,7 @@ import (
 // what the runner builds of it (Builds, its nature) and what its operator allows (Ceiling, a
 // choice), published apart so a refusal can say which. A launch's environment lies within both.
 //
-//tony:schemagen=verse-runner-description,notag
+//tony:schemagen=viff-runner-description,notag
 type Description struct {
 	// Version is the shape of the description, DescriptionVersion when a runner writes it. One
 	// kept from an older runner is refused rather than read as this one (Check): the runner is
@@ -38,23 +38,23 @@ type Description struct {
 const DescriptionVersion = 2
 
 // TokenHeader is the header a runner answers GET /describe with, carrying the workload token
-// its runtime gave it, to a verse it verified as its own: the runner's half of the handshake.
-// Verse checks the token's subject against the runner's registration before it records the
+// its runtime gave it, to a viff it verified as its own: the runner's half of the handshake.
+// Viff checks the token's subject against the runner's registration before it records the
 // description, so a runner replaced behind the same url is found by the step that admitted the
-// first. A runner that verifies no verse answers none, since a token is for its verse alone.
-const TokenHeader = "Verse-Runner-Token"
+// first. A runner that verifies no viff answers none, since a token is for its viff alone.
+const TokenHeader = "Viff-Runner-Token"
 
-// VerseSubject is the `sub` of the token a verse presents to its runners: the verse itself. The
-// verse's issuer signs other tokens too, a gate credential among them (`sub` the rule and how its
-// gate passed), for an audience the charter declares; the subject is what tells the verse's own
+// ViffSubject is the `sub` of the token a viff presents to its runners: the viff itself. The
+// viff's issuer signs other tokens too, a gate credential among them (`sub` the rule and how its
+// gate passed), for an audience the charter declares; the subject is what tells the viff's own
 // token from those, so a runner's door admits this one alone.
-const VerseSubject = "verse"
+const ViffSubject = "viff"
 
 // A STATIC TOKEN IS KNOWN BY ITS HASH. A runner with no runtime to issue it a workload token, on a
 // machine off Kubernetes, proves itself with a token it and its registrar hold, as an iod may
 // (auth.iod.static). The registration names it by its hash, `sha256:<hex>`, as its subject, so
-// verse never holds the token and the registration stays everyone's to read; and that subject is
-// also the audience the runner holds verse's tokens to, read off its own token as a workload
+// viff never holds the token and the registration stays everyone's to read; and that subject is
+// also the audience the runner holds viff's tokens to, read off its own token as a workload
 // token's `sub` is. A hash everyone may read is only as good as the token is long, so a static
 // token is refused under StaticTokenMin bytes.
 
@@ -108,7 +108,7 @@ func SubjectOf(token string) (string, error) {
 }
 
 // TokenSubject is the `sub` of a JWT, read without verifying it: what a runner's own token says
-// it is, which is the audience the runner holds its verse's tokens to. The token is the
+// it is, which is the audience the runner holds its viff's tokens to. The token is the
 // runtime's and nothing here trusts the claim beyond naming the door.
 func TokenSubject(token string) (string, error) {
 	parts := strings.Split(token, ".")
@@ -147,7 +147,7 @@ func ReadTokenFile(path string) (string, error) {
 }
 
 // CheckSubject is whether s can be a runner's subject, on either side of the handshake: a
-// registration's `subject` and a runner's `verse.audience` are compared with a token's as
+// registration's `subject` and a runner's `viff.audience` are compared with a token's as
 // written, so one with space in it matches no token anybody issues, and one naming a static
 // token is its hash in full, sha256:<64 hex digits>.
 func CheckSubject(s string) error {
@@ -163,13 +163,13 @@ func CheckSubject(s string) error {
 	return nil
 }
 
-// Check is what a description must say for verse to register the runner, or to read one it
+// Check is what a description must say for viff to register the runner, or to read one it
 // kept: its version, at least one offer, each holding the network with the modes it builds, each
 // ceiling and each `builds` within its system's document, each setting of an agent typed and none
 // called `name` or `annotations`.
 func (d Description) Check() error {
 	if d.Version != DescriptionVersion {
-		return fmt.Errorf("it describes itself in version %d, not %d: the runner is older or newer than this verse, and is asked again (`verse runner check`)",
+		return fmt.Errorf("it describes itself in version %d, not %d: the runner is older or newer than this viff, and is asked again (`viff runner check`)",
 			d.Version, DescriptionVersion)
 	}
 	if len(d.Offers) == 0 {
@@ -239,9 +239,9 @@ func systemsVerb(system, verb string) (systems.Verb, bool) {
 }
 
 // Offer is one kind of doer a runner runs: an agent, by name, or scripts. A runner offers each doer
-// at most once, and several runners may offer one doer: verse routes a launch to one of them.
+// at most once, and several runners may offer one doer: viff routes a launch to one of them.
 //
-//tony:schemagen=verse-runner-offer,notag
+//tony:schemagen=viff-runner-offer,notag
 type Offer struct {
 	// Agent is the agent offered, and what it takes. Nil for scripts.
 	Agent *AgentOffer `tony:"field=agent,omitzero"`
@@ -273,9 +273,9 @@ func (o Offer) Name() string {
 }
 
 // AgentOffer is an agent a runner offers: its name, the settings it takes, and the annotations
-// verse or the runner may write for it.
+// viff or the runner may write for it.
 //
-//tony:schemagen=verse-runner-agent-offer,notag
+//tony:schemagen=viff-runner-agent-offer,notag
 type AgentOffer struct {
 	Name string `tony:"field=name"`
 	// Settings are what a launch's agent may set, by name (Agent.Settings), each with the values
@@ -289,7 +289,7 @@ type AgentOffer struct {
 // its form), and whether the agent has a default of its own where a launch names none, which the
 // record then says (the task's snapshot, Settings).
 //
-//tony:schemagen=verse-runner-setting,notag
+//tony:schemagen=viff-runner-setting,notag
 type Setting struct {
 	// Form is the value's kind: string (absent), number or bool. Values are strings on the wire,
 	// as a charter binds them; the runner reads them by form.
@@ -372,7 +372,7 @@ func settingMatch(pattern, v string) bool {
 
 // System is one system an offer holds: what the runner builds of it, and the ceiling over it.
 //
-//tony:schemagen=verse-runner-system,notag
+//tony:schemagen=viff-runner-system,notag
 type System struct {
 	// Builds is what the runner can build of the system, by its nature (its sandbox), in the
 	// ceiling's form: the network's modes, today. Never written in a config: the runner says it.

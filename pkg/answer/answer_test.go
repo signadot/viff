@@ -9,7 +9,7 @@ import (
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 const contractSrc = `class: !or [bug, nit, risk]
@@ -93,7 +93,7 @@ func TestADefinitionReferenceIsRefused(t *testing.T) {
 
 // And a `define:` clause, for the same reason: a contract that carries definitions is a contract
 // whose author expects them to be resolved, and nothing here resolves them. Refused whole rather
-// than read halfway — the schema form is a spelling of a pattern, not a schema verse evaluates.
+// than read halfway — the schema form is a spelling of a pattern, not a schema viff evaluates.
 func TestADefineClauseIsRefused(t *testing.T) {
 	_, err := ParseSource("define:\n  sev: !or [low, high]\naccept:\n  s: !irtype string\n")
 	if err == nil {
@@ -124,7 +124,7 @@ func TestAContractKeepsEveryOperator(t *testing.T) {
 }
 
 // Parse leaves the document it is given as it found it, and shows the agent the contract its
-// author wrote. The document is the charter's own — versed holds it and `verse data` prints it —
+// author wrote. The document is the charter's own — viffd holds it and `viff data` prints it —
 // and a contract that resolved anything would be building its pattern out of those nodes: the
 // expansion that once stood here took the clause's leaves into itself and rewrote a string
 // holding $[...] with its value, so the document came back changed and the agent was shown text
@@ -175,7 +175,7 @@ func unlinked(n *ir.Node, at string) []string {
 
 // The point of the whole exercise: every failure names its path, what was expected there,
 // and what was found — and reports ALL of them, so one repair round can fix everything that
-// is wrong rather than everything minus one. None of this is verse's to derive: it is the
+// is wrong rather than everything minus one. None of this is viff's to derive: it is the
 // match's own account of how it walked (tony.Explaining, v0.0.102).
 func TestFailureNamesEveryPath(t *testing.T) {
 	c := mustParse(t, contractSrc)

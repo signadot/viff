@@ -17,7 +17,7 @@ import (
 // text/event-stream, which says what the FRAMING is and nothing about what is inside a
 // frame. A reader that wants to decode frames rather than print them needs to be told,
 // and guessing is exactly what this package exists to avoid.
-const HeaderFormat = "X-Verse-Format"
+const HeaderFormat = "X-Viff-Format"
 
 // SSE writes a server-sent event stream whose frames carry documents in the format the
 // request asked for.
@@ -37,7 +37,7 @@ func NewSSE(w http.ResponseWriter, r *http.Request) (*SSE, error) {
 		return nil, fmt.Errorf("streaming unsupported")
 	}
 	// A stream's frames carry the same rendering an ordinary response body would, so a
-	// format verse cannot write is refused here too — before any header goes out, while
+	// format viff cannot write is refused here too — before any header goes out, while
 	// the caller can still turn it into a status.
 	f, err := ResponseFormat(r)
 	if err != nil {

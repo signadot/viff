@@ -27,8 +27,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // Git is go-git, not the git binary, and the difference is worth stating because it decides the
@@ -37,7 +37,7 @@ import (
 // A runner that shells out inherits an ambient world: whichever `git` is on PATH, whatever
 // credential helper the machine has configured, whatever `~/.gitconfig` says. All three are
 // invisible in the code and none of them is declared anywhere — which is the same complaint
-// verse makes about `run_bash` inheriting the server's environment variables. In particular the
+// viff makes about `run_bash` inheriting the server's environment variables. In particular the
 // CREDENTIAL becomes ambient, and a runner whose whole delivery model rests on the task not
 // being able to reach the credential should be able to say where the credential comes from.
 //
@@ -65,13 +65,13 @@ import (
 // Workspace is one task's working directory: every repository the launch names, cloned side by
 // side under one root, each on the same task branch.
 //
-// The root is what the agent gets as its working directory, so `verse/task/loop.go` and
+// The root is what the agent gets as its working directory, so `viff/task/loop.go` and
 // `tony-format/ir/node.go` are both just paths to it, and a change that spans two repositories
 // is one piece of work rather than two tasks that have to be coordinated.
 type Workspace struct {
 	Repos []Repo // the repositories checked out here, in the order they are named
 	Root  string // the directory holding every checkout: the agent's working directory
-	// Branch is the task's own branch, verse/auto/<task id>, the same in every repository. It is
+	// Branch is the task's own branch, viff/auto/<task id>, the same in every repository. It is
 	// where the work is made, and the branch a push sends when the task names none — a push to
 	// anywhere else is the task's to name, within what each repository permits.
 	Branch string
@@ -444,12 +444,12 @@ func fixHead(r *git.Repository) error {
 }
 
 // AutoBranchPrefix namespaces every branch a task works on, and so every ref a delivery pushes
-// from. `verse/auto/` rather than `agent/`, and the reason is a person rather than a machine: a
+// from. `viff/auto/` rather than `agent/`, and the reason is a person rather than a machine: a
 // developer who pulls and finds a commit they did not write asks what made it, and the first
 // segments of a branch name are the cheapest place to answer — which system, and that nothing
 // human proposed it. `agent/` said neither, and there is more than one thing in a tree that
 // calls itself an agent.
-const AutoBranchPrefix = "verse/auto/"
+const AutoBranchPrefix = "viff/auto/"
 
 // Author is the git identity a workspace's commits carry: what `git commit` in the checkout
 // writes as author and committer unless the command says otherwise.
@@ -458,13 +458,13 @@ type Author struct{ Name, Email string }
 // RunnerAuthor is the identity when no person's can be derived: a charter firing, whose
 // principal is an agent or nobody, a rule acting alone or for a pair whose asker is not a person,
 // and the runner's own commits.
-var RunnerAuthor = Author{Name: "verse runner", Email: "runner@invalid"}
+var RunnerAuthor = Author{Name: "viff runner", Email: "runner@invalid"}
 
 // AuthorFor derives the identity from the launch's principal and the doer that works for it.
 //
 // A person's launch commits as that person, at a tagged address: `user:u@h` becomes
-// `u+verse-<doer>-runner@h`, with the principal and the doer as the name. The tag says in
-// the address what the Verse-Principal trailer says in the message — that verse made this on
+// `u+viff-<doer>-runner@h`, with the principal and the doer as the name. The tag says in
+// the address what the Viff-Principal trailer says in the message — that viff made this on
 // their behalf — so a forge's view of the commit and the trailer agree, and the person's mail
 // is where a reply to the commit goes. Any other principal is the runner's identity: an agent
 // has no mailbox to tag, and the trailer already names it.
@@ -472,7 +472,7 @@ var RunnerAuthor = Author{Name: "verse runner", Email: "runner@invalid"}
 // A pair (`pair:<asker> via:<rule>`, entity.Pair: a rule's task acting for whoever wrote the
 // record) commits as its asker, read once with entity.PairOf, as mirror.ActsFor reads it: the
 // person on whose authority the work was done is on the commit, as their own launch would put
-// them, and the rule is said by the Verse-Principal trailer, which carries the whole pair. A pair
+// them, and the rule is said by the Viff-Principal trailer, which carries the whole pair. A pair
 // whose asker is no person is the runner's.
 func AuthorFor(principal, doer string) Author {
 	if asker, _, ok := entity.PairOf(principal); ok {
@@ -487,8 +487,8 @@ func AuthorFor(principal, doer string) Author {
 		doer = "code"
 	}
 	return Author{
-		Name:  addr + " (verse " + doer + ")",
-		Email: user + "+verse-" + doer + "-runner@" + host,
+		Name:  addr + " (viff " + doer + ")",
+		Email: user + "+viff-" + doer + "-runner@" + host,
 	}
 }
 
@@ -513,7 +513,7 @@ func (m *Mirrors) Open(ctx context.Context, id string, repos []Repo, worktrees s
 	// relative root resolves against the runner on this side and against the workspace on that
 	// one, and the two are not the same place.
 	//
-	// A relative root would show as a child that exits immediately with `reopen verse in
+	// A relative root would show as a child that exits immediately with `reopen viff in
 	// <path>: repository does not exist`, naming a path that is correct from where you are
 	// standing and wrong from where it ran. Tests pass a t.TempDir(), which is already absolute,
 	// so this is the case `-data scratchpad/…` on a command line meets and they do not.
@@ -833,8 +833,8 @@ func (w *Workspace) Tree(name string) *Tree {
 	return nil
 }
 
-// The checkout's git config says where it started: `verse.base`.
-const baseSection, baseOption = "verse", "base"
+// The checkout's git config says where it started: `viff.base`.
+const baseSection, baseOption = "viff", "base"
 
 // Reopen rebuilds a Workspace over a checkout that already exists — the task process's view of
 // what the runner prepared for it. A repo with no From gets the base its checkout records.
@@ -928,9 +928,9 @@ func ShortSha(sha string) string {
 // STAGED before it is sent (stage.go): the commit is local and always safe, the push is neither.
 //
 // The trailers are the attribution channel. A push made under a shared bot credential says nothing
-// at the far end about who it was for, so the only externally checkable link back into the verse is
+// at the far end about who it was for, so the only externally checkable link back into the viff is
 // what this writes down — and it is checkable, by anyone who can read both the repository and the
-// verse.
+// viff.
 func (t *Tree) CommitWork(l *runner.Launch, result string) (bool, error) {
 	// What counts as work is "the branch moved OR the tree is dirty", not "the tree is dirty".
 	//
@@ -951,7 +951,7 @@ func (t *Tree) CommitWork(l *runner.Launch, result string) (bool, error) {
 		// an empty commit on top purely to carry trailers.
 		//
 		// The cost is real and is the reason a prompt should still say "do not commit": the
-		// trailers are the runner's only attribution channel out of the verse, and a commit
+		// trailers are the runner's only attribution channel out of the viff, and a commit
 		// the agent wrote carries none of them. Work preserved without provenance beats work
 		// destroyed, which is the trade being made here and not a preference.
 		return true, nil
@@ -977,9 +977,9 @@ func (t *Tree) CommitWork(l *runner.Launch, result string) (bool, error) {
 //
 // The distinction is the whole of how a push is reported, and getting it backwards fills the
 // record with alarm about the thing working as intended. A remote that will not fast-forward, a
-// protected branch, a ruleset, a hook: those are an authority OUTSIDE verse exercising rules
+// protected branch, a ruleset, a hook: those are an authority OUTSIDE viff exercising rules
 // about its own history — which is precisely the authority this design deliberately does not
-// take — docs/reference/examples/README.md is blunt that verse should not compete with git
+// take — docs/reference/examples/README.md is blunt that viff should not compete with git
 // server configuration. The task tried, correctly, and the answer is no. A missing credential or an
 // unreachable host is not an answer at all.
 //
@@ -1008,10 +1008,10 @@ func Refusal(err error) string {
 // deliveryRemote is the in-memory remote a push is made through. It is not a remote in any
 // `.git/config` and must not become one: the name exists only so go-git's own check that the
 // options and the remote agree has something to compare.
-const deliveryRemote = "verse-delivery"
+const deliveryRemote = "viff-delivery"
 
 // commitMessage carries the provenance the runner was given. Every trailer is conditional: an
-// absent one means verse did not know, and writing it out empty would claim to have asked.
+// absent one means viff did not know, and writing it out empty would claim to have asked.
 func CommitMessage(l *runner.Launch, result string) string {
 	subject, body := firstLine(result), ""
 	if isDocument(result) {
@@ -1021,7 +1021,7 @@ func CommitMessage(l *runner.Launch, result string) string {
 		// characters, which is what `git log --oneline` then shows forever. One is on main.
 		//
 		// So the document becomes the BODY, where it is worth reading, and the subject is
-		// derived from what verse knows about the run. The alternative — digging a `report` or
+		// derived from what viff knows about the run. The alternative — digging a `report` or
 		// `summary` field out of the answer — would make the runner know a charter's answer
 		// shape, which is the one thing about a contract that is deliberately the charter's.
 		subject, body = describe(l), result
@@ -1035,20 +1035,20 @@ func CommitMessage(l *runner.Launch, result string) string {
 	if body != "" {
 		// Before the trailers and separated from them, because git reads trailers from the LAST
 		// paragraph and takes it only if every line in it is one. A document pasted after them
-		// would silently un-declare every Verse-* line below it.
+		// would silently un-declare every Viff-* line below it.
 		b.WriteString(strings.TrimRight(body, "\n"))
 		b.WriteString("\n\n")
 	}
-	fmt.Fprintf(&b, "Verse-Task: %s\n", l.ID)
+	fmt.Fprintf(&b, "Viff-Task: %s\n", l.ID)
 	p := l.Provenance
 	if p.Principal != "" {
-		fmt.Fprintf(&b, "Verse-Principal: %s\n", p.Principal)
+		fmt.Fprintf(&b, "Viff-Principal: %s\n", p.Principal)
 	}
 	if p.Subject != "" {
-		fmt.Fprintf(&b, "Verse-Subject: %s\n", p.Subject)
+		fmt.Fprintf(&b, "Viff-Subject: %s\n", p.Subject)
 	}
 	if p.Chain != "" {
-		fmt.Fprintf(&b, "Verse-Chain: %s\n", p.Chain)
+		fmt.Fprintf(&b, "Viff-Chain: %s\n", p.Chain)
 	}
 	return b.String()
 }
@@ -1070,7 +1070,7 @@ func isDocument(result string) bool {
 }
 
 // describe is the subject line for work that did not come with a sentence: what fired, about
-// what. `comment-drift on drift.head.head-moved@git.head.verse` says more to somebody reading
+// what. `comment-drift on drift.head.head-moved@git.head.viff` says more to somebody reading
 // `git log` than the task id does, and both are recorded in the trailers below anyway.
 func describe(l *runner.Launch) string {
 	p := l.Provenance
@@ -1152,7 +1152,7 @@ func firstLine(s string) string {
 //
 // It is lossy, so a rewrite gets a hash of the ORIGINAL appended: without it `a.b` and `a_b`
 // would share a workspace, which is two tasks in one checkout. Same discipline as
-// verse's trigger.spawnID, which disambiguates its own safeSeg the same way and for the same reason.
+// viff's trigger.spawnID, which disambiguates its own safeSeg the same way and for the same reason.
 func SafeSeg(s string) string {
 	var b strings.Builder
 	for _, r := range s {
@@ -1177,14 +1177,14 @@ func SafeSeg(s string) string {
 
 // requiredTrailers is the provenance every commit an agent delivers must carry: the same lines
 // commitWork writes when the runner makes the commit. They are the only externally checkable
-// link from a commit on the forge back into the verse, so a delivery without them is refused
+// link from a commit on the forge back into the viff, so a delivery without them is refused
 // rather than quietly repaired — repairing would rewrite the agent's commits, and the agent
 // would no longer know the SHAs it delivered. The commit's identity (IdentityFor) is held the
 // same way, for the same reason.
 func RequiredTrailers(l *runner.Launch) []string {
-	lines := []string{"Verse-Task: " + l.ID}
+	lines := []string{"Viff-Task: " + l.ID}
 	if p := l.Provenance.Principal; p != "" {
-		lines = append(lines, "Verse-Principal: "+p)
+		lines = append(lines, "Viff-Principal: "+p)
 	}
 	return lines
 }

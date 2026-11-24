@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // AN AUTONOMY WITHIN ANOTHER lets through no call the other holds back: each row's mode is at
@@ -13,14 +13,14 @@ import (
 // gives, and the default no looser on what the rows above it leave.
 func TestAnAutonomyWithinAnother(t *testing.T) {
 	outer := Autonomy{
-		{Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/verse/auto/*")}}, Then: Then{Mode: ThenAllow}},
+		{Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/viff/auto/*")}}, Then: Then{Mode: ThenAllow}},
 		{Match: &Match{System: "git", Verb: "push"}, Then: Then{Mode: ThenDeny}},
 		{Match: &Match{System: "commands"}, Then: Then{Mode: ThenAsk}},
 		{Then: Then{Mode: ThenAsk}},
 	}
 	// What the inner task reaches: git whole, commands, and the network.
 	env := systems.Environment{Systems: systems.Systems{
-		"git":      {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]systems.Shape{"fetch": {{}}, "push": {{}}}}},
+		"git":      {{Attributes: map[string]string{"repo": "github.com/signadot/viff", "from": "main"}, Verbs: map[string][]systems.Shape{"fetch": {{}}, "push": {{}}}}},
 		"commands": {{Verbs: map[string][]systems.Shape{"run": {{}}}}},
 		"network":  {{Attributes: map[string]string{"mode": "open"}}},
 	}}
@@ -37,7 +37,7 @@ func TestAnAutonomyWithinAnother(t *testing.T) {
 		"the same": {outer, env, ""},
 		"stricter": {Autonomy{{Match: &Match{System: "commands"}, Then: Then{Mode: ThenDeny}}, {Then: Then{Mode: ThenDeny}}}, env, ""},
 		"the allowed push, the rest denied as the outer denies it": {Autonomy{
-			{Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/verse/auto/*")}}, Then: Then{Mode: ThenAllow}},
+			{Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/viff/auto/*")}}, Then: Then{Mode: ThenAllow}},
 			{Match: &Match{System: "git", Verb: "push"}, Then: Then{Mode: ThenDeny}},
 			{Then: Then{Mode: ThenAsk}}}, env, ""},
 		"none, which asks, where the outer denies a push": {nil, env, "`then: ask` on every call, where the autonomy it must lie within says deny on git.push"},

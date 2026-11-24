@@ -45,9 +45,9 @@ func StripLayout(n *ir.Node) *ir.Node {
 }
 
 // StripBrackets drops the bracket hint and nothing else, for a document arriving over the
-// wire that verse is about to hold as a VALUE.
+// wire that viff is about to hold as a VALUE.
 //
-// Without it, how an operator's file happened to be punctuated becomes part of what verse
+// Without it, how an operator's file happened to be punctuated becomes part of what viff
 // stores, and it shows up later in a way that looks arbitrary. A charter is the clear case:
 // `patch` and a match's `fields` are held as opaque tony documents, so they came back
 // bracketed exactly as authored, while `condition`, `spawn` and `gates` — decoded into Go

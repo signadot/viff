@@ -7,12 +7,12 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// WHAT AN INSTALL AND A REMOVAL SAY BACK, in one voice for `verse charter`, verse_charter_install
-// and _remove, and the verse system's tools: kpaths spells an address as a kinded path, the way
+// WHAT AN INSTALL AND A REMOVAL SAY BACK, in one voice for `viff charter`, viff_charter_install
+// and _remove, and the viff system's tools: kpaths spells an address as a kinded path, the way
 // a tool takes it, and otherwise as the steps a command line takes.
 
 // CheckQuery is what a check sends beside the charters: the address, and with runnersToCome the
@@ -29,7 +29,7 @@ func CheckQuery(at string, runnersToCome bool) url.Values {
 // InstallQuery is how an install sends charters given as text: one document is a file, installed
 // at at, and may be the shorthand (a rule, a level, a list of them); several, or a prune, are a
 // directory, each a charter at its own at:, and with prune what they leave out under at goes. It
-// answers the query and the definitions to send, as `verse charter -a` reads -f and -d.
+// answers the query and the definitions to send, as `viff charter -a` reads -f and -d.
 func InstallQuery(docs []*ir.Node, names []string, at string, prune bool) (url.Values, []*ir.Node, error) {
 	if len(docs) == 0 {
 		return nil, nil, fmt.Errorf("charters: there is none to install")
@@ -62,9 +62,9 @@ func InstallQuery(docs []*ir.Node, names []string, at string, prune bool) (url.V
 	return q, defs, nil
 }
 
-// InstallAt is the address an install acts at, as the verse system's charter-install step names
+// InstallAt is the address an install acts at, as the viff system's charter-install step names
 // it (field `at`): with a prune, the prune's; otherwise the deepest address every charter of docs
-// lies at or under, each at its own `at:` or, saying none, at q's `at` (baseline, empty), as verse
+// lies at or under, each at its own `at:` or, saying none, at q's `at` (baseline, empty), as viff
 // places them. Everything the install writes is at or under it, so a shape on it bounds the
 // install.
 func InstallAt(q url.Values, docs []*ir.Node) (string, error) {
@@ -138,7 +138,7 @@ func Installed(w io.Writer, node *ir.Node, scope string, kpaths bool) (arming bo
 		where := "baseline"
 		if at != "" {
 			// IN STEPS, like every other address a command prints, so the package this names is
-			// spelled the way `verse c <address>` takes it. The charter FILE declares it as a
+			// spelled the way `viff c <address>` takes it. The charter FILE declares it as a
 			// path, which is right there — a charter is read by a parser — and this is the line
 			// a person reads.
 			where, packaged = "package "+Spelled(at, kpaths), true
@@ -153,12 +153,12 @@ func Installed(w io.Writer, node *ir.Node, scope string, kpaths bool) (arming bo
 	}
 	pruned(w, node, kpaths)
 	// WHERE TO LOOK, said at the moment it is not obvious: a charter installed into packages
-	// leaves `verse c` — the next thing anybody types — answering baseline's rules, which is an
+	// leaves `viff c` — the next thing anybody types — answering baseline's rules, which is an
 	// empty list. Saying so here is what keeps somebody from having to be surprised first.
 	if packaged {
-		reader := "`verse c`"
+		reader := "`viff c`"
 		if kpaths {
-			reader = "verse_charter"
+			reader = "viff_charter"
 		}
 		fmt.Fprintf(w, "%s shows every charter and where each may write\n", reader)
 	}

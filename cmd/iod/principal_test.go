@@ -3,10 +3,10 @@ package main
 import (
 	"testing"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// THE OUT HALF ACTS AS ITS ROOT'S IOD, which is the principal `verse iod add` writes the out
+// THE OUT HALF ACTS AS ITS ROOT'S IOD, which is the principal `viff iod add` writes the out
 // half's grants for (`agent:<root>-iod`): the connector's name where -root is not given, and
 // -root's where it is, so a second deployment under a root of its own needs no -as on either side.
 func TestTheOutHalfActsAsItsRootsIod(t *testing.T) {
@@ -15,7 +15,7 @@ func TestTheOutHalfActsAsItsRootsIod(t *testing.T) {
 		{"git-buildhost", "agent:git-buildhost-iod"},
 	} {
 		c := &common{root: tc.root}
-		git := verseio.NewGit()
+		git := viffio.NewGit()
 		if err := git.SetRoot(c.root); err != nil {
 			t.Fatal(err)
 		}

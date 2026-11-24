@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // TWO HALVES OF ONE FILE MEANT TWO THINGS. `InstallTrigger` replaces a rule of the same name,

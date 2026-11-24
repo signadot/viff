@@ -8,24 +8,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/internal/repocharters"
-	"github.com/signadot/verse/internal/versed/versedtest"
-	"github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/runner/runnerd/stock"
-	"github.com/signadot/verse/pkg/schedule"
+	"go.viff.dev/viff/internal/repocharters"
+	"go.viff.dev/viff/internal/viffd/viffdtest"
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/runner/runnerd/stock"
+	"go.viff.dev/viff/pkg/schedule"
 )
 
-// AN INSTALL REFUSED BY THE VERSE IS ASKED AGAIN once the verse has moved: each time the minute's
-// check of an entry of verse/live finds its tree would install, where it did not before, the
+// AN INSTALL REFUSED BY THE VIFF IS ASKED AGAIN once the viff has moved: each time the minute's
+// check of an entry of viff/live finds its tree would install, where it did not before, the
 // install of that tree is asked again, once. Not every minute: a round that finds it so again
 // asks nothing. And per entry: an entry found to install, as the one before it was, is asked
 // again too.
 func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 	drivers := stock.New(stock.Open(), stock.Secrets{}, t.TempDir(), io.Discard)
-	srv := versedtest.Server(t, drivers.Build, entitytest.Store(t))
+	srv := viffdtest.Server(t, drivers.Build, entitytest.Store(t))
 	srv.Start(t.Context())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -70,7 +70,7 @@ func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 		resp.Body.Close()
 		return due
 	}
-	// checked answers the round's check of verse/live as the git io would, at an entry, saying
+	// checked answers the round's check of viff/live as the git io would, at an entry, saying
 	// since which round the verdict has held there (pkg/io/gitcheck.go).
 	checked := func(due, verdict, since, entry, tree string) {
 		t.Helper()
@@ -100,7 +100,7 @@ func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 	if a := again(); a != "" {
 		t.Fatalf("a check that refuses asked the install again: %q", a)
 	}
-	// The verse moved (a runner came up): the check finds it installs, and the install is asked
+	// The viff moved (a runner came up): the check finds it installs, and the install is asked
 	// again, carrying the round.
 	r2 := tick(round(2))
 	checked(r2, "installs", r2, entry, tree)
@@ -129,7 +129,7 @@ func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 	})
 
 	// A NEW ENTRY, found to install as the one before it was. What runs is checked and installs;
-	// a yes appends another tree, whose install is refused; the verse moves; and the check of the
+	// a yes appends another tree, whose install is refused; the viff moves; and the check of the
 	// new entry finds it installs. The verdict never stopped being `installs`, and the install is
 	// asked again all the same, since the verdict begins again at the new entry.
 	r6 := tick(round(6))

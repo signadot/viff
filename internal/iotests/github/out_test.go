@@ -3,34 +3,34 @@ package github_test
 import (
 	"context"
 	"fmt"
-	"github.com/signadot/verse/internal/versed/versedtest"
-	"github.com/signadot/verse/pkg/runner/runnerd/runnerdtest"
+	"go.viff.dev/viff/internal/viffd/viffdtest"
+	"go.viff.dev/viff/pkg/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/github"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/github"
 )
 
 // The out half against the fake: a comment made once, left alone while the text holds, and
 // updated in place when it changes; a `to` it cannot read is refused on the status.
 func TestTheOutHalfKeepsACommentInStep(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	f.repo("signadot/verse").pr(42, "a change", "open", "2026-09-01T00:00:00Z", "abc")
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
+	f.repo("signadot/viff").pr(42, "a change", "open", "2026-09-01T00:00:00Z", "abc")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
 	places := src.OutRefs()
-	if len(places) != 1 || places[0].String() != "github.signadot.verse.out" {
-		t.Fatalf("out places %v, want github.signadot.verse.out", places)
+	if len(places) != 1 || places[0].String() != "github.signadot.viff.out" {
+		t.Fatalf("out places %v, want github.signadot.viff.out", places)
 	}
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), places[0], verse, nil)
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), places[0], viff, nil)
 	pass := func() {
 		t.Helper()
 		if err := out.Pass(context.Background()); err != nil {
@@ -39,16 +39,16 @@ func TestTheOutHalfKeepsACommentInStep(t *testing.T) {
 	}
 	ask := func(name string, input entity.Obj) {
 		t.Helper()
-		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", name), input.Payload())
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", name), input.Payload())
 	}
 	status := func(name string) entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", name+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
 
 	ask("trial", entity.Obj{"to": "pr.42", "text": "the trial found nothing new"})
 	pass()
-	if got := f.commentsOn("signadot/verse", 42); len(got) != 1 || got[0] != "the trial found nothing new" {
+	if got := f.commentsOn("signadot/viff", 42); len(got) != 1 || got[0] != "the trial found nothing new" {
 		t.Fatalf("comments on #42: %q, want the one asked for", got)
 	}
 	st := status("trial")
@@ -57,13 +57,13 @@ func TestTheOutHalfKeepsACommentInStep(t *testing.T) {
 	}
 
 	pass()
-	if got := f.commentsOn("signadot/verse", 42); len(got) != 1 || f.editCount() != 0 {
+	if got := f.commentsOn("signadot/viff", 42); len(got) != 1 || f.editCount() != 0 {
 		t.Fatalf("a pass with nothing changed wrote to GitHub: comments %q, edits %d", got, f.editCount())
 	}
 
 	ask("trial", entity.Obj{"to": "pr.42", "text": "the trial found one change"})
 	pass()
-	if got := f.commentsOn("signadot/verse", 42); len(got) != 1 || got[0] != "the trial found one change" || f.editCount() != 1 {
+	if got := f.commentsOn("signadot/viff", 42); len(got) != 1 || got[0] != "the trial found one change" || f.editCount() != 1 {
 		t.Fatalf("comments on #42 after a change: %q, want the one comment updated", got)
 	}
 
@@ -71,12 +71,12 @@ func TestTheOutHalfKeepsACommentInStep(t *testing.T) {
 	// an edit of what is not there (git-issue ne9fce9dh12ks1q4qsn0).
 	was := status("trial")["comment"]
 	f.mu.Lock()
-	f.repos["signadot/verse"].comments = nil
+	f.repos["signadot/viff"].comments = nil
 	f.mu.Unlock()
 	ask("trial", entity.Obj{"to": "pr.42", "text": "the trial found two changes"})
 	pass()
 	st = status("trial")
-	if got := f.commentsOn("signadot/verse", 42); len(got) != 1 || got[0] != "the trial found two changes" ||
+	if got := f.commentsOn("signadot/viff", 42); len(got) != 1 || got[0] != "the trial found two changes" ||
 		st["comment"] == was || st["error"] != nil {
 		t.Fatalf("a deleted comment: comments %q, status %v, want it said again under a new id", got, st)
 	}
@@ -92,13 +92,13 @@ func TestTheOutHalfKeepsACommentInStep(t *testing.T) {
 // body, and ADOPTED where a person opened one already — whose words are then left as they are.
 func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	f.repo("signadot/verse").pr(7, "a person's own", "open", "2026-09-01T00:00:00Z", "abc") // head feature-7
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	f.repo("signadot/viff").pr(7, "a person's own", "open", "2026-09-01T00:00:00Z", "abc") // head feature-7
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
 	pass := func() {
 		t.Helper()
 		if err := out.Pass(context.Background()); err != nil {
@@ -107,15 +107,15 @@ func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 	}
 	ask := func(name string, input entity.Obj) {
 		t.Helper()
-		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", name), input.Payload())
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", name), input.Payload())
 	}
 	status := func(name string) entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", name+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
-	open := func(title string) entity.Obj { return entity.Obj{"title": title, "body": "proposed by verse"} }
+	open := func(title string) entity.Obj { return entity.Obj{"title": title, "body": "proposed by viff"} }
 
-	ask("review-x", entity.Obj{"to": "branch.verse/repo-charter-review-x", "open": open("charters: x")})
+	ask("review-x", entity.Obj{"to": "branch.viff/repo-charter-review-x", "open": open("charters: x")})
 	pass()
 	st := status("review-x")
 	if f.openedCount() != 1 || st["number"] == nil || st["url"] == nil || st["adopted"] != nil {
@@ -125,7 +125,7 @@ func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 	if f.openedCount() != 1 || f.editCount() != 0 {
 		t.Fatalf("a pass with nothing changed wrote to GitHub: %d opened, %d edits", f.openedCount(), f.editCount())
 	}
-	ask("review-x", entity.Obj{"to": "branch.verse/repo-charter-review-x", "open": open("charters: x, revised")})
+	ask("review-x", entity.Obj{"to": "branch.viff/repo-charter-review-x", "open": open("charters: x, revised")})
 	pass()
 	if f.openedCount() != 1 || f.editCount() != 1 {
 		t.Fatalf("a changed title: %d opened, %d edits, want the one pull request edited", f.openedCount(), f.editCount())
@@ -133,26 +133,26 @@ func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 
 	// THE IO'S OWN, FOUND AGAIN after its status was lost (git-issue ne9fce9dh12ks1q4qsn0): opened,
 	// not adopted, so a changed title still reaches it.
-	if _, _, err := store.Write(entity.Write{At: entity.RefAt("github", "signadot", "verse", "out", "review-x"+verseio.StatusSuffix).At()}); err != nil {
+	if _, _, err := store.Write(entity.Write{At: entity.RefAt("github", "signadot", "viff", "out", "review-x"+viffio.StatusSuffix).At()}); err != nil {
 		t.Fatal(err)
 	}
 	pass()
 	if st := status("review-x"); f.openedCount() != 1 || st["adopted"] != nil || st["number"] == nil {
 		t.Fatalf("the io's own pull request found again: %d opened, status %v, want it recorded as opened", f.openedCount(), st)
 	}
-	ask("review-x", entity.Obj{"to": "branch.verse/repo-charter-review-x", "open": open("charters: x, revised again")})
+	ask("review-x", entity.Obj{"to": "branch.viff/repo-charter-review-x", "open": open("charters: x, revised again")})
 	pass()
 	if f.editCount() != 2 {
 		t.Fatalf("the io's own pull request, found again, was not kept in step: %d edits, want 2", f.editCount())
 	}
 
-	ask("person", entity.Obj{"to": "branch.feature-7", "open": open("verse's title")})
+	ask("person", entity.Obj{"to": "branch.feature-7", "open": open("viff's title")})
 	pass()
 	st = status("person")
 	if f.openedCount() != 1 || st["adopted"] != true || st["number"] != int64(7) {
 		t.Fatalf("adopting #7: %d opened, status %v, want #7 adopted and nothing opened", f.openedCount(), st)
 	}
-	ask("person", entity.Obj{"to": "branch.feature-7", "open": open("verse's title, again")})
+	ask("person", entity.Obj{"to": "branch.feature-7", "open": open("viff's title, again")})
 	pass()
 	if f.editCount() != 2 {
 		t.Fatalf("an adopted pull request was rewritten: %d edits", f.editCount())
@@ -172,15 +172,15 @@ func TestTheOutHalfOpensOrAdoptsAPullRequest(t *testing.T) {
 // once; a pull request merged before the io was asked is recorded with no commit of the io's.
 func TestTheOutHalfMergesAtASha(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	r := f.repo("signadot/verse")
+	r := f.repo("signadot/viff")
 	r.pr(42, "decided", "open", "2026-09-01T00:00:00Z", "abc")
 	r.pr(43, "merged by a person", "closed", "2026-09-01T00:00:00Z", "def")
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
 	pass := func() {
 		t.Helper()
 		if err := out.Pass(context.Background()); err != nil {
@@ -189,10 +189,10 @@ func TestTheOutHalfMergesAtASha(t *testing.T) {
 	}
 	ask := func(name string, input entity.Obj) {
 		t.Helper()
-		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", name), input.Payload())
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", name), input.Payload())
 	}
 	status := func(name string) entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", name+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
 
@@ -203,8 +203,8 @@ func TestTheOutHalfMergesAtASha(t *testing.T) {
 	}
 
 	// The refused input is withdrawn, so the passes below ask GitHub about nothing else.
-	for _, name := range []string{"stale", "stale" + verseio.StatusSuffix} {
-		if _, _, err := store.Write(entity.Write{At: entity.RefAt("github", "signadot", "verse", "out", name).At()}); err != nil {
+	for _, name := range []string{"stale", "stale" + viffio.StatusSuffix} {
+		if _, _, err := store.Write(entity.Write{At: entity.RefAt("github", "signadot", "viff", "out", name).At()}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -232,17 +232,17 @@ func TestTheOutHalfMergesAtASha(t *testing.T) {
 // A CLOSE: once, by the kind `to` names, and recorded as it is where somebody closed it first.
 func TestTheOutHalfClosesAnIssueOrAPullRequest(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	r := f.repo("signadot/verse")
+	r := f.repo("signadot/viff")
 	r.pr(42, "abandoned", "open", "2026-09-01T00:00:00Z", "abc")
 	r.pr(43, "closed by a person", "closed", "2026-09-02T00:00:00Z", "def").closedBy = "ana"
 	r.issue(7, "an issue", "open", "2026-09-01T00:00:00Z")
 	r.issue(8, "done", "open", "2026-09-01T00:00:00Z")
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
 	pass := func() {
 		t.Helper()
 		if err := out.Pass(context.Background()); err != nil {
@@ -251,10 +251,10 @@ func TestTheOutHalfClosesAnIssueOrAPullRequest(t *testing.T) {
 	}
 	ask := func(name string, input entity.Obj) {
 		t.Helper()
-		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", name), input.Payload())
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", name), input.Payload())
 	}
 	status := func(name string) entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", name+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
 
@@ -269,7 +269,7 @@ func TestTheOutHalfClosesAnIssueOrAPullRequest(t *testing.T) {
 	ask("issue", entity.Obj{"to": "issue.8", "close": entity.Obj{}})
 	pass()
 	for _, name := range []string{"shut", "issue"} {
-		if st := status(name); st["closed"] != true || st["already"] != nil || st["closedBy"] != "verse-bot" || st["closedAt"] == nil {
+		if st := status(name); st["closed"] != true || st["already"] != nil || st["closedBy"] != "viff-bot" || st["closedAt"] == nil {
 			t.Errorf("%s: status %v, want closed by the io", name, st)
 		}
 	}
@@ -278,8 +278,8 @@ func TestTheOutHalfClosesAnIssueOrAPullRequest(t *testing.T) {
 			f.closeCount(), r.find(42).state, r.find(8).state, r.find(7).state)
 	}
 	// Closed is settled: a later pass asks GitHub nothing about it.
-	for _, name := range []string{"wrong", "wrong" + verseio.StatusSuffix} {
-		if _, _, err := store.Write(entity.Write{At: entity.RefAt("github", "signadot", "verse", "out", name).At()}); err != nil {
+	for _, name := range []string{"wrong", "wrong" + viffio.StatusSuffix} {
+		if _, _, err := store.Write(entity.Write{At: entity.RefAt("github", "signadot", "viff", "out", name).At()}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -302,13 +302,13 @@ func TestTheOutHalfClosesAnIssueOrAPullRequest(t *testing.T) {
 // cannot be reviewed by it, and GitHub's refusal lands on the status.
 func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	f.repo("signadot/verse").pr(42, "a person's", "open", "2026-09-01T00:00:00Z", "abc")
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	f.repo("signadot/viff").pr(42, "a person's", "open", "2026-09-01T00:00:00Z", "abc")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
 	pass := func() {
 		t.Helper()
 		if err := out.Pass(context.Background()); err != nil {
@@ -317,10 +317,10 @@ func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 	}
 	ask := func(name string, input entity.Obj) {
 		t.Helper()
-		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", name), input.Payload())
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", name), input.Payload())
 	}
 	status := func(name string) entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", name+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
 
@@ -339,7 +339,7 @@ func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 		t.Fatalf("reviews %v, want an APPROVE after the objection was withdrawn", got)
 	}
 
-	ask("self", entity.Obj{"to": "branch.verse/x", "open": entity.Obj{"title": "mine"}})
+	ask("self", entity.Obj{"to": "branch.viff/x", "open": entity.Obj{"title": "mine"}})
 	pass()
 	n := status("self")["number"]
 	ask("own", entity.Obj{"to": fmt.Sprintf("pr.%v", n), "review": entity.Obj{"event": "approve"}})
@@ -362,13 +362,13 @@ func TestTheOutHalfReviewsAPullRequest(t *testing.T) {
 // and a review naming no sha leaves none of an earlier one's on the status.
 func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	f.repo("signadot/verse").pr(42, "a person's", "open", "2026-09-01T00:00:00Z", "aaa")
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	f.repo("signadot/viff").pr(42, "a person's", "open", "2026-09-01T00:00:00Z", "aaa")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
 	pass := func() {
 		t.Helper()
 		if err := out.Pass(context.Background()); err != nil {
@@ -377,11 +377,11 @@ func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
 	}
 	ask := func(review entity.Obj) {
 		t.Helper()
-		entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "verdict"),
+		entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", "verdict"),
 			entity.Obj{"to": "pr.42", "review": review}.Payload())
 	}
 	status := func() entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "verdict"+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", "verdict"+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
 
@@ -412,7 +412,7 @@ func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
 	}
 	ask(entity.Obj{"event": "comment", "body": "one more note", "sha": "eee"})
 	pass()
-	pr := f.repos["signadot/verse"].find(42)
+	pr := f.repos["signadot/viff"].find(42)
 	if _, dismissed := f.reviewCommits(); dismissed != 3 || pr.reviews[3].state != "DISMISSED" {
 		t.Fatalf("%d dismissed and reviews %+v, want the approval dismissed before the comment", dismissed, pr.reviews)
 	}
@@ -420,10 +420,10 @@ func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
 		t.Fatalf("status %v, want the comment at eee", st)
 	}
 
-	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "silent"),
+	entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", "silent"),
 		entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "comment", "sha": "ddd"}}.Payload())
 	pass()
-	e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "silent"+verseio.StatusSuffix))
+	e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", "silent"+viffio.StatusSuffix))
 	if st := entity.ToObj(e.Payload); !strings.Contains(fmt.Sprint(st["error"]), "comments carries a body") {
 		t.Errorf("status %v, want a comment without a body refused", st)
 	}
@@ -434,15 +434,15 @@ func TestTheOutHalfReviewsAtAHeadAndACommentLiftsItsHold(t *testing.T) {
 // is asked once. A 403 that is GitHub's rate limit fixes itself: it is asked again.
 func TestARefusalIsAskedOnceAndARateLimitAgain(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	r := f.repo("signadot/verse")
+	r := f.repo("signadot/viff")
 	r.pr(42, "the io's own", "open", "2026-09-01T00:00:00Z", "abc").selfOpened = true
 	r.issue(7, "an issue", "open", "2026-09-01T00:00:00Z")
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
 	pass := func() {
 		t.Helper()
 		if err := out.Pass(context.Background()); err != nil {
@@ -450,13 +450,13 @@ func TestARefusalIsAskedOnceAndARateLimitAgain(t *testing.T) {
 		}
 	}
 	status := func(name string) entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", name+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", name+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
-	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "own"),
+	entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", "own"),
 		entity.Obj{"to": "pr.42", "review": entity.Obj{"event": "approve"}}.Payload())
 	pass()
-	if st := status("own"); st["failed"] != verseio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "own pull request") {
+	if st := status("own"); st["failed"] != viffio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "own pull request") {
 		t.Fatalf("status %v, want GitHub's refusal, as permanent", st)
 	}
 	before, _ := f.counts()
@@ -466,7 +466,7 @@ func TestARefusalIsAskedOnceAndARateLimitAgain(t *testing.T) {
 		t.Fatalf("%d requests on two passes after a refusal, want none", after-before)
 	}
 
-	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "note"),
+	entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", "note"),
 		entity.Obj{"to": "issue.7", "text": "hello"}.Payload())
 	f.mu.Lock()
 	f.failWith = 403 // Forbidden, answered `API rate limit exceeded`
@@ -489,23 +489,23 @@ func TestARefusalIsAskedOnceAndARateLimitAgain(t *testing.T) {
 // the branch is there.
 func TestAPullRequestWaitsForItsBranch(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	repo := f.repo("signadot/verse")
-	repo.missingHeads = map[string]bool{"verse/candidate/aaaa": true}
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
-	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "candidate"), entity.Obj{
-		"to": "branch.verse/candidate/aaaa", "open": entity.Obj{"base": "verse/live", "title": "charters: aaaa"},
+	repo := f.repo("signadot/viff")
+	repo.missingHeads = map[string]bool{"viff/candidate/aaaa": true}
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
+	entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", "candidate"), entity.Obj{
+		"to": "branch.viff/candidate/aaaa", "open": entity.Obj{"base": "viff/live", "title": "charters: aaaa"},
 	}.Payload())
 	if err := out.Pass(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "candidate"+verseio.StatusSuffix))
+	e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", "candidate"+viffio.StatusSuffix))
 	st := entity.ToObj(e.Payload)
-	if st["error"] == nil || st["failed"] == verseio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "not on GitHub yet") {
+	if st["error"] == nil || st["failed"] == viffio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "not on GitHub yet") {
 		t.Fatalf("a missing head: status %v, want a retryable error naming the branch", st)
 	}
 	f.mu.Lock()
@@ -514,28 +514,28 @@ func TestAPullRequestWaitsForItsBranch(t *testing.T) {
 	if err := out.Pass(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	e, _, _ = store.Get(entity.RefAt("github", "signadot", "verse", "out", "candidate"+verseio.StatusSuffix))
+	e, _, _ = store.Get(entity.RefAt("github", "signadot", "viff", "out", "candidate"+viffio.StatusSuffix))
 	if st := entity.ToObj(e.Payload); st["number"] == nil || st["error"] != nil {
 		t.Fatalf("once the branch is there: status %v, want the pull request opened", st)
 	}
 }
 
-// An `open` input carrying `commitStatus` keeps verse's commit status on the pull request's head: posted
-// under the context `verse` with the pull request as its link, once per state, description and
-// sha, so the page says what verse waits for and then what it decided.
+// An `open` input carrying `commitStatus` keeps viff's commit status on the pull request's head: posted
+// under the context `viff` with the pull request as its link, once per state, description and
+// sha, so the page says what viff waits for and then what it decided.
 func TestAnOpenInputPutsACommitStatusOnThePullRequestsHead(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	f.repo("signadot/verse")
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
-	ref := entity.RefAt("github", "signadot", "verse", "out", "candidate")
+	f.repo("signadot/viff")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
+	ref := entity.RefAt("github", "signadot", "viff", "out", "candidate")
 	in := entity.Obj{
-		"to": "branch.verse/candidate/aaaa", "open": entity.Obj{"base": "verse/live", "title": "charters: aaaa"},
-		"commitStatus": entity.Obj{"verse": entity.Obj{"state": "pending", "description": "waiting for an answer"}},
+		"to": "branch.viff/candidate/aaaa", "open": entity.Obj{"base": "viff/live", "title": "charters: aaaa"},
+		"commitStatus": entity.Obj{"viff": entity.Obj{"state": "pending", "description": "waiting for an answer"}},
 	}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass := func() {
@@ -545,15 +545,15 @@ func TestAnOpenInputPutsACommitStatusOnThePullRequestsHead(t *testing.T) {
 		}
 	}
 	status := func() entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "candidate"+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", "candidate"+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
 	pass()
 	st := status()
-	posted := f.statusesOn("signadot/verse")
+	posted := f.statusesOn("signadot/viff")
 	// The fake gives every pull request it opens the head cccc3333, which the check lands on
 	// when the input names no sha.
-	if len(posted) != 1 || posted[0].state != "pending" || posted[0].sha != "cccc3333" || posted[0].context != "verse" ||
+	if len(posted) != 1 || posted[0].state != "pending" || posted[0].sha != "cccc3333" || posted[0].context != "viff" ||
 		posted[0].description != "waiting for an answer" || posted[0].target != fmt.Sprint(st["url"]) {
 		t.Fatalf("statuses posted = %+v (status %v)", posted, st)
 	}
@@ -562,39 +562,39 @@ func TestAnOpenInputPutsACommitStatusOnThePullRequestsHead(t *testing.T) {
 		c, _ := m[context].(map[string]any)
 		return c[key]
 	}
-	if cs(st, "verse", "state") != "pending" || cs(st, "verse", "sha") != "cccc3333" || cs(st, "verse", "posted") == nil || st["error"] != nil {
+	if cs(st, "viff", "state") != "pending" || cs(st, "viff", "sha") != "cccc3333" || cs(st, "viff", "posted") == nil || st["error"] != nil {
 		t.Fatalf("status after the check = %v", st)
 	}
 	// The same status again costs nothing.
 	pass()
-	if n := len(f.statusesOn("signadot/verse")); n != 1 {
+	if n := len(f.statusesOn("signadot/viff")); n != 1 {
 		t.Fatalf("a quiet pass posted a status: %d", n)
 	}
 	// Decided: the state changes, and the new status replaces the old on the same head.
-	in["commitStatus"] = entity.Obj{"verse": entity.Obj{"state": "success", "description": "installed", "sha": "cccc3333"}}
+	in["commitStatus"] = entity.Obj{"viff": entity.Obj{"state": "success", "description": "installed", "sha": "cccc3333"}}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass()
-	posted = f.statusesOn("signadot/verse")
-	if len(posted) != 2 || posted[1].state != "success" || posted[1].description != "installed" || cs(status(), "verse", "state") != "success" {
+	posted = f.statusesOn("signadot/viff")
+	if len(posted) != 2 || posted[1].state != "success" || posted[1].description != "installed" || cs(status(), "viff", "state") != "success" {
 		t.Fatalf("after deciding: statuses %+v, status %v", posted, status())
 	}
 	// A second context stands beside the first: its own status, the first left as it is.
 	in["commitStatus"] = entity.Obj{
-		"verse":       entity.Obj{"state": "success", "description": "installed", "sha": "cccc3333"},
-		"verse/check": entity.Obj{"state": "success", "description": "installs cleanly"},
+		"viff":       entity.Obj{"state": "success", "description": "installed", "sha": "cccc3333"},
+		"viff/check": entity.Obj{"state": "success", "description": "installs cleanly"},
 	}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass()
-	posted = f.statusesOn("signadot/verse")
-	if len(posted) != 3 || posted[2].context != "verse/check" || cs(status(), "verse/check", "state") != "success" || cs(status(), "verse", "state") != "success" {
+	posted = f.statusesOn("signadot/viff")
+	if len(posted) != 3 || posted[2].context != "viff/check" || cs(status(), "viff/check", "state") != "success" || cs(status(), "viff", "state") != "success" {
 		t.Fatalf("a second context: statuses %+v, status %v", posted, status())
 	}
 	// A state GitHub has no word for is said beside the rest of the status, once, and the input
 	// is not failed.
-	in["commitStatus"] = entity.Obj{"verse": entity.Obj{"state": "maybe"}}
+	in["commitStatus"] = entity.Obj{"viff": entity.Obj{"state": "maybe"}}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass()
-	if st := status(); st["failed"] != nil || st["error"] != nil || !strings.Contains(fmt.Sprint(cs(st, "verse", "error")), "commitStatus.verse.state") {
+	if st := status(); st["failed"] != nil || st["error"] != nil || !strings.Contains(fmt.Sprint(cs(st, "viff", "error")), "commitStatus.viff.state") {
 		t.Fatalf("an unknown state: status %v, want the error under its context, and the input not failed", st)
 	}
 }
@@ -605,18 +605,18 @@ func TestAnOpenInputPutsACommitStatusOnThePullRequestsHead(t *testing.T) {
 // what else it asks is still done. Once a status goes up, the error goes.
 func TestARefusedCommitStatusLeavesTheRestOfTheInput(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	repo := f.repo("signadot/verse")
+	repo := f.repo("signadot/viff")
 	repo.statusesForbidden = true
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
-	ref := entity.RefAt("github", "signadot", "verse", "out", "candidate")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
+	ref := entity.RefAt("github", "signadot", "viff", "out", "candidate")
 	in := entity.Obj{
-		"to": "branch.verse/candidate/aaaa", "open": entity.Obj{"base": "verse/live", "title": "charters: aaaa"},
-		"commitStatus": entity.Obj{"verse": entity.Obj{"state": "pending", "description": "waiting"}},
+		"to": "branch.viff/candidate/aaaa", "open": entity.Obj{"base": "viff/live", "title": "charters: aaaa"},
+		"commitStatus": entity.Obj{"viff": entity.Obj{"state": "pending", "description": "waiting"}},
 	}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass := func() {
@@ -626,14 +626,14 @@ func TestARefusedCommitStatusLeavesTheRestOfTheInput(t *testing.T) {
 		}
 	}
 	status := func() entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "candidate"+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", "candidate"+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
 	pass()
 	st := status()
 	under := func(st entity.Obj, key string) any {
 		m, _ := st["commitStatus"].(map[string]any)
-		c, _ := m["verse"].(map[string]any)
+		c, _ := m["viff"].(map[string]any)
 		return c[key]
 	}
 	if st["number"] == nil || st["failed"] != nil || st["error"] != nil || !strings.Contains(fmt.Sprint(under(st, "error")), "Forbidden") || under(st, "refused") == nil {
@@ -646,7 +646,7 @@ func TestARefusedCommitStatusLeavesTheRestOfTheInput(t *testing.T) {
 	if repo.statusAsks != 1 {
 		t.Fatalf("the refused status was asked %d times, want once", repo.statusAsks)
 	}
-	in["open"] = entity.Obj{"base": "verse/live", "title": "charters: aaaa, again"}
+	in["open"] = entity.Obj{"base": "viff/live", "title": "charters: aaaa, again"}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass()
 	if n := int(status()["number"].(int64)); repo.find(n).title != "charters: aaaa, again" {
@@ -654,7 +654,7 @@ func TestARefusedCommitStatusLeavesTheRestOfTheInput(t *testing.T) {
 	}
 	// Allowed now, and a new status asked for: posted, and the error gone.
 	repo.statusesForbidden = false
-	in["commitStatus"] = entity.Obj{"verse": entity.Obj{"state": "success", "description": "installed"}}
+	in["commitStatus"] = entity.Obj{"viff": entity.Obj{"state": "success", "description": "installed"}}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass()
 	if st := status(); under(st, "state") != "success" || under(st, "error") != nil || under(st, "refused") != nil {
@@ -667,14 +667,14 @@ func TestARefusedCommitStatusLeavesTheRestOfTheInput(t *testing.T) {
 // know before the issue exists. `closed: true` then closes it.
 func TestAnOpenInputFilesAnIssue(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
-	f.repo("signadot/verse")
-	src := newSource(t, f, github.Config{Repos: []string{"signadot/verse"}})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
-	out := verseio.NewOut(src.Sink(), src.OutRefs()[0], verse, nil)
-	ref := entity.RefAt("github", "signadot", "verse", "out", "install-failed")
+	f.repo("signadot/viff")
+	src := newSource(t, f, github.Config{Repos: []string{"signadot/viff"}})
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:github-iod")
+	out := viffio.NewOut(src.Sink(), src.OutRefs()[0], viff, nil)
+	ref := entity.RefAt("github", "signadot", "viff", "out", "install-failed")
 	in := entity.Obj{"to": "issue", "open": entity.Obj{"title": "charters: the install of aaaa failed", "body": "exit status 1"}}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass := func() {
@@ -684,7 +684,7 @@ func TestAnOpenInputFilesAnIssue(t *testing.T) {
 		}
 	}
 	status := func() entity.Obj {
-		e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "install-failed"+verseio.StatusSuffix))
+		e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", "install-failed"+viffio.StatusSuffix))
 		return entity.ToObj(e.Payload)
 	}
 	pass()
@@ -693,23 +693,23 @@ func TestAnOpenInputFilesAnIssue(t *testing.T) {
 	if number == 0 || st["url"] == nil || st["posted"] == nil || st["error"] != nil || f.issuesOpenedCount() != 1 {
 		t.Fatalf("status after filing = %v, issues opened %d", st, f.issuesOpenedCount())
 	}
-	if it := f.repos["signadot/verse"].find(int(number)); it == nil || it.pull || it.title != "charters: the install of aaaa failed" || it.body != "exit status 1" {
+	if it := f.repos["signadot/viff"].find(int(number)); it == nil || it.pull || it.title != "charters: the install of aaaa failed" || it.body != "exit status 1" {
 		t.Fatalf("the issue filed = %+v", it)
 	}
 	// A commit status beside it goes on the commit it names, linking to the issue; one naming no
 	// commit is said beside the issue, since an issue has no head, and does not fail the input.
 	in["commitStatus"] = entity.Obj{
-		"verse":       entity.Obj{"state": "failure", "description": "the install failed", "sha": "dddd4444"},
-		"verse/check": entity.Obj{"state": "success", "description": "installs"},
+		"viff":       entity.Obj{"state": "failure", "description": "the install failed", "sha": "dddd4444"},
+		"viff/check": entity.Obj{"state": "success", "description": "installs"},
 	}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass()
-	posted := f.statusesOn("signadot/verse")
-	if len(posted) != 1 || posted[0].sha != "dddd4444" || posted[0].context != "verse" || posted[0].target != fmt.Sprint(status()["url"]) {
+	posted := f.statusesOn("signadot/viff")
+	if len(posted) != 1 || posted[0].sha != "dddd4444" || posted[0].context != "viff" || posted[0].target != fmt.Sprint(status()["url"]) {
 		t.Fatalf("statuses beside an issue = %+v", posted)
 	}
 	if cs, _ := status()["commitStatus"].(map[string]any); cs == nil ||
-		!strings.Contains(fmt.Sprint(cs["verse/check"]), "no head") || status()["error"] != nil {
+		!strings.Contains(fmt.Sprint(cs["viff/check"]), "no head") || status()["error"] != nil {
 		t.Fatalf("a status naming no commit beside an issue: status %v", status())
 	}
 	// Quiet when nothing changed; an edit to the body is an edit, not a second issue.
@@ -717,7 +717,7 @@ func TestAnOpenInputFilesAnIssue(t *testing.T) {
 	in["open"] = entity.Obj{"title": "charters: the install of aaaa failed", "body": "exit status 1\n\nand the log"}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass()
-	if f.issuesOpenedCount() != 1 || f.editCount() != 1 || f.repos["signadot/verse"].find(int(number)).body != "exit status 1\n\nand the log" {
+	if f.issuesOpenedCount() != 1 || f.editCount() != 1 || f.repos["signadot/viff"].find(int(number)).body != "exit status 1\n\nand the log" {
 		t.Fatalf("after an edit: %d issues, %d edits", f.issuesOpenedCount(), f.editCount())
 	}
 	// Closed once.
@@ -733,7 +733,7 @@ func TestAnOpenInputFilesAnIssue(t *testing.T) {
 	in["open"] = entity.Obj{"title": "charters: the install of bbbb failed", "body": "exit status 2"}
 	entitytest.Set(t, store, ref, in.Payload())
 	pass()
-	it := f.repos["signadot/verse"].find(int(number))
+	it := f.repos["signadot/viff"].find(int(number))
 	if st := status(); st["closed"] != nil || st["reopenedAt"] == nil || it.state != "open" || it.body != "exit status 2" ||
 		f.issuesOpenedCount() != 1 || f.reopens != 1 {
 		t.Fatalf("reopening: status %v, issue %+v, %d opened, %d reopened", st, it, f.issuesOpenedCount(), f.reopens)
@@ -749,12 +749,12 @@ func TestAnOpenInputFilesAnIssue(t *testing.T) {
 		t.Fatalf("closing again: status %v, closes %d", st, f.closeCount())
 	}
 	// A merge asked of an issue is refused for good.
-	entitytest.Set(t, store, entity.RefAt("github", "signadot", "verse", "out", "merged-issue"), entity.Obj{
+	entitytest.Set(t, store, entity.RefAt("github", "signadot", "viff", "out", "merged-issue"), entity.Obj{
 		"to": "issue", "open": entity.Obj{"title": "an issue"}, "merge": entity.Obj{"sha": "abc"},
 	}.Payload())
 	pass()
-	e, _, _ := store.Get(entity.RefAt("github", "signadot", "verse", "out", "merged-issue"+verseio.StatusSuffix))
-	if st := entity.ToObj(e.Payload); st["failed"] != verseio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "not merged") {
+	e, _, _ := store.Get(entity.RefAt("github", "signadot", "viff", "out", "merged-issue"+viffio.StatusSuffix))
+	if st := entity.ToObj(e.Payload); st["failed"] != viffio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "not merged") {
 		t.Fatalf("a merge on an issue: status %v", st)
 	}
 }

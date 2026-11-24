@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// callToolBin is main's verse-call-tool, built once for the package: the binary a script runs,
+// callToolBin is main's viff-call-tool, built once for the package: the binary a script runs,
 // speaking to this copy of the server. "" when there is no go to build it with.
 var callToolBin string
 
@@ -25,10 +25,10 @@ func TestMain(m *testing.M) {
 				return 1
 			}
 			defer os.RemoveAll(dir)
-			bin := filepath.Join(dir, "verse-call-tool")
-			out, err := exec.Command("go", "build", "-o", bin, "github.com/signadot/verse/cmd/verse-call-tool").CombinedOutput()
+			bin := filepath.Join(dir, "viff-call-tool")
+			out, err := exec.Command("go", "build", "-o", bin, "go.viff.dev/viff/cmd/viff-call-tool").CombinedOutput()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "building verse-call-tool: %v\n%s", err, out)
+				fmt.Fprintf(os.Stderr, "building viff-call-tool: %v\n%s", err, out)
 				return 1
 			}
 			callToolBin = bin
@@ -41,7 +41,7 @@ func TestMain(m *testing.M) {
 func callTool(t *testing.T, path string, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
 	if callToolBin == "" {
-		t.Skip("no go on PATH to build verse-call-tool with")
+		t.Skip("no go on PATH to build viff-call-tool with")
 	}
 	cmd := exec.Command(callToolBin, args...)
 	cmd.Env = append(os.Environ(), Env+"="+path)
@@ -78,7 +78,7 @@ func TestMainsBinarySpeaksToThisServer(t *testing.T) {
 	if out, _, code := callTool(t, path); code != 0 || !strings.Contains(out, "push") || !strings.Contains(out, "ask") {
 		t.Errorf("the list: exit %d\n%s", code, out)
 	}
-	if out, errs, code := callTool(t, path, "push", "-repo", "docs", "-branch", "verse/x"); code != 0 || !strings.Contains(out, "pushed verse/x of docs") {
+	if out, errs, code := callTool(t, path, "push", "-repo", "docs", "-branch", "viff/x"); code != 0 || !strings.Contains(out, "pushed viff/x of docs") {
 		t.Errorf("a call: exit %d, %q %q", code, out, errs)
 	}
 	if out, _, code := callTool(t, path, "ask", "-question", "refuse"); code != 3 || !strings.Contains(out, "a gate said no") {

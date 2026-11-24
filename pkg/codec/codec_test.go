@@ -17,7 +17,7 @@ type sample struct {
 }
 
 // One value, every RENDERING, same meaning. This is the whole premise of the package —
-// and the list is the two verse writes, JSON having become read-only (see the package
+// and the list is the two viff writes, JSON having become read-only (see the package
 // doc). Its read side is covered by TestJSONInputIsReadAsTony.
 func TestRoundTripEveryFormat(t *testing.T) {
 	in := sample{
@@ -220,20 +220,20 @@ func TestNegotiate(t *testing.T) {
 		{"*/*", Tony, true},                                            // no preference → fallback
 		{"application/tony", Tony, true},                               // explicit
 		{"application/yaml", YAML, true},                               // explicit
-		{"text/plain", Tony, true},                                     // unknown to verse → fallback
+		{"text/plain", Tony, true},                                     // unknown to viff → fallback
 		{"application/yaml, application/tony", YAML, true},             // equal q → first wins
 		{"application/yaml;q=0.5, application/tony", Tony, true},       // q beats order
 		{"application/tony;q=0.2, application/yaml;q=0.9", YAML, true}, // reversed
 		{"application/tony;q=0, application/yaml", YAML, true},         // q=0 is a refusal
 
-		// json is a type verse KNOWS and will not render. Naming it alone is the 406
-		// case; naming it alongside something writable is just a preference verse can
+		// json is a type viff KNOWS and will not render. Naming it alone is the 406
+		// case; naming it alongside something writable is just a preference viff can
 		// satisfy, which is the whole point of q-values.
 		{"application/json", Tony, false},
 		{"application/json, text/plain", Tony, false},
 		{"application/json, application/tony", Tony, true},
 		{"application/tony;q=0.5, application/json;q=0.9", Tony, true},
-		{"application/json, */*", Tony, true}, // */* accepts what verse has
+		{"application/json, */*", Tony, true}, // */* accepts what viff has
 	}
 	for _, c := range cases {
 		got, ok := Negotiate(c.accept, Tony)
@@ -252,7 +252,7 @@ func TestNegotiate(t *testing.T) {
 // as a mangled document.
 func TestJSONIsNotAnOutputFormat(t *testing.T) {
 	if _, err := ParseOutput("json"); err == nil {
-		t.Error("ParseOutput(json) succeeded — -o json and VERSE_FORMAT=json rest on this")
+		t.Error("ParseOutput(json) succeeded — -o json and VIFF_FORMAT=json rest on this")
 	}
 	if _, err := ParseOutput("j"); err == nil {
 		t.Error("ParseOutput(j) succeeded — the short spelling has to refuse too")

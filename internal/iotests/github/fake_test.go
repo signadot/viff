@@ -265,7 +265,7 @@ func (r *fakeRepo) discussion(number int, title string, closed bool, updated str
 
 // fakeSelf is who the fake says the credential is: the token's owner on GET /user, and the app's
 // bot for an installation. What the out half opens is theirs.
-const fakeSelf = "verse-bot"
+const fakeSelf = "viff-bot"
 
 // author is who opened an item: the io, or a person.
 func (i *fakeItem) author() string {
@@ -1052,7 +1052,7 @@ func (f *fakeGitHub) write(w http.ResponseWriter, r *http.Request, repo *fakeRep
 			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 			return
 		}
-		i.state, i.closedBy, i.updatedAt = "closed", "verse-bot", "2026-10-01T12:00:00Z"
+		i.state, i.closedBy, i.updatedAt = "closed", "viff-bot", "2026-10-01T12:00:00Z"
 		f.closes++
 		writeJSON(w, i.renderAs(false, true))
 	case r.Method == http.MethodPost && len(rest) == 1 && rest[0] == "pulls":

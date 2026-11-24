@@ -11,15 +11,15 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // The delivery half: a GitHub webhook, received HERE.
 //
 // The same object as the Slack events endpoint, the Linear webhook, and the four-line `/bin/sh`
 // git hook `Git.InstallHook` writes — a delivery the source owns, turned into which ref went
-// stale, posted to verse. verse parses none of the four, which is what keeps "map a delivery to
+// stale, posted to viff. viff parses none of the four, which is what keeps "map a delivery to
 // refs" from having a second implementation per source, on the far side of a network where a
 // divergence is least recoverable.
 //
@@ -31,7 +31,7 @@ import (
 const webhookMaxBody = 8 << 20
 
 // Webhook returns the handler for a GitHub webhook url.
-func (g *GitHub) Webhook(secret string, hint verseio.Hinter) http.Handler {
+func (g *GitHub) Webhook(secret string, hint viffio.Hinter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if secret == "" {
 			// Refused rather than trusted, as in the Slack and Linear sources: the hint law says
@@ -82,7 +82,7 @@ func (g *GitHub) Webhook(secret string, hint verseio.Hinter) http.Handler {
 // the resync net catches it. The exception is a delivery about a repository this source
 // provably does not reflect: that is not an unplaceable delivery, it is somebody else's, and a
 // full pass would be a misconfigured hook making this source re-read everything it owns forever.
-func (g *GitHub) hintFor(r *http.Request, event string, d delivery, hint verseio.Hinter) {
+func (g *GitHub) hintFor(r *http.Request, event string, d delivery, hint viffio.Hinter) {
 	repo := d.Repository.FullName
 	if repo != "" && !g.reflects(repo) {
 		return
@@ -242,8 +242,8 @@ func (g *GitHub) targetComment(ref entity.Ref) (repo string, number int, id int6
 // not — and inventing a `kind` segment in the address to carry that would put GitHub's plumbing
 // in an id a charter reads. Two requests, of which the second only happens when the first says
 // no; a comment that is neither is covered and absent, which tombstones one that was deleted.
-func (g *GitHub) reflectComment(ctx context.Context, repo string, number int, id int64) (verseio.Reflection, error) {
-	rn := verseio.Reflection{Covers: []entity.Pattern{
+func (g *GitHub) reflectComment(ctx context.Context, repo string, number int, id int64) (viffio.Reflection, error) {
+	rn := viffio.Reflection{Covers: []entity.Pattern{
 		g.cover(repo, "comment", strconv.Itoa(number), strconv.FormatInt(id, 10)),
 	}}
 	for _, where := range []struct{ path, kind string }{
@@ -258,7 +258,7 @@ func (g *GitHub) reflectComment(ctx context.Context, repo string, number int, id
 		case NotFound(err):
 			continue
 		default:
-			return verseio.Reflection{}, err
+			return viffio.Reflection{}, err
 		}
 	}
 	return rn, nil // gone from both: covered and absent, which tombstones it
@@ -289,8 +289,8 @@ func (g *GitHub) targetRun(ref entity.Ref) (repo string, id int64, ok bool) {
 // this delivery worth targeting rather than escalating to a repository pass. A run finishing is
 // how "CI went red" reaches a charter, and the charter reads that off the PR. Two calls — the
 // run, and the pull requests it names — against the eight a repository pass costs.
-func (g *GitHub) reflectRun(ctx context.Context, repo string, id int64) (verseio.Reflection, error) {
-	rn := verseio.Reflection{Covers: []entity.Pattern{
+func (g *GitHub) reflectRun(ctx context.Context, repo string, id int64) (viffio.Reflection, error) {
+	rn := viffio.Reflection{Covers: []entity.Pattern{
 		g.cover(repo, "run", strconv.FormatInt(id, 10)),
 	}}
 	var r workflowRun
@@ -298,7 +298,7 @@ func (g *GitHub) reflectRun(ctx context.Context, repo string, id int64) (verseio
 		if NotFound(err) {
 			return rn, nil // gone: covered and absent, which tombstones it
 		}
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	rn.Add(g.RunRef(repo, r.ID), runPayload(repo, r))
 

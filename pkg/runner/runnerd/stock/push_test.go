@@ -16,21 +16,21 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse/modeltest"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff/modeltest"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// The verse agent's way out, end to end: a task in its own process, a model that drives it, a
+// The viff agent's way out, end to end: a task in its own process, a model that drives it, a
 // forge on this filesystem, and the runner between them.
 
 // commitWork is the command that commits a change in svc with the task's trailer.
 func commitWork(id string) map[string]any {
 	return map[string]any{"command": "cd svc && echo work > f && git add f && " +
-		"git commit -qm work -m 'Verse-Task: " + id + "'"}
+		"git commit -qm work -m 'Viff-Task: " + id + "'"}
 }
 
 // launchPusher launches an agent on acme/svc, allowed to push its own branches, under rows and
@@ -70,7 +70,7 @@ func TestADeniedPushSendsNothingAndTheWorkIsHeld(t *testing.T) {
 	if snap := ended(t, rt, "t1"); snap.Status != task.Done || !strings.Contains(snap.Result, "DENIED") {
 		t.Fatalf("task: %+v", snap)
 	}
-	if at(t, forge, "refs/heads/verse/auto/t1") {
+	if at(t, forge, "refs/heads/viff/auto/t1") {
 		t.Fatal("a denied push reached the forge")
 	}
 	m := workspace.NewMirrors(mirrors, workspace.TokenAuth(""))
@@ -86,7 +86,7 @@ func TestADeniedPushSendsNothingAndTheWorkIsHeld(t *testing.T) {
 	t.Fatal("the denied work is not held in the runner's mirror")
 }
 
-// AN AGENT'S COMMIT AS ANOTHER IDENTITY IS REFUSED AT PUSH: signadot/verse#1 as it happened, an
+// AN AGENT'S COMMIT AS ANOTHER IDENTITY IS REFUSED AT PUSH: signadot/viff#1 as it happened, an
 // agent committing its own work with a test command's GIT_AUTHOR_* in front of it. The launch has
 // no person behind it, so the identity it must carry is the runner's; the agent is told so, and
 // the forge never sees the branch.
@@ -97,7 +97,7 @@ func TestAnAgentsCommitAsAnotherIdentityIsRefusedAtPush(t *testing.T) {
 		switch res := r.Results(); len(res) {
 		case 0:
 			return modeltest.Use("run_bash", map[string]any{"command": "cd svc && echo work > f && git add f && " +
-				"GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com git commit -qm work -m 'Verse-Task: t1'"})
+				"GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com git commit -qm work -m 'Viff-Task: t1'"})
 		case 1:
 			return modeltest.Use("git-push", map[string]any{})
 		default:
@@ -108,10 +108,10 @@ func TestAnAgentsCommitAsAnotherIdentityIsRefusedAtPush(t *testing.T) {
 	launchPusher(rt, "t1", task.Row{Name: "push", Match: &task.Match{System: "git", Verb: "push"}, Then: task.Then{Mode: task.ThenAllow}})
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "author test <test@example.com>") ||
-		!strings.Contains(snap.Result, "verse runner <runner@invalid>") {
+		!strings.Contains(snap.Result, "viff runner <runner@invalid>") {
 		t.Fatalf("task: %+v, want the push refused naming the author and the identity to carry", snap)
 	}
-	if at(t, forge, "refs/heads/verse/auto/t1") {
+	if at(t, forge, "refs/heads/viff/auto/t1") {
 		t.Fatal("a commit as another identity reached the forge")
 	}
 }
@@ -189,7 +189,7 @@ func TestAPushOfNothingSaysSo(t *testing.T) {
 	if snap := ended(t, rt, "t1"); snap.Status != task.Done || !strings.Contains(snap.Result, "nothing to push") {
 		t.Fatalf("task: %+v", snap)
 	}
-	if at(t, forge, "refs/heads/verse/auto/t1") {
+	if at(t, forge, "refs/heads/viff/auto/t1") {
 		t.Fatal("a push of nothing made a branch at the forge")
 	}
 }
@@ -337,14 +337,14 @@ func TestAPushAfterARebaseOntoUpstreamLands(t *testing.T) {
 	rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})
 	launchPusher(rt, "t1")
 	snap := ended(t, rt, "t1")
-	if snap.Status != task.Done || !strings.Contains(snap.Result, "pushed svc -> refs/heads/verse/auto/t1") {
+	if snap.Status != task.Done || !strings.Contains(snap.Result, "pushed svc -> refs/heads/viff/auto/t1") {
 		t.Fatalf("task: %+v", snap)
 	}
 	r, err := git.PlainOpen(filepath.Join(forge, "acme/svc"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, err := r.Reference("refs/heads/verse/auto/t1", true)
+	ref, err := r.Reference("refs/heads/viff/auto/t1", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestADenyRowHoldsAndARunsOwnBranchIsPushedAgain(t *testing.T) {
 		modeltest.Use("git-push", map[string]any{"branch": "main"}),
 		modeltest.Use("git-push", map[string]any{}),
 		modeltest.Use("run_bash", map[string]any{"command": "cd svc && echo more >> f && git add f && " +
-			"git commit -qm more -m 'Verse-Task: t1'"}),
+			"git commit -qm more -m 'Viff-Task: t1'"}),
 		modeltest.Use("git-push", map[string]any{}),
 	)
 	rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})
@@ -411,7 +411,7 @@ func TestADenyRowHoldsAndARunsOwnBranchIsPushedAgain(t *testing.T) {
 		t.Errorf("the push to main said %q, want it refused by the row", parts[1])
 	}
 	for _, i := range []int{2, 4} {
-		if !strings.Contains(parts[i], "pushed svc -> refs/heads/verse/auto/t1") {
+		if !strings.Contains(parts[i], "pushed svc -> refs/heads/viff/auto/t1") {
 			t.Errorf("push %d said %q, want it pushed", i, parts[i])
 		}
 	}
@@ -434,14 +434,14 @@ func TestAPushCreatesAndADeleteRemoves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Storer.SetReference(plumbing.NewHashReference("refs/heads/verse/auto/t0", main.Hash())); err != nil {
+	if err := r.Storer.SetReference(plumbing.NewHashReference("refs/heads/viff/auto/t0", main.Hash())); err != nil {
 		t.Fatal(err)
 	}
 	var offered []string
 	model := agentDoing(t, &offered,
 		modeltest.Use("run_bash", commitWork("t1")),
-		modeltest.Use("git-push", map[string]any{"branch": "verse/train"}),
-		modeltest.Use("git-push", map[string]any{"branch": "verse/auto/t0", "delete": true}),
+		modeltest.Use("git-push", map[string]any{"branch": "viff/train"}),
+		modeltest.Use("git-push", map[string]any{"branch": "viff/auto/t0", "delete": true}),
 	)
 	rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})
 	launchWith(rt, "t1", runner.Repo{})
@@ -450,13 +450,13 @@ func TestAPushCreatesAndADeleteRemoves(t *testing.T) {
 	if snap.Status != task.Done || len(parts) != 3 {
 		t.Fatalf("task: %+v", snap)
 	}
-	if !strings.Contains(parts[1], "pushed svc -> refs/heads/verse/train") {
-		t.Errorf("the update said %q, want verse/train created", parts[1])
+	if !strings.Contains(parts[1], "pushed svc -> refs/heads/viff/train") {
+		t.Errorf("the update said %q, want viff/train created", parts[1])
 	}
-	if !strings.Contains(parts[2], "deleted svc refs/heads/verse/auto/t0") {
+	if !strings.Contains(parts[2], "deleted svc refs/heads/viff/auto/t0") {
 		t.Errorf("the delete said %q", parts[2])
 	}
-	if at(t, forge, "refs/heads/verse/auto/t0") || !at(t, forge, "refs/heads/verse/train") {
+	if at(t, forge, "refs/heads/viff/auto/t0") || !at(t, forge, "refs/heads/viff/train") {
 		t.Error("the forge's branches aren't what the run did")
 	}
 	if slices.Contains(offered, createPRTool) || slices.Contains(offered, updatePRTool) || !slices.Contains(offered, pushTool) {

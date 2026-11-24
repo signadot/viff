@@ -13,8 +13,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // pushing is a launch's environment that gives the task a push to each repo: its work may
@@ -100,7 +100,7 @@ func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := m.stage(context.Background(), approved.Trees[0],
-		StagedRef(StagePending, "ok1", "svc", "refs/heads/verse/auto/ok1"), tipOf(t, approved.Trees[0])); err != nil {
+		StagedRef(StagePending, "ok1", "svc", "refs/heads/viff/auto/ok1"), tipOf(t, approved.Trees[0])); err != nil {
 		t.Fatal(err)
 	}
 	held := refused.Salvage(context.Background(), &runner.Launch{ID: "no1", Environment: pushing("acme/svc")})
@@ -115,16 +115,16 @@ func TestReflectRetriesApprovedWorkAndNeverHeldWork(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("reflected %d refs, want exactly the approved one", n)
 	}
-	if msg := commitAt(t, origin, "refs/heads/verse/auto/ok1"); !strings.Contains(msg, "Verse-Task: ok1") {
+	if msg := commitAt(t, origin, "refs/heads/viff/auto/ok1"); !strings.Contains(msg, "Viff-Task: ok1") {
 		t.Errorf("the retry did not push the WORK (got %q) — an empty check here passes on the "+
 			"base commit, which is what a stage-before-commit bug looks like", msg)
 	}
-	if commitAt(t, origin, "refs/heads/verse/auto/no1") != "" {
+	if commitAt(t, origin, "refs/heads/viff/auto/no1") != "" {
 		t.Fatal("work a gate REFUSED was pushed by the retry — the sweep overrode the refusal")
 	}
 	// The pending ref is dropped once it lands; the held one stays where it is.
 	mirror, _ := git.PlainOpen(m.Dir(origin))
-	if _, err := mirror.Reference(plumbing.ReferenceName(StagedRef(StagePending, "ok1", "svc", "refs/heads/verse/auto/ok1")), true); err == nil {
+	if _, err := mirror.Reference(plumbing.ReferenceName(StagedRef(StagePending, "ok1", "svc", "refs/heads/viff/auto/ok1")), true); err == nil {
 		t.Error("a delivered ref is still pending, so it will be pushed again forever")
 	}
 	if _, err := mirror.Reference(plumbing.ReferenceName(held.Staged[0]), true); err != nil {
@@ -167,13 +167,13 @@ func TestSalvageHoldsWorkNobodyAuthorizedToLeave(t *testing.T) {
 	if len(d.Staged) != 1 || !strings.HasPrefix(d.Staged[0], want) {
 		t.Fatalf("Staged = %v, want [%s<commit>]", d.Staged, want)
 	}
-	if commitAt(t, origin, "refs/heads/verse/auto/s1") != "" {
+	if commitAt(t, origin, "refs/heads/viff/auto/s1") != "" {
 		t.Fatal("salvage pushed something to a remote")
 	}
 	if len(d.Loose) != 0 {
 		t.Fatalf("Loose = %v, so the workspace would be kept anyway", d.Loose)
 	}
-	if msg := commitAt(t, m.Dir(origin), d.Staged[0]); !strings.Contains(msg, "Verse-Task: s1") {
+	if msg := commitAt(t, m.Dir(origin), d.Staged[0]); !strings.Contains(msg, "Viff-Task: s1") {
 		t.Fatalf("held work carries no provenance: %q", msg)
 	}
 }
@@ -204,7 +204,7 @@ func TestAForcedApprovalRetriesForcedAndTheMirrorsSayWhatThereIs(t *testing.T) {
 		}
 	}
 	// One approved to rewrite a branch of its own, one approved to fast-forward main.
-	if d := forced.Stage(context.Background(), "f1", forced.Trees[0], "refs/heads/verse/train", true, tipOf(t, forced.Trees[0])); d.Err != nil {
+	if d := forced.Stage(context.Background(), "f1", forced.Trees[0], "refs/heads/viff/train", true, tipOf(t, forced.Trees[0])); d.Err != nil {
 		t.Fatal(d.Err)
 	}
 	if d := ff.Stage(context.Background(), "f2", ff.Trees[0], "refs/heads/main", false, tipOf(t, ff.Trees[0])); d.Err != nil {
@@ -221,7 +221,7 @@ func TestAForcedApprovalRetriesForcedAndTheMirrorsSayWhatThereIs(t *testing.T) {
 	if err == nil || Refusal(err) == "" && !strings.Contains(err.Error(), "refused") {
 		t.Errorf("the fast-forward of a moved main was not reported as the remote's refusal: %v", err)
 	}
-	if commitAt(t, origin, "refs/heads/verse/train") == "" {
+	if commitAt(t, origin, "refs/heads/viff/train") == "" {
 		t.Error("the forced retry did not land")
 	}
 	if !strings.Contains(commitAt(t, origin, "refs/heads/main"), "moved") {
@@ -259,7 +259,7 @@ func TestSalvageHoldsOnlyTheWorkThatDidNotLeave(t *testing.T) {
 	if work, err := ta.CommitWork(l, ""); err != nil || !work {
 		t.Fatalf("commit a: work=%v err=%v", work, err)
 	}
-	if d := ws.Stage(context.Background(), "s2", ta, "refs/heads/verse/auto/s2", false, tipOf(t, ta)); d.Err != nil {
+	if d := ws.Stage(context.Background(), "s2", ta, "refs/heads/viff/auto/s2", false, tipOf(t, ta)); d.Err != nil {
 		t.Fatal(d.Err)
 	}
 
@@ -315,14 +315,14 @@ func TestWhatIsStagedIsTheCommitThatWasChecked(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	commit("checked.txt", "checked\n\nVerse-Task: p1\n")
+	commit("checked.txt", "checked\n\nViff-Task: p1\n")
 	ok, why, checked, err := tree.AuthoredWork(l)
 	if err != nil || !ok || why != "" {
 		t.Fatalf("the check: ok=%v why=%q err=%v", ok, why, err)
 	}
 	commit("after.txt", "unsigned, after the check")
 
-	d := ws.Stage(context.Background(), "p1", tree, "refs/heads/verse/auto/p1", false, checked)
+	d := ws.Stage(context.Background(), "p1", tree, "refs/heads/viff/auto/p1", false, checked)
 	if d.Err != nil {
 		t.Fatal(d.Err)
 	}
@@ -339,7 +339,7 @@ func TestWhatIsStagedIsTheCommitThatWasChecked(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = refs.ForEach(func(r *plumbing.Reference) error {
-		if strings.HasPrefix(r.Name().String(), "refs/verse/") {
+		if strings.HasPrefix(r.Name().String(), "refs/viff/") {
 			t.Errorf("staging left %s in the task's checkout", r.Name())
 		}
 		return nil

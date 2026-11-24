@@ -1,16 +1,16 @@
 # runnerd
 
-`runnerd` is the binary that holds the [runners](../glossary.md#runner) that verse ships. A
-runner is a program that does the work a spawn describes. Verse reaches it over a URL.
+`runnerd` is the binary that holds the [runners](../glossary.md#runner) that viff ships. A
+runner is a program that does the work a spawn describes. Viff reaches it over a URL.
 
 | Subject | Page |
 |---|---|
-| what a runner is, and how verse uses one | [../runners.md](../runners.md) |
+| what a runner is, and how viff uses one | [../runners.md](../runners.md) |
 | the installed runner, its commands and routes | [runners.md](runners.md) |
 | the contract a runner serves | [../task-control.md](../task-control.md) |
 
 `runnerd` is a binary of its own, for the reason `iod` is ([iod.md](iod.md)). It is in the same
-image as `verse`. It runs one runner, offering what its configuration names: the agents under
+image as `viff`. It runs one runner, offering what its configuration names: the agents under
 `agents:` and, with a `script:` section, scripts, each task in a process of its own and, when the
 launch names repositories, in a workspace of git checkouts:
 
@@ -18,8 +18,8 @@ launch names repositories, in a workspace of git checkouts:
 runnerd -config <file> -token-file <file> [-sandbox bwrap|none]
 ```
 
-`verse up` starts this runner beside itself as its local runner
-([the local runner](up.md#the-local-runner)); no task runs in verse's own process. A central
+`viff up` starts this runner beside itself as its local runner
+([the local runner](up.md#the-local-runner)); no task runs in viff's own process. A central
 deployment starts none, with each runner a `runnerd` of its own (`localRunner: false`). What follows a task's ask, its
 `then:` spawn, runs on the task's runner.
 
@@ -73,34 +73,34 @@ maps the caller to itself, and in the same pid namespace, so it can see that pro
 On a platform without procfs (macOS, with `-sandbox none`), nothing makes the process
 non-dumpable.
 
-`verse up`'s local runner is a `runnerd` too: confined with bubblewrap where it runs, and
+`viff up`'s local runner is a `runnerd` too: confined with bubblewrap where it runs, and
 `-sandbox none` elsewhere, which `up` says at start ([the local runner](up.md#the-local-runner)).
 
-## The verse runner
+## The viff runner
 
-The verse runner offers what its configuration names, and nothing else: verse's own agent,
-`verse`, which reaches its model through Portkey; OpenAI's Codex, `codex`; Anthropic's Claude
+The viff runner offers what its configuration names, and nothing else: viff's own agent,
+`viff`, which reaches its model through Portkey; OpenAI's Codex, `codex`; Anthropic's Claude
 Code, `claude`; each where `agents:` names it; and scripts, where the configuration has a
 `script:` section. It serves the task contract, and `GET /describe`, which says what it offers.
 
 ```sh
 openssl rand -hex 32 > runner.token
 PORTKEY_API_KEY=… runnerd -config runner.tony -token-file runner.token
-verse runner add my-runner http://localhost:9802 -token-file runner.token
-echo '{prompt: "…", agent: {name: verse}}' | verse task run -f -
+viff runner add my-runner http://localhost:9802 -token-file runner.token
+echo '{prompt: "…", agent: {name: viff}}' | viff task run -f -
 ```
 
-Verse routes the spawn to a runner that offers its doer ([where a spawn
+Viff routes the spawn to a runner that offers its doer ([where a spawn
 runs](../runners.md#where-a-spawn-runs)). A launch's work picks which: a `prompt` runs the agent
-it names (`agent: {name: verse}`; verse binds its `defaultAgent` where the spawn names none),
+it names (`agent: {name: viff}`; viff binds its `defaultAgent` where the spawn names none),
 and a `script` runs the script.
 
 A script runs by its own `#!` line, which can name any program in the runner's image that reads
 a file: `#!/bin/sh`, `#!/usr/bin/env python3`, `#!/usr/bin/env node`. The line is read as
 the kernel reads it: the program, and at most one argument. A script with no `#!` line runs with
-`bash`. A script calls the task's tools from its shell with `verse-call-tool`. The runner finds
+`bash`. A script calls the task's tools from its shell with `viff-call-tool`. The runner finds
 it beside its own binary or on its `PATH`, binds it read-only into the sandbox at the same path,
-and puts its directory first on the script's `PATH`. `verse-secret-exec`, where it is beside it,
+and puts its directory first on the script's `PATH`. `viff-secret-exec`, where it is beside it,
 is bound and found the same way: [one command run with a secret](../systems/secret.md#from-a-shell),
 as if in place.
 
@@ -127,9 +127,9 @@ offered, no `script:` offers no scripts, and a configuration with neither is ref
 
 ```tony
 listen: ":9802"
-verse: {url: http://verse:9797}            # the one verse this runner serves; required
+viff: {url: http://viff:9797}            # the one viff this runner serves; required
 repos:
-  mirrors: /var/lib/verse-runner/mirrors
+  mirrors: /var/lib/viff-runner/mirrors
 secrets: {dir: /secrets}                   # the secret store; `secret` is performed only with one
 mcp:                                       # remote MCP servers the runner calls for its tasks (mcp)
   servers:
@@ -151,7 +151,7 @@ agents:
         ceiling:
         - repo: !regexp "^github\\.com/acme/"
           fetch: {}
-          push: [{ref: !regexp "^refs/heads/verse/"}, {ref: !glob "refs/heads/release/*", force: false}]
+          push: [{ref: !regexp "^refs/heads/viff/"}, {ref: !glob "refs/heads/release/*", force: false}]
       git-issue: {ceiling: {repo: !regexp "^github\\.com/acme/"}}
       linear-issue: {ceiling: {create: {team: ENG}, comment: {}, close: {}}}   # closed without LINEAR_API_KEY
       secret:                              # one command with one secret of the store (secrets.dir)
@@ -175,8 +175,8 @@ script:                                    # scripts are offered only with this 
 
 | Key | What it holds | Default |
 |---|---|---|
-| `listen` | the address the runner serves verse on | `:9802` |
-| `verse` | the one verse this runner serves, by the tokens versed signs for it ([runners at the door](perms.md#runners-at-the-door)): `url`, where the runner reaches versed, announces itself and reads versed's keys (`/.well-known/jwks.json` under it); `issuer`, the name versed's tokens are issued under (`auth.issuer.url` on the verse side), where a verse behind a proxy is called something else than `url` (default `url`). The runner compares it byte for byte: spell `url` as `verse status` shows the issuer (`verse up` prints it at start), or set `issuer`, since `http://127.0.0.1:9797` is not `http://localhost:9797`; `audience`, the `aud` this runner takes versed's tokens for, its own name (default: the subject of its own token, `VERSE_TOKEN_FILE`, which is what its registration names); `ca`, a PEM bundle for a verse served under a certificate no public root signed. A request whose bearer is not a live token of that issuer for that audience, with `sub: verse`, is refused `401` before its body is read (the issuer signs gate credentials too, and none of them opens this door), and `503` while versed's keys cannot be read. A bare `GET /describe` is answered to anyone, since the description is public; a bearer presented with it is checked all the same, and the describe answers this runner's own token to the verse it verified, and to nobody else. The runner announces itself at start, `POST /runners/hello` with its token in a loop until verse has described it, so verse describes it then and there and nobody runs `verse runner check`. The runner's readiness (`GET /ready`) is its server and nothing else; whether verse heard it, and whether the describe verified it, is the registration's to say. Its verse may stop it, `POST /stop` behind the same door, which the runner answers `202` and stops as a signal would, its tasks with it: how `verse up` stops its local runner, one it started or one a crashed run left. A deployment whose one configuration serves every cluster names the verse in the environment instead (`VERSE_URL`, `VERSE_ISSUER`, `VERSE_AUDIENCE`, `VERSE_CA`, below); naming it in both is refused. | none, and the runner does not start without it, here or in the environment |
+| `listen` | the address the runner serves viff on | `:9802` |
+| `viff` | the one viff this runner serves, by the tokens viffd signs for it ([runners at the door](perms.md#runners-at-the-door)): `url`, where the runner reaches viffd, announces itself and reads viffd's keys (`/.well-known/jwks.json` under it); `issuer`, the name viffd's tokens are issued under (`auth.issuer.url` on the viff side), where a viff behind a proxy is called something else than `url` (default `url`). The runner compares it byte for byte: spell `url` as `viff status` shows the issuer (`viff up` prints it at start), or set `issuer`, since `http://127.0.0.1:9797` is not `http://localhost:9797`; `audience`, the `aud` this runner takes viffd's tokens for, its own name (default: the subject of its own token, `VIFF_TOKEN_FILE`, which is what its registration names); `ca`, a PEM bundle for a viff served under a certificate no public root signed. A request whose bearer is not a live token of that issuer for that audience, with `sub: viff`, is refused `401` before its body is read (the issuer signs gate credentials too, and none of them opens this door), and `503` while viffd's keys cannot be read. A bare `GET /describe` is answered to anyone, since the description is public; a bearer presented with it is checked all the same, and the describe answers this runner's own token to the viff it verified, and to nobody else. The runner announces itself at start, `POST /runners/hello` with its token in a loop until viff has described it, so viff describes it then and there and nobody runs `viff runner check`. The runner's readiness (`GET /ready`) is its server and nothing else; whether viff heard it, and whether the describe verified it, is the registration's to say. Its viff may stop it, `POST /stop` behind the same door, which the runner answers `202` and stops as a signal would, its tasks with it: how `viff up` stops its local runner, one it started or one a crashed run left. A deployment whose one configuration serves every cluster names the viff in the environment instead (`VIFF_URL`, `VIFF_ISSUER`, `VIFF_AUDIENCE`, `VIFF_CA`, below); naming it in both is refused. | none, and the runner does not start without it, here or in the environment |
 | `repos.mirrors` | the directory the runner keeps one bare mirror per repository in, shared by its tasks. Without `repos`, the runner takes no launch that names repositories. | none |
 | `repos.host` | the forge the runner's repositories are on, as a launch's `repo` names it (`host/owner/name`, or `owner/name` for github.com) | `github.com` |
 | `repos.forge` | where the host's `owner/name` is fetched from. A directory holding `owner/name` repositories serves a runner with no network. | `https://<host>` |
@@ -186,22 +186,22 @@ script:                                    # scripts are offered only with this 
 | `secrets.systems.<system>` | the secret a system acts with, by name: `secrets: {dir: /secrets, systems: {slack: slack-bot}}`. `linear-issue` and `slack` may name one. A system that does acts with the store, and its variable is not read. `secret` names its secret in each block of a doer's ceiling instead, and an MCP server its own under `mcp.servers`. | none: the system reads its variable |
 | `mcp.servers.<name>` | a remote MCP server the runner calls for its tasks ([mcp](../systems/mcp.md)), by the name a doer's ceiling and a spawn's environment call it: lowercase letters, digits and `_`, a letter first, no `-`. `url`, its streamable HTTP endpoint, `https` (or `http` on a loopback host, for a test), with no user and no query, since the task's process is sent the configuration and a key in a url would reach it; `auth`, how the runner signs a request, `{secret: <name in the store>}` sent as `Authorization: Bearer <value>`, or with `header: <name>` as that header, the value as it is, and absent for a server called with no credential; `timeout`, how long one call has, a duration (`90s`), `60s` by default and at most `10m`. A server whose secret is not in the store at the start is left out, with every ceiling block naming it, and said. The runner follows no redirect and declares no capability. With `servers`, `mcp` is performed where a section's ceiling names it. | none: the runner calls no server |
 | `pkg` | the packages the runner installs into its tasks' read-only prefixes ([pkg](../systems/pkg.md)): `cellar`, the directory of the installed prefixes and the tasks' roots, on a volume, absolute and under no system directory; `manager`, the one the runner wraps (`apt`); `repos`, sources.list lines whose signed indices are trusted; `collect-above`, the cellar's size past which the least recently used prefixes are evicted (`50Gi`), absent half the size of the volume the cellar is on — a running task keeps an evicted prefix by its root's hardlinks. With it, `pkg` is performed where a section's ceiling names it, closed whole under `-sandbox none` and where the toolchain (`apt-get`, `apt-cache`, `dpkg-deb`, `patchelf`) is not in the image, and said. | none: the runner installs nothing |
-| `agents.<name>` | one agent the process runs: `verse`, `codex` or `claude`; another name is refused. Its value holds the program's own keys, which are the agent's: codex `bin`, `sandbox` and `config` ([Codex](#codex-gated-inside-the-run)); claude `bin` ([Claude](#claude-gated-inside-the-run)); verse none. A key the agent's program does not take is refused, naming the ones it does; a `bin` that is not there is refused when the runner starts. Beside them, the four keys every agent takes, below. | none |
+| `agents.<name>` | one agent the process runs: `viff`, `codex` or `claude`; another name is refused. Its value holds the program's own keys, which are the agent's: codex `bin`, `sandbox` and `config` ([Codex](#codex-gated-inside-the-run)); claude `bin` ([Claude](#claude-gated-inside-the-run)); viff none. A key the agent's program does not take is refused, naming the ones it does; a `bin` that is not there is refused when the runner starts. Beside them, the four keys every agent takes, below. | none |
 | `agents.<name>.settings.<setting>` | the operator's say over one setting the agent takes: `values`, what a launch may set, as patterns (`model: {values: ["gpt-6*"]}`), which is what the offer publishes for the setting; and `default`, what the runner uses where a launch sets none, which then goes on the task's record. A setting not named takes any value the agent takes, and the agent's own default. Where the agent lists its own values (Claude's efforts), the ones named are among them; a default is within both. A setting the agent does not take, or an empty `values`, is refused. | any value, the agent's own default |
-| `agents.verse.annotations.<name>` | an annotation a launch may set, with the `type` of its value and the `default` used where a launch sets none. The verse agent knows one, `verse.portkey/virtual-key`, a Portkey virtual key: a routing label, not a secret. Only the verse agent takes annotations. | none |
+| `agents.viff.annotations.<name>` | an annotation a launch may set, with the `type` of its value and the `default` used where a launch sets none. The viff agent knows one, `viff.portkey/virtual-key`, a Portkey virtual key: a routing label, not a secret. Only the viff agent takes annotations. | none |
 | `agents.<name>.shellEnv`, `script.shellEnv` | the variables of the runner's environment the doer's task shell is given, by name: the process's values of those names and nothing else. With the proxy's variables, they are the whole environment of the doer's task process too ([the sandbox](#the-sandbox)), and a launch's `with.env` may not name one of its own doer's. No variable the runner reads a credential from may be named (`GITHUB_TOKEN`, `LINEAR_API_KEY`, `SLACK_BOT_TOKEN`, `PORTKEY_API_KEY`, `PORTKEY_BASE_URL`, `PORTKEY_VIRTUAL_KEY`, `OPENAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`), and an empty list is refused: leave it out for the default. A declaration, not a wall: exactly as strong as the sandbox, and with `-sandbox none` no stronger than the task's good manners. | `task.DefaultShellEnv`: enough for a shell to find its tools, and no secret |
-| `agents.<name>.systems.<system>`, `script.systems.<system>` | the doer's ceiling over one system, `{ceiling: …}`. The runner performs `git` and `git-issue` with `repos`, `github` and `github-issue` where the forge is GitHub, and `linear-issue` and `slack` where a section's ceiling names them and their credential is set: where it is not, the runner starts with the system closed to every doer, says so, and no offer holds it, so a spawn that needs it is refused where it is written. It performs [`secret`](../systems/secret.md) where it has a [secret store](#the-secret-store) and a section's ceiling names it: each block names one secret of the store as a literal (`name`), never a pattern, since a name is what a doer is trusted with, and may pattern or leave out the variable (`as`); a block whose secret is not in the store at the start is left out, and said, and the system is closed whole under `-sandbox none`. It performs [`mcp`](../systems/mcp.md) where `mcp.servers` names servers and a section's ceiling names it: each block names one server as a literal (`server`), and its `call` shapes the tools and arguments; a block whose server's secret is not in the store at the start is left out, and said. It performs [`pkg`](../systems/pkg.md) where a `pkg` section and a section's ceiling naming it are both there: `base` under a doer's `pkg` section, pkg's key alone, is the packages installed into every one of its tasks' roots at start. It performs [`verse`](../systems/verse.md) too, carried to its verse with the runner's own token. A section for a system the runner does not perform is refused, but for `verse`'s, taken on every doer. Every doer's offer holds each system the runner performs, closed where the doer's section names none. `files`, `commands`, `agent` and `question`, which the runner stops inside a run, are a doer's where the runner stops that doer on them: the verse agent all four, codex and claude `files`, `commands` and `question`, a script `question` alone; another is refused. `network` is every doer's. | closed: nothing of the system. For `network`, no bound beyond what the sandbox builds |
+| `agents.<name>.systems.<system>`, `script.systems.<system>` | the doer's ceiling over one system, `{ceiling: …}`. The runner performs `git` and `git-issue` with `repos`, `github` and `github-issue` where the forge is GitHub, and `linear-issue` and `slack` where a section's ceiling names them and their credential is set: where it is not, the runner starts with the system closed to every doer, says so, and no offer holds it, so a spawn that needs it is refused where it is written. It performs [`secret`](../systems/secret.md) where it has a [secret store](#the-secret-store) and a section's ceiling names it: each block names one secret of the store as a literal (`name`), never a pattern, since a name is what a doer is trusted with, and may pattern or leave out the variable (`as`); a block whose secret is not in the store at the start is left out, and said, and the system is closed whole under `-sandbox none`. It performs [`mcp`](../systems/mcp.md) where `mcp.servers` names servers and a section's ceiling names it: each block names one server as a literal (`server`), and its `call` shapes the tools and arguments; a block whose server's secret is not in the store at the start is left out, and said. It performs [`pkg`](../systems/pkg.md) where a `pkg` section and a section's ceiling naming it are both there: `base` under a doer's `pkg` section, pkg's key alone, is the packages installed into every one of its tasks' roots at start. It performs [`viff`](../systems/viff.md) too, carried to its viff with the runner's own token. A section for a system the runner does not perform is refused, but for `viff`'s, taken on every doer. Every doer's offer holds each system the runner performs, closed where the doer's section names none. `files`, `commands`, `agent` and `question`, which the runner stops inside a run, are a doer's where the runner stops that doer on them: the viff agent all four, codex and claude `files`, `commands` and `question`, a script `question` alone; another is refused. `network` is every doer's. | closed: nothing of the system. For `network`, no bound beyond what the sandbox builds |
 | `….ceiling` | the ceiling over what the doer's tasks may do with the system: blocks written as a spawn's environment writes the system, a block or a list of them, each attribute one pattern, with `!or` for several (`repo: !regexp "^github\\.com/acme/"`, `mode: !or [none, allow]`), each verb its shapes. A ceiling lists what it allows: a spawn's environment must lie within it, every block within one of its blocks and every shape within one of its shapes, and there is no "all but". A block naming no verb (`files: {ceiling: {}}`) allows every verb of its system, any call; a section with no ceiling at all is refused, since it would close the system as leaving it out does. An attribute a block names bounds every environment block it holds: one that leaves it unsaid stands for its default (network's `mode`, none), or, with none (git's `from`), is beyond the block. A `git` ceiling names its repositories, on the runner's forge. A `network` ceiling naming a mode the runner's sandbox can't build is refused when the runner starts. A runner whose ceilings can't give what an agent requires (codex's and claude's `commands.run` and `files.write`) does not start. | |
 
 #### Layouts
 
-The configuration allows any placement of doers on processes, and verse needs no change between
+The configuration allows any placement of doers on processes, and viff needs no change between
 them: one pod with an agent and scripts; an agent-only pod and a scripts-only pod; one pod per
 agent; one with every agent and scripts, as a laptop's. Mixing doers on a pod is fine by
 default: credentials stay in the runner process, ceilings and `shellEnv` are each doer's, and
 workspaces each task's. The reasons to give a doer a pod of its own are an image (a CLI the
 others should not carry), a secret that should not even be in the others' process, and load.
-The deployment under `deploy/` runs the verse agent and scripts on one runner and codex and
+The deployment under `deploy/` runs the viff agent and scripts on one runner and codex and
 claude each on its own.
 
 #### The variables it reads
@@ -212,9 +212,9 @@ read its credential from the [secret store](#the-secret-store) instead.
 
 | Variable | What it holds | Absent |
 |---|---|---|
-| `VERSE_TOKEN_FILE` | the file holding this runner's own token: its workload token (on Kubernetes, the pod's projected token, audience `verse`), or, off Kubernetes, a static token of 32 bytes at least and without exactly two `.` (a JWT's shape, which `verse runner add -token-file` refuses), whose hash its registration names (`verse runner add -token-file`) and which is its audience too, answered on `GET /describe` to the verse the `verse` block verified, and to nobody else. It is what a registration naming this runner's `subject` is checked against. A file named and holding nothing is refused when the runner starts. | the runner does not start (or `-token-file`) |
-| `VERSE_URL`, `VERSE_ISSUER`, `VERSE_AUDIENCE`, `VERSE_CA` | the `verse` block, for a configuration that has none: where the runner reaches its verse and reads its keys, the name its tokens are issued under, the audience the runner takes them for, and a CA bundle for a verse under a certificate no public root signed (the last three may be empty). Where the configuration has the block too, the runner refuses to start: the verse is named once. | the configuration's `verse` block, and without it the runner does not start |
-| `PORTKEY_API_KEY` | the Portkey account key, for `agents.verse` | logged; the verse agent is closed, and a spawn prompting it is refused where it is written. A runner left offering nothing does not start |
+| `VIFF_TOKEN_FILE` | the file holding this runner's own token: its workload token (on Kubernetes, the pod's projected token, audience `viff`), or, off Kubernetes, a static token of 32 bytes at least and without exactly two `.` (a JWT's shape, which `viff runner add -token-file` refuses), whose hash its registration names (`viff runner add -token-file`) and which is its audience too, answered on `GET /describe` to the viff the `viff` block verified, and to nobody else. It is what a registration naming this runner's `subject` is checked against. A file named and holding nothing is refused when the runner starts. | the runner does not start (or `-token-file`) |
+| `VIFF_URL`, `VIFF_ISSUER`, `VIFF_AUDIENCE`, `VIFF_CA` | the `viff` block, for a configuration that has none: where the runner reaches its viff and reads its keys, the name its tokens are issued under, the audience the runner takes them for, and a CA bundle for a viff under a certificate no public root signed (the last three may be empty). Where the configuration has the block too, the runner refuses to start: the viff is named once. | the configuration's `viff` block, and without it the runner does not start |
+| `PORTKEY_API_KEY` | the Portkey account key, for `agents.viff` | logged; the viff agent is closed, and a spawn prompting it is refused where it is written. A runner left offering nothing does not start |
 | `PORTKEY_BASE_URL` | the Portkey endpoint | Portkey's own |
 | `PORTKEY_VIRTUAL_KEY` | the Portkey virtual key, where neither a launch nor the annotation's `default` names one | Portkey's routing for the account key |
 | `GITHUB_TOKEN` | the runner's token for its forge: what it fetches and pushes with, and acts at GitHub with. It stays in the runner; a task's process never has it. | logged; a forge on this filesystem needs none, and a fetch or push over the network is refused |
@@ -224,10 +224,10 @@ read its credential from the [secret store](#the-secret-store) instead.
 | `CLAUDE_CODE_OAUTH_TOKEN`, else `ANTHROPIC_API_KEY` | the credential the claude agent runs under, put in the claude process's environment under the name it was read from: a subscription's token (`claude setup-token`), which is a person's, or an API key, which is what a shared runner holds. Where both are set, the token is used, and that is logged at start. | logged; Claude's own login under the task's `HOME` |
 
 The flags: `-config <file>` (default `runner.tony`), `-sandbox bwrap|none`,
-`-token-file <file>` (default `$VERSE_TOKEN_FILE`), `-verse-url`, `-verse-issuer`,
-`-verse-audience` and `-verse-ca` (defaults `$VERSE_URL`, `$VERSE_ISSUER`, `$VERSE_AUDIENCE`,
-`$VERSE_CA`: the `verse` block, where the configuration has none), and
-`-admin-addr` for the admin and pprof face (`VERSE_RUNNER_ADMIN_ADDR`; default: the listen
+`-token-file <file>` (default `$VIFF_TOKEN_FILE`), `-viff-url`, `-viff-issuer`,
+`-viff-audience` and `-viff-ca` (defaults `$VIFF_URL`, `$VIFF_ISSUER`, `$VIFF_AUDIENCE`,
+`$VIFF_CA`: the `viff` block, where the configuration has none), and
+`-admin-addr` for the admin and pprof face (`VIFF_RUNNER_ADMIN_ADDR`; default: the listen
 port plus one; `off` disables it). `-task` is how the runner starts each task's process, with the
 configuration on stdin, and is not for a person to run. `runnerd` takes no arguments beyond its
 flags.
@@ -275,17 +275,17 @@ an `items` entry that gives it its name in the store.
 ### What it offers
 
 `GET /describe` answers what the runner offers, from its configuration. The example above runs
-Claude and scripts. Here is the answer of a runner whose configuration runs the verse agent and
-scripts instead, giving both the same ceilings and opening the `verse` system to neither:
+Claude and scripts. Here is the answer of a runner whose configuration runs the viff agent and
+scripts instead, giving both the same ceilings and opening the `viff` system to neither:
 
 ```tony
 version: 2
 offers:
 - agent:
-    name: verse
+    name: viff
     settings:
       model: {values: ["gpt-6*"], default: true}
-    annotations: {verse.portkey/virtual-key: string}
+    annotations: {viff.portkey/virtual-key: string}
   converse: true
   systems:
     network:
@@ -295,14 +295,14 @@ offers:
       ceiling:
         repo: !regexp "^github\\.com/acme/"
         fetch: {}
-        push: [{ref: !regexp "^refs/heads/verse/"}, {force: false, ref: !glob "refs/heads/release/*"}]
+        push: [{ref: !regexp "^refs/heads/viff/"}, {force: false, ref: !glob "refs/heads/release/*"}]
     git-issue: {ceiling: {repo: !regexp "^github\\.com/acme/", close: {}, comment: {}, create: {}, pull: {}, push: {}}}
     github: {}
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
     slack: {ceiling: {post: {channel: deploys}, read: {channel: deploys}}}
     secret: {ceiling: {name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm (publish --ignore-scripts|view )", dir: !glob "packages/*"}}}
-    verse: {}
+    viff: {}
     files: {ceiling: {}}
     commands: {ceiling: {}}
     agent: {ceiling: {}}
@@ -316,25 +316,25 @@ offers:
       ceiling:
         repo: !regexp "^github\\.com/acme/"
         fetch: {}
-        push: [{ref: !regexp "^refs/heads/verse/"}, {force: false, ref: !glob "refs/heads/release/*"}]
+        push: [{ref: !regexp "^refs/heads/viff/"}, {force: false, ref: !glob "refs/heads/release/*"}]
     git-issue: {ceiling: {repo: !regexp "^github\\.com/acme/", close: {}, comment: {}, create: {}, pull: {}, push: {}}}
     github: {}
     github-issue: {}
     linear-issue: {ceiling: {close: {}, comment: {}, create: {team: ENG}}}
     slack: {ceiling: {post: {channel: deploys}, read: {channel: deploys}}}
     secret: {ceiling: {name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm (publish --ignore-scripts|view )", dir: !glob "packages/*"}}}
-    verse: {}
+    viff: {}
     question: {}
 ```
 
-A system held with no ceiling (`github: {}` and `verse: {}` here) is closed: a spawn naming it is refused. Each
+A system held with no ceiling (`github: {}` and `viff: {}` here) is closed: a spawn naming it is refused. Each
 offer's ceilings are its doer's section's, so a runner whose `script:` names a ceiling its agents'
 sections do not offers it to scripts alone. A description offers each doer once: one offer per
 agent name and one script offer, since a launch names its doer by the agent's name, or by nothing
-for a script, and two offers of one doer could not be told apart; verse refuses a description
+for a script, and two offers of one doer could not be told apart; viff refuses a description
 that offers one twice.
 
-`version` is the shape of the description. A description in another version is not read: verse
+`version` is the shape of the description. A description in another version is not read: viff
 asks the runner again.
 
 `requires` is the steps an offer's doer can't run without, as `<system>.<verb>`: a Codex or Claude
@@ -346,11 +346,11 @@ ceiling can't give a step its offer requires does not start. Absent, nothing is 
 `agent` is the agent offered: its `name`, the `settings` a launch's agent may set, each with its
 `values` (patterns, the operator's narrowing under `agents:` already applied; absent, any value
 of its `form`, `string` unless it says `number` or `bool`) and whether the agent has a `default`
-of its own where a launch names none, and the `annotations` verse or the runner may write for it.
+of its own where a launch names none, and the `annotations` viff or the runner may write for it.
 A launch writes its settings flat beside the name, `agent: {name: codex, model: gpt-5-codex,
-effort: high}`, and a setting the offer does not list is refused. `model` is the setting verse
+effort: high}`, and a setting the offer does not list is refused. `model` is the setting viff
 reads: the task's record says which model ran, its default filled in. A launch always names its
-agent: verse binds its `defaultAgent` to a prompt that names none, and the runner refuses a
+agent: viff binds its `defaultAgent` to a prompt that names none, and the runner refuses a
 prompt's launch with no agent.
 
 `systems` is each system the offer holds for its tasks, and it is the whole of what an offer says
@@ -364,14 +364,14 @@ too: an unconfined runner refuses it, rather than give the task a network its au
 for ([the network](../systems/inside.md#the-network)).
 
 The runner performs `git`, `git-issue`, `github`, `github-issue`, `linear-issue`, `slack` and
-`verse` for every doer, each where it has what it takes (a repository's tracker with `repos`, the
+`viff` for every doer, each where it has what it takes (a repository's tracker with `repos`, the
 forge's where the forge is GitHub, Linear's and Slack's where a section's ceiling names them and
-their credential is set, and verse's with the runner's own token), each under the doer's own
+their credential is set, and viff's with the runner's own token), each under the doer's own
 ceiling. Inside a run it stops these:
 
 | Doer | Stopped on |
 |---|---|
-| the verse agent | `files`, `commands`, `agent`, `question` |
+| the viff agent | `files`, `commands`, `agent`, `question` |
 | codex, claude | `files`, `commands`, `question` |
 | a script | `question` alone: the script is one action, and its commands and files are no step |
 
@@ -382,11 +382,11 @@ script offer takes no settings: a script names what runs it in its own `#!` line
 `agents.codex` the runner offers `agent: codex`, with `model` and `effort`, intercepting
 `files.write`, `commands.run` and `question.ask`; with `agents.claude`, `agent: claude` the same way.
 
-Verse reads it when the runner is installed and whenever `verse runner check` asks, keeps it on
+Viff reads it when the runner is installed and whenever `viff runner check` asks, keeps it on
 the runner's registration as `described`, and refuses a spawn naming the runner that its offers
 would refuse, where the spawn is written. The runner checks each launch again as it arrives. A
 description that does not check (another version, no network with what it builds, a setting
-named `name` or `annotations`) is refused: verse does not install the runner, and a check that
+named `name` or `annotations`) is refused: viff does not install the runner, and a check that
 finds one keeps what the runner said before.
 
 ### Codex, gated inside the run
@@ -395,10 +395,10 @@ finds one keeps what the runner said before.
 not as a program whose output the runner reads when it exits. Codex asks its client before it
 runs a command or applies a patch, and asks it the questions the model has for a person. The
 runner puts each of those in front of the loop as an ordinary action, so the environment and
-the autonomy decide it, the docket lists it, and `verse question` and `attach` answer it, exactly as
-for the `verse` agent.
+the autonomy decide it, the docket lists it, and `viff question` and `attach` answer it, exactly as
+for the `viff` agent.
 
-| Codex asks | Verse sees | The step |
+| Codex asks | Viff sees | The step |
 |---|---|---|
 | to run a command | `shell` | `commands.run` on the command |
 | to apply a patch | `apply_patch` | `files.write` on each path, relative to the workspace (a move writes both) |
@@ -415,7 +415,7 @@ approved command runs inside codex's own sandbox, and the
 action's exec frame carries what it printed and how it exited. A refused one is declined, and
 the model is told why, so it plans around the refusal rather than retrying it. The thread runs
 under codex's `untrusted` approval policy, so codex asks about every command it does not know
-to be read-only and every patch. Under rows that allow `commands` and `files`, verse
+to be read-only and every patch. Under rows that allow `commands` and `files`, viff
 answers yes at once, and the run is unattended but narrated and on the record, action by action.
 
 ```tony
@@ -431,7 +431,7 @@ agents:
 A spawn's agent's `model` setting is the thread's model, over the configured default, and its
 `effort` the reasoning effort of its turns (`agent: {name: codex, model: gpt-5-codex, effort:
 high}`); `agents.codex.settings` narrows either. The key is `OPENAI_API_KEY`. Codex's API, `api.openai.com`, is reachable whatever the task's
-network, as the verse agent's gateway is.
+network, as the viff agent's gateway is.
 
 The key is read by the runner and written as the login file `codex login --with-api-key`
 would write, in a `CODEX_HOME` made for the task and removed with it. Codex does not read a key
@@ -448,13 +448,13 @@ the web without asking. Both appear on the read plane when they complete, so an 
 them, and no gate saw them first.
 
 **The runner's tools are codex's tools.** The runner's tools that the launch's environment gives
-(`git-push`, `github-create-pr`, the trackers' verbs, `slack-post`, `verse-ask-create`, …) are declared to codex when its thread starts, and a call codex makes of
+(`git-push`, `github-create-pr`, the trackers' verbs, `slack-post`, `viff-ask-create`, …) are declared to codex when its thread starts, and a call codex makes of
 one is an action of the loop: the tool's own step, decided by the autonomy, performed
 by the runner, its result the call's output. A refused call is refused to codex as its result,
-with the reason. So codex delivers the way the `verse` agent does: it commits with the trailers
+with the reason. So codex delivers the way the `viff` agent does: it commits with the trailers
 and calls `git-push`.
 
-`verse task say` reaches the running turn. The task's result is the agent's last message. A
+`viff task say` reaches the running turn. The task's result is the agent's last message. A
 cancel interrupts the turn and ends the codex process.
 
 ### Claude, gated inside the run
@@ -464,10 +464,10 @@ speaks on its stdio, and not as a program whose output the runner reads when it 
 that the runner answers its permission prompts, Claude asks before every tool call its
 permission mode does not already allow: under `manual`, each command, each edit, and each
 question it has for a person. The runner puts each of those in front of the loop as an
-ordinary action, so the environment and the autonomy decide it, the docket lists it, and `verse question` and
-`attach` answer it, exactly as for the `verse` agent.
+ordinary action, so the environment and the autonomy decide it, the docket lists it, and `viff question` and
+`attach` answer it, exactly as for the `viff` agent.
 
-| Claude asks | Verse sees | The step |
+| Claude asks | Viff sees | The step |
 |---|---|---|
 | to run a command (Bash) | `bash` | `commands.run` on the command |
 | to edit or write a file (Edit, Write) | `edit`, `write` | `files.write` on the path, relative to the workspace |
@@ -488,7 +488,7 @@ launch is refused where it is written (the offer `requires` them): Claude cannot
 them, and a row may deny them. An allowed call runs, and the
 action's exec frame carries what it printed. A refused one is denied with the reason, which the
 model reads as the call's result, so it plans around the refusal rather than retrying it.
-Under rows that allow `commands` and `files`, verse answers yes at once, and the run is
+Under rows that allow `commands` and `files`, viff answers yes at once, and the run is
 unattended but narrated and on the record, action by action.
 
 ```tony
@@ -503,7 +503,7 @@ A spawn's agent's `model` setting is the session's model, over the configured de
 `effort` the session's effort, one of `low`, `medium`, `high`, `xhigh` or `max` (`agent: {name:
 claude, model: opus, effort: high}`); `agents.claude.settings` narrows either. The credential is
 `CLAUDE_CODE_OAUTH_TOKEN` where it is set, else `ANTHROPIC_API_KEY`. Claude's API, `api.anthropic.com`,
-is reachable whatever the task's network, as the verse agent's gateway is.
+is reachable whatever the task's network, as the viff agent's gateway is.
 
 The runner owns the session. Claude is started with none of a workspace's or a user's settings
 (`--setting-sources ""`), so a `.claude/settings.json` in a repository cannot allow a tool or
@@ -530,14 +530,14 @@ complete, so an observer sees them, and no gate saw them first. Claude asks befo
 outside the workspace, and is refused: the runner offers no reads there.
 
 **The runner's tools are Claude's tools.** The runner's tools that the launch's environment gives
-(`git-push`, `github-create-pr`, the trackers' verbs, `slack-post`, `verse-ask-create`, …)
+(`git-push`, `github-create-pr`, the trackers' verbs, `slack-post`, `viff-ask-create`, …)
 are served to Claude as an MCP server over the same pipe, and a call Claude makes of one is an
 action of the loop: the tool's own step, decided by the autonomy, performed by the runner, its
 result the call's output. A refused call is refused to Claude as its result, with the reason.
-So Claude delivers the way the `verse` agent does: it commits with the trailers and calls
+So Claude delivers the way the `viff` agent does: it commits with the trailers and calls
 `git-push`.
 
-`verse task say` reaches the running session, which takes the words up at its next step; words
+`viff task say` reaches the running session, which takes the words up at its next step; words
 that reach it as it ends its turn start a turn of their own, and the run goes on to that turn's
 end. The task's result is the agent's last message. A cancel interrupts the session and ends
 the claude process.

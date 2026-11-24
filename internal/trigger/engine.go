@@ -15,16 +15,16 @@ import (
 	tony "github.com/signadot/tony-format/go-tony"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Spawner turns a (bound) launch.Spec into a running, hosted task and returns
 // it. It owns the full lifecycle — resolve the spec's references (driver, runner,
-// resolver, scope, environment), build, mirror into the verse, and run/host — so
+// resolver, scope, environment), build, mirror into the viff, and run/host — so
 // the engine stays agnostic to how tasks are hosted (a runnerd runtime here,
 // an RPC to a remote runtime when distributed).
 //
@@ -33,7 +33,7 @@ import (
 // failed handle.
 type Spawner func(id string, spec launch.Spec) task.Handle
 
-// Engine runs the ECA loop over an entity-verse.
+// Engine runs the ECA loop over an entity-viff.
 //
 // ONE BASELINE ENGINE PER STORE. Everything the engine knows about what it has already done is
 // per-engine and in memory — the commits each trigger was evaluated at (seen), the in-flight firings (inflight),
@@ -56,7 +56,7 @@ type Spawner func(id string, spec launch.Spec) task.Handle
 type Engine struct {
 	store    entity.Store
 	resolver task.Resolver // answers trigger ASK gates
-	// elsewhere answers whether a rule name is installed in another engine of this verse.
+	// elsewhere answers whether a rule name is installed in another engine of this viff.
 	spawn Spawner // optional: how actions spawn tasks
 	// moveDeadline moves a standing question's deadline (SetDeadlineMover); nil leaves a date a
 	// question reads from its subject fixed at the instant it was posed with.
@@ -108,7 +108,7 @@ type Engine struct {
 
 	// pacing holds the subjects with a tripped firing waiting out D, so a write to one of them
 	// can tell it the chain broke. It holds only what is WAITING — entries are removed as each
-	// firing gives up or proceeds — so it does not grow with the verse.
+	// firing gives up or proceeds — so it does not grow with the viff.
 	pacingMu sync.Mutex
 	pacing   map[entity.Ref][]chan struct{}
 
@@ -137,7 +137,7 @@ type Engine struct {
 	refused   map[string]bool
 
 	// opened is closed once the engine is open: its charter is restored, the tasks the last
-	// verse left it are in, and its claims are settled (open). Until then no rule arms and no
+	// viff left it are in, and its claims are settled (open). Until then no rule arms and no
 	// task's end is taken. nil for an engine nobody started, which is open. tasksIn is closed
 	// when the host has handed over the tasks it resumed, nil where it hands none (AwaitTasks).
 	opened      chan struct{}
@@ -153,7 +153,7 @@ type Engine struct {
 
 	// parked is the launches a suspension stopped at launchSpawn, in the order they arrived —
 	// a hook's or a sequence step's spawn about suspended work — each started when nothing
-	// holds it. Each is recorded, and the next verse parks it again (parked.go). Guarded by parkMu.
+	// holds it. Each is recorded, and the next viff parks it again (parked.go). Guarded by parkMu.
 	parkMu sync.Mutex
 	parked []parkedLaunch
 
@@ -274,7 +274,7 @@ func New(store entity.Store, resolver task.Resolver) *Engine {
 
 func (e *Engine) SetSpawner(s Spawner) { e.spawn = s }
 
-// SetDeadlineMover installs what moves a standing question's deadline, which is versed's: the
+// SetDeadlineMover installs what moves a standing question's deadline, which is viffd's: the
 // instant is stamped on the question's record and a timer settles it, and both are kept where
 // the record is. A gate reading its date from the subject calls it when the date is edited.
 func (e *Engine) SetDeadlineMover(m func(scope, id string, at time.Time) error) { e.moveDeadline = m }
@@ -291,11 +291,11 @@ func (e *Engine) SetOfferCheck(f func(l runner.Launch) error) { e.offerCheck = f
 // It exists because a scoped store READS BASELINE THROUGH: listing `trigger:rule:*` in a
 // scope returns baseline's rules and the scope's own, with nothing on the record to tell
 // them apart, so a restore either resurrects nothing or installs the whole baseline charter
-// into one scope. Neither is what `verse c -a --scope me` promised. The
+// into one scope. Neither is what `viff c -a --scope me` promised. The
 // scope's name on the record answers it exactly, at the one moment the answer is known: the
 // install itself.
 //
-// A record carrying `scope: me` also answers the same question for a reader — `verse data
+// A record carrying `scope: me` also answers the same question for a reader — `viff data
 // get trigger:rule:x --scope me` says which scope the rule belongs to rather than
 // leaving it to be inferred from which listing it turned up in.
 func (e *Engine) SetScope(name string) { e.scope = name }
@@ -318,7 +318,7 @@ func (e *Engine) Fired() int {
 	return e.fired
 }
 
-// Start subscribes to the verse (synchronously, before returning) and runs the
+// Start subscribes to the viff (synchronously, before returning) and runs the
 // dispatch loop in the background until ctx is cancelled. Subscribing before Start
 // returns means changes produced right after Start are never missed.
 //
@@ -354,7 +354,7 @@ func (e *Engine) startReconciler(ctx context.Context) {
 // ObserveScoped puts the engine in per-trigger (subtree) observation mode: it opens
 // NO root watch. Each trigger added afterward gets its own watch on exactly the
 // (system,kind) subtree it matches — the docd-aligned model (watch what you match,
-// not the whole verse). Used for a scoped engine; ctx
+// not the whole viff). Used for a scoped engine; ctx
 // bounds every subtree watcher, so cancelling it stops them all. Baseline engines use
 // Start instead. Actions still run on this engine's (scoped) store and spawner.
 func (e *Engine) ObserveScoped(ctx context.Context) {
@@ -387,7 +387,7 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 // watchTaskRecords opens the watch the completion path reads: the task records, at their own
 // length, wherever the engine runs (reapLoop).
 func (e *Engine) watchTaskRecords(ctx context.Context) {
-	at := mirror.Ref("").Segs() // verse.task.instance.<id>, without the id
+	at := mirror.Ref("").Segs() // mirror.task.instance.<id>, without the id
 	at = at[:len(at)-1]         // …and without the kind: a run record is taskish too
 	if ch, unsub, err := e.store.WatchSubtree(len(at)+2, at...); err == nil {
 		go e.reapLoop(ctx, ch, unsub)
@@ -681,9 +681,9 @@ func (e *Engine) patchRecord(chain string, parent int64, ref entity.Ref, patch e
 			"chain", chain, "ref", ref.String(), "err", err)
 		return err
 	}
-	// AND VERSE'S OWN HALF, for the same reason at the same moment (reservedWrite).
+	// AND VIFF'S OWN HALF, for the same reason at the same moment (reservedWrite).
 	if err := e.reservedWrite(chain, ref); err != nil {
-		e.logger.Warn("a charter write was refused: verse's half is not a rule's to write",
+		e.logger.Warn("a charter write was refused: viff's half is not a rule's to write",
 			"chain", chain, "ref", ref.String(), "err", err)
 		return err
 	}

@@ -6,7 +6,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // SendsField is where a package declares its OUTBOXES: places inside its own address that an io's
@@ -18,7 +18,7 @@ import (
 // a name an io might look for, so the existence of an io gives no package's values a meaning
 // their package did not declare.
 //
-//	at: verse-dev.announce
+//	at: viff-dev.announce
 //	sends:
 //	- from: out.slack                # inside this package's address
 //	  to: slack.Signadot.out         # an io's out place, as its registration names it
@@ -114,7 +114,7 @@ func sendOf(n *ir.Node, pkg Subtree) (Send, error) {
 	if err != nil {
 		return Send{}, fmt.Errorf("from %q: %w", from, err)
 	}
-	if strings.HasPrefix(from, entity.VerseRoot+".") {
+	if strings.HasPrefix(from, entity.ViffRoot+".") {
 		return Send{}, fmt.Errorf("from %q: an outbox is a place inside the package, written "+
 			"relative to its address (`out.slack`)", from)
 	}

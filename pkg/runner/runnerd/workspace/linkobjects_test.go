@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // A checkout's objects are the mirror's, linked: the same file, not a copy of it. That is what

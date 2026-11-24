@@ -5,7 +5,7 @@ define:
   iod: .[string]
   principal: .[string]
 signature:
-  name: verse-iod-account-config
+  name: viff-iod-account-config
 ---
 context:
 - tony-format/context
@@ -14,18 +14,18 @@ define:
   iod: .[string]
   principal: .[string]
 signature:
-  name: verse-iod-static-config
+  name: viff-iod-static-config
 ---
 context:
 - tony-format/context
 define:
-  accounts: .[object(verse-iod-account-config)]
+  accounts: .[object(viff-iod-account-config)]
   audience: .[string]
   ca: .[string]
   issuer: .[string]
-  static: .[array(verse-iod-static-config)]
+  static: .[array(viff-iod-static-config)]
 signature:
-  name: verse-iod-auth-config
+  name: viff-iod-auth-config
 ---
 context:
 - tony-format/context
@@ -33,7 +33,7 @@ define:
   key: .[string]
   url: .[string]
 signature:
-  name: verse-issuer-config
+  name: viff-issuer-config
 ---
 context:
 - tony-format/context
@@ -45,24 +45,24 @@ define:
   iods: .[array(string)]
   issuer: .[string]
 signature:
-  name: verse-auth-provider-config
+  name: viff-auth-provider-config
 ---
 context:
 - tony-format/context
 define:
   mode: .[string]
-  providers: .[object(verse-auth-provider-config)]
+  providers: .[object(viff-auth-provider-config)]
 signature:
-  name: verse-principal-auth-config
+  name: viff-principal-auth-config
 ---
 context:
 - tony-format/context
 define:
-  iod: !verse-iod-auth-config null
-  issuer: !verse-issuer-config null
-  principal: !verse-principal-auth-config null
+  iod: !viff-iod-auth-config null
+  issuer: !viff-issuer-config null
+  principal: !viff-principal-auth-config null
 signature:
-  name: verse-auth-config
+  name: viff-auth-config
 ---
 context:
 - tony-format/context
@@ -72,7 +72,7 @@ define:
   output: .[nullable(format:format)]
   wire: .[nullable(format:format)]
 signature:
-  name: verse-format
+  name: viff-format
 ---
 context:
 - tony-format/context
@@ -82,7 +82,7 @@ define:
   model: .[string]
   virtualKey: .[string]
 signature:
-  name: verse-llm
+  name: viff-llm
 ---
 context:
 - tony-format/context
@@ -90,7 +90,7 @@ define:
   admins: .[array(string)]
   child-grants: .[object(array(string))]
 signature:
-  name: verse-perms-config
+  name: viff-perms-config
 ---
 context:
 - tony-format/context
@@ -102,14 +102,14 @@ define:
   repo: .[string]
   tree: .[string]
 signature:
-  name: verse-repo-charter-config
+  name: viff-repo-charter-config
 ---
 context:
 - tony-format/context
 define:
   recent: .[int]
 signature:
-  name: verse-tui-tasks-config
+  name: viff-tui-tasks-config
 ---
 context:
 - tony-format/context
@@ -120,28 +120,28 @@ define:
   keys: .[object(array(string))]
   sections: .[array(string)]
   start: .[string]
-  tasks: !verse-tui-tasks-config null
+  tasks: !viff-tui-tasks-config null
 signature:
-  name: verse-tui-config
+  name: viff-tui-config
 ---
 context:
 - tony-format/context
 define:
   addr: .[string]
   agent: .[string]
-  auth: !verse-auth-config null
+  auth: !viff-auth-config null
   compactionCutoff: .[string]
   defaultAgent: .[string]
-  format: !verse-format null
-  llm: !verse-llm null
+  format: !viff-format null
+  llm: !viff-llm null
   localRunner: .[nullable(bool)]
-  perms: !verse-perms-config null
-  repoCharters: .[array(verse-repo-charter-config)]
+  perms: !viff-perms-config null
+  repoCharters: .[array(viff-repo-charter-config)]
   scope: .[string]
   shellEnv: .[array(string)]
   systemCharter: .[string]
   tripDuration: .[string]
-  tui: !verse-tui-config null
+  tui: !viff-tui-config null
   user: .[string]
 signature:
-  name: verse-config
+  name: viff-config

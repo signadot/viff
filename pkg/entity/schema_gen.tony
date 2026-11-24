@@ -5,7 +5,7 @@ context:
 define:
   Node: .[tony-base:ir]
 signature:
-  name: verse-state
+  name: viff-state
 ---
 context:
 - tony-format/context
@@ -14,7 +14,7 @@ define:
   at: .[string]
   payload: .[tony-base:ir]
 signature:
-  name: verse-entity
+  name: viff-entity
 ---
 context:
 - tony-format/context
@@ -26,14 +26,14 @@ define:
   rev: .[int]
   to: .[tony-base:ir]
 signature:
-  name: verse-event
+  name: viff-event
 ---
 context:
 - tony-format/context
 define:
   paths: .[array(string)]
 signature:
-  name: verse-paths
+  name: viff-paths
 ---
 context:
 - tony-format/context
@@ -44,4 +44,4 @@ define:
   path: .[array(tony-base:ir)]
   value: .[tony-base:ir]
 signature:
-  name: verse-pattern
+  name: viff-pattern

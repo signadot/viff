@@ -9,11 +9,11 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // gitEnv is an environment that checks out repos, fetching each.
@@ -59,14 +59,14 @@ func netEnv(mode string, hosts ...string) systems.Environment {
 	return systems.Environment{Systems: systems.Systems{"network": {b}}}
 }
 
-// offering is a handler that offers the verse agent (with a model, a conversation, the steps it
-// intercepts and the virtual-key annotation) and scripts, as verse-runner does.
+// offering is a handler that offers the viff agent (with a model, a conversation, the steps it
+// intercepts and the virtual-key annotation) and scripts, as viff-runner does.
 func offering(t *testing.T) *httptest.Server {
 	t.Helper()
 	d := NewInProcessHandler(fakeBuild)
 	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{
-		{Agent: &runner.AgentOffer{Name: "verse", Settings: map[string]runner.Setting{"model": {}},
-			Annotations: map[string]string{"verse.portkey/virtual-key": "string"}}, Converse: true,
+		{Agent: &runner.AgentOffer{Name: "viff", Settings: map[string]runner.Setting{"model": {}},
+			Annotations: map[string]string{"viff.portkey/virtual-key": "string"}}, Converse: true,
 			Systems: withNet(intercepted("files", "commands", "agent"))},
 		{Script: true, Systems: withNet(nil)},
 	}})
@@ -100,12 +100,12 @@ func withNet(sys map[string]runner.System) map[string]runner.System {
 	return out
 }
 
-// agentOffer is the verse agent's offer, holding sys and the network, taking a model.
+// agentOffer is the viff agent's offer, holding sys and the network, taking a model.
 func agentOffer(sys map[string]runner.System) runner.Offer {
-	return runner.Offer{Agent: &runner.AgentOffer{Name: "verse", Settings: map[string]runner.Setting{"model": {}}}, Systems: withNet(sys)}
+	return runner.Offer{Agent: &runner.AgentOffer{Name: "viff", Settings: map[string]runner.Setting{"model": {}}}, Systems: withNet(sys)}
 }
 
-// described is a description of the offers given, at this verse's version.
+// described is a description of the offers given, at this viff's version.
 func described(offers ...runner.Offer) runner.Description {
 	return runner.Description{Version: runner.DescriptionVersion, Offers: offers}
 }
@@ -144,9 +144,9 @@ func postLaunch(t *testing.T, url, body string) (int, string) {
 func TestALaunchItOffersRuns(t *testing.T) {
 	srv := offering(t)
 	for _, body := range []string{
-		`{id: a1, agent: {name: verse, model: m, annotations: {verse.portkey/virtual-key: k}}, environment: {vars: {BRANCH: main}}, prompt: go, autonomy: [{then: allow}], converse: true}`,
+		`{id: a1, agent: {name: viff, model: m, annotations: {viff.portkey/virtual-key: k}}, environment: {vars: {BRANCH: main}}, prompt: go, autonomy: [{then: allow}], converse: true}`,
 		`{id: s1, script: "echo hi"}`,
-		`{id: a2, agent: {name: verse}, prompt: go, environment: {systems: {files: {write: {}}, commands: {run: {}}, agent: {call-sub-agent: {}}}}, autonomy: [{name: m, match: {system: files, verb: write, path: !regexp "^db/"}, then: ask}, {name: c, match: {system: commands, verb: run, command: !regexp "^git push"}, then: deny}, {name: d, match: {system: agent, verb: call-sub-agent}, then: ask}, {then: allow}]}`,
+		`{id: a2, agent: {name: viff}, prompt: go, environment: {systems: {files: {write: {}}, commands: {run: {}}, agent: {call-sub-agent: {}}}}, autonomy: [{name: m, match: {system: files, verb: write, path: !regexp "^db/"}, then: ask}, {name: c, match: {system: commands, verb: run, command: !regexp "^git push"}, then: deny}, {name: d, match: {system: agent, verb: call-sub-agent}, then: ask}, {then: allow}]}`,
 	} {
 		if code, msg := postLaunch(t, srv.URL, body); code != http.StatusCreated {
 			t.Errorf("%s = %d %s, want 201", body, code, msg)
@@ -159,29 +159,29 @@ func TestALaunchItOffersRuns(t *testing.T) {
 func TestALaunchItCannotHonourIsRefused(t *testing.T) {
 	srv := offering(t)
 	for _, tc := range []struct{ body, says string }{
-		{`{prompt: go, driver: llm}`, "unknown field"},                           // the old launch
-		{`{id: x, agent: {name: verse}, prompt: go, frame: f}`, "unknown field"}, // a dropped field
-		{`{id: x, doer: {agent: verse}, prompt: go}`, "unknown field"},           // the doer, gone
-		{`{id: x, prompt: go, policy: [{then: allow}]}`, "unknown field"},        // the policy, now autonomy
-		{`{agent: {name: verse}, prompt: go}`, "id"},
+		{`{prompt: go, driver: llm}`, "unknown field"},                          // the old launch
+		{`{id: x, agent: {name: viff}, prompt: go, frame: f}`, "unknown field"}, // a dropped field
+		{`{id: x, doer: {agent: viff}, prompt: go}`, "unknown field"},           // the doer, gone
+		{`{id: x, prompt: go, policy: [{then: allow}]}`, "unknown field"},       // the policy, now autonomy
+		{`{agent: {name: viff}, prompt: go}`, "id"},
 		{`{id: x, script: "echo", prompt: go}`, "exclude"},
-		{`{id: x, agent: {name: verse}, script: "echo"}`, "a script takes no `agent`"},
-		{`{id: x, agent: {name: verse, model: m}, script: "echo"}`, "a script takes no `agent`"},
+		{`{id: x, agent: {name: viff}, script: "echo"}`, "a script takes no `agent`"},
+		{`{id: x, agent: {name: viff, model: m}, script: "echo"}`, "a script takes no `agent`"},
 		{`{id: x, person: "user:ana@example.com", prompt: go}`, "no runner takes a person yet"},
-		{`{id: x, agent: {name: verse}}`, "prompt"},
+		{`{id: x, agent: {name: viff}}`, "prompt"},
 		{`{id: x, agent: {name: claude}, prompt: go}`, "no agent \"claude\""},
-		{`{id: x, prompt: go}`, "names its agent"}, // verse binds its default agent; a runner keeps none
-		{`{id: x, agent: {name: verse, effort: high}, prompt: go}`, "effort"},
-		{`{id: x, agent: {name: verse, annotations: {other: v}}, prompt: go}`, "other"},
+		{`{id: x, prompt: go}`, "names its agent"}, // viff binds its default agent; a runner keeps none
+		{`{id: x, agent: {name: viff, effort: high}, prompt: go}`, "effort"},
+		{`{id: x, agent: {name: viff, annotations: {other: v}}, prompt: go}`, "other"},
 		{`{id: x, script: "echo", converse: true}`, "conversation"},
 		{`{id: x, script: "echo", autonomy: [{then: sometimes}]}`, "not one of deny, ask, allow"},
 		{`{id: x, script: "echo", environment: {vars: {PATH: /x}}}`, "PATH"},
-		{`{id: x, script: "echo", environment: {vars: {VERSE_CREDENTIAL_FILE: /x}}}`, "VERSE_CREDENTIAL_FILE"},
+		{`{id: x, script: "echo", environment: {vars: {VIFF_CREDENTIAL_FILE: /x}}}`, "VIFF_CREDENTIAL_FILE"},
 		{`{id: x, script: "echo", environment: {vars: {"1X": v}}}`, "a variable's name"},
 		{`{id: x, script: "echo", environment: {systems: {pager: {page: {}}}}}`, "not a system"},
 		{`{id: x, script: "echo", timeout: soon}`, "not a duration"},
 		{`{id: x, script: "echo", timeout: "-1h"}`, "not a duration"},
-		{`{id: x, agent: {name: verse}, prompt: go, autonomy: [{name: w, match: {system: files, verb: write, repo: a/b}, then: ask}, {then: ask}]}`, "match.repo: not a field"},
+		{`{id: x, agent: {name: viff}, prompt: go, autonomy: [{name: w, match: {system: files, verb: write, repo: a/b}, then: ask}, {then: ask}]}`, "match.repo: not a field"},
 		{`{id: x, script: "echo", environment: {systems: {git: {repo: a/b, fetch: {}}}}}`, "holds no `git`"},
 		// A row matching nothing the environment gives never decides, and is refused where it is
 		// written; a system the environment gives that the offer does not hold is refused too.
@@ -247,7 +247,7 @@ func TestARunnersOwnVariablesAreRefused(t *testing.T) {
 	defer srv.Close()
 	for body, want := range map[string]int{
 		`{id: a, script: "echo", environment: {vars: {FOO: x}}}`:                                   http.StatusBadRequest,
-		`{id: b, script: "echo", environment: {vars: {VERSE_CREDENTIAL_FILE: x}}}`:                 http.StatusBadRequest,
+		`{id: b, script: "echo", environment: {vars: {VIFF_CREDENTIAL_FILE: x}}}`:                  http.StatusBadRequest,
 		`{id: c, script: "echo", environment: {vars: {BAR: x}, systems: {network: {mode: open}}}}`: http.StatusCreated,
 	} {
 		if code, msg := postLaunch(t, srv.URL, body); code != want {
@@ -258,7 +258,7 @@ func TestARunnersOwnVariablesAreRefused(t *testing.T) {
 
 // A launch's repo is on a forge the runner's ceiling lists.
 func TestARepoIsOnAForgeTheRunnerServes(t *testing.T) {
-	desc := runner.Description{Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
+	desc := runner.Description{Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "viff"},
 		Systems: map[string]runner.System{"git": {Ceiling: ceiling(t, `{repo: !or [!regexp "^github\\.com/", !regexp "^git\\.example\\.com/"], fetch: {}}`)}}}}}
 	for _, c := range []struct {
 		repo runner.Repo
@@ -268,7 +268,7 @@ func TestARepoIsOnAForgeTheRunnerServes(t *testing.T) {
 		{runner.Repo{Repo: "git.example.com/acme/app"}, ""},
 		{runner.Repo{Repo: "gitlab.com/acme/app"}, "environment.systems.git: beyond this runner's ceiling for git: repo gitlab.com/acme/app is beyond !or [!regexp ^github\\.com/, !regexp ^git\\.example\\.com/]"},
 	} {
-		l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: gitEnv(c.repo.Repo)}
+		l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "viff"}, Environment: gitEnv(c.repo.Repo)}
 		err := CheckLaunch(l, desc, nil)
 		switch {
 		case c.says == "" && err != nil:
@@ -283,7 +283,7 @@ func TestARepoIsOnAForgeTheRunnerServes(t *testing.T) {
 // binding still to come, so a branch named `$x` is no way past a ceiling of `main`, and a repo of
 // `$a/../..` none past the name check and an owner's ceiling.
 func TestAValueAFiringBoundIsHeldAsWritten(t *testing.T) {
-	desc := runner.Description{Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
+	desc := runner.Description{Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "viff"},
 		Systems: map[string]runner.System{"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", from: main, fetch: {}}`)}}}}}
 	spec := launch.Spec{Prompt: "p", Environment: systems.Environment{Systems: systems.Systems{"git": {{
 		Attributes: map[string]string{"repo": "$[repo]", "from": "$[head]"}, Verbs: map[string][]systems.Shape{"fetch": {{}}}}}}}}
@@ -300,7 +300,7 @@ func TestAValueAFiringBoundIsHeldAsWritten(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%v: %v", c.b, err)
 		}
-		l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: bound.Environment}
+		l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "viff"}, Environment: bound.Environment}
 		err = CheckLaunch(l, desc, nil)
 		switch {
 		case c.says == "" && err != nil:
@@ -347,7 +347,7 @@ func TestALaunchsEnvironmentIsWithinTheRunnersCeilings(t *testing.T) {
 			"git": {Ceiling: ceiling(t, `
 - repo: !regexp "^github\\.com/acme/"
   fetch: {}
-  push: [{ref: !regexp "^refs/heads/verse/"}, {ref: !glob "refs/heads/release/*", force: false}]
+  push: [{ref: !regexp "^refs/heads/viff/"}, {ref: !glob "refs/heads/release/*", force: false}]
 - repo: github.com/acme/site
   fetch: {}`)},
 			"github":   {Ceiling: systems.Open()},
@@ -370,13 +370,13 @@ func TestALaunchsEnvironmentIsWithinTheRunnersCeilings(t *testing.T) {
 		env  systems.Environment
 		says string // "" = accepted
 	}{
-		{"a push within", env(`{repo: acme/app, fetch: {}, push: {ref: !glob "refs/heads/verse/auto/*"}}`), ""},
+		{"a push within", env(`{repo: acme/app, fetch: {}, push: {ref: !glob "refs/heads/viff/auto/*"}}`), ""},
 		{"a release push that keeps force out", env(`{repo: acme/app, push: {ref: "refs/heads/release/1.0", force: false}}`), ""},
 		{"a second block of the ceiling", env(`{repo: acme/site, fetch: {}}`), ""},
 		{"a repository outside", env(`{repo: other/app, fetch: {}}`),
 			"environment.systems.git: beyond this runner's ceiling for git: [0]: repo github.com/other/app is beyond !regexp ^github\\.com/acme/"},
 		{"a push wider than any shape", env(`{repo: acme/app, push: {ref: !regexp "^refs/heads/"}}`), "push {ref: !regexp ^refs/heads/} is within no shape of its"},
-		{"a bare push under a ceiling naming ref", env(`{repo: acme/app, push: {}}`), "push {} is within no shape of its: {ref: !regexp ^refs/heads/verse/}"},
+		{"a bare push under a ceiling naming ref", env(`{repo: acme/app, push: {}}`), "push {} is within no shape of its: {ref: !regexp ^refs/heads/viff/}"},
 		{"a release push leaving force open", env(`{repo: acme/app, push: {ref: "refs/heads/release/1.0"}}`), "within no shape"},
 		{"a verb the block does not give", env(`{repo: acme/site, push: {ref: refs/heads/main}}`), "[1]: it gives no `push` (it gives: fetch)"},
 		{"an open ceiling", env(`{repo: acme/app, fetch: {}}`, `, github: {repo: acme/app, create-pr: {}}`), ""},
@@ -393,14 +393,14 @@ func TestALaunchsEnvironmentIsWithinTheRunnersCeilings(t *testing.T) {
 		}
 	}
 	// The slide is held to the environment the launch had, which is within the ceilings.
-	running := launch(env(`{repo: acme/app, push: {ref: !regexp "^refs/heads/verse/"}}`))
+	running := launch(env(`{repo: acme/app, push: {ref: !regexp "^refs/heads/viff/"}}`))
 	push := func(ref *ir.Node) task.Row {
 		return task.Row{Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": ref}}, Then: task.Then{Mode: task.ThenAllow}}
 	}
 	if err := CheckAutonomy(task.Autonomy{push(ir.FromString("refs/heads/release/2.0")), {Then: ask}}, running); err == nil || !strings.Contains(err.Error(), "matches nothing the environment gives") {
 		t.Errorf("a slide reaching past the environment: %v", err)
 	}
-	if err := CheckAutonomy(task.Autonomy{push(systems.Glob("refs/heads/verse/auto/*")), {Then: ask}}, running); err != nil {
+	if err := CheckAutonomy(task.Autonomy{push(systems.Glob("refs/heads/viff/auto/*")), {Then: ask}}, running); err != nil {
 		t.Errorf("a slide within the environment: %v", err)
 	}
 }
@@ -500,7 +500,7 @@ func TestAnAgentsSettingsAreTheOffers(t *testing.T) {
 		"model":       {Values: []string{"claude-*"}, Default: true},
 		"temperature": {Form: runner.FormNumber},
 	}
-	o.Agent.Annotations = map[string]string{"verse.portkey/virtual-key": "string"}
+	o.Agent.Annotations = map[string]string{"viff.portkey/virtual-key": "string"}
 	desc := described(o)
 	for _, c := range []struct {
 		settings, annotations map[string]string
@@ -509,13 +509,13 @@ func TestAnAgentsSettingsAreTheOffers(t *testing.T) {
 		{map[string]string{"model": "claude-sonnet-5", "temperature": "0.2"}, nil, ""},
 		{nil, nil, ""},
 		{map[string]string{"model": "$[subject.model]"}, nil, `"$[subject.model]" is none of claude-*`},
-		{map[string]string{"effort": "high"}, nil, "agent.effort: verse on this runner takes no `effort` (it takes: model, temperature)"},
-		{map[string]string{"model": "gpt-5"}, nil, `agent.model: verse on this runner takes no such model: "gpt-5" is none of claude-*`},
+		{map[string]string{"effort": "high"}, nil, "agent.effort: viff on this runner takes no `effort` (it takes: model, temperature)"},
+		{map[string]string{"model": "gpt-5"}, nil, `agent.model: viff on this runner takes no such model: "gpt-5" is none of claude-*`},
 		{map[string]string{"temperature": "warm"}, nil, `"warm" is not a number`},
-		{nil, map[string]string{"verse.portkey/virtual-key": "k"}, ""},
+		{nil, map[string]string{"viff.portkey/virtual-key": "k"}, ""},
 		{nil, map[string]string{"other": "x"}, `takes no "other"`},
 	} {
-		l := &runner.Launch{ID: "x", Prompt: "go", Agent: &runner.Agent{Name: "verse", Settings: c.settings, Annotations: c.annotations},
+		l := &runner.Launch{ID: "x", Prompt: "go", Agent: &runner.Agent{Name: "viff", Settings: c.settings, Annotations: c.annotations},
 			Environment: netEnv(runner.NetworkOpen)}
 		err := CheckOffer(l, desc)
 		switch {

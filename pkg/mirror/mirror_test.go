@@ -3,15 +3,15 @@ package mirror
 import (
 	"context"
 	"fmt"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // steps drives a fixed number of trivial actions, then completes.
@@ -52,7 +52,7 @@ func (s *sayer) Next(_ context.Context, _ task.StepResult) (task.ToolUse, bool, 
 
 func (s *sayer) Result() string { return s.result }
 
-// A task's output is durable in the verse: its narration, last tool output, and
+// A task's output is durable in the viff: its narration, last tool output, and
 // full final answer land on the task:instance entity, readable after the run.
 func TestReflectProjectsOutput(t *testing.T) {
 	store := entitytest.Store(t)
@@ -87,7 +87,7 @@ func TestReflectProjectsOutput(t *testing.T) {
 	}
 }
 
-// A running task shows up in the verse as a task:instance:<id> entity that
+// A running task shows up in the viff as a task:instance:<id> entity that
 // progresses to a terminal status — so another observer sees its lifecycle purely
 // by watching entities.
 func TestReflectProjectsTaskState(t *testing.T) {
@@ -123,7 +123,7 @@ func TestReflectProjectsTaskState(t *testing.T) {
 		}
 	}
 	if !sawRunning {
-		t.Fatal("never saw the task appear as running in the verse")
+		t.Fatal("never saw the task appear as running in the viff")
 	}
 
 	// the terminal entity remains, queryable, marked completed
@@ -161,7 +161,7 @@ func TestReflectPublishesChainAndTrigger(t *testing.T) {
 	}
 }
 
-// A task with no trigger behind it (`verse task run`) carries no chain, and must not
+// A task with no trigger behind it (`viff task run`) carries no chain, and must not
 // be given an empty one — an empty `trigger` field would match a predicate looking for it.
 func TestReflectOmitsChainWhenAbsent(t *testing.T) {
 	store := entitytest.Store(t)
@@ -298,7 +298,7 @@ func TestReflectOmitsAnUndeclaredEnvelope(t *testing.T) {
 
 // A task record carries WHEN, at both ends and nowhere in between.
 //
-// `verse ps` could say what a task is and where it ran and not when it happened, which is the
+// `viff ps` could say what a task is and where it ran and not when it happened, which is the
 // question asked most often about one that is over. Two instants, stamped once each — `started`
 // when the record appears, `ended` when it reaches a terminal status — because stamping every
 // update would make the entity change whenever a task narrates, waking every trigger watching
@@ -421,8 +421,8 @@ func recordOf(t *testing.T, store entity.Store, id string, ok func(map[string]an
 // what ran. A script's record says it is one, and has no agent.
 func TestTheRecordSaysWhoRanTheTask(t *testing.T) {
 	store := entitytest.Store(t)
-	h := &agentHandle{fakeHandle: fakeHandle{ch: make(chan task.Event, 2)}, name: "verse", settings: map[string]string{"model": "claude-sonnet-5"}}
-	asked := &runner.Agent{Settings: map[string]string{"effort": "high"}, Annotations: map[string]string{"verse.portkey/virtual-key": "vk"}}
+	h := &agentHandle{fakeHandle: fakeHandle{ch: make(chan task.Event, 2)}, name: "viff", settings: map[string]string{"model": "claude-sonnet-5"}}
+	asked := &runner.Agent{Settings: map[string]string{"effort": "high"}, Annotations: map[string]string{"viff.portkey/virtual-key": "vk"}}
 	go Reflect(store, "a1", h, Meta{Runner: "local", Agent: asked})
 	first := recordOf(t, store, "a1", func(f map[string]any) bool { return f["agent"] != nil })
 	agent, _ := first["agent"].(map[string]any)
@@ -435,7 +435,7 @@ func TestTheRecordSaysWhoRanTheTask(t *testing.T) {
 	h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Running)}
 	recordOf(t, store, "a1", func(f map[string]any) bool {
 		a, _ := f["agent"].(map[string]any)
-		return a["name"] == "verse" && a["model"] == "claude-sonnet-5" && a["effort"] == nil
+		return a["name"] == "viff" && a["model"] == "claude-sonnet-5" && a["effort"] == nil
 	})
 
 	script := &agentHandle{fakeHandle: fakeHandle{ch: make(chan task.Event, 2)}}

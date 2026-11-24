@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // Tree is a directory of a repository that an OPEN pull request reports when it changes it, as
@@ -25,7 +25,7 @@ import (
 // held for it. The merge base of a head stays where it is as the base moves on, so it is read
 // once per head.
 //
-// A DIRECTORY THAT IS NOT THERE IS THE EMPTY TREE (verseio.EmptyTree), at the head or at the
+// A DIRECTORY THAT IS NOT THERE IS THE EMPTY TREE (viffio.EmptyTree), at the head or at the
 // merge base, as the git io reflects it: a pull request that removes the directory changes it to
 // the empty tree, and one that adds it changes it from there. Where it is at neither, nothing
 // changes. So every open head costs the compare, whether or not it has the directory.
@@ -137,7 +137,7 @@ func (g *GitHub) headTrees(ctx context.Context, repo, sha string) (map[string]st
 			at = next
 		}
 		if !found {
-			at = verseio.EmptyTree
+			at = viffio.EmptyTree
 		}
 		out[t.Name] = at
 	}

@@ -6,33 +6,33 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// Opening an engine, and settling what the last verse left it.
+// Opening an engine, and settling what the last viff left it.
 //
 // AN ENGINE FIRES NOTHING AND TAKES NO TASK'S END UNTIL IT IS OPEN. It opens once its charter is
-// restored, the tasks the last verse left it have been handed over, and the claims that verse
+// restored, the tasks the last viff left it have been handed over, and the claims that viff
 // left it are settled. Until then its rules stand pending and its tasks stand live, whatever
 // their records say. So while it settles, nothing else of the engine runs: every claim it finds
-// under its owner prefix is the last verse's, a task that is live is one that verse left
+// under its owner prefix is the last viff's, a task that is live is one that viff left
 // running, and a rule is in the charter or it is not.
 //
-// A CLAIM MEANS VERSE OWES SOMETHING: a hook to run when a task ends, or a sequence to carry on.
-// While verse runs, the debt is paid when the task's record ends (reap). A claim the last verse
+// A CLAIM MEANS VIFF OWES SOMETHING: a hook to run when a task ends, or a sequence to carry on.
+// While viff runs, the debt is paid when the task's record ends (reap). A claim the last viff
 // left with no task behind it — it ended between a task's end and what was owed for it, or the
 // task ended with it — is paid here.
 //
 // It is paid by ending the task again, from its record, through the path a live task's end
 // takes (applyHook): the rule's hook runs, a sequence advances or stops, and the claim is
-// released. So a hook may run a second time, where verse ended after it ran and before the
+// released. So a hook may run a second time, where viff ended after it ran and before the
 // claim came off. A sequence's element is not started a second time by a second end of the
 // element before it, since an end advances a run only while `step` has not passed its element
 // (resumeSeq).
 
-// AwaitTasks says the engine's host will hand it the tasks the last verse left (AdoptChain,
+// AwaitTasks says the engine's host will hand it the tasks the last viff left (AdoptChain,
 // Adopt) and say when they are in (TasksIn): the engine does not open before. Called ahead of
 // ObserveScoped, and ahead of anything that could hand the engine a task; asked again, it changes
 // nothing. An engine whose host says nothing is handed none.
@@ -52,7 +52,7 @@ func (e *Engine) sayStarted() {
 	}
 }
 
-// TasksIn says the tasks the last verse left this engine are all in.
+// TasksIn says the tasks the last viff left this engine are all in.
 func (e *Engine) TasksIn() {
 	if e.tasksIn != nil {
 		e.tasksInOnce.Do(func() { close(e.tasksIn) })
@@ -96,7 +96,7 @@ func (e *Engine) awaitOpen() bool {
 }
 
 // open opens the engine: after its charter and its tasks are in, it settles the claims the last
-// verse left, and then lets the rules arm and the ends be taken.
+// viff left, and then lets the rules arm and the ends be taken.
 func (e *Engine) open(ctx context.Context) {
 	for _, in := range []<-chan struct{}{e.Restored(), e.tasksIn} {
 		if in == nil {
@@ -127,17 +127,17 @@ func (e *Engine) open(ctx context.Context) {
 // settleLeft settles every claim standing under this engine's owner prefix, spawn claims and
 // then the run claims that still stand, since an element's own claim settles its run. A claim
 // left unsettled because the store did not answer for it, or for what says how to pay it, holds
-// its subject for as long as this verse runs. So the claims are listed and settled again until
+// its subject for as long as this viff runs. So the claims are listed and settled again until
 // the store has answered for each, for as long as the engine runs, and the engine stays shut
 // meanwhile. A read the store refused is not asked again (unsettled).
 func (e *Engine) settleLeft(ctx context.Context) bool {
 	for wait := 250 * time.Millisecond; ; wait = min(2*wait, 8*time.Second) {
 		claims, err := entity.BelowErr(e.store, func(r entity.Ref) bool {
-			return r.ChildOf(entity.VerseRoot, mirror.System, mirror.ClaimKind)
-		}, 1, entity.VerseRoot, mirror.System, mirror.ClaimKind)
+			return r.ChildOf(entity.ViffRoot, mirror.System, mirror.ClaimKind)
+		}, 1, entity.ViffRoot, mirror.System, mirror.ClaimKind)
 		e.settleUnread = false
 		if err != nil {
-			e.logger.Warn("the claims the last verse left could not be listed", "err", err)
+			e.logger.Warn("the claims the last viff left could not be listed", "err", err)
 			e.settleUnread = true
 		}
 		for _, spawns := range []bool{true, false} {
@@ -156,7 +156,7 @@ func (e *Engine) settleLeft(ctx context.Context) bool {
 		if !e.settleUnread {
 			return true
 		}
-		e.logger.Warn("the claims the last verse left could not all be read; the engine stays shut and asks again")
+		e.logger.Warn("the claims the last viff left could not all be read; the engine stays shut and asks again")
 		select {
 		case <-ctx.Done():
 			return false
@@ -176,9 +176,9 @@ func (e *Engine) unsettled(err error) {
 
 // errRestarted is why a run stops at an element that spawns nothing: it reads the facts of the
 // task before it, or of the firing, and a restart has neither to hand.
-var errRestarted = errors.New("verse restarted before this element ran")
+var errRestarted = errors.New("viff restarted before this element ran")
 
-// settleClaim pays what one claim the last verse left is owed, and reports whether there was
+// settleClaim pays what one claim the last viff left is owed, and reports whether there was
 // anything to pay. The claim is one this engine's rules took: its id carries the engine's owner
 // prefix (Owner).
 //
@@ -195,7 +195,7 @@ var errRestarted = errors.New("verse restarted before this element ran")
 //
 // THE RECORD IS THE CLAIM'S OWN TASK'S only where its `occurrence` is no earlier than the
 // claim's: a task's id is the same from one run to the next, so the record found at it may be
-// of the run before, where verse ended between taking the claim and starting the task.
+// of the run before, where viff ended between taking the claim and starting the task.
 //
 // A claim whose rule is in the charter and not armed is settled as any other: its task ran. One
 // whose rule is not in the charter is released, and nothing runs.

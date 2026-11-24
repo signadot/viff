@@ -44,7 +44,7 @@ func TestDescentIsRefusedByName(t *testing.T) {
 }
 
 // A QUOTED `..` is a name, not a descent — the same escape that makes `demo.pr."a.b"` an id
-// holding a dot. Nothing in verse writes an entity called `..`, but the grammar has one way to
+// holding a dot. Nothing in viff writes an entity called `..`, but the grammar has one way to
 // spell a segment literally and it holds here too, which is why this is pinned rather than
 // refused alongside the case above.
 func TestQuotedDotsAreAnOrdinaryName(t *testing.T) {

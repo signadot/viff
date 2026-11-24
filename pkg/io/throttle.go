@@ -5,19 +5,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // Throttle wraps a Source so a pass repeated inside `every` answers with the last SUCCESSFUL
 // reflection instead of asking the external system again. Zero or less returns src unwrapped.
 //
-// It exists because verse's resync interval is a constant (versed.ResyncEvery) and an API
+// It exists because viff's resync interval is a constant (viffd.ResyncEvery) and an API
 // budget is not. A git repo on local disk does not care how often it is read; a Linear
 // workspace answers a paged GraphQL query against an hourly complexity budget, and a Slack
 // workspace against a per-method minute. Where that budget lives is the deciding argument:
 // it belongs to the credential, and the credential is in the source — so the source is what
 // gets to say how often it will really answer, the same way it is what holds its own webhook
-// secret. Making verse's interval per-registration would move the knowledge to the side that
+// secret. Making viff's interval per-registration would move the knowledge to the side that
 // does not have it.
 //
 // WHAT IT COSTS is a hint's latency, and only in a burst. A hint that arrives inside the

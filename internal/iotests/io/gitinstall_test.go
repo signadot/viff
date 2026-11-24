@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // treeSha is the tree object of a path at a rev.
@@ -33,37 +33,37 @@ rules:
     patch: {seen: true}
 `
 
-// An install input installs a tree of charters out of the repository into the verse at an
+// An install input installs a tree of charters out of the repository into the viff at an
 // address, as this io: archived from the tree object, every charter file in it in one request
 // that prunes the address, recorded for the commit it was installed for, and done once per
 // commit. A tree the repository lacks or a file that is not a charter is refused for good; the
-// verse's own refusal of a charter is too.
+// viff's own refusal of a charter is too.
 func TestTheGitOutHalfInstallsATreeOfCharters(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
 	dir := t.TempDir()
 	initRepo(t, dir)
-	if err := os.MkdirAll(filepath.Join(dir, ".verse", "charters"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".viff", "charters"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	one := commit(t, dir, ".verse/charters/hello.tony", helloCharter, "hello")
-	treeA := treeSha(t, dir, "main", ".verse/charters")
-	if err := os.WriteFile(filepath.Join(dir, ".verse", "charters", "README.md"), []byte("not a charter\n"), 0o644); err != nil {
+	one := commit(t, dir, ".viff/charters/hello.tony", helloCharter, "hello")
+	treeA := treeSha(t, dir, "main", ".viff/charters")
+	if err := os.WriteFile(filepath.Join(dir, ".viff", "charters", "README.md"), []byte("not a charter\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	gitRun(t, dir, "add", ".verse/charters/README.md")
+	gitRun(t, dir, "add", ".viff/charters/README.md")
 	two := commit(t, dir, "unrelated", "x", "readme beside the charters")
-	treeB := treeSha(t, dir, "main", ".verse/charters")
-	broken := commit(t, dir, ".verse/charters/broken.tony", "at: [not: a: charter\n", "broken")
-	treeC := treeSha(t, dir, "main", ".verse/charters")
+	treeB := treeSha(t, dir, "main", ".viff/charters")
+	broken := commit(t, dir, ".viff/charters/broken.tony", "at: [not: a: charter\n", "broken")
+	treeC := treeSha(t, dir, "main", ".viff/charters")
 
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("r", dir)
 	r := newGitOutRig(t, g, "r")
 
 	installed := func() int {
-		resp, err := r.verse.Get("/charter", url.Values{"at": {"repos.r.hello"}})
+		resp, err := r.viff.Get("/charter", url.Values{"at": {"repos.r.hello"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -99,7 +99,7 @@ func TestTheGitOutHalfInstallsATreeOfCharters(t *testing.T) {
 	// A file that does not parse is refused for good, naming it; the charter that stood stands.
 	r.ask(t, "install", entity.Obj{"to": "install.repos.r", "tree": treeC, "sha": broken})
 	r.pass(t)
-	if st := r.status(t, "install"); st["failed"] != verseio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "broken.tony") ||
+	if st := r.status(t, "install"); st["failed"] != viffio.PermanentFailure || !strings.Contains(fmt.Sprint(st["error"]), "broken.tony") ||
 		st["tree"] != treeC || st["sha"] != broken || st["address"] != "repos.r" {
 		t.Fatalf("a broken file: status %v, want a permanent refusal naming it, with the tree and commit refused", st)
 	}
@@ -116,7 +116,7 @@ func TestTheGitOutHalfInstallsATreeOfCharters(t *testing.T) {
 	}
 	r.pass(t)
 	for _, name := range []string{"notree", "nothing", "noaddr"} {
-		if st := r.status(t, name); st["failed"] != verseio.PermanentFailure {
+		if st := r.status(t, name); st["failed"] != viffio.PermanentFailure {
 			t.Errorf("%s: status %v, want a permanent refusal", name, st)
 		}
 	}
@@ -125,7 +125,7 @@ func TestTheGitOutHalfInstallsATreeOfCharters(t *testing.T) {
 	}
 	// THE EMPTY TREE is the charters directory gone: checked, it installs and prunes what stands;
 	// installed, it takes every charter at the address down.
-	r.ask(t, "check", entity.Obj{"to": "check.repos.r", "tree": verseio.EmptyTree})
+	r.ask(t, "check", entity.Obj{"to": "check.repos.r", "tree": viffio.EmptyTree})
 	r.pass(t)
 	if st := r.status(t, "check"); st["verdict"] != "installs" || !strings.Contains(fmt.Sprint(st["pruned"]), "repos.r.hello") {
 		t.Fatalf("the empty tree's check = %v, want it to install and prune repos.r.hello", st)
@@ -133,9 +133,9 @@ func TestTheGitOutHalfInstallsATreeOfCharters(t *testing.T) {
 	if installed() != http.StatusOK {
 		t.Fatal("checking the empty tree took the charter down")
 	}
-	r.ask(t, "install", entity.Obj{"to": "install.repos.r", "tree": verseio.EmptyTree, "sha": two})
+	r.ask(t, "install", entity.Obj{"to": "install.repos.r", "tree": viffio.EmptyTree, "sha": two})
 	r.pass(t)
-	if st := r.status(t, "install"); st["tree"] != verseio.EmptyTree || fmt.Sprint(st["charters"]) != "0" || st["error"] != nil {
+	if st := r.status(t, "install"); st["tree"] != viffio.EmptyTree || fmt.Sprint(st["charters"]) != "0" || st["error"] != nil {
 		t.Fatalf("status after installing the empty tree = %v", st)
 	}
 	if installed() == http.StatusOK {
@@ -143,7 +143,7 @@ func TestTheGitOutHalfInstallsATreeOfCharters(t *testing.T) {
 	}
 }
 
-// A check input asks the verse what an install of the tree would do and installs nothing: a tree
+// A check input asks the viff what an install of the tree would do and installs nothing: a tree
 // that would install says so with what it adds; a file in the tree that does not parse is a
 // verdict of `refused`, not a failed input; a tree checked already costs nothing; and the check
 // and the install stay two inputs.
@@ -153,19 +153,19 @@ func TestTheGitOutHalfChecksATreeOfCharters(t *testing.T) {
 	}
 	dir := t.TempDir()
 	initRepo(t, dir)
-	if err := os.MkdirAll(filepath.Join(dir, ".verse", "charters"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".viff", "charters"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	commit(t, dir, ".verse/charters/hello.tony", helloCharter, "hello")
-	treeA := treeSha(t, dir, "main", ".verse/charters")
-	commit(t, dir, ".verse/charters/broken.tony", "at: [not: a: charter\n", "broken")
-	treeB := treeSha(t, dir, "main", ".verse/charters")
+	commit(t, dir, ".viff/charters/hello.tony", helloCharter, "hello")
+	treeA := treeSha(t, dir, "main", ".viff/charters")
+	commit(t, dir, ".viff/charters/broken.tony", "at: [not: a: charter\n", "broken")
+	treeB := treeSha(t, dir, "main", ".viff/charters")
 
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("r", dir)
 	r := newGitOutRig(t, g, "r")
 	installed := func() int {
-		resp, err := r.verse.Get("/charter", url.Values{"at": {"repos.r.hello"}})
+		resp, err := r.viff.Get("/charter", url.Values{"at": {"repos.r.hello"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -199,7 +199,7 @@ func TestTheGitOutHalfChecksATreeOfCharters(t *testing.T) {
 	// about before this io has fetched the branch that carries it, so it is asked again.
 	r.ask(t, "missing", entity.Obj{"to": "check.repos.r", "tree": "0123456789abcdef0123456789abcdef01234567"})
 	r.pass(t)
-	if st := r.status(t, "missing"); st["failed"] == verseio.PermanentFailure || st["verdict"] != nil || st["error"] == nil {
+	if st := r.status(t, "missing"); st["failed"] == viffio.PermanentFailure || st["verdict"] != nil || st["error"] == nil {
 		t.Fatalf("a missing tree: status %v, want an error asked again, not a refusal for good", st)
 	}
 }
@@ -223,17 +223,17 @@ func TestTheGitOutHalfChecksARefAgainstWhatRunsEachRound(t *testing.T) {
 	}
 	dir := t.TempDir()
 	initRepo(t, dir)
-	if err := os.MkdirAll(filepath.Join(dir, ".verse", "charters"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".viff", "charters"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	one := commit(t, dir, ".verse/charters/hello.tony", helloCharter, "hello")
-	treeA := treeSha(t, dir, "main", ".verse/charters")
-	gitRun(t, dir, "branch", "verse/live", one)
-	two := commit(t, dir, ".verse/charters/other.tony", otherCharter, "other")
+	one := commit(t, dir, ".viff/charters/hello.tony", helloCharter, "hello")
+	treeA := treeSha(t, dir, "main", ".viff/charters")
+	gitRun(t, dir, "branch", "viff/live", one)
+	two := commit(t, dir, ".viff/charters/other.tony", otherCharter, "other")
 
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("r", dir)
-	if err := g.AddTree(".verse/charters"); err != nil {
+	if err := g.AddTree(".viff/charters"); err != nil {
 		t.Fatal(err)
 	}
 	r := newGitOutRig(t, g, "r")
@@ -242,23 +242,23 @@ func TestTheGitOutHalfChecksARefAgainstWhatRunsEachRound(t *testing.T) {
 
 	check := func(round string) entity.Obj {
 		t.Helper()
-		r.ask(t, "live", entity.Obj{"to": "check.repos.r", "ref": "verse/live", "round": round})
+		r.ask(t, "live", entity.Obj{"to": "check.repos.r", "ref": "viff/live", "round": round})
 		r.pass(t)
 		return r.status(t, "live")
 	}
 	st := check("1")
 	if st["verdict"] != "installs" || fmt.Sprint(st["changes"]) != "0" || fmt.Sprint(st["differingFor"]) != "0" ||
-		st["sha"] != one || st["tree"] != treeA || st["ref"] != "verse/live" || st["round"] != "1" {
-		t.Fatalf("verse/live in step with what runs: status %v", st)
+		st["sha"] != one || st["tree"] != treeA || st["ref"] != "viff/live" || st["round"] != "1" {
+		t.Fatalf("viff/live in step with what runs: status %v", st)
 	}
 	before := st["checkedAt"]
 	r.pass(t)
 	if st := r.status(t, "live"); st["checkedAt"] != before {
 		t.Errorf("a round checked already was checked again: %v", st)
 	}
-	gitRun(t, dir, "branch", "-f", "verse/live", two)
+	gitRun(t, dir, "branch", "-f", "viff/live", two)
 	if st := check("2"); fmt.Sprint(st["changes"]) != "1" || fmt.Sprint(st["differingFor"]) != "1" || st["sha"] != two {
-		t.Fatalf("verse/live moved to charters that do not run: status %v", st)
+		t.Fatalf("viff/live moved to charters that do not run: status %v", st)
 	}
 	if st := check("3"); fmt.Sprint(st["differingFor"]) != "2" {
 		t.Fatalf("a second round differing at the same commit: status %v", st)
@@ -266,10 +266,10 @@ func TestTheGitOutHalfChecksARefAgainstWhatRunsEachRound(t *testing.T) {
 	// Back in step: the status says so WHOLE. A status is a patch, and a round's `packages`
 	// replaces the round before's rather than landing on top of it, so neither the package the
 	// tree no longer holds nor what an earlier round would have added stands in it.
-	gitRun(t, dir, "branch", "-f", "verse/live", one)
+	gitRun(t, dir, "branch", "-f", "viff/live", one)
 	st = check("4")
 	if fmt.Sprint(st["changes"]) != "0" || fmt.Sprint(st["differingFor"]) != "0" || st["sha"] != one {
-		t.Fatalf("verse/live back in step: status %v", st)
+		t.Fatalf("viff/live back in step: status %v", st)
 	}
 	if pkgs := fmt.Sprint(st["packages"]); strings.Contains(pkgs, "added") || strings.Contains(pkgs, "repos.r.other") {
 		t.Fatalf("a round back in step carries the round before's lists: %s", pkgs)

@@ -2,9 +2,9 @@ package client
 
 import "net/http"
 
-// Bearer is tr presenting a token on every request, `Authorization: Bearer <token>`: how verse
-// proves to a runner that it is the runner's verse, with the workload token its runtime gave it
-// (runnerd.Verse). token is asked each time, since a projected token is rotated under the
+// Bearer is tr presenting a token on every request, `Authorization: Bearer <token>`: how viff
+// proves to a runner that it is the runner's viff, with the workload token its runtime gave it
+// (runnerd.Viff). token is asked each time, since a projected token is rotated under the
 // process; one that answers "" sends nothing, and an error fails the request before it leaves.
 // nil tr is the default transport.
 func Bearer(tr http.RoundTripper, token func() (string, error)) http.RoundTripper {

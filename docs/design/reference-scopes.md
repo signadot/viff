@@ -1,6 +1,6 @@
 # Why: Scopes
 
-The reasons behind [Scopes](../reference/scopes.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [Scopes](../reference/scopes.md). They are for somebody changing viff; the page itself says what viff does.
 
 ## A scope does not run the rules of baseline
 
@@ -12,7 +12,7 @@ every scope, on every change to baseline.
 
 ## A write to an inherited object is refused
 
-Verse refuses the write. It does not pass the write through to baseline, and it does not copy
+Viff refuses the write. It does not pass the write through to baseline, and it does not copy
 the object into the scope. Either way, the two halves of the scope would disagree. The act can
 land only on the live thing, which belongs to baseline. The record that the act leaves would
 land in the overlay. A gate answered in this way would be delivered in baseline, and recorded

@@ -4,17 +4,17 @@ import (
 	"context"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A COMPLETION HOOK ABOUT A DEEP SUBJECT LANDS — which is the whole of what a hook is for, and
 // what was quietly not happening.
 //
 // The engine recovers a finished task's subject from the text it recorded, and a subject four
-// segments deep whose id is itself an address (`verse-dev.drift.head.head-moved@git.head.verse`
+// segments deep whose id is itself an address (`viff-dev.drift.head.head-moved@git.head.viff`
 // — every derived entity's name has this shape) came back through ParseRef as a DIFFERENT ref,
 // cut short with the rest read as one name. No error. The hook then
 // patched that ref, the package's confinement saw an address outside itself, and refused.
@@ -29,12 +29,12 @@ import (
 func TestACompletionHookPatchesADeepSubject(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
-	eng.Confine(SubtreeAt("verse-dev", "drift"))
+	eng.Confine(SubtreeAt("viff-dev", "drift"))
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		return startHookTask(store, id, spec)
 	})
 	if err := eng.AddStratum(Stratum{Name: "tip", Level: 10,
-		Match: []Match{mustPathMatch(t, `{path: "verse-dev.drift.head"}`)}}); err != nil {
+		Match: []Match{mustPathMatch(t, `{path: "viff-dev.drift.head"}`)}}); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -46,11 +46,11 @@ func TestACompletionHookPatchesADeepSubject(t *testing.T) {
   stratum: tip
   condition:
     subject:
-      path: "verse-dev.drift.head.*"
+      path: "viff-dev.drift.head.*"
       value: {reviewed: gathered}
   action:
     patch: {reviewed: running}
-    spawn: {agent: {name: verse}, prompt: "review $[subject.ref]"}
+    spawn: {agent: {name: viff}, prompt: "review $[subject.ref]"}
     onDone:
       patch: {reviewed: done}
 `)); err != nil {
@@ -59,7 +59,7 @@ func TestACompletionHookPatchesADeepSubject(t *testing.T) {
 
 	// The id is one an engine writes: `<rule>@<subject>`, so it holds the colons that made the
 	// round trip lossy. A hand-picked short id would pass with the bug still in place.
-	ref := entity.RefAt("verse-dev", "drift", "head", "head-moved@git.head.verse")
+	ref := entity.RefAt("viff-dev", "drift", "head", "head-moved@git.head.viff")
 	entitytest.Set(t, store, ref, entity.Obj{"reviewed": "gathered"}.Payload())
 	waitField(t, store, ref, "reviewed", "done")
 }

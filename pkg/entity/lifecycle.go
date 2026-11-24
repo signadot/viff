@@ -6,16 +6,16 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// The reserved payload namespace: everything verse itself records about an entity, kept out
+// The reserved payload namespace: everything viff itself records about an entity, kept out
 // of the author's own document under ONE key.
 //
-//	verse:
+//	viff:
 //	  charter:               what the engine records about rules acting on this entity
 //	    review:              …by trigger name
 //	      step:  2
 //	      steps: 3
 //	      done:  true
-//	  meta:                  what verse records about the entity ITSELF
+//	  meta:                  what viff records about the entity ITSELF
 //	    vanishing: "2026-07-29T13:04:05Z"
 //
 // The two halves are separated because they answer to different things — `charter` grows a key
@@ -23,27 +23,27 @@ import (
 // them collide: a trigger NAMED `vanishing` would have written its progress exactly where the
 // lifecycle marker lives.
 //
-// The name is plain `verse`, and that is not settled. A sigil would say "reserved" at a glance
-// and free the word for authors; `@verse`, `~verse` and `$verse` all parse unquoted, address
-// through kpath, and round-trip through the yaml renderer. `.verse` does NOT and is the one to
-// avoid: kpath parses `.verse.meta.vanishing` back as `verse.meta.vanishing`, silently dropping
+// The name is plain `viff`, and that is not settled. A sigil would say "reserved" at a glance
+// and free the word for authors; `@viff`, `~viff` and `$viff` all parse unquoted, address
+// through kpath, and round-trip through the yaml renderer. `.viff` does NOT and is the one to
+// avoid: kpath parses `.@sys.meta.vanishing` back as `@sys.meta.vanishing`, silently dropping
 // the sigil rather than refusing it.
 const (
 	// ReservedRoot is the one payload key that is not the author's.
-	ReservedRoot = "verse"
+	ReservedRoot = "viff"
 	// CharterKey holds per-trigger bookkeeping, keyed by trigger name.
 	CharterKey = "charter"
-	// MetaKey holds what verse records about the entity itself.
+	// MetaKey holds what viff records about the entity itself.
 	MetaKey = "meta"
 )
 
 // VanishingField marks an entity as ON ITS WAY OUT: the intent to remove it, written before
-// the removal happens, at `verse.meta.vanishing`.
+// the removal happens, at `@sys.meta.vanishing`.
 //
 // It exists so that a DISAPPEARANCE can be observed the way an appearance is. A trigger's cause
 // is the rising edge of a store predicate — "something matching this now exists" — and there is
 // no way to say the negative: a match asks what is there. Writing the intent down first turns
-// the negative into a positive, so `on: {…, value: {verse: {meta: {vanishing: null}}}}` is an
+// the negative into a positive, so `on: {…, value: {viff: {meta: {vanishing: null}}}}` is an
 // ordinary predicate rising, and the model stays existence-positive throughout.
 //
 // The actual removal is then INERT, correctly: when the entity finally goes, a predicate over
@@ -78,8 +78,8 @@ func VanishPatch(at time.Time) Payload {
 // namesVanishing reports whether a predicate asks about the vanishing marker — the OPT-IN that
 // lets a selection see entities on their way out.
 //
-// It looks for the literal path `verse.meta.vanishing`, which is enough because that is the
-// only spelling of the question. A predicate that merely mentions `verse` — to match a rule's
+// It looks for the literal path `@sys.meta.vanishing`, which is enough because that is the
+// only spelling of the question. A predicate that merely mentions `viff` — to match a rule's
 // progress under `charter`, say — is not asking about lifecycle and does not opt in.
 func namesVanishing(pred *ir.Node) bool {
 	meta := field(field(pred, ReservedRoot), MetaKey)

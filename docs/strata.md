@@ -51,12 +51,12 @@ rules:
         feature: .[subject.ref]
 ```
 
-`verse c -a -f charter.tony` installs the strata and the rules. It installs the strata first,
+`viff c -a -f charter.tony` installs the strata and the rules. It installs the strata first,
 whatever their order in the file.
 
 The levels are numbers with gaps, so you can insert a level later without renumbering the others.
 
-Verse does not work out the ordering from the rules; you declare it. The reason is in
+Viff does not work out the ordering from the rules; you declare it. The reason is in
 [Why the ordering is declared rather than inferred](design/strata.md#why-the-ordering-is-declared-rather-than-inferred).
 
 ## Two rules, and they are the whole thing
@@ -64,7 +64,7 @@ Verse does not work out the ordering from the rules; you declare it. The reason 
 - The **subject** of a rule must be inside the `match` of its stratum.
 - The **derive** of an action must be inside the `match` of some **strictly higher** stratum.
 
-Verse checks both at install, without reading the store. `verse c -a` refuses a charter that
+Viff checks both at install, without reading the store. `viff c -a` refuses a charter that
 breaks either, and names the rule and the level.
 
 The `match` of a stratum does two jobs. It says **what subjects the stratum owns**, and what
@@ -80,17 +80,17 @@ below it. Two of the strata of [comment drift](groundskeeper.md):
 - name: range
   level: 20
   match:
-    path: "repos.verse.drift.range"
+    path: "repos.viff.drift.range"
 - name: ledger
   level: 30
   match:
-    path: "repos.verse.drift.finding"
+    path: "repos.viff.drift.finding"
 ```
 
-`[repos, verse, drift, range]` is the address where the ranges are derived. A rule whose subject
-is `[repos, verse, drift, range, "*"]` is inside it.
+`[repos, viff, drift, range]` is the address where the ranges are derived. A rule whose subject
+is `[repos, viff, drift, range, "*"]` is inside it.
 
-**Verse checks containment segment by segment.** The path of a stratum contains a subject when
+**Viff checks containment segment by segment.** The path of a stratum contains a subject when
 both of these hold:
 
 - The path of the stratum is no longer than the path of the subject.
@@ -119,12 +119,12 @@ under the address:
 
 ```tony
 derive:
-- path: "repos.verse.drift.range"
+- path: "repos.viff.drift.range"
   value: {from: .[subject.value.sha], to: .[subject.value.covering]}
 ```
 
 **A derive may read its subject, and nothing else.** An expression in a derive may name
-`subject` and its parts. Verse refuses an expression that reads any other name at install. A [path read](glossary.md#path-read) may
+`subject` and its parts. Viff refuses an expression that reads any other name at install. A [path read](glossary.md#path-read) may
 reach further, under the limit that [Path reads inside a derive](#path-reads-inside-a-derive)
 states.
 
@@ -132,7 +132,7 @@ A rule may use `on` or `when` on anything at any level. The extra firings such a
 cannot change what the derive writes. The argument is in
 [Why a derive reads only its subject](design/strata.md#why-a-derive-reads-only-its-subject).
 
-**Verse refuses `subject.commit` in a derive.** Its value depends on when the firing happened,
+**Viff refuses `subject.commit` in a derive.** Its value depends on when the firing happened,
 not on the subject, so a read from above does change it.
 
 A derive that writes something new on every firing wakes the level above, and that wakes the
@@ -146,7 +146,7 @@ That read costs nothing when the commit changed the subject, which is the usual 
 about the entity that changed. A member of a fan-out that the commit did not touch is read at
 that [revision](glossary.md#revision), and the store answers it by replaying its log.
 
-A completion [hook](glossary.md#hook) reads at the head: the verse **as it is when its task
+A completion [hook](glossary.md#hook) reads at the head: the viff **as it is when its task
 ends**. So a `derive` in an `onDone` can name what the run was about, as the firing left it.
 "Derive a release note from what shipped" needs this. A value from the firing's own moment is
 the firing's to write beside its spawn ([Bindings](reference/action.md#bindings)).
@@ -154,13 +154,13 @@ the firing's to write beside its spawn ([Bindings](reference/action.md#bindings)
 **The engine decides the identity.** The derived entity's address is a function of
 (rule, subject). For a [fan-out](#each-when-one-answer-holds-many-facts) it is a function of
 (rule, subject, key). The engine writes the link to the subject itself, at
-`verse.meta.derivedFrom`:
+`@sys.meta.derivedFrom`:
 
 ```
-$ verse data derived feature raise gh issue 1
+$ viff data derived feature raise gh issue 1
 priority: urgent
 what: gh.issue.1
-verse:
+viff:
   meta:
     derivedFrom:
       rule: raise
@@ -174,7 +174,7 @@ one subject would write the same entity. Each derived entity has one writer.
 
 The derived address carries the subject exactly. `derived.feature.raise.gh.issue.1` is the
 entity `raise` derived about `gh.issue.1`, and it reads back as exactly those segments. So
-`verse data derived feature raise -paths` lists everything this rule has derived.
+`viff data derived feature raise -paths` lists everything this rule has derived.
 
 The link works the same way for a spawn, for the same reason. A derive is about exactly one
 subject. The condition decides which, and the charter does not have to write it in. So
@@ -197,7 +197,7 @@ A derive may name a `key:` and not fan out:
 ```tony
 action:
   derive:
-  - path: "repos.verse.merge.train"
+  - path: "repos.viff.merge.train"
     key:  .[subject.value.sha]      # one train per tip of main
     value: {sha: .[subject.value.sha]}
 ```
@@ -205,7 +205,7 @@ action:
 The address becomes (rule, subject, key), like a fan-out with one element. The key is for a case
 a plain derive cannot express: **the same subject, decided more than once.**
 
-A merge train is that case. `git.verse.head` is one entity whose `sha` changes, so a rule that
+A merge train is that case. `git.viff.head` is one entity whose `sha` changes, so a rule that
 derives a batch from it writes one address. The id of a
 [gate](reference/gates.md#gates-whether-it-proceeds) is a function of (rule, gate, subject).
 Without a key, the second batch lands at an address whose question is already settled, and it
@@ -218,7 +218,7 @@ The two install checks are those of the fan-out, without the check on the elemen
   becomes a string, and an address is not built out of text.
 - The key may read the **subject**, its state included, and nothing else.
 
-Verse refuses `subject.commit` in a key, as in the content: a key that depends on when the rule
+Viff refuses `subject.commit` in a key, as in the content: a key that depends on when the rule
 fired writes a new entity on every firing.
 
 The key keeps the rule, not an exception to it. A re-fire about the same subject computes the
@@ -236,7 +236,7 @@ One firing derives one entity. That is not enough when a task answers with twelv
 ```tony
 action:
   derive:
-  - path: "repos.verse.drift.finding"
+  - path: "repos.viff.drift.finding"
     value: !each
       over:  .[data.findings]     # a list to walk; each element binds item
       key:   .[item.symbol]       # the address, read out of the element
@@ -253,7 +253,7 @@ gives the same addresses with the same bytes. One sentence covers both:
 
 > **A derive may carry state exactly when its address is a function of that same state.**
 
-Verse checks `over`, `key` and `value` at install. Each refusal applies that sentence:
+Viff checks `over`, `key` and `value` at install. Each refusal applies that sentence:
 
 - `over` and `key` must each be *one* expression and nothing else, a whole `.[…]`. A `$[…]`
   inside text becomes a string, and a string gives nothing to walk or to address.
@@ -262,13 +262,13 @@ Verse checks `over`, `key` and `value` at install. Each refusal applies that sen
 - `value` may read `item` and the subject. `subject.commit` stays refused, for the reason it is
   refused in a plain derive.
 
-The keys under the tag are a closed set: verse refuses any other, such as `sweep: true`.
+The keys under the tag are a closed set: viff refuses any other, such as `sweep: true`.
 
 Two refusals happen at run time, and both are loud on purpose:
 
 - `over` must resolve to a **list**. A charter that wants a nested answer flattened says so in
   its answer contract, where the shape is already declared.
-- An element whose `key` is empty **fails the whole firing**, and verse names the element.
+- An element whose `key` is empty **fails the whole firing**, and viff names the element.
 
 Deriving the other elements would leave one out of the ledger, and a ledger that is short
 without saying so is a failure nobody sees.
@@ -305,9 +305,9 @@ never write it. So the levels above still cannot change what a derive writes.
 A read upward would break this: the entity above changes, the derive writes different bytes, and
 the level above wakes. The cycle then crosses a level.
 
-Verse checks this at install, with the same containment as the level checks. The address of the
+Viff checks this at install, with the same containment as the level checks. The address of the
 read, up to its first segment that is not a literal name, must be inside the `match` of a
-stratum. Verse also refuses a read of an address in no stratum: with no level, "at or below" has
+stratum. Viff also refuses a read of an address in no stratum: with no level, "at or below" has
 no answer.
 
 None of this applies to a plain `patch`, because nothing downstream depends on a patch writing
@@ -332,7 +332,7 @@ recursion inside a stratum, as stratified Datalog does. So the `fwd`/`back` pair
 [convergence](convergence.md#the-cycle-and-how-it-is-caught) still loops if both rules are in one
 stratum. The throttle catches that loop at run time.
 
-**The loop that remains goes through the world outside verse.** A rule in the effectuate stratum
+**The loop that remains goes through the world outside viff.** A rule in the effectuate stratum
 writes an approval to the github [iod](glossary.md#iod)'s out place, and the iod makes it on
 GitHub. The iod also writes GitHub into the store, so the approval comes back at level 0. That
 cycle closes outside the store. You can see it, because it passes through the iod, and real
@@ -344,11 +344,11 @@ is not a bug.
 **Tasks are outside the ordering.** A spawned agent writes wherever its tools reach, at no
 level. So *the ordering covers a charter as far as its writes are declared*. `derive` turns a
 write across entities from "an agent did it, and nothing can check it" into "the charter said it,
-and verse checks it". Every write that still goes through a spawn is outside the ordering.
+and viff checks it". Every write that still goes through a spawn is outside the ordering.
 
 ## Declaring nothing is a complete answer
 
-A charter with no `stratum:` anywhere runs in one implicit stratum. Verse checks nothing, and the
+A charter with no `stratum:` anywhere runs in one implicit stratum. Viff checks nothing, and the
 throttle catches recursion. Each stratum you declare adds checks, so you can add them a few at a
 time.
 
@@ -357,41 +357,41 @@ rule with no level. A rule must declare a stratum to derive.
 
 ## Installing, and the order it does not depend on
 
-A stratum is one entity, `verse.trigger.strata.<name>`, as a rule is one entity,
-`verse.trigger.rule.<name>`. For a charter installed at an address, the names have the package as
+A stratum is one entity, `mirror.trigger.strata.<name>`, as a rule is one entity,
+`mirror.trigger.rule.<name>`. For a charter installed at an address, the names have the package as
 a prefix. An install writes one entity and a removal deletes one, so two installs at once cannot
 lose each other's writes.
 
 The **name addresses** a stratum, and the level orders it. A rule says `stratum: sdlc`, which
-says what it means; `10` does not. Two strata may not share a level, and verse refuses that at
+says what it means; `10` does not. Two strata may not share a level, and viff refuses that at
 install: the number is the whole ordering, and two equal numbers do not say which comes first.
 
 A stratum and a rule are separate entities, so either can arrive first. **A rule that names a
 stratum that is not installed is held, not refused.** A [held rule](glossary.md#held-rule) is
-stored and does not fire. Verse arms it when its stratum arrives. The rule has passed every
+stored and does not fire. Viff arms it when its stratum arrives. The rule has passed every
 other check, so only the ordering waits. A rule restored with a spawn no runner offers yet is
 held the same way, for the runner, since a restart reads the charter before the runners answer.
 An install refuses such a spawn.
 
 **A file holds rules when it names a stratum it does not define.** A charter written to sit
-beside another charter does this. `verse c -a` sends a file's strata first, so a self-contained
+beside another charter does this. `viff c -a` sends a file's strata first, so a self-contained
 charter never holds a rule.
 
 The install says which rules it held, and what each waits for. A misspelled stratum name is
 held the same way, so read this line:
 
 ```
-$ verse charter -a -f review.tony
+$ viff charter -a -f review.tony
 baseline: installed 0 trigger(s)
   held: rule review is waiting for stratum sdcl. It fires on nothing until then.
 ```
 
 The count is the number of rules accepted to fire. A rule whose watch is still opening counts,
-and the install says `arming:` for it; a held rule does not. `verse charter` lists a held rule
+and the install says `arming:` for it; a held rule does not. `viff charter` lists a held rule
 with `held: <what it waits for>`.
 
-`verse c <address> rules <name>` shows a held rule too, with the same `held` line.
-`verse status` counts the rules as the install does, so a charter of four rules with two held
+`viff c <address> rules <name>` shows a held rule too, with the same `held` line.
+`viff status` counts the rules as the install does, so a charter of four rules with two held
 reports two, and names the two under `pending` with what each waits for. A rule that passed at
 install and fails now, because the runner that offered its spawn is gone, say, is held the same
 way: it stands, `pending` says `refused: …` for it, and it arms when the world lets it.
@@ -399,29 +399,29 @@ way: it stands, `pending` says `refused: …` for it, and it arms when the world
 **To edit a level, apply the file again.** A stratum installed exactly as declared is left alone.
 A stratum that differs is replaced, as a rule of the same name is.
 
-Verse checks the change against every rule in that charter, because each was checked against the
+Viff checks the change against every rule in that charter, because each was checked against the
 old level. A rule that no longer fits refuses the *change*, and names itself. No rule stays at a
-level verse did not check it against.
+level viff did not check it against.
 
-**A file is applied as one step.** `verse c -a` sends a file, or a directory of them, in one
+**A file is applied as one step.** `viff c -a` sends a file, or a directory of them, in one
 request. A refusal anywhere restores what stood before. The declaration, the levels and the rules
 all become the charter, or none of them do.
 
-**Verse refuses to remove a stratum while rules still name it.** Those rules were checked against
+**Viff refuses to remove a stratum while rules still name it.** Those rules were checked against
 a pattern that would no longer exist, and they would go on firing with no level. Remove or move
 the rules first.
 
 ```
-$ verse charter             # the ordering, by level
-$ verse c rules sdlc
-$ verse c -r strata sdlc # refused while rules live there
+$ viff charter             # the ordering, by level
+$ viff c rules sdlc
+$ viff c -r strata sdlc # refused while rules live there
 ```
 
 ## Corners
 
 **A misspelled field is named, down to a depth.** Without a check, `startum: sdlc` would install
 into the implicit stratum and report success, losing the one field that says which checks apply.
-`verse c -a` refuses it. It also refuses an unknown field in a `condition`, in an `action`, or in
+`viff c -a` refuses it. It also refuses an unknown field in a `condition`, in an `action`, or in
 a sequence element or completion hook below an action. The check stops where the shape is no
 longer the charter's own: inside a `spawn`, and inside a `patch` or `derive` payload, which holds
 the author's own keys ([what an install does not check](reference/charter.md#what-an-install-does-not-check)).
@@ -433,8 +433,8 @@ way.
 
 **The throttle does not reset at a crossing.** It could, because a chain never returns to a
 stratum it has left. With a reset, the throttle would catch a loop inside one stratum after that
-stratum's rule count, not the whole charter's. That would make verse catch a runaway sooner, not
-change the worst case. Verse does not do this.
+stratum's rule count, not the whole charter's. That would make viff catch a runaway sooner, not
+change the worst case. Viff does not do this.
 
 ## Why it is this way
 

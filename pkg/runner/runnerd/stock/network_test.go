@@ -13,12 +13,12 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A TASK REACHES WHAT ITS LAUNCH'S NETWORK SAYS, AND THE RUNNER BUILDS IT: under allow, a host on
@@ -94,7 +94,7 @@ func TestAnUnconfinedRunnerRefusesANetworkItCantBuild(t *testing.T) {
 	}
 }
 
-// serveNetwork serves the verse runner in sb on a real address, so a task can try to reach it.
+// serveNetwork serves the viff runner in sb on a real address, so a task can try to reach it.
 func serveNetwork(t *testing.T, sb runnerd.Sandbox) (client.Launcher, string) {
 	t.Helper()
 	work, err := filepath.EvalSymlinks(t.TempDir())

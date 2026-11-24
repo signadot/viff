@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A subscribe the runner accepted says so, ahead of the runner's own frames, and only to a

@@ -19,7 +19,7 @@ import (
 // the test that calls Check rather than by a row that never matches.
 //
 // What Check holds is a property of the source tree, not of a runner: every binary links every
-// claim. Which verbs a RUNNER performs is its offer's to say, from its configuration, and verse
+// claim. Which verbs a RUNNER performs is its offer's to say, from its configuration, and viff
 // holds a spawn to that.
 var (
 	claimMu sync.Mutex

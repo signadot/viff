@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A RUNNER'S QUESTION IS POSED UNDER THE CHARTER'S CLOCK. The runner reads a gate's duration and
@@ -104,7 +104,7 @@ func TestAReplayedQuestionKeepsItsAsk(t *testing.T) {
 	}
 }
 
-// THE RECORD CARRIES THE POLICY AS IT STANDS, verse's part with it: what a verse that restarts
+// THE RECORD CARRIES THE POLICY AS IT STANDS, viff's part with it: what a viff that restarts
 // while the task runs elsewhere poses its questions under (PolicyOf), and what a slide changed.
 func TestTheRecordCarriesThePolicyAsItStands(t *testing.T) {
 	store := entitytest.Store(t)
@@ -136,7 +136,7 @@ func TestTheRecordCarriesThePolicyAsItStands(t *testing.T) {
 }
 
 // WHAT THE RECORD SAYS OF ITS LAUNCH READS BACK (its repositories, its credential, which run it
-// is, when it started), so a verse that re-attaches to a task after a restart writes them again rather than
+// is, when it started), so a viff that re-attaches to a task after a restart writes them again rather than
 // dropping them from the record it replaces.
 func TestTheRecordsLaunchReadsBack(t *testing.T) {
 	store := entitytest.Store(t)

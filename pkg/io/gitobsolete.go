@@ -11,10 +11,10 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // The obsolete input of the git io's out half: the questions a charter asked about things that are
@@ -22,7 +22,7 @@ import (
 // nothing proposes any more is not left pending on the docket).
 //
 //	to:     obsolete
-//	prefix: "repo-charters.verse:propose@repo-charters.verse.candidate."   # the questions it may settle
+//	prefix: "repo-charters.viff:propose@repo-charters.viff.candidate."   # the questions it may settle
 //	keep:   {state: [<tree>, …], pulls: [<tree>, …]}                 # what is proposed now, at any depth
 //	before: 2026-10-04T21:00:00Z                                     # only questions posed by then
 //
@@ -41,8 +41,8 @@ const obsoleteTarget = "obsolete"
 
 // obsolete carries one obsolete input out, and answers the status fields.
 func (k *GitSink) obsolete(ctx context.Context, in Input) (entity.Obj, error) {
-	if k.Verse == nil || k.As == "" {
-		return nil, Permanent(fmt.Errorf("this io reads no verse, so it settles no question"))
+	if k.Viff == nil || k.As == "" {
+		return nil, Permanent(fmt.Errorf("this io reads no viff, so it settles no question"))
 	}
 	prefix := strings.TrimSpace(entity.Str(in.Value, "prefix"))
 	before := strings.TrimSpace(entity.Str(in.Value, "before"))
@@ -58,7 +58,7 @@ func (k *GitSink) obsolete(ctx context.Context, in Input) (entity.Obj, error) {
 	}
 	keep := map[string]bool{}
 	collectStrings(entity.Get(in.Value, "keep"), keep)
-	resp, err := k.Verse.Get("/asks", url.Values{"waiting": {"me"}})
+	resp, err := k.Viff.Get("/asks", url.Values{"waiting": {"me"}})
 	if err != nil {
 		return nil, fmt.Errorf("listing the questions waiting on %s: %w", k.As, err)
 	}
@@ -84,7 +84,7 @@ func (k *GitSink) obsolete(ctx context.Context, in Input) (entity.Obj, error) {
 		if posed, err := time.Parse(time.RFC3339Nano, entity.Str(q, "posedAt")); err != nil || posed.After(cutoff) {
 			continue
 		}
-		ans, err := k.Verse.Post("/asks/"+url.PathEscape(id)+"/answer", nil, api.Resolve{ID: id, Choice: obsoleteTarget, By: k.As})
+		ans, err := k.Viff.Post("/asks/"+url.PathEscape(id)+"/answer", nil, api.Resolve{ID: id, Choice: obsoleteTarget, By: k.As})
 		if err != nil {
 			return nil, fmt.Errorf("settling %s: %w", id, err)
 		}

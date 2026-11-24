@@ -1,7 +1,7 @@
-// Package mirror reflects a running Task's state into the entity-verse as a
+// Package mirror reflects a running Task's state into the entity-viff as a
 // task:instance:<id> entity — one-way, index-not-warehouse. This is what makes
 // "observe another task" the same act as "observe an entity": once a task
-// is in the verse, a trigger can match on its state like any other entity.
+// is in the viff, a trigger can match on its state like any other entity.
 //
 // Reflected entities live in the "task" system, which the trigger engine keeps
 // OUT of the default match set — meta-observation is opt-in, so the loop cannot
@@ -22,15 +22,15 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/answer"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/answer"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// System is the entity-verse system reflected tasks live under. Keep it out
+// System is the entity-viff system reflected tasks live under. Keep it out
 // of any default/ambient trigger match set.
 const System = "task"
 
@@ -44,7 +44,7 @@ const System = "task"
 const InstanceKind = "instance"
 
 // Ref is the entity that mirrors task id.
-func Ref(id string) entity.Ref { return entity.VerseRef(System, InstanceKind, id) }
+func Ref(id string) entity.Ref { return entity.ViffRef(System, InstanceKind, id) }
 
 // HeldByField is who holds a task at its boundary, on its record: `operator` for `flow suspend --task`,
 // and the ids of the suspensions that paused it. Absent when nothing does.
@@ -65,7 +65,7 @@ const RunKind = "run"
 
 // RunRef addresses one run: the task's id and the revision that run is about.
 func RunRef(id string, occurrence int64) entity.Ref {
-	return entity.VerseRef(System, RunKind, id+"@"+strconv.FormatInt(occurrence, 10))
+	return entity.ViffRef(System, RunKind, id+"@"+strconv.FormatInt(occurrence, 10))
 }
 
 // writeRun records this run at its own address — at creation, so a run that never finishes
@@ -77,8 +77,8 @@ func RunRef(id string, occurrence int64) entity.Ref {
 //
 // NOTHING PRUNES THESE, and that is a decision rather than an omission. Growth is one small
 // record per completed run — bounded by runs, not by events or by time — and both ways to
-// remove them already exist: `verse data rm`, and a charter matching on age that writes
-// `verse.meta.vanishing` and acts on the edge. Choosing a retention count here would be
+// remove them already exist: `viff data rm`, and a charter matching on age that writes
+// `@sys.meta.vanishing` and acts on the edge. Choosing a retention count here would be
 // picking a number for how much history is worth keeping before anybody has felt the want of
 // it, in the one place a reader cannot override.
 //
@@ -91,7 +91,7 @@ func writeRun(store entity.Store, id string, occurrence int64, st entity.Obj) {
 	write(store, id, st, RunRef(id, occurrence))
 }
 
-// Minted describes a credential verse signed for a task: the system it is for, the `sub` a
+// Minted describes a credential viff signed for a task: the system it is for, the `sub` a
 // target matches on, the token's own id, and when it stops being good. The token is not here.
 type Minted struct {
 	Audience string
@@ -109,7 +109,7 @@ type Meta struct {
 	// not collide with the subject binding (the matched ref).
 	Subject string
 	// Occurrence is the store revision this RUN is about — the commit that woke the firing,
-	// or the store's own revision when a person typed `verse task run`. Zero when neither is
+	// or the store's own revision when a person typed `viff task run`. Zero when neither is
 	// known.
 	//
 	// A task record is one entity per id, and an id names the work rather than the run, so
@@ -119,8 +119,8 @@ type Meta struct {
 	// Runner is the task-control backend hosting it — "local" or a remote URL — so a
 	// restart can decide resume-or-orphan.
 	Runner string
-	// RunnerName is the runner ENTITY a spawn named — `verse.runners.<name>` — when it named
-	// one. Empty for a spawn that took the verse's default.
+	// RunnerName is the runner ENTITY a spawn named — `mirror.runners.<name>` — when it named
+	// one. Empty for a spawn that took the viff's default.
 	//
 	// It is stamped BESIDE Runner rather than instead of it, and that split is the one place
 	// this design can go quietly wrong. Runner is what a restart can act on with nothing else
@@ -130,7 +130,7 @@ type Meta struct {
 	// with an action at a distance.
 	RunnerName string
 	// RunnerSubject is the subject the named runner's registration held at the spawn
-	// (api.Runner.Subject): what the door holds a runner relaying this task to (versed's
+	// (api.Runner.Subject): what the door holds a runner relaying this task to (viffd's
 	// relayTask), so a registration rewritten under the same name with another subject relays
 	// nothing of a task it did not host. Empty where the registration names none.
 	RunnerSubject string
@@ -138,19 +138,19 @@ type Meta struct {
 	// The mirror subscribes again four times within it, and stops waiting on the runner a
 	// minute after it (follow.go). On the record as `lease`, so a re-attach carries it back.
 	Lease string
-	// Done closes when the verse mirroring the task stops: the runner is asked nothing more, the
-	// frames already read are written, and the record stands so, for the verse that comes next
+	// Done closes when the viff mirroring the task stops: the runner is asked nothing more, the
+	// frames already read are written, and the record stands so, for the viff that comes next
 	// to follow it again. Nil is never.
 	Done <-chan struct{}
 	// StartedAt is when the task began, RFC3339. Empty on a fresh spawn — Reflect stamps
 	// the clock — and carried back verbatim by a re-attach, which is the only caller that
-	// knows this task is older than this verse.
+	// knows this task is older than this viff.
 	StartedAt string
 	// Started is the record's `started`, carried back verbatim by a re-attach as StartedAt is,
 	// so the run's record still says when the run started. Empty is now.
 	Started string
 	// Chain is the kpath of the action that spawned it, inside its trigger: "review",
-	// "review.onDone". Empty for a task with no trigger behind it (`verse task run`).
+	// "review.onDone". Empty for a task with no trigger behind it (`viff task run`).
 	Chain string
 	// Prompt is what the task was asked to do, already bound. Small, and the task's
 	// identity to a reader — so it belongs on the index next to what the task produced,
@@ -203,7 +203,7 @@ type Meta struct {
 	// is written here; the timer that settles it is the server's, so the server hands one in.
 	Arm func(questionID, within string)
 	// Posed is told each question a frame posed, or posed again: the server delivers there an
-	// answer decided and not yet heard, a claim a crash left (versed finishSettle).
+	// answer decided and not yet heard, a claim a crash left (viffd finishSettle).
 	Posed func(questionID string)
 	// Environment is the launch's environment, what the task may do (its systems; never its vars),
 	// and VirtualKey the model credential it spends, as the ADDRESS its spawn named (never the
@@ -214,8 +214,8 @@ type Meta struct {
 	VirtualKey  string
 	// Ended is called once the task has ended and its record says so, where set.
 	Ended func()
-	// Credential is the credential verse minted for the task, where it minted one: what it is
-	// good for and until when, and never the token. It is verse's own account that a token went
+	// Credential is the credential viff minted for the task, where it minted one: what it is
+	// good for and until when, and never the token. It is viff's own account that a token went
 	// out, beside the one the system it is shown to keeps.
 	Credential *Minted
 }
@@ -277,7 +277,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	// stamped on every update would be an entity that changes whenever anything narrates,
 	// which wakes every trigger watching this slice for no fact anybody wrote — and the two
 	// instants somebody actually asks about are the two ends. RFC3339, the same spelling
-	// `verse.meta.vanishing` and a source's `lastReflect` use.
+	// `@sys.meta.vanishing` and a source's `lastReflect` use.
 	st := entity.Obj{"status": string(task.Running), "started": cmp.Or(m.Started, nowStamp())}
 	if m.Subject != "" {
 		st["flow"] = m.Subject
@@ -297,15 +297,15 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.RunnerSubject != "" {
 		st["runnerSubject"] = m.RunnerSubject
 	}
-	// The lease its spawn named, so a verse that restarts while it runs keeps the same clocks
+	// The lease its spawn named, so a viff that restarts while it runs keeps the same clocks
 	// for it. One that named none says none, and has the default.
 	if m.Lease != "" {
 		st["lease"] = m.Lease
 	}
-	// When this task began, so `verse runner` can say when a runner was last used and a
+	// When this task began, so `viff runner` can say when a runner was last used and a
 	// runner nobody names is visible as such. Written once, at the first reflection, and
 	// carried across a re-attach rather than re-stamped — a resumed task did not start
-	// again, and a clock that restarts on every restart measures the verse, not the work.
+	// again, and a clock that restarts on every restart measures the viff, not the work.
 	if m.StartedAt != "" {
 		st["startedAt"] = m.StartedAt
 	} else {
@@ -351,8 +351,8 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.VirtualKey != "" {
 		st["virtualKey"] = m.VirtualKey
 	}
-	// The task's autonomy, verse's part with it (what silence settles on, the labels): on the
-	// record so that a verse that restarts while the task runs elsewhere still poses its
+	// The task's autonomy, viff's part with it (what silence settles on, the labels): on the
+	// record so that a viff that restarts while the task runs elsewhere still poses its
 	// questions under it (PolicyOf), and so a reader sees what the run asks about.
 	if p := m.autonomy(); len(p) > 0 {
 		st["autonomy"] = p
@@ -394,7 +394,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 		}
 		for _, ref := range made {
 			if err := entity.OwnedForSystem(store, ref, p); err != nil {
-				fmt.Fprintf(os.Stderr, "verse: task %s: %s has no record of its own: %v\n", id, ref, err)
+				fmt.Fprintf(os.Stderr, "viff: task %s: %s has no record of its own: %v\n", id, ref, err)
 			}
 		}
 	}
@@ -414,7 +414,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 }
 
 // launchAsk is the ask of the autonomy's row a frame's question is about, by the row's name:
-// verse's part of it, which the runner never read, comes from here. Nil where the row has no
+// viff's part of it, which the runner never read, comes from here. Nil where the row has no
 // shape, or the question is not a row's.
 func launchAsk(m Meta, ev task.Event) *task.Ask {
 	if r, ok := m.autonomy().Named(ev.Gate); ok {
@@ -434,7 +434,7 @@ func (m Meta) autonomy() task.Autonomy {
 	return m.Autonomy
 }
 
-// AutonomyOf reads a task's autonomy back off its record, for a verse that restarts while the task
+// AutonomyOf reads a task's autonomy back off its record, for a viff that restarts while the task
 // runs elsewhere: what it poses the task's questions under from then on.
 func AutonomyOf(p entity.Payload) task.Autonomy {
 	n := entity.Get(p, "autonomy")
@@ -498,7 +498,7 @@ func resolved(h task.Handle, st entity.Obj) {
 }
 
 // CredentialOf is what a task's record says of the credential minted for it (Meta.Credential),
-// read back for a verse that re-attaches to it after a restart; nil where it says none.
+// read back for a viff that re-attaches to it after a restart; nil where it says none.
 func CredentialOf(p entity.Payload) *Minted {
 	c := entity.Get(p, "credential")
 	if c == nil {
@@ -508,7 +508,7 @@ func CredentialOf(p entity.Payload) *Minted {
 		JTI: entity.Str(c, "jti"), Expires: entity.Str(c, "expires")}
 }
 
-// GitOf is the repositories a task's record says it works in (Meta.Git), read back for a verse
+// GitOf is the repositories a task's record says it works in (Meta.Git), read back for a viff
 // that re-attaches to it after a restart.
 func GitOf(p entity.Payload) []runner.Repo {
 	n := entity.Get(p, "git")
@@ -522,12 +522,12 @@ func GitOf(p entity.Payload) []runner.Repo {
 	return repos
 }
 
-// withVersesPart is a row's question with verse's part of it put in: how long it stands, what
+// withViffsPart is a row's question with viff's part of it put in: how long it stands, what
 // silence settles on and how many approvals it needs are the row's, whatever the frame says.
 // The question is the worker's; the rule it is decided by is the charter's, and a frame that
 // set its own deadline, default or need would loosen it. A question that is no row's, a task's
 // own `question-ask` or a conversation's turn, keeps what its frame says.
-func withVersesPart(m Meta, ev task.Event) task.Event {
+func withViffsPart(m Meta, ev task.Event) task.Event {
 	r, ok := m.autonomy().Named(ev.Gate)
 	if !ok {
 		return ev
@@ -549,11 +549,11 @@ func withVersesPart(m Meta, ev task.Event) task.Event {
 // asPosed is a frame's question as it was posed, with whom it is held out to and its labels: a
 // question already on record keeps the record's, so a frame replayed after a restart, under a
 // autonomy replaced since, does not re-pose it under the new one; a question not yet posed takes
-// verse's part of its row (withVersesPart, answerersFor, labelsFor).
+// viff's part of its row (withViffsPart, answerersFor, labelsFor).
 func asPosed(docket entity.Store, m Meta, ev task.Event) (task.Event, []string, map[string]string) {
 	e, ok, err := docket.Get(QuestionRef(ev.ID))
 	if err != nil || !ok {
-		ev = withVersesPart(m, ev)
+		ev = withViffsPart(m, ev)
 		return ev, answerersFor(m, ev), labelsFor(m, ev)
 	}
 	ev.Options = OptionsOf(e.Payload)
@@ -695,7 +695,7 @@ func slidBy(m Meta, summary, claimant string) string {
 }
 
 // mayClaim reports whether a name on a running status is one a worker claims as: somebody, and
-// not a name verse makes. A remote runner's stream is held to it here, since what follows is a
+// not a name viff makes. A remote runner's stream is held to it here, since what follows is a
 // grant to that name and every projection written as it.
 func mayClaim(by string) bool {
 	switch entity.KindOf(by) {
@@ -718,7 +718,7 @@ func asPrincipal(store entity.Store, principal string) entity.Store {
 // claimed records that a worker took the task: the worker is listed as a runner principal,
 // and holds `read-write` and `control` on the task's record and on this run's — the two
 // records its reports are projected onto — and on nothing else. The grant is the task
-// owner's act, carried out by versed on their behalf (entity.AddGrant); a question the task
+// owner's act, carried out by viffd on their behalf (entity.AddGrant); a question the task
 // raises carries its own record, and the grant does not reach it.
 func claimed(system entity.Store, id string, st entity.Obj, by string) {
 	if entity.PolicyOf(system) == nil {
@@ -758,20 +758,20 @@ func backoff(attempt int) time.Duration {
 // principal until a worker claims it, and the worker from then on — the claimant, named by the
 // runner on the claim's running frame. A
 // question is posed and settled as the docket (entity.SystemDocket) whoever is working the task,
-// since versed poses it and the decision that settles it travelled by the answer path, where the
+// since viffd poses it and the decision that settles it travelled by the answer path, where the
 // answerer was checked; the worker's grant is on its task and must reach no question, and a
 // projection written as the worker would pass exactly the check that grant is meant to fail. The
 // worker's grant at the claim is the mirror's own act (entity.SystemMirror).
 //
 // WHO A FRAME SAYS DID SOMETHING IS NOT THE FRAME'S TO SAY, where the frame came from a worker.
-// Frames verse makes itself, for a spawn that failed before it reached a runner (no Meta.Runner),
+// Frames viff makes itself, for a spawn that failed before it reached a runner (no Meta.Runner),
 // are trusted. A relayed task's — a runner's, which every task that ran is — are whatever the worker
 // wrote, and a `by` on one is a name the worker chose: a decision "by" the answerer a gate is
 // held out to, a slide "by" the docket. AND WHAT WAS DECIDED IS NOT THE FRAME'S EITHER, where
-// verse already holds it: an answer the route accepted is on the question, verdict, ballot and
+// viff already holds it: an answer the route accepted is on the question, verdict, ballot and
 // all, and a worker reporting another verdict under it would leave a record saying the
-// answerer chose what they did not. So a relayed task's decision is settled from what verse
-// holds (settleRelayed), and its slide named from what verse relayed (slidBy).
+// answerer chose what they did not. So a relayed task's decision is settled from what viff
+// holds (settleRelayed), and its slide named from what viff relayed (slidBy).
 func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, q *frames) {
 	docket, projector := asPrincipal(base, entity.SystemDocket), asPrincipal(base, entity.SystemMirror)
 	relayed := m.Runner != ""
@@ -829,7 +829,7 @@ func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, 
 				return
 			}
 			ev := it.ev
-			if ev.Cursor > 0 { // high-water for resume: verse re-subscribes ?since=cursor
+			if ev.Cursor > 0 { // high-water for resume: viff re-subscribes ?since=cursor
 				st["cursor"] = ev.Cursor
 			}
 			switch ev.Kind {
@@ -948,7 +948,7 @@ func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, 
 						if e != "" {
 							st["err"] = e
 						}
-						// And whether it ended for a reason of its own, or because verse and
+						// And whether it ended for a reason of its own, or because viff and
 						// its runner lost each other.
 						if ev.Orphaned {
 							st[OrphanedField] = true
@@ -985,7 +985,7 @@ func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, 
 				if by != "" {
 					st["autonomyBy"] = by
 				}
-				// The autonomy as it now stands, verse's part with it, which the frame does not
+				// The autonomy as it now stands, viff's part with it, which the frame does not
 				// carry: the slide's route set it before relaying it.
 				if p := m.autonomy(); len(p) > 0 {
 					st["autonomy"] = p
@@ -1082,7 +1082,7 @@ func held(st entity.Obj, m Meta) {
 	}
 }
 
-// OrphanedField is the field of a task's record that says the task ended because verse and its
+// OrphanedField is the field of a task's record that says the task ended because viff and its
 // runner lost each other, and not for a reason of its own. Such a task is `failed`, so it reaches
 // `onFailed`, which reads the field. Absent on every other end.
 const OrphanedField = "orphaned"
@@ -1090,9 +1090,9 @@ const OrphanedField = "orphaned"
 // Why an orphaned task ended, as its record's `err` says it, by who ended it.
 const (
 	// OrphanedUnanswered: the mirror stopped waiting on a runner that did not answer.
-	OrphanedUnanswered = "the runner did not answer, and verse stopped waiting on it"
-	// OrphanedWithVerse: the task ran in verse's own process, which ended.
-	OrphanedWithVerse = "its runtime ended with verse"
+	OrphanedUnanswered = "the runner did not answer, and viff stopped waiting on it"
+	// OrphanedWithViff: the task ran in viff's own process, which ended.
+	OrphanedWithViff = "its runtime ended with viff"
 	// OrphanedNoAccount: a rule holds its subject for a task nothing is running and no record
 	// says the end of.
 	OrphanedNoAccount = "no account of how the task ended"
@@ -1135,7 +1135,7 @@ func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
 	at := Ref(id)
 	if _, said := st["data"]; said {
 		if err := entity.CheckPatchable(entity.Raw(st.Payload())); err != nil {
-			fmt.Fprintf(os.Stderr, "verse: task %s: its end is recorded without `data`, which the store will not take: %v\n", id, err)
+			fmt.Fprintf(os.Stderr, "viff: task %s: its end is recorded without `data`, which the store will not take: %v\n", id, err)
 			delete(st, "data")
 		}
 	}
@@ -1150,7 +1150,7 @@ func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
 		committed, _, err := store.Write(entity.Write{At: at.At(), Value: entity.Raw(st.Payload()), When: when})
 		if err == nil && committed {
 			if said != "" {
-				fmt.Fprintf(os.Stderr, "verse: task %s: its end is on its record, after %d attempts\n", id, attempt+1)
+				fmt.Fprintf(os.Stderr, "viff: task %s: its end is on its record, after %d attempts\n", id, attempt+1)
 			}
 			return
 		}
@@ -1162,7 +1162,7 @@ func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
 		}
 		if since := time.Since(saidAt); err != nil && (said == "" || since >= sayAgain || err.Error() != said && since >= time.Minute) {
 			said, saidAt = err.Error(), time.Now()
-			fmt.Fprintf(os.Stderr, "verse: task %s: its end is not on its record yet, and is being written again (attempt %d): %v\n", id, attempt+1, err)
+			fmt.Fprintf(os.Stderr, "viff: task %s: its end is not on its record yet, and is being written again (attempt %d): %v\n", id, attempt+1, err)
 		}
 		// What stands there now decides what the next attempt may replace.
 		ent, ok, rerr := system.Get(at)
@@ -1180,7 +1180,7 @@ func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
 			return // another run's record: one that started later, or within the same second of a later firing
 		case entity.Str(ent.Payload, "started") == started && task.TerminalStatus(entity.Str(ent.Payload, "status")):
 			if said != "" {
-				fmt.Fprintf(os.Stderr, "verse: task %s: its end is on its record\n", id)
+				fmt.Fprintf(os.Stderr, "viff: task %s: its end is on its record\n", id)
 			}
 			return // it landed
 		default:
@@ -1266,19 +1266,19 @@ const (
 
 // ClaimRef is the entity a run is claimed at. The id is the spawn id, so the claim and the
 // task it guards share one address — there is nothing to keep in step.
-func ClaimRef(id string) entity.Ref { return entity.VerseRef(System, ClaimKind, id) }
+func ClaimRef(id string) entity.Ref { return entity.ViffRef(System, ClaimKind, id) }
 
 // IsTask and IsTaskish answer "is this address one of mine" — the question that used to be
 // asked as `ref.System == mirror.System`, and cannot be any more.
 //
-// The first segment of a verse-owned address is the reserved root, so a comparison against
+// The first segment of a viff-owned address is the reserved root, so a comparison against
 // `System` alone would be true of a `task:instance:x` in the world's half — an entity anybody
 // may write — and the caller would be reading somebody's fixture as the mirror of a running
 // task. Each namespace answers for itself, here, where the address is built.
-func IsTask(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System, InstanceKind) }
+func IsTask(ref entity.Ref) bool { return ref.ChildOf(entity.ViffRoot, System, InstanceKind) }
 
 // IsTaskish is the whole task namespace: an instance, its run record, its claim.
-func IsTaskish(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, System) }
+func IsTaskish(ref entity.Ref) bool { return ref.Under(entity.ViffRoot, System) }
 
 // gitOf is a spawn's repositories as the record carries them, in the words the spawn used
 // (`repo`, `from`), so a reader of the record and a reader of the charter see one vocabulary.

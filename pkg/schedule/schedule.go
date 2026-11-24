@@ -1,4 +1,4 @@
-// Package schedule is what a schedule is in the store: a record in verse's own half that holds
+// Package schedule is what a schedule is in the store: a record in viff's own half that holds
 // its period, its phase, the instant the daemon is armed against, and its standing tick.
 //
 // A tick is a commit. Nothing about a schedule lives only in a process: the daemon reads the
@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/mirror"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/mirror"
 )
 
-// System is where the records live: verse.schedule.<id>. The id is mirror.RecordID(at, name),
+// System is where the records live: mirror.schedule.<id>. The id is mirror.RecordID(at, name),
 // so a package's schedule carries the package's address, as its rules and levels do.
 const System = "schedule"
 
@@ -33,7 +33,7 @@ const (
 	AtField = "at"
 )
 
-// Calendar is the names reserved under verse.schedule for the calendar the base charter derives
+// Calendar is the names reserved under mirror.schedule for the calendar the base charter derives
 // from the hourly tick. A schedule may not take one of them.
 var Calendar = []string{"date", "time", "year", "month", "day", "weekday", "timezone"}
 
@@ -48,22 +48,22 @@ func IsCalendarName(name string) bool {
 }
 
 // Ref addresses one schedule's record.
-func Ref(id string) entity.Ref { return entity.VerseRef(System, id) }
+func Ref(id string) entity.Ref { return entity.ViffRef(System, id) }
 
 // TickRef addresses one tick: the schedule and the instant it was due.
-func TickRef(id, due string) entity.Ref { return entity.VerseRef(System, id, TickField, due) }
+func TickRef(id, due string) entity.Ref { return entity.ViffRef(System, id, TickField, due) }
 
-// IsRecord reports whether an address is a schedule's record — a child of verse.schedule that is
+// IsRecord reports whether an address is a schedule's record — a child of mirror.schedule that is
 // not a calendar fact.
 func IsRecord(r entity.Ref) bool {
-	return r.ChildOf(entity.VerseRoot, System) && !IsCalendarName(r.Name())
+	return r.ChildOf(entity.ViffRoot, System) && !IsCalendarName(r.Name())
 }
 
-// IsTickSubject reports whether a subject's segments name ticks: verse.schedule.<id>.tick.<due>,
+// IsTickSubject reports whether a subject's segments name ticks: mirror.schedule.<id>.tick.<due>,
 // with the id and the instant literal or `*`. It is what the latch lint and the spawn dedup ask,
 // since a rule about a tick has an end state the store gives it and an id that never recurs.
 func IsTickSubject(segs []string) bool {
-	return len(segs) == 5 && segs[0] == entity.VerseRoot && segs[1] == System && segs[3] == TickField
+	return len(segs) == 5 && segs[0] == entity.ViffRoot && segs[1] == System && segs[3] == TickField
 }
 
 // Schedule is a declaration: what a charter's head document says beside the strata.
@@ -91,7 +91,7 @@ func (s Schedule) Validate() error {
 		return fmt.Errorf("schedule %q: a name may not contain ':', '@' or '.'", s.Name)
 	}
 	if IsCalendarName(s.Name) {
-		return fmt.Errorf("schedule %q: the name is the calendar's, derived under verse.schedule "+
+		return fmt.Errorf("schedule %q: the name is the calendar's, derived under mirror.schedule "+
 			"from the hourly tick; pick another", s.Name)
 	}
 	if _, err := s.Period(); err != nil {

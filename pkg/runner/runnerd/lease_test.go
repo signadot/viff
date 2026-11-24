@@ -16,14 +16,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/systems/systemstest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // leased is each handler with every task's lease set to lease, and a launch of a task that
@@ -189,10 +189,10 @@ func TestASubscribeBeforeTheTaskIsHostedIsAnsweredAtOnce(t *testing.T) {
 	}
 }
 
-// A partition between verse and a runner: the runner ends the task at its lease, while verse is
-// still waiting on the runner, and when the runner can be reached again verse hears that end
+// A partition between viff and a runner: the runner ends the task at its lease, while viff is
+// still waiting on the runner, and when the runner can be reached again viff hears that end
 // and writes it on the task's record.
-func TestTheRunnerEndsATaskBeforeVerseStopsWaitingOnIt(t *testing.T) {
+func TestTheRunnerEndsATaskBeforeViffStopsWaitingOnIt(t *testing.T) {
 	const lease = 400 * time.Millisecond
 	h := runnerd.NewInProcessHandler(func(l runner.Launch, reg *task.Registry) *task.Task {
 		sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, reg), workEnv)
@@ -201,7 +201,7 @@ func TestTheRunnerEndsATaskBeforeVerseStopsWaitingOnIt(t *testing.T) {
 	h.SetLease(lease)
 	direct := httptest.NewServer(h.HTTPHandler())
 	t.Cleanup(direct.Close)
-	// What verse reaches the runner through, which the test cuts.
+	// What viff reaches the runner through, which the test cuts.
 	var cut atomic.Bool
 	target, _ := url.Parse(direct.URL)
 	through := httputil.NewSingleHostReverseProxy(target)
@@ -231,27 +231,27 @@ func TestTheRunnerEndsATaskBeforeVerseStopsWaitingOnIt(t *testing.T) {
 		return entity.ToObj(e.Payload)
 	}
 
-	// Watched: the task outlives its lease while verse subscribes.
+	// Watched: the task outlives its lease while viff subscribes.
 	time.Sleep(2 * lease)
 	if snap := snapshotOf(t, client.HTTP(direct.URL), "p"); snap.Status.Terminal() {
-		t.Fatalf("the task ended (%s: %s) while verse was subscribed to it", snap.Status, snap.Err)
+		t.Fatalf("the task ended (%s: %s) while viff was subscribed to it", snap.Status, snap.Err)
 	}
 
 	cut.Store(true)
 	for deadline := time.Now().Add(10 * time.Second); !snapshotOf(t, client.HTTP(direct.URL), "p").Status.Terminal(); {
 		if time.Now().After(deadline) {
-			t.Fatal("the runner did not end a task verse could not reach")
+			t.Fatal("the runner did not end a task viff could not reach")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	if got := record(); got["status"] != string(task.Running) {
-		t.Fatalf("record = %v when the runner ended the task, want verse still waiting on the runner", got)
+		t.Fatalf("record = %v when the runner ended the task, want viff still waiting on the runner", got)
 	}
 
 	cut.Store(false)
 	for deadline := time.Now().Add(15 * time.Second); record()["status"] == string(task.Running); {
 		if time.Now().After(deadline) {
-			t.Fatalf("verse did not hear the task's end once the runner could be reached: %v", record())
+			t.Fatalf("viff did not hear the task's end once the runner could be reached: %v", record())
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

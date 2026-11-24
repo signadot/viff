@@ -1,6 +1,6 @@
 # Why: Strata
 
-The reasons behind [Strata](../strata.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [Strata](../strata.md). They are for somebody changing viff; the page itself says what viff does.
 
 ## Why the ordering is declared rather than inferred
 
@@ -15,7 +15,7 @@ hides. A check that is right most of the time looks exactly like one that is rig
 case where it matters.
 
 With a declared ordering, a write across levels is ruled out by construction. Nothing is left
-for a template to hide. For the same reason, verse constrains the content of a derive and does
+for a template to hide. For the same reason, viff constrains the content of a derive and does
 not analyse it.
 
 ## Why a derive reads only its subject

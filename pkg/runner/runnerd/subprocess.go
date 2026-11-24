@@ -24,13 +24,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // SubprocessHandler is a task handler that runs each task in a process of its own, a child of the
@@ -71,7 +71,7 @@ type SubprocessConfig struct {
 	// Sandbox confines the task process.
 	Sandbox Sandbox
 	// Programs are the other programs a task runs, found inside the sandbox where they are
-	// outside it: a script's verse-call-tool.
+	// outside it: a script's viff-call-tool.
 	Programs []string
 	// ReadOnly are paths the operator keeps for every task to read (`readOnly:`), bound read
 	// only where they are as Programs are. Each is looked for, and checked against the runner's
@@ -1466,7 +1466,7 @@ func CheckReadOnly(paths []string, kept map[string]string) error {
 // CheckSecretStore refuses a secret store a task's sandbox would have. NO SANDBOX BINDS THE
 // STORE, and that is by where it is: a sandbox binds the system directories, the task's own
 // directory under the runner's work, and what `readOnly` names, so a store under a system
-// directory (`/etc/verse/secrets`) is every task's to read, and one that holds or lies in the
+// directory (`/etc/viff/secrets`) is every task's to read, and one that holds or lies in the
 // runner's work is some task's. kept is the runner's other directories (KeptDirs, without the
 // store). Both sides are compared as the filesystem resolves them, so a link into /etc is /etc.
 func CheckSecretStore(dir string, kept map[string]string) error {

@@ -15,16 +15,16 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	verseapi "github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	viffapi "go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// The out half: what the verse asks to be said in Slack, said, and what became of it written back.
+// The out half: what the viff asks to be said in Slack, said, and what became of it written back.
 //
 // Somebody (a person, a charter) writes an INPUT at `slack.<ws>.out.<target>.<name>`:
 //
@@ -44,7 +44,7 @@ import (
 // as they are. `<name>` is the writer's.
 //
 // A SIBLING, NOT A CHILD. An input is the writer's document and grows structure (blocks, buttons);
-// a status inside it would one day collide with a field of the same name. `~` is verse's mark for
+// a status inside it would one day collide with a field of the same name. `~` is viff's mark for
 // a name derived from another (a question id is `<task>~<gate>`), and a name ending in `~status` is
 // never an input.
 //
@@ -64,12 +64,12 @@ import (
 // Removing an input leaves its status, so the ts survives for whoever later decides what a
 // removal should do to the message; for now the message stays as it is.
 type Sink struct {
-	s     *Slack
-	verse *client.Client
-	now   func() time.Time
+	s    *Slack
+	viff *client.Client
+	now  func() time.Time
 	// As reads an ask as the person a message is for, where the input names one (9ce3bva0): an
 	// ask is read by whom it asks, and this program only ever shows it to them. The person is
-	// named with their Slack account, so a verse that verifies people admits the read through
+	// named with their Slack account, so a viff that verifies people admits the read through
 	// its binding. Nil reads as this program, which reads what a rule's gate holds out and
 	// nothing a person's ask does not.
 	As func(principal, account string) *client.Client
@@ -86,9 +86,9 @@ type Sink struct {
 
 // Sink is this workspace's out half: what it says in Slack, and what it remembers of its own
 // messages. The pass that drives it, the status it writes and the failures it records are the io
-// framework's (verseio.Out); what is here is Slack.
-func (s *Slack) Sink(verse *client.Client) *Sink {
-	return &Sink{s: s, verse: verse, now: time.Now}
+// framework's (viffio.Out); what is here is Slack.
+func (s *Slack) Sink(viff *client.Client) *Sink {
+	return &Sink{s: s, viff: viff, now: time.Now}
 }
 
 // OutRef is the place inputs are written under.
@@ -102,10 +102,10 @@ func (s *Slack) OutRef() entity.Ref { return entity.RefAt(s.place("out")...) }
 // visible is not. Every pass re-reads the questions and re-remembers what this message is asking,
 // including the passes that say nothing to Slack, which is how a reply in a thread is matched to
 // the question that thread is about (socket.go).
-func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error) {
+func (k *Sink) Deliver(ctx context.Context, in viffio.Input) (entity.Obj, error) {
 	text := entity.Str(in.Value, "text")
 	if text == "" {
-		return nil, verseio.Permanent(fmt.Errorf("an input carries {text}, and this one has none"))
+		return nil, viffio.Permanent(fmt.Errorf("an input carries {text}, and this one has none"))
 	}
 	body, asked, err := k.body(ctx, text, in.Value, in.To)
 	if err != nil {
@@ -198,7 +198,7 @@ func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 // so a question settling redraws a message nobody wrote to, and everyone who can see it is told,
 // not only whoever answered. An input that asks about nothing is its text and no more.
 func (k *Sink) body(ctx context.Context, text string, input *ir.Node, to string) (string, []Asked, error) {
-	asks := verseio.Strs(entity.Get(input, "asks"))
+	asks := viffio.Strs(entity.Get(input, "asks"))
 	if len(asks) == 0 {
 		return text, nil, nil
 	}
@@ -245,7 +245,7 @@ type Asked struct {
 	ID      string
 	Options []string
 	// Standing says the question could be read at all. A question record carries the grants
-	// versed wrote at posing, so one that has outlived them is invisible to this program while
+	// viffd wrote at posing, so one that has outlived them is invisible to this program while
 	// the docket — which reads as the system — goes on listing it.
 	Standing bool
 	// Settled says the question takes no more answers. It stays in the index anyway, because a
@@ -381,23 +381,23 @@ type posed struct {
 }
 
 // readerFor is who reads the asks a message is about: the person it is for, where the input names
-// one verse knows, and this program otherwise. A person is read as with their Slack account, found
-// by their email once and kept: the account is what a verse that verifies people admits the read
+// one viff knows, and this program otherwise. A person is read as with their Slack account, found
+// by their email once and kept: the account is what a viff that verifies people admits the read
 // through. A person Slack does not know is read as this program, which is what the message to
 // them would have failed on anyway.
 func (k *Sink) readerFor(ctx context.Context, to string) (*client.Client, string) {
 	if k.As == nil {
-		return k.verse, ""
+		return k.viff, ""
 	}
 	g, err := entity.ParsePrincipal(to)
 	if err != nil || (g.Kind != entity.UserKind && g.Kind != entity.AgentKind) {
-		return k.verse, ""
+		return k.viff, ""
 	}
 	acct := ""
 	if g.Kind == entity.UserKind {
 		if acct, err = k.accountOf(ctx, g.ID); err != nil {
 			k.s.log("slack out: who %s is in Slack: %v", g.ID, err)
-			return k.verse, ""
+			return k.viff, ""
 		}
 	}
 	return k.As(g.String(), acct), g.String()
@@ -437,7 +437,7 @@ type lookedUp struct {
 // question reads the record of the question with this id, where the mirror keeps it.
 func (k *Sink) question(reader *client.Client, whom, id string) (posed, error) {
 	q := posed{id: id}
-	doc, err := verseio.ReadAt(reader, mirror.QuestionRef(id).KPath())
+	doc, err := viffio.ReadAt(reader, mirror.QuestionRef(id).KPath())
 	if err != nil {
 		return q, fmt.Errorf("reading question %s: %w", id, err)
 	}
@@ -464,18 +464,18 @@ func (k *Sink) question(reader *client.Client, whom, id string) (posed, error) {
 	if whom != "" && q.status == mirror.QuestionPending {
 		q.servedBy = servedFor(reader, id)
 	}
-	q.say = verseio.Strs(entity.Get(doc, "say"))
-	q.waiting = verseio.Strs(entity.Get(doc, mirror.WaitingOnField))
+	q.say = viffio.Strs(entity.Get(doc, "say"))
+	q.waiting = viffio.Strs(entity.Get(doc, mirror.WaitingOnField))
 	if ir.Uncomment(entity.Get(doc, "options")) != nil {
 		q.opts = mirror.OptionsOf(doc)
 	}
 	ballots := entity.Get(doc, "ballots")
-	for _, who := range verseio.Fields(ballots) {
+	for _, who := range viffio.Fields(ballots) {
 		b := entity.Get(ballots, who)
 		cast := person(who) + " " + entity.Str(b, "choice")
 		// What somebody said with their ballot is half of what they decided, and a channel that
 		// shows the count and drops the words shows the lesser half.
-		if said := strings.Join(verseio.Strs(entity.Get(b, "say")), "; "); said != "" {
+		if said := strings.Join(viffio.Strs(entity.Get(b, "say")), "; "); said != "" {
 			cast += " — " + said
 			q.spoken = true
 		}
@@ -563,7 +563,7 @@ func (q posed) line() string {
 }
 
 // person is a principal as a reader in Slack would name it: a person by their email, a wildcard as
-// the docket it stands for — there is no list of every person to name — and anyone else as verse
+// the docket it stands for — there is no list of every person to name — and anyone else as viff
 // names them.
 //
 // As code, because Slack turns an email in a message into a mailto link, and a decision that reads
@@ -589,7 +589,7 @@ func people(ps []string) string {
 // shows the input as it stands — an input retargeted after delivery, say: the message stands, and
 // a reply in its thread is still matched to the question it is about (socket.go). Nothing is asked
 // of Slack but who the person is, once: the answer, found or not, is kept (accountOf).
-func (k *Sink) Keep(ctx context.Context, in verseio.Input) {
+func (k *Sink) Keep(ctx context.Context, in viffio.Input) {
 	channel, ts := entity.Str(in.Status, "channel"), entity.Str(in.Status, "ts")
 	if ts == "" {
 		return // refused before anything was posted: there is no thread to match
@@ -614,7 +614,7 @@ func (k *Sink) Keep(ctx context.Context, in verseio.Input) {
 
 // channelFor is where a target is said: a person's DM, opened if need be, or the channel itself.
 //
-// A PERSON MAY BE NAMED AS VERSE KNOWS THEM — `user:ana@acme.test`, or the bare email — and not
+// A PERSON MAY BE NAMED AS VIFF KNOWS THEM — `user:ana@acme.test`, or the bare email — and not
 // only as Slack does. That is what lets a charter address the people a question waits on: what it
 // reads off the record is a principal, and asking it to carry Slack ids would mean somebody
 // maintaining a table mapping one to the other, stale precisely when a gate most needs to reach
@@ -634,8 +634,8 @@ func (k *Sink) channelFor(ctx context.Context, target string) (string, error) {
 	case strings.HasPrefix(target, "C"), strings.HasPrefix(target, "G"), strings.HasPrefix(target, "D"):
 		return target, nil
 	}
-	return "", verseio.Permanent(fmt.Errorf("target %q is neither a Slack id (U… a person, C… or G… "+
-		"a channel) nor somebody verse knows (user:<email>)", target))
+	return "", viffio.Permanent(fmt.Errorf("target %q is neither a Slack id (U… a person, C… or G… "+
+		"a channel) nor somebody viff knows (user:<email>)", target))
 }
 
 // fingerprint is a short, stable digest of a message, so a message that would show differently is
@@ -658,7 +658,7 @@ func onWords(on *ir.Node) []string {
 		if m := entity.Get(row, "match"); m != nil {
 			// A verdict by name alone reads as the word; a tagged one (`!not proceed`) as the
 			// pattern it is, since its word is not what it matches.
-			if v := ir.Uncomment(entity.Get(m, "verdict")); v != nil && v.Tag == "" && v.Type == ir.StringType && len(verseio.Fields(m)) == 1 {
+			if v := ir.Uncomment(entity.Get(m, "verdict")); v != nil && v.Tag == "" && v.Type == ir.StringType && len(viffio.Fields(m)) == 1 {
 				cond = "on *" + v.String + "*"
 			} else if b, err := codec.NodeBytesWire(m, codec.Tony); err == nil {
 				cond = "on `" + string(b) + "`"
@@ -692,7 +692,7 @@ func thenWords(then *ir.Node) string {
 		return fmt.Sprintf("answers `%s` *%s*", entity.Str(a, "ask"), entity.Str(a, "choice"))
 	}
 	if q := entity.Get(then, "ask"); q != nil {
-		who := verseio.Strs(entity.Get(q, "to"))
+		who := viffio.Strs(entity.Get(q, "to"))
 		line := "asks “" + entity.Str(q, "question") + "”"
 		if len(who) > 0 {
 			line += " of " + people(who)
@@ -702,7 +702,7 @@ func thenWords(then *ir.Node) string {
 	return ""
 }
 
-// servedFor is the resolver serving ask id for whom reader acts as, "" where none does or verse
+// servedFor is the resolver serving ask id for whom reader acts as, "" where none does or viff
 // did not say.
 func servedFor(reader *client.Client, id string) string {
 	resp, err := reader.Get("/asks/"+url.PathEscape(id)+"/served", nil)
@@ -713,7 +713,7 @@ func servedFor(reader *client.Client, id string) string {
 		resp.Body.Close()
 		return ""
 	}
-	var out verseapi.AskServed
+	var out viffapi.AskServed
 	if err := client.Decode(resp, &out); err != nil {
 		return ""
 	}

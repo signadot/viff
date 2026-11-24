@@ -10,7 +10,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
-// Path addresses a place in the verse. A Ref names an entity; Field goes further, naming
+// Path addresses a place in the viff. A Ref names an entity; Field goes further, naming
 // somewhere inside its payload. Nothing else in the address is new — a Path with an empty
 // Field IS a ref.
 //
@@ -120,7 +120,7 @@ func (r Ref) KPath() string { return JoinSegs(r.Segs()) }
 //
 // The quoted clause is the escape, and it reaches every name: one that would read as an access,
 // or that itself begins and ends with a quote, is spelled inside one more pair — `"[0]"`,
-// `""x""`. Array access is what people address; a field named `[0]` is not, and verse writes
+// `""x""`. Array access is what people address; a field named `[0]` is not, and viff writes
 // none, but a listing prints whatever the document holds (quoteStep).
 func StepIsAccess(step string) bool {
 	if step == "" {
@@ -280,7 +280,7 @@ func (r Ref) Into(access string) Path { return Path{Ref: r, Access: access} }
 // checks and the write committing as a single step. It is the only write the store has —
 // creating, updating, deleting, patching a field, and claiming an address are all this
 // operation with different arguments, because the substrate underneath is one conditional
-// patch and everything else was verse simulating variants on top of it.
+// patch and everything else was viff simulating variants on top of it.
 //
 // The value MERGES at its path, and a nil Value removes whatever stands there. So a
 // write says what should be true at one place; it does not say what should no longer be
@@ -315,13 +315,13 @@ type Write struct {
 	// require naming no place of its own is about the write's own place, element included.
 	When []Require
 	// Grants is what the node the write CREATES holds out, in place of the default it would
-	// copy from the nearest `child-grants` above: the list an owner sets with `verse perms
+	// copy from the nearest `child-grants` above: the list an owner sets with `viff perms
 	// --grants`, and an empty one holds out nothing. nil is the default.
 	//
 	// A write carrying grants is a CREATE and nothing else: the node's absence is its
 	// precondition, and the node and its perms record land in one commit, so no reader ever
 	// sees the node held out as the default would hold it (attributed.write). Grants on a node
-	// that stands are changed with `verse perms`. Only an attributed store reads this field;
+	// that stands are changed with `viff perms`. Only an attributed store reads this field;
 	// the store beneath refuses a write that carries it.
 	Grants []Grant
 }
@@ -448,7 +448,7 @@ func Present() Payload { return ir.Null() }
 // exception any more: one operator, any depth.
 func Removed() Payload { return deleteOp() }
 
-// deleteOp is how verse spells "this is gone" IN A WRITE: a null wearing `!delete`, which the
+// deleteOp is how viff spells "this is gone" IN A WRITE: a null wearing `!delete`, which the
 // store executes as a removal.
 //
 // The tag is the whole of it. A BARE null is a value — logd stores one and hands it back — so
@@ -464,7 +464,7 @@ func deleteOp() Payload { return ir.Null().WithTag(deleteTag) }
 // operation a patch executes is the first registered label in the chain rather than the whole
 // string.
 //
-// It is what a removal wears on the way in AND on the way back: verse writes it (deleteOp) and
+// It is what a removal wears on the way in AND on the way back: viff writes it (deleteOp) and
 // logd forwards it on the change stream, which is how the delta walk tells a removed entity
 // from one whose payload is null (walkEntityChanges).
 const (
@@ -572,7 +572,7 @@ func Modify(ctx context.Context, s Store, ref Ref, fn func(cur Payload) Payload)
 		}
 		// The removals go on AFTER the escape, and the order is load-bearing. AsData makes a
 		// stored document inert — including a charter's own `patch: {tmp: !delete null}`, which
-		// is data — while these markers are verse's and must still execute. Adding them first
+		// is data — while these markers are viff's and must still execute. Adding them first
 		// and escaping afterwards would store the removal instead of performing it; exempting
 		// `!delete` inside AsData would make a stored one executable, and it lands in the
 		// PRECONDITION too, where a delete is not something a match can be evaluated with.
@@ -691,7 +691,7 @@ func withRemovals(next, old Payload) Payload {
 // JoinSegs renders a VECTOR OF STEPS as the kinded path they name, quoting each segment as
 // kpath needs it.
 //
-// It is what lets an address be typed as separate words — `verse data demo pr 1` — and it is
+// It is what lets an address be typed as separate words — `viff data demo pr 1` — and it is
 // more than a convenience: a segment handed over whole never has to be escaped by the person
 // typing it. `demo.pr."a.b"` and `git.ref."x@git:ref:y"` are what the quoting is FOR, and both
 // are exactly the addresses that are hardest to type correctly in one token. As a vector they
@@ -717,7 +717,7 @@ func JoinSegs(segs []string) string {
 //	git ref '"*"'               an id that IS an asterisk, which a bare `*` step would select with
 //	demo pr 1 '"[0]"'           a FIELD named [0], which a bare `[0]` step would read as an access
 //
-// STEPS ARE THE ADDRESSING MODEL'S OWN SPELLING, on the way in and on the way out. `verse data
+// STEPS ARE THE ADDRESSING MODEL'S OWN SPELLING, on the way in and on the way out. `viff data
 // demo pr a.b` needs no escaping from the person typing it, because the shell has already
 // separated the words; a listing that answers the same way hands back exactly what it takes.
 //
@@ -742,12 +742,12 @@ func JoinSteps(segs []string) string {
 // quoteStep is one step as a shell word: bare when it already is one, and quoted when it is not
 // — including when it is EMPTY, which would otherwise vanish from the line entirely.
 //
-// TWO QUOTINGS, for two readers. The shell's comes off before verse sees the word, so it only
+// TWO QUOTINGS, for two readers. The shell's comes off before viff sees the word, so it only
 // protects a segment from being split or expanded; what arrives is then read by the step
 // clauses, and a name those would read as something else — an access (`[0]`, `(walter)`), the
 // wildcard (`*`), or a quoted name (`"x"`) — is first wrapped in the quoted clause, which takes
 // it back literally.
-// Without that the listing prints `'[0]'`, the shell hands verse `[0]`, and the line reads
+// Without that the listing prints `'[0]'`, the shell hands viff `[0]`, and the line reads
 // back as array element 0 rather than the field it named.
 //
 // SINGLE QUOTES BY PREFERENCE, because they are literal: nothing inside one is expanded, globbed
@@ -789,7 +789,7 @@ func quoteStep(s string) string {
 // AN ACCESS IS ITS OWN WORD, because that is the word a read takes: the step clauses are read
 // off a word's first character, so `votes[0]` as one word is a field of that name and not an
 // element (KPathOf). It is shell-quoted and NOT wrapped in the quoted clause — the inverse of
-// what quoteStep does for a name that would read as an access — so the shell hands verse `[0]`
+// what quoteStep does for a name that would read as an access — so the shell hands viff `[0]`
 // and the line means the element it names.
 //
 // It is JoinSteps for a Path: an address of names only renders identically, which is what keeps
@@ -833,7 +833,7 @@ func accessSteps(access string) []string {
 // when it already is one, and single-quoted otherwise, a single quote inside it spelled as the
 // quote closed, the character backslash-escaped and the quote reopened, which both readers take.
 // It is quoteStep with that one extension, for a line whose reader is `xargs -L1` as often as a
-// shell: `verse flow --args` prints rows as the flags that name them.
+// shell: `viff flow --args` prints rows as the flags that name them.
 func ShellWord(s string) string {
 	if s != "" && !strings.ContainsFunc(s, shellSpecial) {
 		return s
@@ -881,7 +881,7 @@ func PatternSegs(s string) ([]string, error) { return exprSegs(s, true) }
 // It exists because a segment cannot be a string and keep its kind. PatternSegs flattens each to
 // text, so a quoted `"*"` and a bare `*` both arrive as `*` and the reader downstream takes both
 // for the wildcard — which made `subject: 'demo.pr."*"'` a rule about EVERY pr while the same
-// characters in `verse data -at` name the one node called `*`. Two grammars for one spelling, and
+// characters in `viff data -at` name the one node called `*`. Two grammars for one spelling, and
 // the wrong one fires on everything.
 //
 // A quoted `*` or `..` therefore comes back as `!or ["*"]` — the operator the list form already

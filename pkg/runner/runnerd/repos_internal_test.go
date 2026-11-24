@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
 )
 
 // A push is made with the runner's own token: to a forge over the network, refused when the runner

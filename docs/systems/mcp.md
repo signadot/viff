@@ -6,8 +6,8 @@ the task never reaches the server. The environment says which servers and which 
 with which arguments; the autonomy decides each call; the ceiling bounds both. It is the same kind
 of thing as [`slack`](slack.md): a system beyond the runner that the runner performs.
 
-This is not [verse's own MCP server](../reference/mcp.md), which is verse offering its verbs to
-an MCP client. Here verse's runner is the client, of someone else's server.
+This is not [viff's own MCP server](../reference/mcp.md), which is viff offering its verbs to
+an MCP client. Here viff's runner is the client, of someone else's server.
 
 It is for a server reached over HTTP with a key the operator holds. A server that is a program
 speaking on its stdio [is not offered through it](#a-server-over-stdio).
@@ -102,8 +102,8 @@ is data, not instructions.
 
 What a doer cannot take is left out of that doer's list, and logged. An agent's model takes a
 tool's name of letters, digits, `_` and `-`, 64 characters at most, Claude's counting the
-`mcp__verse__` it reads a tool under; a name with a `.` in it, which MCP allows, reaches a script
-and no agent. A script's calls go through `verse-call-tool`, which checks a call against the
+`mcp__viff__` it reads a tool under; a name with a `.` in it, which MCP allows, reaches a script
+and no agent. A script's calls go through `viff-call-tool`, which checks a call against the
 tool's parameters and nothing else, so a tool whose schema says more than its properties (one
 taking any object, one taking arguments beside its properties, one requiring a name its
 properties lack, or one with a parameter named `input`) is not offered to a script, where an
@@ -142,13 +142,13 @@ must act on outside the call, such as a signed url to upload a file to (Linear's
 
 A row that asks about a call asks about the server, the tool and the arguments, and the answer
 performs that call and no other. The question's record carries the step's fields, arguments and
-all, and `verse question <id>` shows them. The Slack ask names the server and the tool and not
+all, and `viff question <id>` shows them. The Slack ask names the server and the tool and not
 the arguments; the binding holds whatever a person is shown.
 
 ## The runner's configuration
 
 The runner names its servers under `mcp.servers`, and a doer's `mcp` ceiling names the servers
-its tasks may call, one to a block, with the `call` shapes ([the verse
+its tasks may call, one to a block, with the `call` shapes ([the viff
 runner](../reference/runnerd.md#configuration)):
 
 ```tony

@@ -1,11 +1,11 @@
-# The charter versed installs at start as the system (VERSE_SYSTEM_CHARTER): the file
+# The charter viffd installs at start as the system (VIFF_SYSTEM_CHARTER): the file
 # `systemCharter` names, carried in whole. Only a binary is in the image, so the file comes in
-# as a ConfigMap mounted into versed (deploy/build.tony's systemCharter patch).
+# as a ConfigMap mounted into viffd (deploy/build.tony's systemCharter patch).
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: verse-system-charter
+  name: viff-system-charter
   labels:
-    app: verse
+    app: viff
 data:
   system.tony: !file $[systemCharter]

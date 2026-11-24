@@ -1,5 +1,5 @@
-// Package schema is verse's self-description: ONE tony schema, in one context, defining
-// everything verse puts on the wire — the top-level paths of the API and every shape they
+// Package schema is viff's self-description: ONE tony schema, in one context, defining
+// everything viff puts on the wire — the top-level paths of the API and every shape they
 // name.
 //
 // It is assembled here rather than served from somewhere. The parts are:
@@ -14,19 +14,19 @@
 //     declares the surface, so nothing can generate it.
 //
 // Where a definition came from is OUR problem, not the reader's: what is published is one
-// document, because a caller resolving verse-match wants its shape, and "hand-written or
+// document, because a caller resolving viff-match wants its shape, and "hand-written or
 // derived" tells them nothing they can act on.
 //
 // # One schema, not thirty
 //
 // The parts arrive as separate signature documents — one per type, each with its own context
-// and cross-package aliases (`launch:verse-launch-spec`). They are FOLDED into a single
+// and cross-package aliases (`launch:viff-launch-spec`). They are FOLDED into a single
 // schema's `define`, which is how tony's own base schema is written: one document, one
 // signature, a namespace of definitions that refer to each other by bare name. So the
 // aliases go away, the contexts merge, and what a reader gets is one self-contained thing.
 //
 // The point of assembling it HERE, with no route table and no server, is that the full schema
-// is obtainable without either — `verse schema` reads it over HTTP, but a test, a generator or
+// is obtainable without either — `viff schema` reads it over HTTP, but a test, a generator or
 // a person at a prompt can have it from this package for the asking. The API is downstream: it
 // walks the root for the paths it serves, and has to agree with what it finds.
 //
@@ -44,17 +44,17 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/internal/config"
-	"github.com/signadot/verse/internal/resolver"
-	"github.com/signadot/verse/internal/trigger"
-	"github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/config"
+	"go.viff.dev/viff/internal/resolver"
+	"go.viff.dev/viff/internal/trigger"
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 //go:embed curated.tony
@@ -64,9 +64,9 @@ var curatedDoc []byte
 var rootDoc []byte
 
 // Name is what the assembled schema is called, and RootDef is the definition inside it whose
-// keys are the top-level paths — `verse:root`, if you are naming it from outside.
+// keys are the top-level paths — `viff:root`, if you are naming it from outside.
 const (
-	Name    = "verse"
+	Name    = "viff"
 	RootDef = "root"
 )
 
@@ -80,11 +80,11 @@ const (
 	nameField    = "name"
 )
 
-// versePkg prefixes the import paths of THIS module's packages. A context alias pointing at one
+// viffPkg prefixes the import paths of THIS module's packages. A context alias pointing at one
 // of them is a cross-package reference, which folding dissolves — there is only one namespace
-// afterwards, so `launch:verse-launch-spec` is just verse-launch-spec. An alias pointing
+// afterwards, so `launch:viff-launch-spec` is just viff-launch-spec. An alias pointing
 // anywhere else (tony-base, format) names a schema that is genuinely elsewhere and stays.
-const versePkg = "github.com/signadot/verse/"
+const viffPkg = "go.viff.dev/viff/"
 
 var (
 	once     sync.Once
@@ -104,7 +104,7 @@ func load() {
 	aliases := map[string]*ir.Node{}
 
 	// Generated first, so a curated definition overrides rather than races it.
-	for _, src := range [][]byte{api.Schema, entity.Schema, trigger.Schema, task.Schema, runner.Schema, config.Schema, launch.Schema, systems.Schema, verseio.Schema, resolver.Schema} {
+	for _, src := range [][]byte{api.Schema, entity.Schema, trigger.Schema, task.Schema, runner.Schema, config.Schema, launch.Schema, systems.Schema, viffio.Schema, resolver.Schema} {
 		if err := fold(src, aliases, false); err != nil {
 			loadErr = err
 			return
@@ -123,9 +123,9 @@ func load() {
 	}
 	sort.Strings(sortedNm)
 
-	// `root` sorts before every `verse-…`, so the assembled document reads in the order it is
-	// used: what a verse IS, then the shapes that answer it. That is luck rather than design,
-	// but it is the reason the root is not called verse-root.
+	// `root` sorts before every `viff-…`, so the assembled document reads in the order it is
+	// used: what a viff IS, then the shapes that answer it. That is luck rather than design,
+	// but it is the reason the root is not called viff-root.
 	// The document gets its OWN nodes: byName keeps parentless definitions, so a definition
 	// read on its own does not arrive with a pointer back into the whole schema.
 	defs := make(map[string]*ir.Node, len(byName))
@@ -177,13 +177,13 @@ func fold(src []byte, aliases map[string]*ir.Node, isCurated bool) error {
 			// what codegen emits for a named map (trigger.Match). For a STRUCT with a custom
 			// codec it emits the Go type's shape instead — a non-empty, confident, false
 			// description, since `codec=custom` is precisely the declaration that the wire
-			// shape is not the Go shape. verse-formula is published as {args, op, req} and
-			// emits `!quorum 2`; verse-condition types its `when` as that object and emits an
+			// shape is not the Go shape. viff-formula is published as {args, op, req} and
+			// emits `!quorum 2`; viff-condition types its `when` as that object and emits an
 			// address string. Under the old rule a curated correction for either would have
 			// been shadowed by the lie it was written to replace.
 			//
 			// So: writing a curated entry is the deliberate act, and removing one is too —
-			// as already happened for verse-entity and verse-event once v0.0.93 could derive
+			// as already happened for viff-entity and viff-event once v0.0.93 could derive
 			// them. Nothing silently reverts to a generated definition; that is the point.
 			curated[name] = true
 		}
@@ -206,7 +206,7 @@ func contexts(d *ir.Node, aliases map[string]*ir.Node) []string {
 			continue // a bare context URI (tony-format/context), which every part carries
 		}
 		alias, path := entry.Fields[0].String, entry.Values[0].String
-		if strings.HasPrefix(path, versePkg) {
+		if strings.HasPrefix(path, viffPkg) {
 			strip = append(strip, alias)
 			continue
 		}
@@ -215,8 +215,8 @@ func contexts(d *ir.Node, aliases map[string]*ir.Node) []string {
 	return strip
 }
 
-// dissolve rewrites `<alias>:verse-thing` to `verse-thing` throughout a definition, in both
-// type expressions (`.[nullable(launch:verse-launch-spec)]`) and tags. A qualified name that
+// dissolve rewrites `<alias>:viff-thing` to `viff-thing` throughout a definition, in both
+// type expressions (`.[nullable(launch:viff-launch-spec)]`) and tags. A qualified name that
 // survived would resolve against a schema that no longer exists separately.
 func dissolve(n *ir.Node, strip []string) {
 	if n == nil || len(strip) == 0 {
@@ -294,7 +294,7 @@ func Get(name string) (*ir.Node, bool, error) {
 	return d.DeepCopy(), true, nil
 }
 
-// Root returns the definition whose keys are the top-level paths — what a verse looks like.
+// Root returns the definition whose keys are the top-level paths — what a viff looks like.
 // This is what the API walks to find the paths it must agree with.
 func Root() (*ir.Node, bool, error) { return Get(RootDef) }
 

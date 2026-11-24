@@ -17,7 +17,7 @@ import (
 // null gave cannot patch with irtype operation". Not the poisoned entity. Any of them.
 //
 // A staging deployment did this, twice. Writes kept succeeding, which is the cruel part: the
-// engine went on appending to a log nobody could ever read again, `verse data a.b.c` on
+// engine went on appending to a log nobody could ever read again, `viff data a.b.c` on
 // an unrelated entity failed, and a wipe was the only way back. The tags came from an agent's
 // answer — `answer.Extract` parses a driver's final message AS TONY, and an agent asked to
 // satisfy a contract written in `!or` and `!irtype` sometimes echoes that shape back, so the
@@ -36,13 +36,13 @@ func TestAnOperatorTagInAPayloadDoesNotPoisonTheStore(t *testing.T) {
 		"says":   ir.FromString("what the comment claims, against what the code does").WithTag("!irtype"),
 	})
 
-	set(t, s, VerseRef("task", "instance", "run-1"), Obj{
+	set(t, s, ViffRef("task", "instance", "run-1"), Obj{
 		"status": "done",
 		"data":   AsData(answer), // the fix: what a projection stores is data
 	}.Payload())
 
 	// The entity itself round-trips.
-	e, ok, err := s.Get(VerseRef("task", "instance", "run-1"))
+	e, ok, err := s.Get(ViffRef("task", "instance", "run-1"))
 	if err != nil || !ok {
 		t.Fatalf("get the entity that was written: ok=%v err=%v", ok, err)
 	}

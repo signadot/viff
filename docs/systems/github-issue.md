@@ -34,7 +34,7 @@ checks out, where the runner's forge is GitHub.
 
 ```tony
 spawn:
-  agent: {name: verse}
+  agent: {name: viff}
   prompt: "File an issue for each TODO in the README, and close each open TODO issue whose TODO is gone."
   environment:
     systems:
@@ -62,7 +62,7 @@ request, as it could before.
 Every verb is a step, because each one uses the runner's credential. So an environment can leave
 any of them out (above, `comment`), and an autonomy can refuse or ask about any it gives. In a
 row or a shape, `repo` is the repository as `host/owner/name`, and `issue` is the number. A
-script calls the same tools with `verse-call-tool`, and the same environment and rows decide
+script calls the same tools with `viff-call-tool`, and the same environment and rows decide
 them.
 
 ## Where the credential lives

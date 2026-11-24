@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // A WRITE IS CHECKED AT EVERY NODE ITS VALUE REACHES, not only the one it names. A value is a
@@ -113,17 +113,17 @@ func TestReplacingANodeWholeIsItsOwnersWhereSomethingStandsBeneath(t *testing.T)
 	}
 }
 
-// And the squat's last door: in an open verse everybody holds `read` at `github` and nothing
+// And the squat's last door: in an open viff everybody holds `read` at `github` and nothing
 // more, since the fence holds ownership back above alice's place. A value written at the top
 // that carried her place in it was the same reach, from further up.
 func TestAValueWrittenFromTheTopDoesNotReachAPlaceBeneath(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
-	place := entity.RefAt("github", "signadot", "verse")
+	place := entity.RefAt("github", "signadot", "viff")
 	if err := entity.Claim(store, place, "user:alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	mallory := entity.As(store, "user:mallory@example.com")
-	reach := entity.Obj{"signadot": entity.Obj{"verse": entity.Obj{"pr": entity.Obj{"1": entity.Obj{"title": "pwned"}}}}}
+	reach := entity.Obj{"signadot": entity.Obj{"viff": entity.Obj{"pr": entity.Obj{"1": entity.Obj{"title": "pwned"}}}}}
 	if _, _, err := mallory.Write(entity.Write{At: entity.RefAt("github").At(), Value: reach.Payload()}); !errors.Is(err, entity.ErrForbidden) {
 		t.Errorf("mallory wrote alice's place from `github`: %v", err)
 	}

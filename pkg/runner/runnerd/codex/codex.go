@@ -1,8 +1,8 @@
-// Package codex is the codex agent: OpenAI's Codex as a verse task, with every command and every
+// Package codex is the codex agent: OpenAI's Codex as a viff task, with every command and every
 // patch it proposes decided by the task's autonomy and shown on the read plane. A spawn asks for it
 // with `doer: {agent: codex}`, and a runner that hosts it builds its task with Task.
 //
-// It is an agent of its own beside verse's (package verse), and it exists because of what the
+// It is an agent of its own beside viff's (package viff), and it exists because of what the
 // other way of running a foreign agent gives up. A program the runner runs and reads the output
 // of is gated once, at the invocation, and nothing inside it is seen; the read plane is silent
 // until the program exits. That is the honest shape for a program that offers nothing else.
@@ -11,7 +11,7 @@
 // `codex app-server` is a protocol, not a print-out. A client starts a thread and a turn, and
 // codex then ASKS THE CLIENT before it runs a command or applies a patch, asks it the questions
 // the model has for a person, and streams each item it starts and completes. A running turn
-// takes more input, and can be interrupted. So the decision points verse wants are already
+// takes more input, and can be interrupted. So the decision points viff wants are already
 // there, and this package's job is to put each of them in front of the loop as an ordinary
 // action:
 //
@@ -20,8 +20,8 @@
 //     a patch. A host a command asks to reach is no step: what the task reaches is its
 //     environment's `network`, built around codex's process, whatever codex is told. A request that is several
 //     steps goes ahead only where each of them would (stepsOf). The supervisor
-//     gates it exactly as it gates the verse agent's `run_bash` or `write_file`: the autonomy
-//     decides, a blocked question goes to the docket, `verse question` answers it.
+//     gates it exactly as it gates the viff agent's `run_bash` or `write_file`: the autonomy
+//     decides, a blocked question goes to the docket, `viff question` answers it.
 //     A question codex has for a person is the step `question.ask`, as the `question-ask` tool's use is,
 //     and once the autonomy lets it go it is put to them.
 //     The gate model gains nothing new.
@@ -30,7 +30,7 @@
 //     refused gate is `decline`, and codex is told why through the turn, so the model plans
 //     around it rather than retrying it.
 //   - Approval policy `untrusted` makes codex ask about every command it does not know to be
-//     read-only and every patch. Under an autonomy that allows them verse answers yes at once, and the
+//     read-only and every patch. Under an autonomy that allows them viff answers yes at once, and the
 //     run is unattended but narrated and on the record, action by action.
 //
 // The runner's own tools are offered to codex as its own (`dynamicTools` on `thread/start`, in
@@ -46,7 +46,7 @@
 // What codex does WITHOUT asking is the part that is attested rather than enforced: the
 // commands its own autonomy trusts as read-only (listing, reading, searching), and its web
 // search. Those are narrated when they complete, so the read plane shows them, but no gate saw
-// them first. The verse agent has the same shape for its reads, which are no step; here the set
+// them first. The viff agent has the same shape for its reads, which are no step; here the set
 // of free reads is codex's to define, and this comment is where that is said.
 //
 // Codex's own sandbox runs inside the runner's containment. The two compose: the sandbox this
@@ -74,11 +74,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/signadot/verse/pkg/answer"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/answer"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Agent is the agent's name: what a spawn writes in `doer: {agent: …}`.
@@ -165,7 +165,7 @@ func (c Creds) argv() []string {
 }
 
 // The names an action proposed by this agent carries. They are codex's words for what it is
-// about to do, which is what a person reading `verse question` or `attach` should see.
+// about to do, which is what a person reading `viff question` or `attach` should see.
 const (
 	kindShell       = "shell"
 	kindPatch       = "apply_patch"
@@ -180,7 +180,7 @@ const (
 // process's environment (the runner's allowlist, the launch's `with.env`, and where the task's
 // credential file is, for a task that has one), offering it tools (the runner's) as its own.
 // A launch whose autonomy does not name codex's shell and edits is refused: they are how it works.
-func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []verse.Tool, ceilings map[string]systems.Ceiling) (*task.Task, error) {
+func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir string, tools []viff.Tool, ceilings map[string]systems.Ceiling) (*task.Task, error) {
 	var contract *answer.Contract
 	if l.Answer != nil {
 		c, err := answer.Parse(l.Answer)
@@ -200,7 +200,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 		resolver: reg,
 		log:      os.Stderr,
 		tools:    tools,
-		toolBy:   map[string]verse.Tool{},
+		toolBy:   map[string]viff.Tool{},
 	}
 	for _, t := range tools {
 		d.toolBy[t.Name] = t
@@ -208,7 +208,7 @@ func Task(l runner.Launch, reg *task.Registry, creds Creds, env []string, dir st
 	if contract != nil {
 		d.contractSrc = contract.Source()
 	}
-	d.toolStep = verse.StepOf(tools)
+	d.toolStep = viff.StepOf(tools)
 	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
 	sup.SetCeilings(ceilings)
 	sup.SetStepsOf(d.stepsOf)
@@ -247,9 +247,9 @@ type driver struct {
 	log           io.Writer
 	emit          func(task.Event)
 	// tools are the runner's, offered to codex on thread/start and run here when it calls one.
-	tools  []verse.Tool
-	toolBy map[string]verse.Tool
-	// toolStep is the step a call of one of the tools is, as the verse agent's is classified.
+	tools  []viff.Tool
+	toolBy map[string]viff.Tool
+	// toolStep is the step a call of one of the tools is, as the viff agent's is classified.
 	toolStep func(task.ToolUse) (task.Step, bool)
 
 	rpc      *rpc
@@ -288,7 +288,7 @@ type proposal struct {
 	ui     userInput
 	perm   permissionsRequest
 	call   toolCall
-	tool   verse.Tool
+	tool   viff.Tool
 	// steps are what the request is, as the spec names a task's steps: a command is
 	// `commands.run`, a patch `files.write` for each path it touches. None is no step.
 	steps []task.Step
@@ -371,7 +371,7 @@ func (d *driver) start(ctx context.Context) error {
 	d.items = map[string]item{}
 	d.approved = map[string]bool{}
 	if err := rpc.CallInto(ctx, "initialize", map[string]any{
-		"clientInfo":   map[string]any{"name": "verse-runner", "title": "verse", "version": "0"},
+		"clientInfo":   map[string]any{"name": "viff-runner", "title": "viff", "version": "0"},
 		"capabilities": map[string]any{"experimentalApi": true},
 	}, nil); err != nil {
 		return d.fail(err)
@@ -611,7 +611,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 		}
 		p.kind, p.itemID, p.call, p.tool = kindTool, tc.CallID, tc, t
 		tu := task.ToolUse{Name: t.Name, Input: tc.Arguments}
-		// The tool's own step, as the verse agent's call of it is classified: a call that is no
+		// The tool's own step, as the viff agent's call of it is classified: a call that is no
 		// step (a branch the spawn never permitted) is refused by its Do, so nobody is asked
 		// about something that cannot happen.
 		if st, ok := d.toolStep(tu); ok {
@@ -651,7 +651,7 @@ func (d *driver) propose(ev event) (*proposal, task.ToolUse, error) {
 				}
 			}
 			for _, r := range fs.Read {
-				// Reading is no step, as the verse agent's reads are not.
+				// Reading is no step, as the viff agent's reads are not.
 				named = true
 				paths = append(paths, "read "+d.rel(r))
 			}
@@ -683,7 +683,7 @@ func (d *driver) decline(ctx context.Context, p *proposal, note string) {
 		_ = d.rpc.Respond(p.ev.ID, permissionsAnswer(p.perm, false))
 	case kindTool:
 		// The refusal is the call's result, so the model reads it where it asked; no steer.
-		why := "verse refused this call of " + p.tool.Name
+		why := "viff refused this call of " + p.tool.Name
 		if note != "" {
 			why += ": " + note
 		}
@@ -693,7 +693,7 @@ func (d *driver) decline(ctx context.Context, p *proposal, note string) {
 		// The autonomy refused the question, or the loop cancelled it: the model gets no answers.
 		_ = d.rpc.Respond(p.ev.ID, map[string]any{"answers": map[string]any{}})
 	}
-	why := "verse refused this " + p.kind
+	why := "viff refused this " + p.kind
 	if note != "" {
 		why += ": " + note
 	}
@@ -1091,6 +1091,6 @@ func (d *driver) askPerson(ctx context.Context, tu task.ToolUse, question, heade
 
 // TakesTool is why codex cannot be offered a tool of this name, nil where it can: a dynamic
 // tool's name goes to the model as a function's, bounded in length and in letters — the one
-// bound every doer takes (verse.TakesToolNamed). A runtime offering tools it did not write (an
+// bound every doer takes (viff.TakesToolNamed). A runtime offering tools it did not write (an
 // MCP server's) asks before offering one.
-func TakesTool(name string) error { return verse.TakesToolNamed("codex", name, name) }
+func TakesTool(name string) error { return viff.TakesToolNamed("codex", name, name) }

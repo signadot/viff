@@ -5,10 +5,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/github"
-	verseiod "github.com/signadot/verse/pkg/io/iod"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/github"
+	viffiod "go.viff.dev/viff/pkg/io/iod"
 )
 
 // THE WHOLE CONTRACT, END TO END, WITH A BODY DESIGNED TO BREAK IT — which is the test that
@@ -17,12 +17,12 @@ import (
 // Everything else in this package compares Reflections in memory, so none of them serialise
 // anything, and the failure that reached a real repository was entirely in the serialisation: a
 // comment body whose line ended in whitespace rendered as a block scalar that put the next
-// sibling key at column zero, verse refused the document as undecodable, and every pass failed
+// sibling key at column zero, viff refused the document as undecodable, and every pass failed
 // while the source looked alive. Two versions of tony and one workaround later, the structural
 // answer is that this payload goes over the WIRE form, which has no indentation to get wrong.
 //
 // So this drives the real thing: the daemon's handler over real HTTP, read by the same
-// verseio.HTTP client verse dials with.
+// viffio.HTTP client viff dials with.
 func TestAHostileBodySurvivesTheHTTPContract(t *testing.T) {
 	f := newFake()
 	r := f.repo("acme/app")
@@ -34,9 +34,9 @@ func TestAHostileBodySurvivesTheHTTPContract(t *testing.T) {
 	r.comment(901, 2, "```\ncode fence\n```\n", true, "2026-01-03T00:00:00Z")
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
 
-	srv := httptest.NewServer(verseiod.New(src).Handler())
+	srv := httptest.NewServer(viffiod.New(src).Handler())
 	defer srv.Close()
-	client := verseio.HTTP("github", srv.URL, nil)
+	client := viffio.HTTP("github", srv.URL, nil)
 
 	// The probe an install makes, and then the reflection itself.
 	if _, err := client.Describe(context.Background()); err != nil {

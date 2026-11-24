@@ -1,4 +1,4 @@
-// Package task is the governed-task substrate for verse: a running unit of work whose actions
+// Package task is the governed-task substrate for viff: a running unit of work whose actions
 // pass an inter-action boundary, where the steps a gate names (StepOf) ask a person first, through
 // a late-bound, substitutable resolver. What decides is the task's Autonomy, which can be replaced
 // while the task runs.

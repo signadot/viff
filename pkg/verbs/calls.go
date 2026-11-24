@@ -8,16 +8,16 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/charterfile"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/charterfile"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // WHAT A CALL SENDS, read from its arguments once for both faces, as the command reads its
 // flags: in the grammar of api and charterfile, documents in tony. A refusal names the parameter.
 
-// AskOf is the ask an ask-create raises, as `verse ask` builds it (api.NewAsk), as of now.
+// AskOf is the ask an ask-create raises, as `viff ask` builds it (api.NewAsk), as of now.
 func AskOf(a Args, now time.Time) (api.Ask, error) {
 	spec := api.AskSpec{Name: a.Word("name"), Question: a.Word("question"), To: a.Word("to"), Due: a.Word("due"),
 		OnSilence: a.Word("on_silence"), About: a.Word("about"), Keep: a.Word("keep"), Label: a.Word("label")}
@@ -149,7 +149,7 @@ func CharterCheckOf(a Args) (url.Values, []*ir.Node, error) {
 }
 
 // CharterInstallOf is what a charter-install sends POST /charter: the query and the definitions
-// (charterfile.InstallQuery), as `verse charter -a` reads its flags.
+// (charterfile.InstallQuery), as `viff charter -a` reads its flags.
 func CharterInstallOf(a Args) (url.Values, []*ir.Node, error) {
 	segs, err := Address(a, "at")
 	if err != nil {
@@ -164,13 +164,13 @@ func CharterInstallOf(a Args) (url.Values, []*ir.Node, error) {
 		return nil, nil, err
 	}
 	if w := a.Word("wait"); w != "" {
-		q.Set("wait", w) // read by the server, the one reader of it (internal/versed/charter.go)
+		q.Set("wait", w) // read by the server, the one reader of it (internal/viffd/charter.go)
 	}
 	return q, defs, nil
 }
 
 // CharterRemoveOf is what a charter-remove removes: the names of its path, and where its address
-// ends (-1 where verse tells), as charterfile.Query takes them.
+// ends (-1 where viff tells), as charterfile.Query takes them.
 func CharterRemoveOf(a Args) ([]string, int, error) {
 	return charterPath(a)
 }

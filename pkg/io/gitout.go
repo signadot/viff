@@ -10,12 +10,12 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // The out half of the git io: a ref written where the io reads, and a tree of charters installed
-// into the verse. It exists for the repo-charters reconciler (git-issue j9vbwvjah12krs9tqsn0),
+// into the viff. It exists for the repo-charters reconciler (git-issue j9vbwvjah12krs9tqsn0),
 // which keeps what runs as a record (gitrecord.go) and has the charters installed from the
 // repository's own copy (gitinstall.go). A tag or a branch it writes is at a sha that already
 // exists in the repository; the one commit it makes is a record's entry, holding a tree the
@@ -29,7 +29,7 @@ import (
 //
 // or
 //
-//	to:  branch.verse/next       # a branch, moved to the sha, forward or back
+//	to:  branch.viff/next       # a branch, moved to the sha, forward or back
 //	sha: 4f668c1c…
 //	create: true                 # or: made where it is absent, and left alone where it stands
 //	                             # (a tag takes it too)
@@ -46,10 +46,10 @@ import (
 // disk gets the ref written in place, which is what a laptop driving the reconciler against a
 // clone wants.
 type GitSink struct {
-	// Verse is the verse an install input installs into, as this io (gitinstall.go). Nil
+	// Viff is the viff an install input installs into, as this io (gitinstall.go). Nil
 	// installs nothing, and an install input is refused for good.
-	Verse *client.Client
-	// As is the principal Verse acts as: who an obsolete input's answers are by
+	Viff *client.Client
+	// As is the principal Viff acts as: who an obsolete input's answers are by
 	// (gitobsolete.go).
 	As string
 

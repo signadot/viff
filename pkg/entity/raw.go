@@ -4,7 +4,7 @@ package entity
 //
 // A write is a tony PATCH — the property that makes the store good at everything else — so a
 // value whose tag names a merge operation is EXECUTED by the store rather than stored by it.
-// Anything verse wants to keep which is ITSELF written in tony's operator grammar could
+// Anything viff wants to keep which is ITSELF written in tony's operator grammar could
 // therefore not be written down at all: a trigger's rule, a goal's definition, any match or
 // patch held as data. `id: !glob "hotfix-*"` does not read back wrong, it leaves an entity
 // whose own patch log no longer applies ("glob patching null gave cannot patch with glob
@@ -48,7 +48,7 @@ const (
 // That is the shape a record carrying a DOCUMENT wants — a rule, a goal definition — where a
 // merge would leave fields of the version before it standing in the version after. It is also
 // why the wrap is a deliberate call at such a write rather than something the store does for
-// every value: an ordinary write means its merge, and a caller that sends a patch (versed's
+// every value: an ordinary write means its merge, and a caller that sends a patch (viffd's
 // write surface does) means its operators.
 //
 // THE TAG GOES ON THE VALUE, NOT ON THE COMMENT ABOVE IT. A head comment WRAPS the value it
@@ -92,7 +92,7 @@ func Raw(p Payload) Payload {
 // fields replace rather than merge, and as a precondition it would demand exact equality
 // against a document rather than a merge-compatible one.
 //
-// It escapes EVERY tag, verse's own removal marker included, and the callers add that marker
+// It escapes EVERY tag, viff's own removal marker included, and the callers add that marker
 // afterwards for exactly that reason (write.go's withRemovals). Exempting it here would be the
 // obvious alternative and is wrong twice: a charter legitimately STORES `patch: {tmp: !delete
 // null}` as data, so the exemption would make a stored operator executable — and AsPattern,
@@ -170,7 +170,7 @@ func dataTag(tag string) string {
 // opIn returns the first label of tag which names a merge operation — the one a patch would
 // execute, since mergeop.SplitChild dispatches on the first REGISTERED label rather than on
 // the head, so `!bracket.glob` globs. Empty when the tag names no operation: a tag the parser
-// attached to record how a value was written (`!bracket`), one of verse's own (`!irtype`), or
+// attached to record how a value was written (`!bracket`), one of viff's own (`!irtype`), or
 // simply somebody's vocabulary — an unregistered tag round-trips as data already.
 func opIn(tag string) string {
 	for tag != "" {
@@ -207,12 +207,12 @@ func compose(head, tag string) string {
 // whose Patch method can only ever return "cannot patch with X operation". The write itself
 // succeeds, because the store appends before it applies. Every later read replays the log,
 // hits that operator, and fails. From then on the store cannot be read and cannot be repaired,
-// while writes go on succeeding — which is a verse that looks alive and answers nothing.
+// while writes go on succeeding — which is a viff that looks alive and answers nothing.
 //
 // The two earlier fixes were at WRITERS: the mirror escapes an agent's answer (AsData), and a
 // charter is stored with Raw. Both were right and neither is enough, because the defect is not
 // that some caller forgot — it is that the store accepts a document it will choke on. A caller
-// that means its operators is ordinary (versed's write surface is one) and stays ordinary: a
+// that means its operators is ordinary (viffd's write surface is one) and stays ordinary: a
 // merge operator patches, and that is the grammar. What is refused is the operator that CANNOT
 // patch, and no correct write has ever contained one.
 //
@@ -231,7 +231,7 @@ func compose(head, tag string) string {
 //
 // So the storage vocabulary is asked as well, and it is the substrate's own: logd holds a SCOPED
 // write to it (tx.checkStorableInScope) and lets a baseline write past, so a baseline write is
-// exactly the case nothing else covers. Asking both keeps the verse-specific message — with its
+// exactly the case nothing else covers. Asking both keeps the viff-specific message — with its
 // AsData/Raw hint — for the operators it already named, and adds the ones whose IsPatch says
 // yes while the store says no.
 func CheckPatchable(p Payload) error {
@@ -250,8 +250,8 @@ func CheckPatchable(p Payload) error {
 //
 // A `!key` tag in a payload is a second keying on top of that one, and it only survives a write
 // because it is stored as DATA (Raw / AsData) -- so the store keys the array by position while
-// the value claims a name for each element, and only verse's own reader knows. Two mechanisms
-// for one question is what this refuses; the verse surface for the substrate's keying is not
+// the value claims a name for each element, and only viff's own reader knows. Two mechanisms
+// for one question is what this refuses; the viff surface for the substrate's keying is not
 // designed yet, and an array is positional until it is.
 //
 // It walks ESCAPED subtrees too, unlike checkPatchable: being data is exactly how the tag got
@@ -269,7 +269,7 @@ func checkNotKeyed(n *ir.Node, at string) error {
 			}
 			return fmt.Errorf("%s: `!key` names an array's elements, and keying is the store's "+
 				"to hold: an array written this way is positional in the store while the tag "+
-				"claims a name for each element, so only verse can read it back. Write the array "+
+				"claims a name for each element, so only viff can read it back. Write the array "+
 				"as data without the tag -- its elements are addressed by position ([0]) -- until "+
 				"the store's own keying is surfaced here", where)
 		}

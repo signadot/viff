@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A LAUNCH THE ENGINE REFUSES ENDS IN AN onFailed THAT READS THE SUBJECT, as any task's hook
@@ -37,7 +37,7 @@ func TestARefusedLaunchsOnFailedReadsTheSubject(t *testing.T) {
   action:
     patch: {stage: developing}
     spawn:
-      agent: {name: verse}
+      agent: {name: viff}
       autonomy: [{then: allow}]
       prompt: "deep=[$[subject.value.never]]"
     onFailed:

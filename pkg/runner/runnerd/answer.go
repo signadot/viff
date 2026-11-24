@@ -3,7 +3,7 @@ package runnerd
 import (
 	"net/http"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // asRunner marks every response h gives as the runner's own (runner.AnswerHeader): its routes'

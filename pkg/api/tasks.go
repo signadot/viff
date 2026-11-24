@@ -1,15 +1,15 @@
 package api
 
 import (
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// Spawn runs a task by hand (`POST /tasks`, `verse task run -f`): a spawn as a charter writes
+// Spawn runs a task by hand (`POST /tasks`, `viff task run -f`): a spawn as a charter writes
 // one, and what is about this request rather than the work — its id, a conversation, who asks.
 //
-//tony:schemagen=verse-spawn,notag
+//tony:schemagen=viff-spawn,notag
 type Spawn struct {
 	// ID names the run. It is validated rather than taken as given: an id is the prefix of
 	// every gate question the run raises (`<id>~d1`), and answering one recovers the owner by
@@ -32,7 +32,7 @@ type Spawn struct {
 	Converse bool `tony:"field=converse,omitzero"`
 	// Principal is who is answerable for this run. Self-asserted — the same standing `--as`
 	// has everywhere else, and for the same reason: verifying a caller is authority's
-	// subject, not this field's. It is carried so a runner whose effects LEAVE the verse can
+	// subject, not this field's. It is carried so a runner whose effects LEAVE the viff can
 	// write an externally checkable link back.
 	//
 	// A charter firing has no equivalent yet, and deliberately no default here: an empty
@@ -40,16 +40,16 @@ type Spawn struct {
 	Principal string `tony:"field=principal,omitzero"`
 }
 
-// Task is a task as verse reports it: the answer to verse's `GET /tasks` and `GET /tasks/{id}`
-// (`verse ps`, `verse task get`). It is built from verse's record of the task and, while a
+// Task is a task as viff reports it: the answer to viff's `GET /tasks` and `GET /tasks/{id}`
+// (`viff ps`, `viff task get`). It is built from viff's record of the task and, while a
 // runner still holds it, that runner's snapshot (task.Snapshot), whose fields it repeats
-// under the same names; Runner and RunnerName are what only verse knows.
+// under the same names; Runner and RunnerName are what only viff knows.
 //
 // The snapshot's fields are declared again rather than embedded because the generated codec
 // nests an embedded type from another package under its own key, and the shape on the wire is
 // flat.
 //
-//tony:schemagen=verse-instance,notag
+//tony:schemagen=viff-instance,notag
 type Task struct {
 	ID         string         `tony:"field=id"`
 	Prompt     string         `tony:"field=prompt,omitzero"`
@@ -67,7 +67,7 @@ type Task struct {
 	// are the runner's plumbing and never here.
 	Agent  *runner.Agent `tony:"field=agent,omitzero"`
 	Script bool          `tony:"field=script,omitzero"`
-	// Autonomy is the task's autonomy as it stands, verse's part of its asks with it, and AutonomyBy
+	// Autonomy is the task's autonomy as it stands, viff's part of its asks with it, and AutonomyBy
 	// who last replaced it while it ran: the record's, so a finished task shows the autonomy it
 	// ended under.
 	Autonomy   task.Autonomy `tony:"field=autonomy,omitzero"`
@@ -88,7 +88,7 @@ func (t Task) Who() string {
 
 // Spawned is what a spawn answers with: the id to address the new task by.
 //
-//tony:schemagen=verse-spawned,notag
+//tony:schemagen=viff-spawned,notag
 type Spawned struct {
 	ID string `tony:"field=id"`
 }
@@ -96,7 +96,7 @@ type Spawned struct {
 // Say re-prompts a running task with a new instruction
 // (`POST /tasks/{id}/say`).
 //
-//tony:schemagen=verse-say,notag
+//tony:schemagen=viff-say,notag
 type Say struct {
 	Instruction string `tony:"field=instruction"`
 	By          string `tony:"field=by,omitzero"` // attribution; empty is an unattributed caller
@@ -106,7 +106,7 @@ type Say struct {
 // charters see on `onCancelled`; By is who cancelled it, which is whoever the request is made as,
 // so a By naming anybody else is refused. A cancel with no body is a cancel all the same.
 //
-//tony:schemagen=verse-cancel,notag
+//tony:schemagen=viff-cancel,notag
 type Cancel struct {
 	Reason string `tony:"field=reason,omitzero"`
 	By     string `tony:"field=by,omitzero"`
@@ -114,9 +114,9 @@ type Cancel struct {
 
 // SetAutonomy replaces a running task's autonomy, applied to its later steps and not to a
 // question already waiting (`PUT /tasks/{id}/autonomy`). The runner carries the rows whole;
-// verse keeps what it reads of them (what silence settles on, the labels).
+// viff keeps what it reads of them (what silence settles on, the labels).
 //
-//tony:schemagen=verse-set-autonomy,notag
+//tony:schemagen=viff-set-autonomy,notag
 type SetAutonomy struct {
 	Autonomy task.Autonomy `tony:"field=autonomy,omitzero"`
 	By       string        `tony:"field=by,omitzero"` // who set it, for the record

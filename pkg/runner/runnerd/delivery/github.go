@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // GitHub's pull requests: how a runner whose forge is GitHub carries out the github.create-pr and

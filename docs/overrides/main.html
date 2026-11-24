@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{#- The theme's block, with the icons verse's: the theme names its own favicon here, and a page
+{#- The theme's block, with the icons viff's: the theme names its own favicon here, and a page
     naming several is left to each browser's choice. So the block is spelled whole, with ONE
     icon, the .ico at 16, 32 and 48, and the touch icon for a home screen. Not the SVG: it is
     drawn with masks and gradients, and a browser that takes an SVG icon over the .ico (Safari)
@@ -20,10 +20,10 @@
     and the light wordmark, which the blue would otherwise swallow. The alt text is what the theme
     would have printed. -#}
 {% block site_name %}
-                <a class="navbar-brand" href="{{ nav.homepage.url|url }}"><img src="{{ 'images/verse-logo-navbar.svg'|url }}" alt="{{ config.site_name }}"></a>
+                <a class="navbar-brand" href="{{ nav.homepage.url|url }}"><img src="{{ 'images/viff-logo-navbar.svg'|url }}" alt="{{ config.site_name }}"></a>
 {% endblock %}
 
-{#- Keeps the site out of search results until launch. Remove the robots line when verse goes
+{#- Keeps the site out of search results until launch. Remove the robots line when viff goes
     public. The card is what a link to the site unfurls as, in Slack or a pull request; its image
     is an absolute address, which is site_url's. -#}
 {% block extrahead %}
@@ -33,7 +33,7 @@
 <meta property="og:title" content="{% if page and page.title and not page.is_homepage %}{{ page.title }} - {% endif %}{{ config.site_name }}">
 {% if config.site_description %}<meta property="og:description" content="{{ config.site_description }}">{% endif %}
 {% if page and page.canonical_url %}<meta property="og:url" content="{{ page.canonical_url }}">{% endif %}
-<meta property="og:image" content="{{ config.site_url }}images/verse-social-1280x640.png">
+<meta property="og:image" content="{{ config.site_url }}images/viff-social-1280x640.png">
 <meta property="og:image:width" content="1280">
 <meta property="og:image:height" content="640">
 <meta name="twitter:card" content="summary_large_image">

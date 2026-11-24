@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd"
 )
 
 // The allowlist decides by host AND port, and says what it measured against.

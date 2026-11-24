@@ -5,17 +5,17 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// ParseExpr is the address grammar behind `verse flow --subject <addr>`: a kinded path of any
+// ParseExpr is the address grammar behind `viff flow --subject <addr>`: a kinded path of any
 // length, `*` a whole segment left open. A segment may hold colons.
 func TestParseExpr(t *testing.T) {
 	cases := []struct {
@@ -151,7 +151,7 @@ func TestSpawnIsIdempotentPerID(t *testing.T) {
 		return task.NewTask(id, sup, blockForever{}, noExec{})
 	})
 
-	spec := launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: `demo.pr."1"`, Prompt: "review"}
+	spec := launch.Spec{Agent: &runner.Agent{Name: "viff"}, Subject: `demo.pr."1"`, Prompt: "review"}
 	h1 := eng.Spawn("rev-1", spec)
 	h2 := eng.Spawn("rev-1", spec) // the same firing again
 	if spawned != 1 {
@@ -184,8 +184,8 @@ func TestSpawnDedupeIsPerSubject(t *testing.T) {
 	})
 	a := entity.RefAt("demo", "pr", "1")
 	b := entity.RefAt("demo", "pr", "2")
-	eng.Spawn(spawnID("", "review", a), launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: a.String()})
-	eng.Spawn(spawnID("", "review", b), launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: b.String()})
+	eng.Spawn(spawnID("", "review", a), launch.Spec{Agent: &runner.Agent{Name: "viff"}, Subject: a.String()})
+	eng.Spawn(spawnID("", "review", b), launch.Spec{Agent: &runner.Agent{Name: "viff"}, Subject: b.String()})
 
 	if n := len(eng.matchFlow(mustExpr(t, "demo.pr.*"))); n != 2 {
 		t.Fatalf("two subjects yielded %d live tasks, want 2", n)

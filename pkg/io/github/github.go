@@ -1,8 +1,8 @@
 // Package github reflects the collaboration around a repository — its issues, pull requests,
-// discussions, Actions runs and comments — into the `github:*` slice of the entity-verse.
+// discussions, Actions runs and comments — into the `github:*` slice of the entity-viff.
 //
 // It is a deployed source: a program holding a token, serving the two routes source/iod
-// serves, with verse dialling it and converging its answers.
+// serves, with viff dialling it and converging its answers.
 //
 // WHAT IT IS NOT is a second view of the code. A git source reflects what a repository
 // CONTAINS — refs, commits, content-addressed and cursorless, from a fetch that costs no API
@@ -29,8 +29,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // DefaultRoot is the slice a GitHub source owns unless the operator says otherwise.
@@ -121,7 +121,7 @@ type GitHub struct {
 	log       func(string, ...any)
 }
 
-var _ verseio.Source = (*GitHub)(nil)
+var _ viffio.Source = (*GitHub)(nil)
 
 // New builds a GitHub source and asks the token whether it can see what it was pointed at.
 //
@@ -157,7 +157,7 @@ func New(ctx context.Context, cfg Config) (*GitHub, error) {
 		g.root = DefaultRoot
 	}
 	// The root is the first segment of every address this source writes, so no punctuation of
-	// an address survives — the same check verseio.Entity.Check makes, made here so a bad
+	// an address survives — the same check viffio.Entity.Check makes, made here so a bad
 	// `-root` fails the program rather than the install.
 	if strings.ContainsAny(g.root, ":/.") {
 		return nil, fmt.Errorf("github: root %q may not contain : / or . — it is the first "+
@@ -207,13 +207,13 @@ func (g *GitHub) Repos() []string { return append([]string(nil), g.repos...) }
 //
 // A repository is two levels of the address because it is two levels at GitHub, and that is
 // what makes the claim a place rather than a pattern over ids: everything this source writes
-// about `signadot/verse` stands under `github.signadot.verse`, and `signadot/verse2` is a
+// about `signadot/viff` stands under `github.signadot.viff`, and `signadot/viff2` is a
 // different place rather than an id that happens to share a prefix. A literal place is also
-// what the install takes an owner record at (versed's addSource).
-func (g *GitHub) Owns() []verseio.Own {
-	out := make([]verseio.Own, 0, len(g.repos))
+// what the install takes an owner record at (viffd's addSource).
+func (g *GitHub) Owns() []viffio.Own {
+	out := make([]viffio.Own, 0, len(g.repos))
 	for _, r := range g.repos {
-		out = append(out, verseio.Own{At: g.RepoRef(r).String()})
+		out = append(out, viffio.Own{At: g.RepoRef(r).String()})
 	}
 	return out
 }
@@ -226,7 +226,7 @@ func (g *GitHub) place(repo string, more ...string) []string {
 
 // cover is a cover under one repository's place.
 func (g *GitHub) cover(repo string, more ...string) entity.Pattern {
-	return verseio.Cover(g.place(repo, more...)...)
+	return viffio.Cover(g.place(repo, more...)...)
 }
 
 // RepoRef is the place one repository's entities stand under: a reconcile of it reconciles that
@@ -277,11 +277,11 @@ func (g *GitHub) under(ref entity.Ref) (repo string, rest []string, ok bool) {
 // Reflect reads what `<root>.*` should hold. A zero ref reads every repository; a ref at a
 // repository's place reads that repository whole; an issue or pull-request ref reads just that
 // item.
-func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (verseio.Reflection, error) {
+func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (viffio.Reflection, error) {
 	if segs := ref.Segs(); len(segs) > 0 && segs[0] != g.root {
 		// Another source's slice. No targets means an empty reflection with NO covers, which
 		// claims nothing and so tombstones nothing.
-		return verseio.Reflection{}, nil
+		return viffio.Reflection{}, nil
 	}
 	if item, ok := g.targetItem(ref); ok {
 		return g.reflectItem(ctx, item)
@@ -295,11 +295,11 @@ func (g *GitHub) Reflect(ctx context.Context, ref entity.Ref) (verseio.Reflectio
 	if repo, number, ok := g.targetAlert(ref); ok {
 		return g.reflectAlert(ctx, repo, number)
 	}
-	var out verseio.Reflection
+	var out viffio.Reflection
 	for _, repo := range g.targetRepos(ref) {
 		rn, err := g.reflectRepo(ctx, repo)
 		if err != nil {
-			return verseio.Reflection{}, fmt.Errorf("github reflect %s: %w", repo, err)
+			return viffio.Reflection{}, fmt.Errorf("github reflect %s: %w", repo, err)
 		}
 		out.Covers = append(out.Covers, rn.Covers...)
 		out.Entities = append(out.Entities, rn.Entities...)
@@ -363,8 +363,8 @@ func (g *GitHub) targetItem(ref entity.Ref) (targetedItem, bool) {
 //
 // An item GitHub no longer has is covered and absent, which tombstones it — a deleted or
 // transferred issue, which is exactly what a targeted pass should conclude.
-func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (verseio.Reflection, error) {
-	rn := verseio.Reflection{Covers: []entity.Pattern{
+func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (viffio.Reflection, error) {
+	rn := viffio.Reflection{Covers: []entity.Pattern{
 		g.cover(t.repo, t.kind, strconv.Itoa(t.number)),
 	}}
 	if t.kind == "pr" {
@@ -373,7 +373,7 @@ func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (verseio.Refle
 			if NotFound(err) {
 				return rn, nil // gone: covered and absent, which tombstones it
 			}
-			return verseio.Reflection{}, err
+			return viffio.Reflection{}, err
 		}
 		payload := pullPayload(t.repo, p)
 		g.withTrees(ctx, t.repo, p, payload)
@@ -385,7 +385,7 @@ func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (verseio.Refle
 		if NotFound(err) {
 			return rn, nil
 		}
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	if i.isPullRequest() {
 		// The issues endpoint answers for a pull request under the same number. Writing it as
@@ -410,7 +410,7 @@ func (g *GitHub) reflectItem(ctx context.Context, t targetedItem) (verseio.Refle
 // live set plus a recent tail would tombstone the whole back catalogue on the first pass;
 // covering only the live half would leave a husk per item ever closed while this source watched,
 // which is the warehouse arriving slowly rather than at once.
-func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflection, error) {
+func (g *GitHub) reflectRepo(ctx context.Context, repo string) (viffio.Reflection, error) {
 	open := entity.Obj{"state": "open"}.Payload()
 	closed := entity.Obj{"state": "closed"}.Payload()
 	half := func(kind string, state entity.Payload) entity.Pattern {
@@ -421,7 +421,7 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 	// Declared BEFORE the read and unconditionally, as git's and Linear's are: a repository
 	// whose every issue was closed must still cover its open issues, or the ones it no longer
 	// has open would stand forever.
-	rn := verseio.Reflection{Covers: []entity.Pattern{
+	rn := viffio.Reflection{Covers: []entity.Pattern{
 		g.cover(repo, "repo"),
 		half("issue", open),
 		half("issue", closed),
@@ -443,7 +443,7 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 		// comfortably more than a repository creates while its longest job runs.
 		g.cover(repo, "run", "*"),
 		// Comments are a WINDOW, and Slack's messages are the precedent rather than issues' two
-		// halves: a conversation is an unbounded stream, and an entity-verse holding all of one
+		// halves: a conversation is an unbounded stream, and an entity-viff holding all of one
 		// is the warehouse a source is not supposed to be. The most recently updated `-comments`
 		// are kept and what falls out is tombstoned — which also makes a comment DELETED inside
 		// the window go, where an uncovered one would stand forever.
@@ -452,20 +452,20 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 
 	r, sha, err := g.api.readRepo(ctx, repo)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	rn.Add(g.SummaryRef(repo), repoPayload(repo, r, sha))
 
 	// The live set, to exhaustion. Bounded by maxOpen, which errors rather than truncating.
 	openIssues, err := g.api.listIssues(ctx, repo, "open", "", g.maxOpen, 0)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	// The settled window: the most recently updated closed items, which is a window and a
 	// catch-up at once — see the note in api.go.
 	closedIssues, err := g.api.listIssues(ctx, repo, "closed", "updated", 0, g.settled)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	for _, i := range append(openIssues, closedIssues...) {
 		if i.isPullRequest() {
@@ -485,11 +485,11 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 
 	openPulls, err := g.api.listPulls(ctx, repo, "open", "", g.maxOpen, 0)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	closedPulls, err := g.api.listPulls(ctx, repo, "closed", "updated", 0, g.settled)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	// DISCUSSIONS ARE A SEPARABLE CLAIM, and the asymmetry is the whole of what Covers is for.
 	//
@@ -534,11 +534,11 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 	// tombstones every review comment in the repository.
 	conversation, err := g.api.listComments(ctx, repo, "issues", g.comments)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	review, err := g.api.listComments(ctx, repo, "pulls", g.comments)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	for _, c := range conversation {
 		rn.Add(g.CommentRef(repo, c.number(), c.ID), commentPayload(repo, c, "conversation"))
@@ -549,7 +549,7 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 
 	runs, err := g.api.listRuns(ctx, repo, g.runs)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	sort.Slice(runs, func(i, j int) bool { return runs[i].ID < runs[j].ID })
 	for _, r := range runs {
@@ -558,7 +558,7 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (verseio.Reflecti
 
 	// CI state lands on the pull request as a field, not as entities of its own. "Is this PR
 	// green" is a property of the proposal rather than of the seventeen check runs that
-	// produced it, and a kind per check would multiply the busiest slice in the verse to answer
+	// produced it, and a kind per check would multiply the busiest slice in the viff to answer
 	// a question nobody asks in that form. A charter that wants the failing job follows `url`.
 	//
 	// Derived from the runs already read, by head sha, so it costs no request at all — where
@@ -760,7 +760,7 @@ func pullPayload(repo string, p pull) entity.Obj {
 // otherwise. A run goes queued → in_progress → completed inside a minute, so a pass will
 // frequently collapse all three into one write and a rule matching `status: in_progress` may
 // never fire for a run that fired every trigger it was supposed to. That is not a defect to
-// fix: verse promises the last observed state rather than every state, and the trigger model
+// fix: viff promises the last observed state rather than every state, and the trigger model
 // says the corresponding thing about creates and updates — express "only the first time" as a
 // state latch, not an edge.
 func runPayload(repo string, r workflowRun) entity.Obj {
@@ -1034,7 +1034,7 @@ func teamSlugs(ts []team) []string {
 //
 // IT WAS ALSO A WORKAROUND, AND NO LONGER IS. Until go-tony v0.0.119 a multi-line string
 // rendered as a block scalar whose content had a line ending in whitespace — or a trailing blank
-// line — emitted its next sibling key at column zero, so the document verse was handed did not
+// line — emitted its next sibling key at column zero, so the document viff was handed did not
 // parse and every pass failed. GitHub's web UI submits CRLF, which makes `test 2\r\n` a line
 // ending in whitespace, so a single comment on a real pull request was enough to freeze the
 // whole slice; markdown's hard line break is two trailing spaces, so the next one would have

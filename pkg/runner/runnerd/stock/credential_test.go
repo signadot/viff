@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse/modeltest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff/modeltest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 const token = "eyJ.token.sig"
@@ -67,7 +67,7 @@ func TestNoCredentialNoFile(t *testing.T) {
 	}
 }
 
-// The verse agent's shell gets the credential the same way: the file its variable names.
+// The viff agent's shell gets the credential the same way: the file its variable names.
 func TestTheAgentGetsItsCredentialAsAFile(t *testing.T) {
 	model := modeltest.New(t, func(r modeltest.Request) modeltest.Reply {
 		if res := r.Results(); len(res) > 0 {

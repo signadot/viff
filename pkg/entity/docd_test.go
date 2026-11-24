@@ -29,7 +29,7 @@ func startDocd(t *testing.T, logdAddr string) *docdserver.Server {
 func storeOverDocd(t *testing.T) (*LogdStore, *docdserver.Server) {
 	t.Helper()
 	docd := startDocd(t, startLogd(t))
-	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "verse-test"})
+	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "viff-test"})
 	if err != nil {
 		t.Fatalf("open store through docd: %v", err)
 	}

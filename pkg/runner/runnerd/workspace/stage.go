@@ -15,7 +15,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/storage/memory"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // Work waits in the MIRROR, and the mirror is where it waits whether or not it ever leaves.
@@ -310,7 +310,7 @@ func (m *Mirrors) Reflect(ctx context.Context, remote string, auth transport.Aut
 // credential: the task's checkout never pushes anything, so no credential is ever in a process
 // the model drives. On success the staged ref goes; a REFUSAL by the remote — not a fast-forward,
 // a protected branch, a rule — moves it to `held` and comes back as words, since an authority
-// outside verse deciding about its own history is an answer and not a failure; any other error
+// outside viff deciding about its own history is an answer and not a failure; any other error
 // leaves the ref where it is, for the sweep.
 func (m *Mirrors) Deliver(ctx context.Context, remote, ref, target string, force bool, auth transport.AuthMethod) (refusal string, err error) {
 	dir := m.Dir(remote)
@@ -388,7 +388,7 @@ func (m *Mirrors) RemoteRef(ctx context.Context, remote, ref string, auth transp
 // Not forced, and the difference matters here in a way it does not for a delivery. `+` on a
 // refspec overrides the receiving end's rules, and the rule this one would override is
 // `receive.denyDeletes` — the operator's own statement that a ref pattern is not to be removed.
-// A sweep that forced past it would be verse claiming an authority over somebody's repository
+// A sweep that forced past it would be viff claiming an authority over somebody's repository
 // that the whole design says belongs to the receiving end.
 func (m *Mirrors) DeleteRef(ctx context.Context, remote, target string, auth transport.AuthMethod) error {
 	dir := m.Dir(remote)
@@ -445,7 +445,7 @@ func (m *Mirrors) hold(mirror *git.Repository, from string) error {
 
 // stageRemote is the in-memory remote a stage push goes through, and like deliveryRemote it must
 // never become a remote in anybody's `.git/config`.
-const stageRemote = "verse-stage"
+const stageRemote = "viff-stage"
 
 // StagedWork is one commit the runner is holding: what it was for, why it is still here, and the
 // exact command that gets it out.

@@ -4,15 +4,15 @@
 # becomes a PR becomes a release. It answers an open question —
 # "how do all these IDs live in a flow?" — by running it rather than arguing it.
 #
-# The short answer verse gives: no fourth id is ever minted. A correlation is a DERIVED
+# The short answer viff gives: no fourth id is ever minted. A correlation is a DERIVED
 # entity whose address is `<target>.<rule>.<subject…>` — identity is (rule, subject), so the
 # link is ADDRESSED by what it is about, and the subject's own segments are carried whole rather
-# than flattened into an id. The engine also writes the linkage at `verse.meta.derivedFrom`.
+# than flattened into an id. The engine also writes the linkage at `@sys.meta.derivedFrom`.
 # Reassembling the chain is then a read over the set, because a derive is about exactly one
 # subject and rollups are deliberately not available.
 #
 # THE SYSTEMS ARE SEEDED, AND THE VOCABULARY IS NOT. It writes its own `git.<repo>.commit.*` and
-# `github.<org>.<name>.pr.*` fixtures, so it runs against a bare verse with nothing installed — but the ids
+# `github.<org>.<name>.pr.*` fixtures, so it runs against a bare viff with nothing installed — but the ids
 # and the field names are the ones the shipped connectors actually write (source/git.go,
 # source/github). A demo that invents both sides of a join can make any join look easy; using
 # the real spellings is what keeps it honest without making it need a token and a repository.
@@ -30,15 +30,15 @@
 # replay verb. This script always installs its rules first, so it never meets that; running it
 # against a repository already reflected does.
 #
-# Like seed-demo.sh — and unlike test/smoke.sh — this talks to YOUR verse and leaves what it
+# Like seed-demo.sh — and unlike test/smoke.sh — this talks to YOUR viff and leaves what it
 # writes behind for you to poke at.
 #
-#   ./verse up                        # in another terminal
+#   ./viff up                        # in another terminal
 #   ./scripts/lineage.sh
 #   ./scripts/lineage.sh --scope me   # …into a copy-on-write scope instead of baseline
 #   ./scripts/lineage.sh --clean      # remove what a previous run wrote
 #
-# Env: VERSE (the binary, default: ./verse then `verse` on PATH), VERSE_ADDR (the verse to
+# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff to
 # talk to). Both are the CLI's own knobs; nothing here is a second configuration.
 set -euo pipefail
 
@@ -74,36 +74,36 @@ die() {
 	exit 1
 }
 
-BIN=${VERSE:-}
+BIN=${VIFF:-}
 if [ -z "$BIN" ]; then
-	if [ -x ./verse ]; then
-		BIN=./verse
-	elif command -v verse >/dev/null 2>&1; then
-		BIN=verse
+	if [ -x ./viff ]; then
+		BIN=./viff
+	elif command -v viff >/dev/null 2>&1; then
+		BIN=viff
 	else
-		die "no verse binary — build one (go build -o verse ./cmd/verse) or set VERSE=<path>"
+		die "no viff binary — build one (go build -o viff ./cmd/viff) or set VIFF=<path>"
 	fi
 fi
 
-# THE BINARY HAS TO SPEAK `state`. These scripts read the verse as one document at a kinded
+# THE BINARY HAS TO SPEAK `state`. These scripts read the viff as one document at a kinded
 # path, and a CLI from before that has `entity` instead — whose failure is a usage error and
-# the whole command tree, which says nothing about why. The trap is a STALE `./verse` in the
+# the whole command tree, which says nothing about why. The trap is a STALE `./viff` in the
 # working directory: it is preferred over $PATH above, so a checkout that built one months ago
 # keeps using it long after `go install` refreshed the real one.
-# `|| true` into a variable, NOT a pipe from "$BIN": bare `verse` exits 1 (it just printed
+# `|| true` into a variable, NOT a pipe from "$BIN": bare `viff` exits 1 (it just printed
 # usage), and these scripts run under `set -o pipefail`, which hands that 1 to the whole
 # pipeline however well the grep matched — so the pipe spelling fired this guard on every
 # binary, current ones included.
-_verse_cmds=$("$BIN" 2>&1 || true)
-if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
-	die "$BIN does not have \`verse data\` — it predates the one-document read.
-     Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
-     or point VERSE=<path> at a current one."
+_viff_cmds=$("$BIN" 2>&1 || true)
+if ! printf '%s\n' "$_viff_cmds" | grep -qE '^ *data '; then
+	die "$BIN does not have \`viff data\` — it predates the one-document read.
+     Rebuild it (go build -o viff ./cmd/viff), remove a stale ./viff so \$PATH wins,
+     or point VIFF=<path> at a current one."
 fi
 v() { "$BIN" ${scope[@]+"${scope[@]}"} "$@"; }
 
 v status >/dev/null 2>&1 ||
-	die "no verse answering at ${VERSE_ADDR:-its default address} — start one with \`$BIN up\` (or pass VERSE_ADDR=host:port)"
+	die "no viff answering at ${VIFF_ADDR:-its default address} — start one with \`$BIN up\` (or pass VIFF_ADDR=host:port)"
 
 # Waits for a condition rather than sleeping a guessed interval: the engine is reacting, and
 # how long a reaction takes is not this script's to assert.
@@ -126,7 +126,7 @@ B=d4e5f60718293a4b5c6d7e8f901234567890abcd
 C=90abcdef1234567890abcdef1234567890abcdef
 
 # The subject this run is about, spelled once, as the STEPS an address is: one word per
-# segment, handed to `verse data` unquoted. It is a merged pull request in the seed below, and
+# segment, handed to `viff data` unquoted. It is a merged pull request in the seed below, and
 # everything that asks about the correlation asks about this.
 PR="github acme widget pr 42"
 # The same address as the store RENDERS it inside a document — which is what a grep over a
@@ -186,7 +186,7 @@ fi
 step "checking nobody owns what this is about to write"
 # grep -E rather than a sed alternation: `\|` inside `\(...\)` is a GNU extension that BSD sed
 # accepts and ignores, so on macOS the guard silently matched nothing and let the run proceed.
-# A claim is spelled as a kinded path, `git.verse`: a guard matching some other spelling passes by
+# A claim is spelled as a kinded path, `git.viff`: a guard matching some other spelling passes by
 # finding nothing rather than by there being nothing.
 owned=$(v sources -o tony 2>/dev/null |
 	grep -E '^[[:space:]]*- at:[[:space:]]*"?(git|github)[.:]' |
@@ -213,7 +213,7 @@ fi
 # must land ABOVE the rule's own level and may READ only at or below it, which is exactly the
 # shape of "correlate upward from what you observed".
 #
-# These name REAL systems, which is a verse-wide statement rather than this script's own
+# These name REAL systems, which is a viff-wide statement rather than this script's own
 # business: a stratum over `github` orders every rule anybody writes about it. That is the
 # price of the shipped vocabulary, it is the same price a real deployment pays, and --clean
 # takes it back.
@@ -240,7 +240,7 @@ rules:
 # THE SUBJECT IS CARRIED WHOLE, so a trace's address can be spelled from the subject it is about.
 # Flattened into one id segment it could not be: a `#` and a `/` become `_`, and a hash has to be
 # appended to stop the sanitising from collapsing two subjects into one trace. The linkage at
-# `verse.meta.derivedFrom` is written too, and this script reads it, because a payload field is
+# `@sys.meta.derivedFrom` is written too, and this script reads it, because a payload field is
 # what a charter predicate can match on.
 - name: lin-pr-lineage
   stratum: lin-change
@@ -275,7 +275,7 @@ rules:
 # subject, so fifty traces cannot feed one release — the level above reads them instead.
 # `patch` rather than `derive` on purpose: reads inside a patch are unconstrained.
 #
-# The predicate is what keeps that read from being a walk of every trace in the verse, and it
+# The predicate is what keeps that read from being a walk of every trace in the viff, and it
 # is expanded like the rest of the address — `.[subject.value.target]` is the release's OWN
 # branch, so this is one rule rather than one rule per branch.
 #
@@ -299,7 +299,7 @@ TONY
 ok "3 strata + 2 rules (lin-pr-lineage derives; lin-release-manifest reads the set)"
 
 # ── what the systems say, each in its own words ──────────────────────────────
-# Nothing here knows about verse, and nothing shares an id scheme: a sha, a PR number, a
+# Nothing here knows about viff, and nothing shares an id scheme: a sha, a PR number, a
 # semver tag. That is the premise of the question, not a simplification of it.
 step "two systems, two id schemes, no coordination"
 # The ids and fields are the shipped connectors', not this script's inventions. A git source
@@ -321,7 +321,7 @@ ok "four PRs — GitHub numbers them within acme/widget; #42 and #45 onto main, 
 note "a pull request carries a BARE headSha, and the commit stands under git's id for the repository"
 
 # ── the correlation, which is a derived entity ───────────────────────────────
-step "the link verse writes, and the id it gives it"
+step "the link viff writes, and the id it gives it"
 # ASKED AS ONE QUESTION, retried — not "wait for the id to appear somewhere" and then a
 # separate lookup, which is two questions with a gap in the middle and was flaky exactly
 # there: the wait passed on a trace from an earlier run while this run's rewrite was in
@@ -330,7 +330,7 @@ step "the link verse writes, and the id it gives it"
 # And it asks what a trace is ABOUT rather than looking for the subject inside the address,
 # because it is not in there to find: `#` and `/` are sanitised to `_` and a short hash is
 # appended so the sanitising cannot collapse two subjects. Nothing can spell a trace's
-# address from its subject; the engine writes the linkage at `verse.meta.derivedFrom`.
+# address from its subject; the engine writes the linkage at `@sys.meta.derivedFrom`.
 tref=
 for _ in $(seq 1 100); do
 	while IFS= read -r t; do
@@ -388,10 +388,10 @@ step "the release: three ids reassembled without a fourth"
 # task entity does not make the engine forget the task — the count can be smaller than what
 # the engine holds, which is exactly the case that collides.
 #
-# The store revision has none of those problems: it is verse's own monotonic counter, it moved
+# The store revision has none of those problems: it is viff's own monotonic counter, it moved
 # when this run wrote its seven fixtures a moment ago, and it needs nothing to have caught up.
 rev=$(v status -o tony 2>/dev/null | sed -n 's|^storeRev:[[:space:]]*||p' | tr -d '"')
-[ -n "$rev" ] || die "could not read storeRev — is this verse answering \`$BIN status\`?"
+[ -n "$rev" ] || die "could not read storeRev — is this viff answering \`$BIN status\`?"
 # The address as steps, and beside it the way the store renders it — the same pair as PR above,
 # and for the same reason: one is what a command takes, the other is what a grep over a rendered
 # record finds.
@@ -426,11 +426,11 @@ ok "#43 is traced but absent: it went onto next, and this release asked for its 
 step "the flow, which is keyed by exactly one of them"
 # If this is what fails, the release is a subject the engine already had a task for — see the
 # loop above, which exists to make that impossible.
-until_ok 150 "no flow appeared for $REL_SUBJ — is a task already recorded for it? (verse data verse task instance lin-release-manifest@$REL_SUBJ)" \
+until_ok 150 "no flow appeared for $REL_SUBJ — is a task already recorded for it? (viff data mirror task instance lin-release-manifest@$REL_SUBJ)" \
 	bash -c "$BIN ${scope[*]} flows 2>/dev/null | grep -q '$REL_SUBJ'"
 v flow
 ok "the flow's subject is $REL_SUBJ — one id, not a merged one"
-note "the task can reach the others because the manifest is on its subject: \`verse task get\`"
+note "the task can reach the others because the manifest is on its subject: \`viff task get\`"
 
 # ── what this does not do ────────────────────────────────────────────────────
 step "three edges, stated rather than hidden"
@@ -462,7 +462,7 @@ EDGES
 
 step "poke at it"
 cat <<EOF
-  $BIN data lineage                        every correlation verse has written
+  $BIN data lineage                        every correlation viff has written
   $BIN data $tref
   $BIN data $REL    the reassembled chain
   $BIN flows                               the flow, keyed by one id

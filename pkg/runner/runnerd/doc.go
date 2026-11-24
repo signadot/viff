@@ -3,26 +3,26 @@
 //
 //   - InProcessHandler: in the handler's own process.
 //   - SubprocessHandler: in a process of its own, a child of the handler's, in a Sandbox (bwrap);
-//     the handler passes verse's requests on to it. The task's process holds its one task with
+//     the handler passes viff's requests on to it. The task's process holds its one task with
 //     an InProcessHandler (ServeTask).
 //
 // A runner is a program of its own: `runnerd` (cmd/runnerd) with a SubprocessHandler, which
-// `verse up` starts beside itself as its local runner, or one written on an InProcessHandler, as
-// the sample runner is and as a test serves one (runnerdtest). verse reaches each over HTTP.
+// `viff up` starts beside itself as its local runner, or one written on an InProcessHandler, as
+// the sample runner is and as a test serves one (runnerdtest). viff reaches each over HTTP.
 //
 // Both handlers serve the task contract over HTTP (HTTPHandler) — launch tasks, stream their
 // events (SSE), resolve their gates by id, steer them, replace their gates, pause and cancel
 // their subtrees — and GET /describe. Load reads the configuration every runner shares.
 //
 // How a task is built is injected as a Builder, so the handler carries no coupling to any
-// particular agent. The agents are its subpackages (verse, codex, claude), and the runner verse
+// particular agent. The agents are its subpackages (viff, codex, claude), and the runner viff
 // ships, which runs them and scripts, is package stock. It does know the systems a runner
 // performs for its tasks: its delivery channel (package delivery) pushes to git and acts at
 // GitHub, Linear and Slack with the runner's credentials, each under the launch's ceilings.
 //
 // Control ops are task- or subtree-scoped (never per-child); the read plane is drop-with-gap.
 //
-// A runner is a program somebody deploys rather than a library verse is built with, for the
-// reason a source is (cmd/iod): verse reaches it over a URL, and a runner registered from
+// A runner is a program somebody deploys rather than a library viff is built with, for the
+// reason a source is (cmd/iod): viff reaches it over a URL, and a runner registered from
 // elsewhere is no different from one shipped here.
 package runnerd

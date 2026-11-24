@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Running is a task an engine tracked when it was stopped (Stop): its id, the commit its firing
@@ -31,7 +31,7 @@ var ErrClosing = errors.New("the charter package is being uninstalled")
 // and counted until it returns. What may launch asks begin: a firing (fireOne), an action that
 // spawns or carries a sequence (Action.apply), the steps a sequence runs off an element's end
 // (resumeSeq), the start of what a suspension parked (releaseLaunches), and the settling of
-// what the last verse left (open). The end of a task
+// what the last viff left (open). The end of a task
 // asks beginHook (applyHook). So a close waits for a launch that began and refuses one that
 // asks later, and a stop does the same for the ends.
 

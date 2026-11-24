@@ -183,7 +183,7 @@ type StepResult struct {
 	// everything else, including an action that never got as far as spawning a process.
 	//
 	// It is here because the two executors report a non-zero exit DIFFERENTLY and both are
-	// right to: versed's shellExec folds it into Err (nobody is re-planning, so a failure
+	// right to: viffd's shellExec folds it into Err (nobody is re-planning, so a failure
 	// nothing reports reads as success), while the harness's fsExec puts the code in the
 	// output for the agent to read and decide about. Neither reading survives being handed
 	// to the other's driver, and until now the code existed only inside fsExec's own record

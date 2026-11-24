@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // stamped wraps a store and keeps the last write it saw, so a test can read the principal
@@ -35,7 +35,7 @@ func (s *stamped) lastAt(ref entity.Ref) string {
 }
 
 // seedRecord writes a perms record by hand: the owner of ref and what they hold out. The
-// mirror is versed's to write, and a test standing in for versed writes it the same way —
+// mirror is viffd's to write, and a test standing in for viffd writes it the same way —
 // through an attributed view, so the view learns the record moved.
 func seedRecord(t *testing.T, store entity.Store, ref entity.Ref, owner string, grants ...entity.Grant) {
 	t.Helper()
@@ -55,12 +55,12 @@ func seedRecord(t *testing.T, store entity.Store, ref entity.Ref, owner string, 
 	}
 }
 
-// grantInstalls holds out `owner` under the rule slice to everyone, which is the grant versed
+// grantInstalls holds out `owner` under the rule slice to everyone, which is the grant viffd
 // seeds so that anyone may install a charter.
 func grantInstalls(t *testing.T, store entity.Store) {
 	t.Helper()
-	seedRecord(t, store, entity.VerseRef("trigger", "rule"), "", entity.Grant{
-		At: []string{entity.VerseRoot, "trigger", "rule"}, Below: true,
+	seedRecord(t, store, entity.ViffRef("trigger", "rule"), "", entity.Grant{
+		At: []string{entity.ViffRoot, "trigger", "rule"}, Below: true,
 		To: map[entity.Level][]string{entity.OwnerLevel: {entity.Everyone}},
 	})
 }
@@ -100,7 +100,7 @@ func TestAttributedWriteStampsThePrincipalAndRecordsTheOwner(t *testing.T) {
 
 	// A LATER write by somebody else — admitted by alice holding it out to them — is theirs,
 	// and moves nothing: ownership changes only by create and delete.
-	bob := entity.As(alice, "user:bob@example.com") // one memory, two views, as versed derives them
+	bob := entity.As(alice, "user:bob@example.com") // one memory, two views, as viffd derives them
 	seedRecord(t, alice, pr, "user:alice@example.com", entity.Grant{
 		At: pr.Segs(), To: map[entity.Level][]string{entity.ReadWrite: {"user:bob@example.com"}},
 	})
@@ -156,7 +156,7 @@ func TestAttributedWriteStampsThePrincipalAndRecordsTheOwner(t *testing.T) {
 // acted.
 func TestAPlaceActingResolvesToItsOwner(t *testing.T) {
 	inner := &stamped{Store: entitytest.OpenStore(t)}
-	rule := entity.VerseRef("trigger", "rule", "review")
+	rule := entity.ViffRef("trigger", "rule", "review")
 	walter := entity.As(inner, "user:walter@example.com")
 	grantInstalls(t, walter)
 	if _, _, err := walter.Write(entity.Write{At: rule.At(), Value: entity.Obj{"name": "review"}.Payload()}); err != nil {
@@ -308,12 +308,12 @@ func TestARecordIsWrittenOnlyWhereOwnershipChanges(t *testing.T) {
 // starts acting as its owner the moment the record is written: a miss is not remembered.
 func TestAResolutionMissIsNotRemembered(t *testing.T) {
 	inner := &stamped{Store: entitytest.OpenStore(t)}
-	rule := entity.VerseRef("trigger", "rule", "late")
+	rule := entity.ViffRef("trigger", "rule", "late")
 	system := entity.As(inner, entity.SystemDefault)
 	firing := entity.As(system, entity.Via(rule))
 	first := entity.RefAt("demo", "pr", "1")
 	if _, _, err := firing.Write(entity.Write{At: first.At(), Value: entity.Obj{"stage": "open"}.Payload()}); !errors.Is(err, entity.ErrForbidden) {
-		t.Fatalf("a rule nobody owns wrote in an open verse: %v", err)
+		t.Fatalf("a rule nobody owns wrote in an open viff: %v", err)
 	}
 	if ok, _ := entity.Holds(system, entity.Via(rule), entity.Read, entity.PermsRef(entity.RefAt())); ok {
 		t.Fatal("a rule nobody owns reads the root's perms record, which only the system may")

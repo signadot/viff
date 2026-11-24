@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // `$subject.value.x` RESOLVES IN A STRING, which is where it did not.
@@ -18,7 +18,7 @@ import (
 // a flat substitution instead (launch.expand over bindingFor's map), and `value` was left out of
 // that map — so the bare `subject` key matched the prefix and the rest stayed literal:
 //
-//	Review the drift between verse-dev.drift."at.value.sha" and verse-dev.drift."at.value.covering"
+//	Review the drift between viff-dev.drift."at.value.sha" and viff-dev.drift."at.value.covering"
 //
 // went to the runner (git-issue s4rx0tr3h12ksa8fgsn0). A charter had to write the flat `$sha` in
 // a prompt and `$subject.value.sha` in the hook two lines below, each the only spelling that
@@ -29,7 +29,7 @@ func TestSubjectValueResolvesInAString(t *testing.T) {
 	specs := make(chan launch.Spec, 4)
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle { specs <- spec; return nil })
 
-	at := entity.RefAt("verse-dev", "drift", "at")
+	at := entity.RefAt("viff-dev", "drift", "at")
 	payload := func(extra string) entity.Payload {
 		return entity.Obj{
 			"stage": "idle", "sha": "aaa111", "covering": "bbb222", "poke": extra,
@@ -41,11 +41,11 @@ func TestSubjectValueResolvesInAString(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: probe
   condition:
-    subject: {path: "verse-dev.drift.*", value: {stage: idle}}
+    subject: {path: "viff-dev.drift.*", value: {stage: idle}}
   action:
     patch: {stage: claimed}
     spawn:
-      agent: {name: verse}
+      agent: {name: viff}
       autonomy: [{then: allow}]
       prompt: "flat=$[sha] one=$[subject.value.sha] two=$[subject.value.covering] deep=$[subject.value.result.report] bare=$[subject.ref]"
 `)); err != nil {

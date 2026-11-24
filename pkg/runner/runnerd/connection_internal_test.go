@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // allowing is an environment whose network is allow, with these `tcp-client` shapes.
@@ -79,7 +79,7 @@ func TestAReplacementDecidesTheNextConnection(t *testing.T) {
 	}
 	h := NewSubprocessHandler(SubprocessConfig{Log: io.Discard})
 	h.Describe(described(agentOffer(nil)))
-	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: allowing(systems.Shape{"host": ir.FromString("google.com")}),
+	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "viff"}, Environment: allowing(systems.Shape{"host": ir.FromString("google.com")}),
 		Autonomy: task.Autonomy{{Name: "not-yet", Match: &task.Match{System: "network", Params: map[string]*ir.Node{"host": ir.FromString("google.com")}}, Then: task.Then{Mode: task.ThenDeny}}, {Then: task.Then{Mode: task.ThenAllow}}}}
 	ready := make(chan struct{})
 	close(ready)

@@ -6,25 +6,25 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/signadot/verse/pkg/runner/runnerd/calltool"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
+	"go.viff.dev/viff/pkg/runner/runnerd/calltool"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
 )
 
-// A script reaches the task's tools through `verse-call-tool`, and this is how the two meet: the
+// A script reaches the task's tools through `viff-call-tool`, and this is how the two meet: the
 // binary is where the runner is installed, the task process serves the socket, and the script's
 // environment names both.
 //
 // The binary is never copied into a task: under bwrap it is bound read-only at its own path, as
 // the runner's own program is (SubprocessConfig.Programs), and the runner names it in the task's
 // configuration, so the task process uses the one bound and nothing writable shares its inode.
-// `verse-secret-exec` is bound with it where it is beside it (FindSecretExec), and found by the
+// `viff-secret-exec` is bound with it where it is beside it (FindSecretExec), and found by the
 // same PATH.
 // The socket is in a directory of its own under the task process's temporary directory, as the
 // credential file is: under bwrap that is the sandbox's own /tmp, shared with the script and
 // nothing else, and no repository's tree is touched.
 
 // CallToolBinary is the binary's name, as it is on an image.
-const CallToolBinary = "verse-call-tool"
+const CallToolBinary = "viff-call-tool"
 
 // FindCallTool is the binary a runner whose executable is self gives its scripts: beside self,
 // as an image installs the two together, else on its PATH. "" when it is nowhere, which leaves a
@@ -42,8 +42,8 @@ func FindCallTool(self string) string {
 }
 
 // SecretExecBinary is the name of the command a script runs one command with a secret by, as if
-// in place (cmd/verse-secret-exec): `secret-exec` and what a caller does around each call of it.
-const SecretExecBinary = "verse-secret-exec"
+// in place (cmd/viff-secret-exec): `secret-exec` and what a caller does around each call of it.
+const SecretExecBinary = "viff-secret-exec"
 
 // FindSecretExec is that command where a script finds it: beside callTool, whose directory is
 // the one put on a script's PATH. "" when it is not there, which leaves a script the tools.
@@ -72,7 +72,7 @@ func isFile(p string) bool {
 }
 
 // described is tools as the socket offers them.
-func described(tools []verse.Tool) []calltool.Tool {
+func described(tools []viff.Tool) []calltool.Tool {
 	out := make([]calltool.Tool, len(tools))
 	for i, t := range tools {
 		out[i] = calltool.Tool{Name: t.Name, Description: t.Description, Params: t.Params, Required: t.Required}

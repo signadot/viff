@@ -21,9 +21,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner/runnerd/secretstore"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // seen is one request a test server saw: the JSON-RPC method of its body ("" for a GET or a

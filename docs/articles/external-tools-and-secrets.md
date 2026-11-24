@@ -1,11 +1,11 @@
-# Making verse work with external tools and secrets
+# Making viff work with external tools and secrets
 
 *Written in November 2026, as the three systems landed on their branches and ran on staging.
 True as of then; the published docs ([systems](../systems/README.md#what-a-task-lacks)) are kept
 true as the tree moves.*
 
-A verse task works in a sandbox. Today it can use the tools its runner implements (`git`,
-`github`, `slack`, `linear-issue`, `verse`) and the programs the runner's image carries. It
+A viff task works in a sandbox. Today it can use the tools its runner implements (`git`,
+`github`, `slack`, `linear-issue`, `viff`) and the programs the runner's image carries. It
 still can't:
 
 - **call a tool that someone else's server offers**, such as an MCP server;
@@ -13,7 +13,7 @@ still can't:
 - **run a command that needs a credential**, such as `npm publish`, `cosign sign` or a migration
   against a database.
 
-This page covers all three. Each one becomes **one more system** in verse's systems model, so
+This page covers all three. Each one becomes **one more system** in viff's systems model, so
 there is no second vocabulary to learn. A spawn's `environment` says what a task gets, the
 runner's `ceiling` bounds it, and the `autonomy` decides each act. The runner holds every
 credential, in one store.
@@ -68,7 +68,7 @@ secrets: {dir: /secrets}
 - A secret's **name is public**: it appears in the runner's description and in every spawn that
   uses it. The value appears in no log, no reply and no file the task can read.
 - **A secret that is absent closes whatever needs it.** The runner says so when it starts, and
-  verse refuses a spawn that needs it where the spawn is written, not halfway through a run.
+  viff refuses a spawn that needs it where the spawn is written, not halfway through a run.
 
 There are two ways to give a secret to something that acts:
 
@@ -262,11 +262,11 @@ sequenceDiagram
   workspace and under the task's network, with `NPM_TOKEN` in that process alone. The task's own
   processes are in another pid namespace and can't read it.
 - It streams stdout and stderr back to the task, **with the value redacted**, as
-  `.verse/exec/e1.out` and `.err` in the workspace, plus two sockets a shell can read along from
+  `.viff/exec/e1.out` and `.err` in the workspace, plus two sockets a shell can read along from
   while the command runs.
 - With `stdin: true` — a field of the step, false where a shape says nothing of it — the same
   socket carries input back (`hnp7jgfk`): the task writes the command's stdin at
-  `.verse/exec/e1.in.sock`, its close is the command's EOF, and the output still flows. Nothing
+  `.viff/exec/e1.in.sock`, its close is the command's EOF, and the output still flows. Nothing
   is redacted on the way in; the input goes to the process that already holds the secret.
 - It answers `e1: exited 0` and the tail of each stream. `timeout` bounds the run, which is an
   hour at most. `secret-exec-kill e1` ends it, and so does the task going away.
@@ -358,7 +358,7 @@ general case; nothing narrower covers it.
 
 ## MCP servers: tools another server offers
 
-> **Status:** built, on `verse/mcp` over `verse/secret-exec` (`1v5art3x`), through six review
+> **Status:** built, on `viff/mcp` over `viff/secret-exec` (`1v5art3x`), through six review
 > rounds: the document and the step, the configuration, the client, the two requests the task
 > makes (`mcp.list`, `mcp.call`), the tools in the task's process, and the words, in eight
 > commits (ae114ac9 to f9c91b54), and run on staging against Linear's `/mcp/readonly` and
@@ -394,7 +394,7 @@ environment:
 ```mermaid
 sequenceDiagram
   autonumber
-  participant D as doer (Claude, Codex, verse agent, script)
+  participant D as doer (Claude, Codex, viff agent, script)
   participant T as task process (sandbox)
   participant R as runner
   participant S as secret store
@@ -421,7 +421,7 @@ sequenceDiagram
   `server` and `tool`.
 - **Every kind of doer gets them through the same path:** Claude through the runner's own MCP
   server (Claude's own MCP configuration stays shut, under `--strict-mcp-config`), Codex as
-  dynamic tools, the verse agent, and a script through `verse-call-tool`.
+  dynamic tools, the viff agent, and a script through `viff-call-tool`.
 - Each call is decided again by the runner and performed **apart**, so a slow server doesn't
   hold up a push. The runner reads the credential at each request and follows no redirect, so a
   server can't choose where the credential goes.
@@ -444,7 +444,7 @@ sequenceDiagram
 
 **What the staging runner's description now shows.** With Linear's MCP server named, a doer's
 description carries the hand-built `linear-issue` system and `mcp` side by side, over one and the
-same credential (`verse-linear`'s key, the store's `linear`):
+same credential (`viff-linear`'s key, the store's `linear`):
 
 ```tony
     linear-issue:
@@ -467,8 +467,8 @@ That suggests `mcp` could replace `linear-issue`: the server offers some ninety 
 system offers three verbs, a ceiling names tools and pins arguments (`{tool: save_issue,
 arguments: {team: ENG}}`) as the system's shapes do, the approver is asked about the arguments
 either way, and Linear keeps its own read-only line at `/mcp/readonly`, a bound the system never
-had. What the system has that the server's tools don't is verse's own vocabulary: `create`,
-`comment` and `close` with fields verse named and documented, stable across Linear's releases, and
+had. What the system has that the server's tools don't is viff's own vocabulary: `create`,
+`comment` and `close` with fields viff named and documented, stable across Linear's releases, and
 cheaper to read in a question (`linear-issue.create team=ENG` against `mcp.call server=linear
 tool=save_issue arguments={…}`). The same question stands for `slack` once a Slack MCP server is
 named. Worth deciding once a few tasks have run on both; not decided here.
@@ -486,7 +486,7 @@ named. Worth deciding once a few tasks have run on both; not decided here.
 | **One identity per runner** | every spawner's call uses the runner's secret | credentials a gate mints for the task (`hfh7km3t`) |
 | **No interactive OAuth** | the secret is a token the operator already has | later |
 | **Tools only** | no resources, no prompts | later |
-| **Some schemas are left out** | `verse.Tool` carries properties and required names; a `$ref`, or `oneOf` at the top level, doesn't fit, so the tool is left out and logged | a whole schema on `verse.Tool` |
+| **Some schemas are left out** | `viff.Tool` carries properties and required names; a `$ref`, or `oneOf` at the top level, doesn't fit, so the tool is left out and logged | a whole schema on `viff.Tool` |
 | **The tool list is fixed per task** | the list is read when the task is built | the next task sees changes |
 | **A server's read and write hints aren't trusted** | it's the server's own claim | the ceiling names tools |
 | **What a server says is data** | descriptions and results go into the model's context; they're marked as data and truncated | |
@@ -542,17 +542,17 @@ flowchart LR
 
 ## Debian packages: tools the image doesn't carry (`pkg`)
 
-> **Status:** built, on `verse/pkg` over `verse/mcp` (`2k5art3x`): the document and the step,
+> **Status:** built, on `viff/pkg` over `viff/mcp` (`2k5art3x`): the document and the step,
 > the cellar, the apt wrapper, the delivery op, the stock wiring, the pinned installs and the
 > operator's `base`, the words, and what a review of the stack found in the installer. The
-> sandbox's `/inst` is `verse/secret-exec`'s, where a command run with a secret starts from a
+> sandbox's `/inst` is `viff/secret-exec`'s, where a command run with a secret starts from a
 > program in that root; what fills one is here. It supersedes the nix plan (`2b5art3x`), and
 > it has run on staging: a script had jq-v1 on PATH before its first line
 > (the pinned shape), was asked about `jq-v2` and saw it land mid-run through the read-only
 > bind, installed ripgrep under its own `rg`, computed with what landed, and had
 > `touch /inst/bin/x` and the cellar refused; a claude task asking for ripgrep was answered
 > **on PATH already**, since its image ships it. The run's first spawn found that the runner's
-> offer failed verse's own shape check, so the announcement was refused and pkg stayed closed —
+> offer failed viff's own shape check, so the announcement was refused and pkg stayed closed —
 > fixed at c3f777a5.
 
 Today a task gets the programs the runner's image carries, and nothing else: every repository
@@ -720,9 +720,9 @@ pull request carries its own.
 | Piece | State | Issue |
 |---|---|---|
 | The channel's table of ops, one step per request, a deadline per op | built, on `main` | `1k5art3x` |
-| The secret store, with Slack and Linear reading from it | built, on `verse/secret-store` | `1q5art3x` |
-| An answer performs only the act it was given about | built, on `verse/secret-exec` | `275art3x` |
-| `secret-exec` | built, on `verse/secret-exec`; the first pull request. Its I/O socket now carries stdin too (`stdin: true`, `hnp7jgfk`), and the sandbox's read-only `/inst` is here as well, so a command with a secret may start from a program the runner installed for the task — what the limitations table below used to defer | `pa35grmz` |
-| `mcp` | built, on `verse/mcp` over `verse/secret-exec`, every step reviewed and committed, and run on staging against Linear and Signadot's production server; the staging server waits on a server-side fix | `1v5art3x` |
-| `pkg`, installs during the run | built, on `verse/pkg` over `verse/mcp`, in ten commits, and run on staging: jq twice under two names (one pinned at launch, one asked mid-run), ripgrep as its own `rg`, a claude task answered "on PATH already", `/inst` refusing a write. The run found the offer failing verse's shape check, fixed at c3f777a5. It fills the install root `secret-exec` opened to a command with a secret | `2k5art3x` |
+| The secret store, with Slack and Linear reading from it | built, on `viff/secret-store` | `1q5art3x` |
+| An answer performs only the act it was given about | built, on `viff/secret-exec` | `275art3x` |
+| `secret-exec` | built, on `viff/secret-exec`; the first pull request. Its I/O socket now carries stdin too (`stdin: true`, `hnp7jgfk`), and the sandbox's read-only `/inst` is here as well, so a command with a secret may start from a program the runner installed for the task — what the limitations table below used to defer | `pa35grmz` |
+| `mcp` | built, on `viff/mcp` over `viff/secret-exec`, every step reviewed and committed, and run on staging against Linear and Signadot's production server; the staging server waits on a server-side fix | `1v5art3x` |
+| `pkg`, installs during the run | built, on `viff/pkg` over `viff/mcp`, in ten commits, and run on staging: jq twice under two names (one pinned at launch, one asked mid-run), ripgrep as its own `rg`, a claude task answered "on PATH already", `/inst` refusing a write. The run found the offer failing viff's shape check, fixed at c3f777a5. It fills the install root `secret-exec` opened to a command with a secret | `2k5art3x` |
 | `pkg-nix` | superseded by `pkg`: the image's own apt in place of a nix store, and installs as the task runs | `2b5art3x` |

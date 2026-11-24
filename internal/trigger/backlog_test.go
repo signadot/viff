@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // waitEcho polls for the value an action's patch wrote, which is the only proof that
@@ -40,7 +40,7 @@ func echoTrigger(name string) Trigger {
 	}
 }
 
-// A trigger installed over a POPULATED verse acts on the backlog that already matches it.
+// A trigger installed over a POPULATED viff acts on the backlog that already matches it.
 // The subtree watch replays the slice at the open, so what fires is "what matches now", not
 // "what someone re-touches from here on" — a rule is a statement about the world, and the
 // world includes what was written before anyone was listening.
@@ -51,7 +51,7 @@ func echoTrigger(name string) Trigger {
 func TestTriggerFiresOnTheBacklogAtInstall(t *testing.T) {
 	store := entitytest.Store(t)
 
-	// The verse is already populated: two tasks match, one does not.
+	// The viff is already populated: two tasks match, one does not.
 	ready1 := entity.RefAt("demo", "task", "t1")
 	ready2 := entity.RefAt("demo", "task", "t2")
 	queued := entity.RefAt("demo", "task", "t3")

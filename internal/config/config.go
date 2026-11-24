@@ -1,19 +1,19 @@
-// Package config loads verse's layered configuration. Precedence, lowest first:
+// Package config loads viff's layered configuration. Precedence, lowest first:
 //
-//	/etc/verse.{tony,json,yaml}         system base
-//	~/.config/verse.{tony,json,yaml}    per-user — PATCHES the base (a merge, not replace)
+//	/etc/viff.{tony,json,yaml}         system base
+//	~/.config/viff.{tony,json,yaml}    per-user — PATCHES the base (a merge, not replace)
 //	environment variables               override the file
 //	CLI flags                           override env (applied by the commands, not here)
 //
 // A LAYER'S FORMAT COMES FROM ITS FILE NAME, and the two layers need not agree:
-// /etc/verse.json patched by ~/.config/verse.tony merges fine, because both are parsed to
+// /etc/viff.json patched by ~/.config/viff.tony merges fine, because both are parsed to
 // ir.Node before tony.Patch ever sees them and the dialect is gone by that point. This is
 // also the only place the bootstrapping question has a clean answer — a config file cannot
 // declare its own format, so the suffix declares it.
 //
 // The user layer patches per key, so ~/.config need only carry what it changes; everything
 // else falls through to /etc. Missing files are absent layers, not errors. ir.Node appears
-// only at the parse/merge boundary; the rest of verse consumes the typed Config.
+// only at the parse/merge boundary; the rest of viff consumes the typed Config.
 package config
 
 //go:generate go tool tony-codegen -dir .
@@ -34,51 +34,51 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // SystemPath is the system-wide config layer. It is a BASE path — the suffix is probed,
-// so /etc/verse.tony, .json and .yaml are all found. A path that already carries a known
+// so /etc/viff.tony, .json and .yaml are all found. A path that already carries a known
 // suffix is used as-is, which is what lets a test point at one specific file.
 // A var so tests can point it elsewhere.
-var SystemPath = "/etc/verse"
+var SystemPath = "/etc/viff"
 
 // EnvConfigPath names a single config file that REPLACES both layers. It exists so a test
 // or a container can be hermetic without reaching for /etc and $HOME.
-const EnvConfigPath = "VERSE_CONFIG"
+const EnvConfigPath = "VIFF_CONFIG"
 
 // Config is the resolved configuration (file layers + env). CLI flags override these
 // afterward, in the commands.
 //
-//tony:schemagen=verse-config,notag
+//tony:schemagen=viff-config,notag
 type Config struct {
 	Addr  string `tony:"field=addr,omitzero"`
 	Scope string `tony:"field=scope,omitzero"`
 	// User is the principal this CLI acts as: who every request is made by, and so who every
 	// write it causes is attributed to and who owns what it creates. An email for a person,
 	// which goes on the wire as `user:<email>`; a principal of another kind spelled as one
-	// (`runner:verse-runner`). Self-asserted, and `--as` overrides it on the commands that take one.
-	// A login (`verse account login`) comes before it: the CLI then acts as whoever the login proves.
-	// Env: VERSE_USER.
+	// (`runner:viff-runner`). Self-asserted, and `--as` overrides it on the commands that take one.
+	// A login (`viff account login`) comes before it: the CLI then acts as whoever the login proves.
+	// Env: VIFF_USER.
 	User string `tony:"field=user,omitzero"`
-	// Agent is the operator agent this CLI acts as, when it is one: a harness driving verse
+	// Agent is the operator agent this CLI acts as, when it is one: a harness driving viff
 	// through the api is a principal of its own, and not the person whose terminal it runs in.
-	// When set, every request is made as `agent:<name>` rather than as User; `--as` still overrides it where a command takes one. Env: VERSE_AGENT.
+	// When set, every request is made as `agent:<name>` rather than as User; `--as` still overrides it where a command takes one. Env: VIFF_AGENT.
 	Agent string `tony:"field=agent,omitzero"`
-	// SystemCharter is the path of a charter file versed installs at start AS THE SYSTEM — the
+	// SystemCharter is the path of a charter file viffd installs at start AS THE SYSTEM — the
 	// rules the deployment itself stands behind, such as the one that watches policy change.
 	// A system-owned charter has to be installed by something, and `--as system` over the api
 	// is exactly the self-assertion that stops being fine once writes are refused; so the file
-	// the deployment ships is the way. Server-side, read by `verse up`. Env: VERSE_SYSTEM_CHARTER.
+	// the deployment ships is the way. Server-side, read by `viff up`. Env: VIFF_SYSTEM_CHARTER.
 	SystemCharter string `tony:"field=systemCharter,omitzero"`
 	// DefaultAgent is the agent a spawn's prompt is for where it names none, bound at the spawn,
-	// so the task's record names the agent that ran it. Empty is `verse`. Server-side, read by
-	// `verse up`. Env: VERSE_DEFAULT_AGENT.
+	// so the task's record names the agent that ran it. Empty is `viff`. Server-side, read by
+	// `viff up`. Env: VIFF_DEFAULT_AGENT.
 	DefaultAgent string `tony:"field=defaultAgent,omitzero"`
-	// LocalRunner says whether this verse hosts work on its own runner, beside the runners
-	// registered with it. False is a central verse: every spawn goes to a registered runner.
-	// Unset is true. Server-side, read by `verse up` (`--local-runner`). Env: VERSE_LOCAL_RUNNER.
+	// LocalRunner says whether this viff hosts work on its own runner, beside the runners
+	// registered with it. False is a central viff: every spawn goes to a registered runner.
+	// Unset is true. Server-side, read by `viff up` (`--local-runner`). Env: VIFF_LOCAL_RUNNER.
 	LocalRunner *bool        `tony:"field=localRunner,omitzero"`
 	Format      FormatConfig `tony:"field=format,omitzero"`
 	LLM         LLMConfig    `tony:"field=llm,omitzero"`
@@ -87,38 +87,38 @@ type Config struct {
 	// means the default; "0" REFUSES the firing instead of pacing it, which stops a runaway
 	// dead rather than letting it hum.
 	//
-	// A duration string ("1s", "500ms"). Server-side, read by `verse up`.
+	// A duration string ("1s", "500ms"). Server-side, read by `viff up`.
 	TripDuration string `tony:"field=tripDuration,omitzero"`
-	// CompactionCutoff is how far back the store keeps every patch, for the store `verse up`
+	// CompactionCutoff is how far back the store keeps every patch, for the store `viff up`
 	// starts: inside it a read at a commit is exact, and past it history thins to logd's
-	// snapshots. A duration as logd reads one, with d, w and y ("1d", "36h"). Empty is `verse
-	// up`'s default. Server-side, read by `verse up` (`--compaction-cutoff`), which writes it into
+	// snapshots. A duration as logd reads one, with d, w and y ("1d", "36h"). Empty is `viff
+	// up`'s default. Server-side, read by `viff up` (`--compaction-cutoff`), which writes it into
 	// the logd config it starts the store with; a store it does not start (`--docd-addr`) is
-	// configured where it runs. Env: VERSE_COMPACTION_CUTOFF.
+	// configured where it runs. Env: VIFF_COMPACTION_CUTOFF.
 	CompactionCutoff string `tony:"field=compactionCutoff,omitzero"`
 	// Perms is the part of the permission check's policy that is a setting rather than a
-	// record. Server-side, read by `verse up`.
+	// record. Server-side, read by `viff up`.
 	Perms PermsConfig `tony:"field=perms,omitzero"`
 	// ShellEnv names the variables a local task's shell (run_bash, under the llm, calls and
 	// scripted drivers) passes through from the server's environment. Everything else is unset,
 	// the server's model credentials included. Empty means task.DefaultShellEnv. Server-side,
-	// read by `verse up`.
+	// read by `viff up`.
 	ShellEnv []string `tony:"field=shellEnv,omitzero"`
-	// Auth is how the parties that arrive at a verse are authenticated, one block per kind of
+	// Auth is how the parties that arrive at a viff are authenticated, one block per kind of
 	// party. Unset, a request is whoever it says it is.
 	Auth AuthConfig `tony:"field=auth,omitzero"`
-	// RepoCharters names the repositories whose charters verse reconciles: for each, `verse up`
+	// RepoCharters names the repositories whose charters viff reconciles: for each, `viff up`
 	// renders the repo-charters reconciler (internal/repocharters) and installs it at start as the
-	// system, beside SystemCharter. Server-side, read by `verse up`.
+	// system, beside SystemCharter. Server-side, read by `viff up`.
 	RepoCharters []RepoCharterConfig `tony:"field=repoCharters,omitzero"`
-	// TUI is how `verse tui` looks and which keys do what. Client-side; flags override it.
+	// TUI is how `viff tui` looks and which keys do what. Client-side; flags override it.
 	TUI TUIConfig `tony:"field=tui,omitzero"`
 }
 
-// RepoCharterConfig is one repository whose charters verse reconciles: what runs in verse is the
+// RepoCharterConfig is one repository whose charters viff reconciles: what runs in viff is the
 // last state of the repository's charters directory on its branch that the team said yes to.
 //
-//tony:schemagen=verse-repo-charter-config,notag
+//tony:schemagen=viff-repo-charter-config,notag
 type RepoCharterConfig struct {
 	// Repo is the git io's id for the repository, which it reflects as `git.<repo>`.
 	Repo string `tony:"field=repo"`
@@ -126,10 +126,10 @@ type RepoCharterConfig struct {
 	// is opened, through the github io.
 	GitHub string `tony:"field=github"`
 	// Branch is the branch the charters follow: the one a pull request proposes a change onto,
-	// and whose charters are added to the record verse/live. Empty is `main`.
+	// and whose charters are added to the record viff/live. Empty is `main`.
 	Branch string `tony:"field=branch,omitzero"`
-	// At is the address the repository's charters install at, as `verse c -a` spells one
-	// (`repos.verse`). The git io installs there as itself, so it owns the address or holds
+	// At is the address the repository's charters install at, as `viff c -a` spells one
+	// (`repos.viff`). The git io installs there as itself, so it owns the address or holds
 	// `child-owner` above it.
 	At string `tony:"field=at"`
 	// Tree is the name the git io reflects the charters directory's tree under (`-tree`);
@@ -155,31 +155,31 @@ func (r RepoCharterConfig) Validate() error {
 	return nil
 }
 
-// AuthConfig holds one block per kind of party that arrives at a verse. `principal` is the
+// AuthConfig holds one block per kind of party that arrives at a viff. `principal` is the
 // people.
 //
-//tony:schemagen=verse-auth-config,notag
+//tony:schemagen=viff-auth-config,notag
 type AuthConfig struct {
 	// Principal is how a person is authenticated: the identity providers whose id_tokens this
-	// verse accepts. The server reads it to verify a request's bearer, and the CLI reads it to
-	// know which providers `verse account login` can log in to.
+	// viff accepts. The server reads it to verify a request's bearer, and the CLI reads it to
+	// know which providers `viff account login` can log in to.
 	Principal PrincipalAuthConfig `tony:"field=principal,omitzero"`
 	// Iod is how an io is authenticated: the issuer of the workload tokens the deployment's iods
-	// present, and which io each token's subject is. Server-side, read by `verse up`.
+	// present, and which io each token's subject is. Server-side, read by `viff up`.
 	Iod IodAuthConfig `tony:"field=iod,omitzero"`
-	// Issuer makes this verse an issuer of its own: it signs a short-lived token for a task whose
-	// gate passed, and publishes the keys a system outside verse verifies that token against.
-	// Unlike the blocks beside it, this is verse vouching outward, not a party arriving.
-	// Server-side, read by `verse up`.
+	// Issuer makes this viff an issuer of its own: it signs a short-lived token for a task whose
+	// gate passed, and publishes the keys a system outside viff verifies that token against.
+	// Unlike the blocks beside it, this is viff vouching outward, not a party arriving.
+	// Server-side, read by `viff up`.
 	Issuer IssuerConfig `tony:"field=issuer,omitzero"`
 }
 
-// IssuerConfig is what a verse needs to issue tokens: where its relying parties reach it, and
+// IssuerConfig is what a viff needs to issue tokens: where its relying parties reach it, and
 // the key it signs with.
 //
-//tony:schemagen=verse-issuer-config,notag
+//tony:schemagen=viff-issuer-config,notag
 type IssuerConfig struct {
-	// URL is this verse as a relying party reaches it. It is every token's `iss`, and the
+	// URL is this viff as a relying party reaches it. It is every token's `iss`, and the
 	// discovery document is found at `<url>/.well-known/openid-configuration`.
 	URL string `tony:"field=url,omitzero"`
 	// Key is the path of the signing key: an RSA private key in PEM, PKCS#1 or PKCS#8.
@@ -188,7 +188,7 @@ type IssuerConfig struct {
 
 // The modes of auth.principal.
 const (
-	// AuthOff verifies nobody: a request is whoever its Verse-Principal header says.
+	// AuthOff verifies nobody: a request is whoever its Viff-Principal header says.
 	AuthOff = "off"
 	// AuthOptional uses a verified bearer where a request carries one, and still admits a bare
 	// header.
@@ -197,26 +197,26 @@ const (
 	AuthRequired = "required"
 )
 
-// PrincipalAuthConfig is the OpenID Connect providers a verse accepts people from, and how far
+// PrincipalAuthConfig is the OpenID Connect providers a viff accepts people from, and how far
 // it insists on them.
 //
-//tony:schemagen=verse-principal-auth-config,notag
+//tony:schemagen=viff-principal-auth-config,notag
 type PrincipalAuthConfig struct {
-	// Mode is `off`, `optional` or `required`; unset is `off`. Server-side, read by `verse up`.
+	// Mode is `off`, `optional` or `required`; unset is `off`. Server-side, read by `viff up`.
 	Mode string `tony:"field=mode,omitzero"`
 	// Providers are the issuers, each under the name this deployment gives it. The name is an
-	// address segment: an account's binding stands at `verse.identity.<name>.account.<sub>`.
+	// address segment: an account's binding stands at `mirror.identity.<name>.account.<sub>`.
 	Providers map[string]AuthProviderConfig `tony:"field=providers,omitzero"`
 }
 
 // AuthProviderConfig is one OpenID Connect issuer.
 //
-//tony:schemagen=verse-auth-provider-config,notag
+//tony:schemagen=viff-auth-provider-config,notag
 type AuthProviderConfig struct {
 	// Issuer is the issuer's URL, which its discovery document is found under and which every
 	// token's `iss` equals.
 	Issuer string `tony:"field=issuer,omitzero"`
-	// ClientID is the OAuth client registered at the issuer for this verse: a token's `aud` holds
+	// ClientID is the OAuth client registered at the issuer for this viff: a token's `aud` holds
 	// it, and the CLI logs in as it. It is a public client.
 	ClientID string `tony:"field=clientId,omitzero"`
 	// ClientSecret is what some issuers hand a public client beside its id and want back at the
@@ -228,7 +228,7 @@ type AuthProviderConfig struct {
 	// been bound from before needs a verified email in one of them, and a person an io relays
 	// needs an email in one of them. Empty admits nobody new.
 	Domains []string `tony:"field=domains,omitzero"`
-	// IOs names the installed iods the verse trusts for this provider's accounts, by the name each
+	// IOs names the installed iods the viff trusts for this provider's accounts, by the name each
 	// is installed under: an io whose reflection is evidence of an account (`github`, proved by
 	// a comment), and an io that relays a person it identified (`slack`, by the member who
 	// typed). A provider has an issuer or iods, not both. Empty trusts none.
@@ -246,7 +246,7 @@ const (
 	ActsAny = "any"
 )
 
-// IodProvider is the name the iods' accounts stand under (`verse.identity.iod`), which no
+// IodProvider is the name the iods' accounts stand under (`mirror.identity.iod`), which no
 // provider of people may take.
 const IodProvider = "iod"
 
@@ -257,14 +257,14 @@ const GitHubProvider = "github"
 
 // IodAuthConfig is how the deployment's iods are authenticated at the door.
 //
-//tony:schemagen=verse-iod-auth-config,notag
+//tony:schemagen=viff-iod-auth-config,notag
 type IodAuthConfig struct {
 	// Issuer is the URL of the issuer of the iods' workload tokens: on Kubernetes the cluster's
 	// own, which signs a pod's projected service-account token (on EKS,
 	// `https://oidc.eks.<region>.amazonaws.com/id/<id>`). Its discovery document is under it.
 	Issuer string `tony:"field=issuer,omitzero"`
 	// Audience is what a token's `aud` holds, which is what the pod's projected token was asked
-	// for. Unset is `verse`.
+	// for. Unset is `viff`.
 	Audience string `tony:"field=audience,omitzero"`
 	// CA is the path of the PEM bundle the issuer's certificate is checked against, where the
 	// issuer is not behind a public one: a cluster's own API server, whose certificate a pod has
@@ -275,13 +275,13 @@ type IodAuthConfig struct {
 	// is. Written at start, never at first sight.
 	Accounts map[string]IodAccountConfig `tony:"field=accounts,omitzero"`
 	// Static is the iods of a deployment with no issuer: each presents the token in a file, and
-	// the verse keeps the token's hash. Read at start.
+	// the viff keeps the token's hash. Read at start.
 	Static []IodStaticConfig `tony:"field=static,omitzero"`
 }
 
 // IodAccountConfig is one io, as a workload token names it.
 //
-//tony:schemagen=verse-iod-account-config,notag
+//tony:schemagen=viff-iod-account-config,notag
 type IodAccountConfig struct {
 	// Principal is the `agent:` the io acts as.
 	Principal string `tony:"field=principal"`
@@ -292,7 +292,7 @@ type IodAccountConfig struct {
 
 // IodStaticConfig is one io that presents a fixed token.
 //
-//tony:schemagen=verse-iod-static-config,notag
+//tony:schemagen=viff-iod-static-config,notag
 type IodStaticConfig struct {
 	// File is the path of the token.
 	File string `tony:"field=file"`
@@ -369,18 +369,18 @@ func (a AuthConfig) Validate() error {
 	if err := a.Iod.validate(issuers); err != nil {
 		return err
 	}
-	// Verse's own issuer is nobody else's: the door finds a token's verifier by its `iss`, and
-	// a token verse signs toward a runner must open nothing at verse's own door, so its issuer
+	// Viff's own issuer is nobody else's: the door finds a token's verifier by its `iss`, and
+	// a token viff signs toward a runner must open nothing at viff's own door, so its issuer
 	// may be neither a provider's nor the workload tokens'.
 	if iss := strings.TrimSuffix(a.Issuer.URL, "/"); iss != "" {
 		for _, spelt := range []string{iss, iss + "/"} {
 			if other, dup := issuers[spelt]; dup {
 				return fmt.Errorf("auth.issuer.url: %s is auth.principal.providers.%s's issuer too, and a "+
-					"token this verse signs would be read as one of theirs", iss, other)
+					"token this viff signs would be read as one of theirs", iss, other)
 			}
 		}
 		if iss == strings.TrimSuffix(a.Iod.Issuer, "/") {
-			return fmt.Errorf("auth.issuer.url: %s is auth.iod.issuer too, and a token this verse signs "+
+			return fmt.Errorf("auth.issuer.url: %s is auth.iod.issuer too, and a token this viff signs "+
 				"would be read as a workload's", iss)
 		}
 	}
@@ -435,22 +435,22 @@ func ioPrincipal(p string) error {
 }
 
 // PermsConfig is what a deployment sets about permissions that no record can say: the root's
-// default. Every other default is a record (`verse perms <path> --child-grants`).
+// default. Every other default is a record (`viff perms <path> --child-grants`).
 //
-//tony:schemagen=verse-perms-config,notag
+//tony:schemagen=viff-perms-config,notag
 type PermsConfig struct {
 	// ChildGrants is what a node created with no default above it holds out — grantees by level,
-	// `{read: ["*"]}` — the open verse's when left unset, and `{}` for a verse where what
+	// `{read: ["*"]}` — the open viff's when left unset, and `{}` for a viff where what
 	// anybody creates is theirs and their grantees' alone.
 	ChildGrants map[string][]string `tony:"field=child-grants,omitzero"`
 	// Admins are who may take a top-level place: grantees (`walter@example.com`, `agent:ops`),
-	// seeded into the `admin` group and held `owner` beneath the root. Unset is the open verse
+	// seeded into the `admin` group and held `owner` beneath the root. Unset is the open viff
 	// — anybody takes one — which is what a dogfood deployment runs as. Env:
-	// VERSE_PERMS_ADMINS, comma-separated, which is how a cluster with no verse.tony in the pod
+	// VIFF_PERMS_ADMINS, comma-separated, which is how a cluster with no viff.tony in the pod
 	// says it (and how it is changed live, with `kubectl set env`).
 	//
 	// It is a SETTING rather than a record because it is the one policy that has to exist
-	// before anybody can be refused: a verse whose top is administered cannot be administered
+	// before anybody can be refused: a viff whose top is administered cannot be administered
 	// into existence from inside itself.
 	Admins []string `tony:"field=admins,omitzero"`
 }
@@ -487,10 +487,10 @@ func (c Config) TripPace() (d time.Duration, set bool, err error) {
 //
 // The fields are POINTERS because format.Format's zero value IS tony, so a plain value
 // cannot distinguish "set to tony" from "not set". Typing them as codec.Format rather than
-// string also means a typo in verse.tony is a load error rather than a silent fallback to
+// string also means a typo in viff.tony is a load error rather than a silent fallback to
 // the default, which is the entire point of having written it down.
 //
-//tony:schemagen=verse-format,notag
+//tony:schemagen=viff-format,notag
 type FormatConfig struct {
 	// Spelled format.Format, not codec.Format: they are the SAME type (codec.Format is
 	// an alias) but tony-codegen cannot resolve an alias across a package boundary
@@ -501,10 +501,10 @@ type FormatConfig struct {
 	Wire    *format.Format `tony:"field=wire,omitzero"`    // HTTP bodies
 }
 
-// validate rejects a format the file layer set to something verse cannot render.
+// validate rejects a format the file layer set to something viff cannot render.
 //
 // The env path gets this from codec.ParseOutput, but a config FILE decodes straight into
-// *format.Format through go-tony's own text unmarshaler, which knows nothing of verse's
+// *format.Format through go-tony's own text unmarshaler, which knows nothing of viff's
 // rules — so `format: {output: json}` would otherwise sit there until the first response
 // failed to encode. Named at load, it is a line number in a config file instead.
 func (f FormatConfig) validate() error {
@@ -546,7 +546,7 @@ func (f FormatConfig) ResolveWire() codec.Format {
 // LLMConfig configures the llm task driver. When creds are absent the driver is
 // unavailable and an llm spawn fails (that spawn, not the engine).
 //
-//tony:schemagen=verse-llm,notag
+//tony:schemagen=viff-llm,notag
 type LLMConfig struct {
 	BaseURL    string `tony:"field=baseURL,omitzero"`
 	APIKey     string `tony:"field=apiKey,omitzero"`
@@ -554,8 +554,8 @@ type LLMConfig struct {
 	Model      string `tony:"field=model,omitzero"`
 }
 
-// VirtualKeyOr is the credential a task runs under: the one its spawn named, else this verse's
-// own. A spawn's is already the resolved key — versed read it from the address the spawn named,
+// VirtualKeyOr is the credential a task runs under: the one its spawn named, else this viff's
+// own. A spawn's is already the resolved key — viffd read it from the address the spawn named,
 // as whoever named it — so there is nothing to look up here and no list to keep.
 func (l LLMConfig) VirtualKeyOr(named string) string {
 	if named != "" {
@@ -595,24 +595,24 @@ func maskSecret(s string) string {
 	}
 }
 
-// UserPath is the per-user config layer, ~/.config/verse (honoring XDG_CONFIG_HOME), or ""
+// UserPath is the per-user config layer, ~/.config/viff (honoring XDG_CONFIG_HOME), or ""
 // if there is no home. Like SystemPath it is a BASE path — the suffix is probed.
 func UserPath() string {
 	if x := os.Getenv("XDG_CONFIG_HOME"); x != "" {
-		return filepath.Join(x, "verse")
+		return filepath.Join(x, "viff")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".config", "verse")
+	return filepath.Join(home, ".config", "viff")
 }
 
-// TokensPath is where the CLI keeps what `verse account login` was given: `verse-tokens.tony` beside the
-// config, which is beside the file VERSE_CONFIG names when it names one and beside the per-user
+// TokensPath is where the CLI keeps what `viff account login` was given: `viff-tokens.tony` beside the
+// config, which is beside the file VIFF_CONFIG names when it names one and beside the per-user
 // layer otherwise. "" where there is no home to keep it in.
 func TokensPath() string {
-	const name = "verse-tokens.tony"
+	const name = "viff-tokens.tony"
 	if explicit := os.Getenv(EnvConfigPath); explicit != "" {
 		return filepath.Join(filepath.Dir(explicit), name)
 	}
@@ -626,7 +626,7 @@ func TokensPath() string {
 // A base that already carries a recognized suffix is taken literally.
 //
 // TWO FILES FOR ONE LAYER IS AN ERROR, not a precedence rule. Silently preferring
-// verse.tony over verse.json is the kind of thing you debug at 2am after editing the one
+// viff.tony over viff.json is the kind of thing you debug at 2am after editing the one
 // that is being ignored; saying so costs a line and a puzzled moment now.
 func resolveLayer(base string) (string, error) {
 	if base == "" {
@@ -662,7 +662,7 @@ func exists(path string) bool {
 
 // Load reads and merges the file layers, then folds in environment overrides. It
 // ALWAYS returns a usable config with env applied, even when the file layer fails: a
-// broken or partial ~/.config/verse.tony must never silently drop env-provided values
+// broken or partial ~/.config/viff.tony must never silently drop env-provided values
 // (addr, scope, llm creds) and, say, strand you on the scripted driver. On a file
 // error it returns that config plus the error (for the caller to warn about).
 func Load() (*Config, error) {
@@ -698,7 +698,7 @@ func Load() (*Config, error) {
 }
 
 // loadMerged parses the system layer then patches it with the user layer (each optional).
-// VERSE_CONFIG, when set, replaces both.
+// VIFF_CONFIG, when set, replaces both.
 //
 // The layers are merged as ir.Node, so they may be written in different dialects — the
 // format is gone by the time tony.Patch sees them.
@@ -756,31 +756,31 @@ func readNode(path string) (*ir.Node, error) {
 }
 
 // applyEnv overlays environment variables on top of the file config. A malformed format
-// name is reported rather than silently ignored — writing VERSE_FORMAT=tny and quietly
+// name is reported rather than silently ignored — writing VIFF_FORMAT=tny and quietly
 // getting something else is worse than being told.
 //
 // All three knobs name a format to WRITE in (Default is what Output and Wire fall back
 // to), so all three go through codec.ParseOutput and all three refuse "json". Reading
 // JSON needs no setting at all — it is parsed as tony wherever it turns up.
 func (c *Config) applyEnv() error {
-	c.Addr = envOr("VERSE_ADDR", c.Addr)
-	c.Scope = envOr("VERSE_SCOPE", c.Scope)
-	c.User = envOr("VERSE_USER", c.User)
-	c.Agent = envOr("VERSE_AGENT", c.Agent)
-	c.SystemCharter = envOr("VERSE_SYSTEM_CHARTER", c.SystemCharter)
-	c.DefaultAgent = envOr("VERSE_DEFAULT_AGENT", c.DefaultAgent)
-	c.CompactionCutoff = envOr("VERSE_COMPACTION_CUTOFF", c.CompactionCutoff)
-	if v := os.Getenv("VERSE_LOCAL_RUNNER"); v != "" {
+	c.Addr = envOr("VIFF_ADDR", c.Addr)
+	c.Scope = envOr("VIFF_SCOPE", c.Scope)
+	c.User = envOr("VIFF_USER", c.User)
+	c.Agent = envOr("VIFF_AGENT", c.Agent)
+	c.SystemCharter = envOr("VIFF_SYSTEM_CHARTER", c.SystemCharter)
+	c.DefaultAgent = envOr("VIFF_DEFAULT_AGENT", c.DefaultAgent)
+	c.CompactionCutoff = envOr("VIFF_COMPACTION_CUTOFF", c.CompactionCutoff)
+	if v := os.Getenv("VIFF_LOCAL_RUNNER"); v != "" {
 		on, err := strconv.ParseBool(v)
 		if err != nil {
-			return fmt.Errorf("VERSE_LOCAL_RUNNER=%q: true or false", v)
+			return fmt.Errorf("VIFF_LOCAL_RUNNER=%q: true or false", v)
 		}
 		c.LocalRunner = &on
 	}
 	// Comma-separated, because an env var is one string and a deployment sets this one without
-	// a config file: `kubectl set env deploy/versed VERSE_PERMS_ADMINS=…` is how a cluster says
-	// who may take a top-level place, and there is no verse.tony in the pod to say it in.
-	if v := os.Getenv("VERSE_PERMS_ADMINS"); v != "" {
+	// a config file: `kubectl set env deploy/viffd VIFF_PERMS_ADMINS=…` is how a cluster says
+	// who may take a top-level place, and there is no viff.tony in the pod to say it in.
+	if v := os.Getenv("VIFF_PERMS_ADMINS"); v != "" {
 		c.Perms.Admins = nil
 		for _, a := range strings.Split(v, ",") {
 			if a = strings.TrimSpace(a); a != "" {
@@ -798,9 +798,9 @@ func (c *Config) applyEnv() error {
 		name string
 		dst  **codec.Format
 	}{
-		{"VERSE_FORMAT", &c.Format.Default},
-		{"VERSE_OUTPUT_FORMAT", &c.Format.Output},
-		{"VERSE_WIRE_FORMAT", &c.Format.Wire},
+		{"VIFF_FORMAT", &c.Format.Default},
+		{"VIFF_OUTPUT_FORMAT", &c.Format.Output},
+		{"VIFF_WIRE_FORMAT", &c.Format.Wire},
 	} {
 		v := os.Getenv(e.name)
 		if v == "" {

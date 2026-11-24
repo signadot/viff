@@ -4,8 +4,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // a Handle that records control calls; its read plane stays open (never terminal).

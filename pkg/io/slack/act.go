@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // Posting, replying, reading and reacting, for a runner's `slack-*` tools: the Slack calls a
@@ -46,12 +46,12 @@ type Channel struct {
 }
 
 // channelNamed is the channel the bot is in that has this name. A name the bot is in no channel
-// by is refused (verseio.Permanent): from here a typo, a channel the bot was never invited to
+// by is refused (viffio.Permanent): from here a typo, a channel the bot was never invited to
 // and one it was removed from are the same fact.
 func (a *api) channelNamed(ctx context.Context, given string) (Channel, error) {
 	name, ok := ChannelName(given)
 	if !ok {
-		return Channel{}, verseio.Permanent(fmt.Errorf("slack: %q is not a channel's name", given))
+		return Channel{}, viffio.Permanent(fmt.Errorf("slack: %q is not a channel's name", given))
 	}
 	all, err := a.conversations(ctx)
 	if err != nil {
@@ -62,7 +62,7 @@ func (a *api) channelNamed(ctx context.Context, given string) (Channel, error) {
 			return Channel{ID: c.ID, Name: c.Name}, nil
 		}
 	}
-	return Channel{}, verseio.Permanent(fmt.Errorf("slack: the bot is in no channel named %s; invite it there first", name))
+	return Channel{}, viffio.Permanent(fmt.Errorf("slack: the bot is in no channel named %s; invite it there first", name))
 }
 
 // Posted is a message the bot said: where, its ts, which a reply and a reaction name, and its
@@ -80,7 +80,7 @@ type Posted struct {
 func Post(ctx context.Context, token, base string, hc *http.Client, channel, thread, text string) (Posted, error) {
 	a := newAPI(token, base, hc)
 	if strings.TrimSpace(text) == "" {
-		return Posted{}, verseio.Permanent(fmt.Errorf("slack: a message needs text"))
+		return Posted{}, viffio.Permanent(fmt.Errorf("slack: a message needs text"))
 	}
 	c, err := a.channelNamed(ctx, channel)
 	if err != nil {

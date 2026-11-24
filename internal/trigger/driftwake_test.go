@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // claimCharter is the cursor shape every drive uses: a LITERAL subject whose condition reads
@@ -18,14 +18,14 @@ const claimCharter = `
     subject:
       path: "drift.cursor.at"
       value: !let
-        let: [{tip: !get-path {at: "git.verse.head", path: sha}}]
+        let: [{tip: !get-path {at: "git.viff.head", path: sha}}]
         in:  {stage: idle, sha: !not .[tip]}
   action:
     patch: {stage: claimed}
 `
 
 // A package engine watches one subtree per thing its rules read (Engine.ObserveScoped), which is
-// how versed runs an installed charter — a different path from the whole-store Observe the other
+// how viffd runs an installed charter — a different path from the whole-store Observe the other
 // tests take, and the one a deployment actually uses.
 func TestALiteralSubjectWakesWhenItsConditionReadMoves(t *testing.T) {
 	store := entitytest.Store(t)
@@ -33,7 +33,7 @@ func TestALiteralSubjectWakesWhenItsConditionReadMoves(t *testing.T) {
 	eng.Confine(SubtreeAt("drift"))
 	eng.SetReads([]Subtree{SubtreeAt("git")})
 
-	head := entity.RefAt("git", "verse", "head")
+	head := entity.RefAt("git", "viff", "head")
 	at := entity.RefAt("drift", "cursor", "at")
 	setPayload(t, store, head, `{sha: aaa111}`)
 	setPayload(t, store, at, `{sha: aaa111, stage: idle}`)
@@ -58,7 +58,7 @@ func TestALiteralSubjectWakesWhenAReadThatDidNotExistYetMoves(t *testing.T) {
 	eng.Confine(SubtreeAt("drift"))
 	eng.SetReads([]Subtree{SubtreeAt("git")})
 
-	head := entity.RefAt("git", "verse", "head")
+	head := entity.RefAt("git", "viff", "head")
 	at := entity.RefAt("drift", "cursor", "at")
 	setPayload(t, store, at, `{sha: aaa111, stage: idle}`) // the cursor, armed at a known sha
 

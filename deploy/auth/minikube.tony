@@ -1,21 +1,21 @@
-# verse's `auth` block on minikube: the iods prove themselves with their pods' projected tokens,
+# viff's `auth` block on minikube: the iods prove themselves with their pods' projected tokens,
 # whose issuer is the cluster's own API server, behind the cluster's CA, which a pod has mounted.
 # Nobody logs in here (no issuer for people), so the mode stays `optional`, and a person binds
-# their Slack or GitHub account by saying the nonce `verse account -link <provider>` gives them:
+# their Slack or GitHub account by saying the nonce `viff account -link <provider>` gives them:
 # no provider names domains, so the iods relay bound accounts only.
 #
 # The issuer is what `kubectl get --raw /.well-known/openid-configuration` prints as `issuer`;
 # kubeadm's default, and minikube's, is below. The discovery document is readable by nobody-in-
 # particular only with `issuerDiscoveryOpen` (deploy/issuer-discovery).
 auth:
-  # This verse issues tokens of its own: the credential a gate mints for a task, and the token it
+  # This viff issues tokens of its own: the credential a gate mints for a task, and the token it
   # presents to each runner, minted for that runner alone (docs/runners.md, "Who the runner is").
-  # The key is the verse-issuer Secret (deploy/build.tony's runnerTokens patch), and the url is
+  # The key is the viff-issuer Secret (deploy/build.tony's runnerTokens patch), and the url is
   # the name the runners hold the tokens to (the `issuer` knob): in-cluster, since nothing outside
   # verifies them.
   issuer:
-    url: "http://verse:9797"
-    key: /etc/verse/issuer/issuer.pem
+    url: "http://viff:9797"
+    key: /etc/viff/issuer/issuer.pem
   principal:
     mode: optional
     providers:
@@ -25,9 +25,9 @@ auth:
         iods: [slack]
   iod:
     issuer: "https://kubernetes.default.svc.cluster.local"
-    audience: verse
+    audience: viff
     ca: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
     accounts:
-      "system:serviceaccount:verse:slack-iod": {principal: "agent:slack-iod", iod: slack}
-      "system:serviceaccount:verse:github-iod": {principal: "agent:github-iod", iod: github}
-      "system:serviceaccount:verse:git-iod": {principal: "agent:git-iod", iod: git}
+      "system:serviceaccount:viff:slack-iod": {principal: "agent:slack-iod", iod: slack}
+      "system:serviceaccount:viff:github-iod": {principal: "agent:github-iod", iod: github}
+      "system:serviceaccount:viff:git-iod": {principal: "agent:git-iod", iod: git}

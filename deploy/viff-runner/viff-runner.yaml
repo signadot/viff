@@ -1,0 +1,315 @@
+# The viff runner (`runnerd`, offering the viff agent and scripts), as a deployed runner: a
+# workspace per task, a PROCESS per task, and bubblewrap around the process.
+#
+# The pod runs one runner that hosts no task itself. Each task is `runnerd -task` under
+# bwrap, serving the same task-control contract back to its parent over an inherited socket, and
+# the parent forwards viff's requests to it. So the sandbox is drawn once, around everything the
+# task does — including the shell — and the git credential below stays outside it by construction
+# rather than by an env allowlist.
+#
+# It is not a source and not the engine — it is a place work RUNS, reached by url, and viff
+# learns about it the same way it learns about any runner:
+#
+#   viff runner add viff-runner http://viff-runner:9802 --identity viff-runner \
+#     --subject system:serviceaccount:viff:viff-runner
+#
+# That install probes it, so a `reach: "a runner"` is the deployment's own acceptance test.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: viff-runner-config
+  labels: {app: viff, tier: runners, runner: viff}
+data:
+  # What the runner offers and how it reaches what it needs. Nothing here is a default the image
+  # could have guessed. What a task works on — its repositories, what may leave each, the network
+  # it may reach — is the SPAWN's to say (its `environment` on the charter); the runner checks each
+  # launch against this, pushes from its own mirror with its own token, and the task never has a
+  # route to the forge.
+  viff-runner.tony: |
+    listen: ":9802"
+    # The one viff this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
+    # names it in the pod's environment, VIFF_URL and VIFF_ISSUER, from the `issuer` knob,
+    # since this file is every cluster's, and gives it its token (VIFF_TOKEN_FILE). The runner
+    # does not start without both.
+    # One bare mirror per repository, on the state volume, shared by the tasks. The forge is
+    # github.com, and the token is GITHUB_TOKEN (the viff-runner Secret, below).
+    repos:
+      mirrors: /state/mirrors
+    # The secret store (docs/reference/runnerd.md, "The secret store"): the projected volume
+    # below, one file to a secret, read by the runner at each act and by no task. Nothing names
+    # a secret here, so each system reads its variable as before; a deployment moves one to the
+    # store by naming it (`systems: {slack: slack-bot, linear-issue: linear}`, the files the
+    # volume gives), and its variable is then not read.
+    # The store is also what the `secret` system runs a command with (docs/systems/secret.md):
+    # no doer here has a `secret` ceiling, so it is closed. A deployment opens it per doer, a
+    # secret at a time, with the commands and the one host the command needs:
+    #   systems:
+    #     secret:  {ceiling: [{name: npm-token, as: NPM_TOKEN, exec: {argv: !regexp "^npm publish --ignore-scripts$"}}]}
+    #     network: {ceiling: {mode: allow, tcp-client: {host: registry.npmjs.org}}}
+    secrets: {dir: /secrets}
+    # The operator's line over every system a doer holds for its tasks, a doer at a time: what a
+    # spawn's environment may give, held at install, at launch and again at each act. A ceiling
+    # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer
+    # is closed to it; a block naming no verb (`{}`) allows every verb of its system.
+    # The example org's repositories, and their branches under viff/; main of example/app, which
+    # a merge rule lands on. Placeholders, closed until a deployment names its own
+    # (`runnerConfig`). No network ceiling: tasks get what the sandbox builds. What a doer's
+    # shell is given of the runner's environment is its `shellEnv`, by name: never a secret.
+    agents:
+      viff:
+        # The model credentials are read from the runner's environment, by the names viffd
+        # uses too: PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY, PORTKEY_BASE_URL (envFrom the viff-llm
+        # Secret, below). Without PORTKEY_API_KEY the runner starts with this agent closed, and
+        # says so. The gateway is reachable from a task whatever its
+        # network, since the viff agent makes the call.
+        shellEnv: [PATH, HOME, USER, LANG]
+        settings:
+          # A model the virtual key's provider serves, and the same one viffd is given
+          # (a profile): one credential, one provider, one answer about
+          # which model this deployment runs.
+          model: {default: claude-sonnet-5}
+        # A spawn that names a virtual key of its own runs under it: viff read it from the
+        # address the spawn named, as whoever named it, and refused there if that read was not
+        # theirs.
+        annotations:
+          viff.portkey/virtual-key: {type: string}
+        systems:
+          git:
+            ceiling:
+            - repo: github.com/example/app
+              fetch: {}
+              push:
+              - {ref: refs/heads/main, force: false, delete: false}
+              - {ref: !regexp "^refs/heads/viff/"}
+            - repo: !regexp "^github\\.com/example/"
+              fetch: {}
+              push: {ref: !regexp "^refs/heads/viff/"}
+          git-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+          github: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+          github-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+          # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
+          # viff-linear, SLACK_BOT_TOKEN from viff-slack): a ceiling naming either is what makes
+          # the runner offer the system, and where its variable is unset the runner starts with it
+          # closed, and says so. TEAM stands for the team the Linear iod reflects, and `viff`
+          # for a channel the Slack bot is in. A Slack shape names one channel, so two channels
+          # are two shapes.
+          linear-issue: {ceiling: {create: {team: TEAM}, comment: {issue: !glob "TEAM-*"}, close: {issue: !glob "TEAM-*"}}}
+          slack:
+            ceiling:
+              read: [{channel: viff}]
+              post: [{channel: viff}]
+              reply: [{channel: viff}]
+              react: [{channel: viff}]
+          files: {ceiling: {}}
+          commands: {ceiling: {}}
+          question: {ceiling: {}}
+          viff: {ceiling: {}}
+          agent: {ceiling: {}}
+    script:
+      # Scripts, the charters' `script:` spawns: the same reach as the agent's, and their
+      # questions; a script's commands and files are its own and no step.
+      shellEnv: [PATH, HOME, USER, LANG]
+      systems:
+        git:
+          ceiling:
+          - repo: github.com/example/app
+            fetch: {}
+            push:
+            - {ref: refs/heads/main, force: false, delete: false}
+            - {ref: !regexp "^refs/heads/viff/"}
+          - repo: !regexp "^github\\.com/example/"
+            fetch: {}
+            push: {ref: !regexp "^refs/heads/viff/"}
+        git-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+        github: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+        github-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
+        # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
+        # viff-linear, SLACK_BOT_TOKEN from viff-slack): a ceiling naming either is what makes
+        # the runner offer the system, and where its variable is unset the runner starts with it
+        # closed, and says so. TEAM stands for the team the Linear iod reflects, and `viff`
+        # for a channel the Slack bot is in. A Slack shape names one channel, so two channels
+        # are two shapes.
+        linear-issue: {ceiling: {create: {team: TEAM}, comment: {issue: !glob "TEAM-*"}, close: {issue: !glob "TEAM-*"}}}
+        slack:
+          ceiling:
+            read: [{channel: viff}]
+            post: [{channel: viff}]
+            reply: [{channel: viff}]
+            react: [{channel: viff}]
+        question: {ceiling: {}}
+        viff: {ceiling: {}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: viff-runner
+  labels: {app: viff, tier: runners, runner: viff}
+spec:
+  replicas: 1
+  # Recreate, for a reason a source shares and a runner has more sharply: the mirrors and
+  # workspaces live on one volume, and two pods writing one mirror is a fetch racing a fetch.
+  # It also keeps `viff runner remove` honest — the work on a runner is on THAT pod, and a
+  # second replica would make "3 tasks are running on it" ambiguous about where.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: viff, tier: runners, runner: viff}
+  template:
+    metadata:
+      labels: {app: viff, tier: runners, runner: viff}
+    spec:
+      # The pod gets its own user namespace, which is here for two reasons and only one of
+      # them is bwrap's. The API requires it before it will accept `procMount: Unmasked`
+      # below — "hostUsers must be false to use Unmasked" is the literal refusal — and it is
+      # also what makes the two relaxations below affordable: a process making unfiltered
+      # syscalls against an unmasked /proc from inside its own user namespace is not the same
+      # exposure as one doing it in the host's.
+      hostUsers: false
+      containers:
+      - name: viff-runner
+        image: signadot/viff-runner:latest
+        args:
+        - -config
+        - /config/viff-runner.tony
+        # The containment, named rather than sniffed. If the kernel refuses unprivileged user
+        # namespaces this runner REFUSES the spawn naming the rung it could not build — it does
+        # not run the work uncontained. That is the failure mode to want: a spawn that fails
+        # loudly beats an agent with the run of the pod.
+        - -sandbox
+        - bwrap
+        ports:
+        - {name: control, containerPort: 9802}
+        # pprof and stacks, one port up from the listen address (adminface) — the only way to see what a
+        # task's goroutines are doing on a box `kubectl exec` is not going to reach into.
+        - {name: admin, containerPort: 9803}
+        # The model credentials the viff agent uses. The ConfigMap carries no secret and stays
+        # readable by anyone who can read the deployment.
+        #
+        # envFrom takes the Secret's own key names as variable names — viff-llm, the one
+        # viffd uses, whose keys ARE those names (PORTKEY_API_KEY, PORTKEY_VIRTUAL_KEY). This
+        # named two keys explicitly before, and named ones that Secret does not have: a
+        # secretKeyRef with optional: true is SILENT about a key that is not there, so the pod
+        # came up with no credential and every task would have died at the model call. Taking
+        # the whole Secret cannot drift from it.
+        envFrom:
+        - secretRef:
+            name: viff-llm
+            optional: true
+        env:
+        # What this runner pushes with. The TASK never sees it: delivery is the runner's act,
+        # in the runner's process, and the agent has neither the variable nor a shell to read
+        # it from.
+        #
+        #   kubectl -n viff create secret generic viff-runner \
+        #     --from-literal=gitToken=<PAT>
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef: {name: viff-runner, key: gitToken, optional: true}
+        # Linear's and Slack's, for the tasks' linear-issue and slack calls: the keys the iods read
+        # from the same Secrets. The runner makes each call itself, so a task never has them.
+        - name: LINEAR_API_KEY
+          valueFrom:
+            secretKeyRef: {name: viff-linear, key: LINEAR_API_KEY, optional: true}
+        - name: SLACK_BOT_TOKEN
+          valueFrom:
+            secretKeyRef: {name: viff-slack, key: SLACK_BOT_TOKEN, optional: true}
+        volumeMounts:
+        - {name: config, mountPath: /config, readOnly: true}
+        - {name: state, mountPath: /state}
+        - {name: secrets, mountPath: /secrets, readOnly: true}
+        readinessProbe:
+          # GET /ready is the server up and nothing else (docs/reference/runnerd.md). The runner
+          # announces itself to viffd (VIFF_URL) with its token, and whether viffd heard it
+          # and verified it is the registration's to say (`viff runner`), not the pod's: a pod
+          # held out of its Service until viffd reached it could not be reached by viffd.
+          httpGet: {path: /ready, port: control}
+          initialDelaySeconds: 2
+          periodSeconds: 10
+        securityContext:
+          # bubblewrap needs to create user namespaces, which is unprivileged on a kernel that
+          # allows it — no CAP_SYS_ADMIN, no privileged: true. What it does need is for the
+          # runtime not to block the clone: some default seccomp profiles do. If containment
+          # fails here it fails as a refused spawn, which is the diagnosis you want.
+          #
+          # And one does. Bottlerocket's kubelet applies RuntimeDefault to every pod that names
+          # no profile, and containerd's default profile masks the namespace flags out of
+          # `clone` unless the caller holds CAP_SYS_ADMIN — which is dropped three lines down,
+          # on purpose. So the syscall returns EPERM and bwrap reports "No permissions to
+          # create new namespace, likely because the kernel does not allow non-privileged user
+          # namespaces", which sends you to a sysctl that is fine (max_user_namespaces was
+          # 15000 on the node this was found on). The kernel allows it; the filter does not.
+          #
+          # Unconfined is a real trade and worth stating: this pod loses the runtime's blanket
+          # syscall filter so that the TASK can be given namespace containment. It is the right
+          # way round for the threat here — the runner binary is ours and the agent is not, and
+          # without this the runner refuses every spawn, so the strictly safer pod is one that
+          # runs nothing. A Localhost profile (RuntimeDefault plus the clone flags) is the
+          # tighter answer and costs a profile file on every node.
+          seccompProfile:
+            type: Unconfined
+          # And the second one, found the same way: with the filter lifted, bwrap got as far
+          # as `Can't mount proc on /newroot/proc: Operation not permitted`. --unshare-pid and
+          # --proc /proc were already in the argv, so the PID namespace was not the problem.
+          # The runtime masks eleven paths under /proc (bus, fs, irq, sys, sysrq-trigger
+          # read-only; acpi, interrupts, kcore, keys, latency_stats, timer_list covered), and
+          # since Linux 4.x an unprivileged user namespace may only mount a fresh procfs when
+          # it can already see a FULLY VISIBLE one. Eleven submounts is not fully visible.
+          #
+          # Unmasked lifts the covers so the mount is allowed. What made it acceptable is
+          # hostUsers above: the masking exists to keep a container from reading the HOST's
+          # /proc, and in its own user namespace that is not what it is reading.
+          procMount: Unmasked
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+          capabilities: {drop: ["ALL"]}
+      volumes:
+      - name: config
+        configMap: {name: viff-runner-config}
+      # emptyDir is wrong here and is left as the thing you change first.
+      #
+      # /state holds the mirrors, and the mirrors hold WORK: a delivery that could
+      # not reach its remote leaves the commit under `refs/pending/<task>/<repo>` for the runner
+      # to retry, and a refused one leaves it under `refs/held/...` for somebody to look at. On an
+      # emptyDir all of that dies with the pod, so "the work is safe in the mirror" is only true
+      # relative to the workspace being removed.
+      #
+      # A PVC also makes the mirrors what they are meant to be — a cache that survives restarts,
+      # which is the whole reason a task's clone costs no network. Recreate above already means
+      # one writer, so ReadWriteOnce is the right access mode.
+      - name: state
+        emptyDir: {}
+      # - name: state
+      #   persistentVolumeClaim: {claimName: viff-runner-state}
+      # The secret store (`secrets.dir` in the ConfigMap): a directory the runner alone reads.
+      # No task's sandbox binds /secrets, and the runner refuses to start with a store where one
+      # would. Every source is optional, so the volume is there whatever Secrets are, empty
+      # where none is. The Linear and Slack Secrets lend their one key each under the store's
+      # name for it, `linear` and `slack-bot`, so a token is kept once and the iods go on
+      # reading the same Secrets; viff-runner-secrets (the `runnerStoreKey` entry) holds what
+      # has no Secret of its own, each key a file. Not a subPath mount: one does not follow a
+      # Secret that changes, and the store is read at each act so that a rotation needs no
+      # restart.
+      - name: secrets
+        projected:
+          sources:
+          - secret:
+              name: viff-slack
+              optional: true
+              items: [{key: SLACK_BOT_TOKEN, path: slack-bot}]
+          - secret:
+              name: viff-linear
+              optional: true
+              items: [{key: LINEAR_API_KEY, path: linear}]
+          - secret:
+              name: viff-runner-secrets
+              optional: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: viff-runner
+  labels: {app: viff, tier: runners, runner: viff}
+spec:
+  selector: {app: viff, tier: runners, runner: viff}
+  ports:
+  - {name: control, port: 9802, targetPort: control}

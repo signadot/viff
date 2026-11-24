@@ -41,7 +41,7 @@ it:
 
 ```tony
 spawn:
-  agent: {name: verse}
+  agent: {name: viff}
   environment:
     systems:
       network: {mode: open}
@@ -69,15 +69,15 @@ it, and an environment that gives no read of a channel keeps it from the task.
 the name among the channels the bot is in. The channel the environment and the autonomy decided
 about is the channel the runner posts in.
 
-**Every message a task writes ends with a line that names the task**, `verse task <id>`. All
+**Every message a task writes ends with a line that names the task**, `viff task <id>`. All
 tasks on a runner post as one bot, so the line says which task wrote each message. The iod
 reads the line with the message, so a rule can tie a message back to its task. A reaction has
 no such line.
 
-A script calls the same tools with `verse-call-tool`, and the same rows decide them:
+A script calls the same tools with `viff-call-tool`, and the same rows decide them:
 
 ```sh
-verse-call-tool slack-post -channel deploys -text "v1.3 is rolling out"
+viff-call-tool slack-post -channel deploys -text "v1.3 is rolling out"
 ```
 
 ## Where the credential lives
@@ -111,6 +111,6 @@ agents:
           react: {channel: deploys}
 ```
 
-Verse refuses to install a spawn whose environment gives posting to another channel. The refusal
-says what the ceiling gives ([the verse runner](../reference/runnerd.md#what-it-offers)). A call is
+Viff refuses to install a spawn whose environment gives posting to another channel. The refusal
+says what the ceiling gives ([the viff runner](../reference/runnerd.md#what-it-offers)). A call is
 still held to the ceiling when the runner makes it, whatever the autonomy said.

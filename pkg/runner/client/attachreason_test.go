@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A task that failed at launch has no stream, and what a reader needs then is not the news
@@ -17,7 +17,7 @@ import (
 //
 // Attaching to one answered `subscribe <id>: 404 page not found` — honest about the question
 // it was asked, and silent about the run. Meanwhile the runner's own record said: "launch
-// refused by http://verse-runner:9802: the task process exited before it served anything (exit
+// refused by http://viff-runner:9802: the task process exited before it served anything (exit
 // status 1) — its output is on this runner's log, tagged <id>". The first is a fact about a
 // route; the second ends the investigation. Getting from one to the other cost three trips
 // to `kubectl logs` (git-issue ykpt9g3eh12kss9wfhn0).

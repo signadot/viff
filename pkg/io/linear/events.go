@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // The delivery half: a Linear webhook, received HERE.
 //
 // The same object as the Slack events endpoint and as the four-line `/bin/sh` git hook
 // `Git.InstallHook` writes — a delivery the source owns, turned into which ref went stale,
-// posted to verse. verse parses none of the three, which is what keeps "map a delivery to
+// posted to viff. viff parses none of the three, which is what keeps "map a delivery to
 // refs" from having a second implementation per source.
 //
 // A forged delivery costs a reconcile of a slice its sender does not get to choose the
@@ -39,7 +39,7 @@ const webhookMaxSkew = 5 * time.Minute
 // A delivery it cannot place in a team becomes a full resync rather than nothing: a hint that
 // names too much costs a pass, and one that names nothing costs a missed change until the
 // resync net catches it.
-func (l *Linear) Webhook(secret string, hint verseio.Hinter) http.Handler {
+func (l *Linear) Webhook(secret string, hint viffio.Hinter) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if secret == "" {
 			// Refused rather than trusted, as in the Slack source: the hint law says a forged

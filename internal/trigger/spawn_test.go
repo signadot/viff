@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // immediate is a driver that completes without taking any action.
@@ -30,7 +30,7 @@ func (noExec) Execute(context.Context, task.ToolUse) (task.StepResult, []task.To
 }
 
 // Engine.Spawn hands the (bound) launch.Spec to the Spawner and mirrors the
-// resulting task into the verse — the wire-form action becoming a real task.
+// resulting task into the viff — the wire-form action becoming a real task.
 func TestSpawnRoutesBoundSpec(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -45,18 +45,18 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 		return p
 	})
 
-	spec := bound(t, launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+	spec := bound(t, launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 		launch.Binding{"subject": map[string]any{"ref": `demo.pr."1"`}})
 
 	p := eng.Spawn("rev-1", spec)
 	if p == nil {
 		t.Fatal("Spawn returned nil")
 	}
-	if got.Who() != "verse" || got.Prompt != `review demo.pr."1"` {
+	if got.Who() != "viff" || got.Prompt != `review demo.pr."1"` {
 		t.Fatalf("spawner received unbound/wrong spec: %+v", got)
 	}
 
-	// the task appears in the verse (mirror), then reaches a terminal status
+	// the task appears in the viff (mirror), then reaches a terminal status
 	ref := mirror.Ref("rev-1")
 	deadline := time.After(2 * time.Second)
 	for {
@@ -66,7 +66,7 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 		select {
 		case <-deadline:
 			e, _, _ := store.Get(ref)
-			t.Fatalf("spawned task never completed in the verse: %+v", e.Payload)
+			t.Fatalf("spawned task never completed in the viff: %+v", e.Payload)
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
@@ -92,7 +92,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		Condition: Condition{Subject: Match{"path": pathOf("local", "file", "*"),
 			"value": map[string]any{"stage": "open"}}},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "validate $[path]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "validate $[path]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "validated"}.Payload()},
 		},
 	}); err != nil {
@@ -116,7 +116,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		if !strings.HasPrefix(id, "validate@local.file.task_taskd_daemon.go+") {
 			t.Fatalf("unexpected sanitized id: %q", id)
 		}
-		// and it is routable/findable in the verse under that id (mirror is async)
+		// and it is routable/findable in the viff under that id (mirror is async)
 		found := false
 		for deadline := time.After(2 * time.Second); !found; {
 			if _, ok, _ := store.Get(mirror.Ref(id)); ok {
@@ -170,7 +170,7 @@ func TestSpawnIDNeverContainsGateSep(t *testing.T) {
 // With no Spawner configured, Spawn is a no-op that returns nil (traced), not a panic.
 func TestSpawnWithoutSpawner(t *testing.T) {
 	eng := New(entitytest.Store(t), task.AutoResolver{})
-	if p := eng.Spawn("x", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "t"}); p != nil {
+	if p := eng.Spawn("x", launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "t"}); p != nil {
 		t.Fatal("expected nil task with no spawner")
 	}
 }

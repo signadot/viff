@@ -3,8 +3,8 @@ package slack_test
 import (
 	"context"
 	"fmt"
-	"github.com/signadot/verse/internal/versed/versedtest"
-	"github.com/signadot/verse/pkg/runner/runnerd/runnerdtest"
+	"go.viff.dev/viff/internal/viffd/viffdtest"
+	"go.viff.dev/viff/pkg/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -15,14 +15,14 @@ import (
 
 	"golang.org/x/net/websocket"
 
-	"github.com/signadot/verse/internal/versed"
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/slack"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/viffd"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/slack"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // fakeSocket is Slack's side of Socket Mode: it says hello on each connection, pushes the
@@ -71,21 +71,21 @@ func (s *fakeSocket) connections() int {
 	return s.conns
 }
 
-// socketRig is a real verse holding a pending question, a fake Slack with its socket, the out half
+// socketRig is a real viff holding a pending question, a fake Slack with its socket, the out half
 // to ask it in a channel, and the socket to hear the answer typed in that message's thread.
 type socketRig struct {
 	*outRig
-	srv    *versed.Server
+	srv    *viffd.Server
 	sock   *fakeSocket
 	kicked chan struct{}
 	hints  chan []entity.Ref
 	ts     string // the message asking the question, which a reply threads under
 	src    *slack.Slack
-	verse  *client.Client
-	addr   string // the verse, for a test that asks it things as somebody
+	viff   *client.Client
+	addr   string // the viff, for a test that asks it things as somebody
 }
 
-const askedQuestion = "verse.trigger.review.review~1"
+const askedQuestion = "mirror.trigger.review.review~1"
 
 func newSocketRig(t *testing.T) *socketRig { return newSocketRigWith(t, nil) }
 
@@ -94,7 +94,7 @@ func newSocketRig(t *testing.T) *socketRig { return newSocketRigWith(t, nil) }
 func newSocketRigWith(t *testing.T, bearer client.BearerFunc) *socketRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	srv := versedtest.Server(t, runnerdtest.Scripted, store)
+	srv := viffdtest.Server(t, runnerdtest.Scripted, store)
 	vs := httptest.NewServer(srv.Handler())
 	t.Cleanup(vs.Close)
 	addr := strings.TrimPrefix(vs.URL, "http://")
@@ -112,21 +112,21 @@ func newSocketRigWith(t *testing.T, bearer client.BearerFunc) *socketRig {
 		{"id": "U9", "name": "nobody", "profile": map[string]any{}},
 	}
 	src := newSource(t, f, slack.Config{})
-	verse := client.NewAs(addr, "agent:slack-iod", bearer)
-	sink := src.Sink(verse)
-	sink.As = verseio.As(addr, bearer) // as cmd/iod wires it: an ask for somebody is read as them
-	out := verseio.NewOut(sink, src.OutRef(), verse, nil)
+	viff := client.NewAs(addr, "agent:slack-iod", bearer)
+	sink := src.Sink(viff)
+	sink.As = viffio.As(addr, bearer) // as cmd/iod wires it: an ask for somebody is read as them
+	out := viffio.NewOut(sink, src.OutRef(), viff, nil)
 	r.outRig = &outRig{store: store, fake: f, sink: sink, out: out}
-	r.src, r.verse = src, verse
+	r.src, r.viff = src, viff
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	s := src.Socket(appToken)
-	s.Verse = verse // as cmd/iod wires it: `/verse link` is told to the verse as the io itself
+	s.Viff = viff // as cmd/iod wires it: `/viff link` is told to the viff as the io itself
 	s.Asking = sink.Asked
 	s.Answered = func() { r.kicked <- struct{}{} }
 	s.Hint = func(_ context.Context, refs ...entity.Ref) { r.hints <- refs }
-	go func() { defer close(done); _ = s.Control(ctx, verseio.As(addr, bearer)) }()
+	go func() { defer close(done); _ = s.Control(ctx, viffio.As(addr, bearer)) }()
 	t.Cleanup(func() { cancel(); <-done })
 	return r
 }
@@ -155,7 +155,7 @@ func (r *socketRig) raise(t *testing.T) {
 	go func() {
 		_, _ = r.srv.Reg.Resolve(context.Background(),
 			task.GateQuestion{ID: askedQuestion, Origin: "review", Gate: "review"},
-			task.ToolUse{Name: "verse.trigger.review"})
+			task.ToolUse{Name: "mirror.trigger.review"})
 	}()
 	stood := false
 	for range 400 {
@@ -198,11 +198,11 @@ func TestAQuestionAskedInAThreadIsAnsweredThere(t *testing.T) {
 	}
 }
 
-// WHERE THE VERSE VERIFIES PEOPLE, a reply is admitted as the person through their Slack account,
+// WHERE THE VIFF VERIFIES PEOPLE, a reply is admitted as the person through their Slack account,
 // from this io presenting its own credential, and the ballot says which io it came through and who
 // vouched for the person. The same reply from an io with no credential is refused, and the person
 // is told.
-func TestAReplyIsAdmittedAsThePersonWhereVerseVerifiesPeople(t *testing.T) {
+func TestAReplyIsAdmittedAsThePersonWhereViffVerifiesPeople(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(file, []byte("the-slack-iods-own-token\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -211,11 +211,11 @@ func TestAReplyIsAdmittedAsThePersonWhereVerseVerifiesPeople(t *testing.T) {
 		b, err := os.ReadFile(file)
 		return strings.TrimSpace(string(b)), err
 	}
-	verifying := versed.Auth{Mode: versed.AuthRequired, Providers: map[string]versed.AuthProvider{
+	verifying := viffd.Auth{Mode: viffd.AuthRequired, Providers: map[string]viffd.AuthProvider{
 		// An issuer nobody reaches: `required` wants one, and nothing here logs in through it.
-		"corp":  {Issuer: "https://idp.example.com", ClientID: "verse-cli"},
+		"corp":  {Issuer: "https://idp.example.com", ClientID: "viff-cli"},
 		"slack": {IOs: []string{"slack"}, Domains: []string{"example.com"}},
-	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:slack-iod", IO: "slack"}}}}
+	}, Iod: viffd.AuthIod{Static: []viffd.IodStatic{{File: file, Principal: "agent:slack-iod", IO: "slack"}}}}
 
 	r := newSocketRigWith(t, bearer)
 	if err := r.srv.SetAuth(verifying); err != nil {
@@ -238,7 +238,7 @@ func TestAReplyIsAdmittedAsThePersonWhereVerseVerifiesPeople(t *testing.T) {
 		t.Errorf("walter's ballot = %v, want authenticated by slack via this io", ballot)
 	}
 
-	// The io with no credential of its own: the person is asserted, and a verse that verifies
+	// The io with no credential of its own: the person is asserted, and a viff that verifies
 	// people will not have it.
 	bare := newSocketRig(t)
 	if err := bare.srv.SetAuth(verifying); err != nil {
@@ -399,9 +399,9 @@ func TestAReplySayingYAnswersProceed(t *testing.T) {
 	}
 }
 
-// The second person to answer hears verse's refusal, and hears it alone: it is about them, not
+// The second person to answer hears viff's refusal, and hears it alone: it is about them, not
 // about the question, which the thread already says was decided.
-func TestASecondReplyHearsVersesRefusalAlone(t *testing.T) {
+func TestASecondReplyHearsViffsRefusalAlone(t *testing.T) {
 	r := newSocketRig(t)
 	r.asking(t)
 
@@ -410,14 +410,14 @@ func TestASecondReplyHearsVersesRefusalAlone(t *testing.T) {
 	<-r.kicked
 	r.reply(t, "e2", "U8", "deny")
 	if said := r.heard(t, "U8"); !strings.HasPrefix(said, "Not answered: ") || !strings.Contains(said, "already") {
-		t.Errorf("said %q to the second answerer, want verse's refusal", said)
+		t.Errorf("said %q to the second answerer, want viff's refusal", said)
 	}
 	if q := r.question(t); q["by"] != "user:walter@example.com" {
 		t.Errorf("answered by %v, want the first answer to stand", q["by"])
 	}
 }
 
-// A person whose email this app may not read is nobody verse knows, so nothing is answered.
+// A person whose email this app may not read is nobody viff knows, so nothing is answered.
 func TestAReplyFromSomebodyWithNoEmailAnswersNothing(t *testing.T) {
 	r := newSocketRig(t)
 	r.asking(t)
@@ -598,15 +598,15 @@ func TestARefusedEditIsNotRememberedAsShown(t *testing.T) {
 		"text": "the review is waiting on you, and here is a great deal more", "asks": askedQuestion,
 	})
 	r.pass(t)
-	if st := r.status(t, "review"); st["failed"] != verseio.PermanentFailure {
+	if st := r.status(t, "review"); st["failed"] != viffio.PermanentFailure {
 		t.Fatalf("status %v, want the edit refused for good", st)
 	}
 
-	fresh := r.src.Sink(r.verse)
+	fresh := r.src.Sink(r.viff)
 	if got := fresh.Asked("C999", r.ts); len(got) != 0 {
 		t.Fatalf("a fresh sink already knows %v", got)
 	}
-	if err := verseio.NewOut(fresh, r.src.OutRef(), r.verse, nil).Pass(context.Background()); err != nil {
+	if err := viffio.NewOut(fresh, r.src.OutRef(), r.viff, nil).Pass(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if got := fresh.Asked("C999", r.ts); len(got) != 0 {
@@ -617,7 +617,7 @@ func TestARefusedEditIsNotRememberedAsShown(t *testing.T) {
 	}
 }
 
-// `/verse link <nonce>` said to the app binds the Slack account to whoever the verse gave the nonce
+// `/viff link <nonce>` said to the app binds the Slack account to whoever the viff gave the nonce
 // to, on this io's word; and where slack names no domains, that binding is the only way a reply is
 // admitted as the person. The dogfood shape: people asserted (`optional`), bindings by the nonce.
 func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
@@ -630,9 +630,9 @@ func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
 		return strings.TrimSpace(string(b)), err
 	}
 	r := newSocketRigWith(t, bearer)
-	if err := r.srv.SetAuth(versed.Auth{Mode: versed.AuthOptional, Providers: map[string]versed.AuthProvider{
+	if err := r.srv.SetAuth(viffd.Auth{Mode: viffd.AuthOptional, Providers: map[string]viffd.AuthProvider{
 		"slack": {IOs: []string{"slack"}},
-	}, Iod: versed.AuthIod{Static: []versed.IodStatic{{File: file, Principal: "agent:slack-iod", IO: "slack"}}}}); err != nil {
+	}, Iod: viffd.AuthIod{Static: []viffd.IodStatic{{File: file, Principal: "agent:slack-iod", IO: "slack"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	r.asking(t)
@@ -649,7 +649,7 @@ func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
 		t.Fatalf("an unbound reply answered: %v", q)
 	}
 
-	// Walter claims a Slack account from the CLI, asserted; the nonce is what the verse answers.
+	// Walter claims a Slack account from the CLI, asserted; the nonce is what the viff answers.
 	resp, err := client.New(r.addr, "user:walter@example.com").Post("/accounts/slack", nil, map[string]any{})
 	if err != nil {
 		t.Fatal(err)
@@ -666,18 +666,18 @@ func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
 
 	// A wrong nonce from the DM: told alone, nothing bound. The right one, as the slash command
 	// with no response_url (the ephemeral stands in): bound, and told.
-	r.event(t, "e2", map[string]any{"type": "message", "channel": "D77", "user": "U7", "text": "/verse link nope", "ts": "1790000099.000300"})
+	r.event(t, "e2", map[string]any{"type": "message", "channel": "D77", "user": "U7", "text": "/viff link nope", "ts": "1790000099.000300"})
 	if got := waitSaid(t, r, "U7", "Not linked"); !strings.Contains(got, "no claim has that nonce") {
 		t.Fatalf("a wrong nonce: told %q", got)
 	}
 	r.sock.send <- map[string]any{"envelope_id": "e3", "type": "slash_commands", "payload": map[string]any{
-		"command": "/verse", "text": "link " + claim.Nonce, "user_id": "U7", "channel_id": "D77",
+		"command": "/viff", "text": "link " + claim.Nonce, "user_id": "U7", "channel_id": "D77",
 	}}
 	<-r.sock.acks
 	if got := waitSaid(t, r, "U7", "Linked"); !strings.Contains(got, "<@U7> is user:walter@example.com") {
 		t.Fatalf("the link: told %q", got)
 	}
-	rec, ok, err := entity.As(r.store, entity.SystemIdentity).Get(entity.VerseRef("identity", "slack", "account", "U7"))
+	rec, ok, err := entity.As(r.store, entity.SystemIdentity).Get(entity.ViffRef("identity", "slack", "account", "U7"))
 	if err != nil || !ok || entity.Str(rec.Payload, "principal") != "user:walter@example.com" ||
 		entity.Str(rec.Payload, "claimant") != "asserted" || entity.Str(entity.Get(rec.Payload, "proof"), "method") != "heard" {
 		t.Fatalf("the binding = %v (ok=%v err=%v)", rec.Payload, ok, err)

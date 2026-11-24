@@ -1,11 +1,11 @@
-// Command runner is a verse runner you can copy and change: the smallest thing that serves
-// the verse-facing task-control contract, so a drive can deploy somewhere to run work that
-// the verse deployment does not otherwise need to know about.
+// Command runner is a viff runner you can copy and change: the smallest thing that serves
+// the viff-facing task-control contract, so a drive can deploy somewhere to run work that
+// the viff deployment does not otherwise need to know about.
 //
 //	openssl rand -hex 32 > runner.token
 //	go run ./docs/reference/examples/runner -addr :9800 -token-file runner.token
-//	verse runner add gpu http://localhost:9800 -token-file runner.token
-//	verse task run -runner verse.runners.gpu -agent sample "retrain the ranker"
+//	viff runner add gpu http://localhost:9800 -token-file runner.token
+//	viff task run -runner mirror.runners.gpu -agent sample "retrain the ranker"
 //
 // It is a real program and it compiles with the tree, which is the point: a stub in a fenced
 // block goes stale the first time a signature moves and nobody finds out. See
@@ -17,12 +17,12 @@
 // work IS — one action at a time, until it says it is done — and the Executor carries each
 // action out. Everything else here is plumbing you can leave alone: runnerd serves the
 // contract, tracks the running set, and streams the read plane, and its guard proves the runner
-// to its verse.
+// to its viff.
 //
 // # What NOT to change
 //
 // Control is applied SYNCHRONOUSLY here — a cancel that returns has been applied — because
-// that is what verse assumes of anything it reaches over a URL. A runner that instead QUEUES
+// that is what viff assumes of anything it reaches over a URL. A runner that instead QUEUES
 // control for something that must dial in and collect it has no way to say so across this hop,
 // so an operator would be told a task was cancelled while it kept running. If you build one
 // of those, refuse the launch rather than accepting it: an error from Spawn travels onto the
@@ -40,38 +40,38 @@ import (
 	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 func main() {
 	addr := flag.String("addr", ":9800", "address to serve the task-control contract on")
-	// A runner is never taken at its word: it proves itself to the one verse it serves with a
-	// token, here a static one, which its registration names by hash (`verse runner add
-	// -token-file`). The verse's url is also the name its tokens are issued under, so spell it
-	// as `verse up` prints its issuer: localhost, not 127.0.0.1.
-	verseURL := flag.String("verse-url", envOr("VERSE_URL", "http://localhost:9797"),
-		"the verse this runner serves, as its issuer is spelled (VERSE_URL)")
-	tokenFile := flag.String("token-file", os.Getenv("VERSE_TOKEN_FILE"),
-		"the file holding this runner's static token, `openssl rand -hex 32`; required (VERSE_TOKEN_FILE)")
+	// A runner is never taken at its word: it proves itself to the one viff it serves with a
+	// token, here a static one, which its registration names by hash (`viff runner add
+	// -token-file`). The viff's url is also the name its tokens are issued under, so spell it
+	// as `viff up` prints its issuer: localhost, not 127.0.0.1.
+	viffURL := flag.String("viff-url", envOr("VIFF_URL", "http://localhost:9797"),
+		"the viff this runner serves, as its issuer is spelled (VIFF_URL)")
+	tokenFile := flag.String("token-file", os.Getenv("VIFF_TOKEN_FILE"),
+		"the file holding this runner's static token, `openssl rand -hex 32`; required (VIFF_TOKEN_FILE)")
 	flag.Parse()
 	if *tokenFile == "" {
-		log.Fatal(errors.New("runner: no -token-file: a runner proves itself to its verse with a token " +
-			"(`openssl rand -hex 32 > runner.token`, and `verse runner add -token-file runner.token`)"))
+		log.Fatal(errors.New("runner: no -token-file: a runner proves itself to its viff with a token " +
+			"(`openssl rand -hex 32 > runner.token`, and `viff runner add -token-file runner.token`)"))
 	}
-	guard, err := runnerd.NewGuard(runnerd.Verse{URL: *verseURL}, *tokenFile)
+	guard, err := runnerd.NewGuard(runnerd.Viff{URL: *viffURL}, *tokenFile)
 	if err != nil {
 		log.Fatalf("runner: %v", err)
 	}
 
 	// runnerd is the contract: GET /describe for what is on offer, POST /tasks to launch,
 	// GET /tasks[/{id}] to list and snapshot, GET /tasks/{id}/events for the read plane, and
-	// the control POSTs. verse drives exactly this over HTTP, and its own in-process runner is
+	// the control POSTs. viff drives exactly this over HTTP, and its own in-process runner is
 	// the same handler — so there is no privileged local path for this to differ from.
 	d := runnerd.NewInProcessHandler(build)
-	// What it offers, which verse reads when the runner is installed and checks each spawn
+	// What it offers, which viff reads when the runner is installed and checks each spawn
 	// against: one agent, `sample`. Its tasks run in this process, unconfined, so the only
 	// network it builds them is the host's (`open`), which it says under the network's
 	// `builds`; a launch asking for `none` or a list of hosts is refused rather than run with
@@ -83,9 +83,9 @@ func main() {
 			Builds: systems.Ceiling{{Attributes: map[string]*ir.Node{"mode": systems.OneOf(runner.NetworkOpen)}}},
 		}},
 	}}})
-	log.Printf("runner listening on %s — install it with: verse runner add <name> http://<host>%s -token-file %s",
+	log.Printf("runner listening on %s — install it with: viff runner add <name> http://<host>%s -token-file %s",
 		*addr, *addr, *tokenFile)
-	// The hello: the verse describes this runner as soon as the runner tells it it is here, and
+	// The hello: the viff describes this runner as soon as the runner tells it it is here, and
 	// until a registration names it, the runner keeps telling it.
 	go guard.Announce(context.Background(), log.Printf)
 	if err := http.ListenAndServe(*addr, guard.Wrap(d.HTTPHandler())); err != nil {
@@ -103,7 +103,7 @@ func build(l runner.Launch, reg *task.Registry) *task.Task {
 	// The supervisor decides what happens before each action: a step outside the launch's
 	// environment is refused, and within it the autonomy says which are refused, asked about or
 	// allowed. `reg` is the registry runnerd serves answers into, so a question becomes one an operator answers through
-	// verse (`verse question`) while the task waits.
+	// viff (`viff question`) while the task waits.
 	//
 	// The sample's `do` action is no step (task.StepOf), so nothing asks before it and the
 	// sample runs to completion unattended. Propose `run_bash` with a `command` instead and

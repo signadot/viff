@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// A SUBJECT MAY DESCEND. `verse-dev..finding` selects every finding beneath verse-dev, at
+// A SUBJECT MAY DESCEND. `viff-dev..finding` selects every finding beneath viff-dev, at
 // whatever depth the rule that derived it put one — which is the question a reader of derived
 // entities has and could not ask while a subject selected at one depth.
 func TestASubjectThatDescendsSelectsEveryDepth(t *testing.T) {
@@ -20,22 +20,22 @@ func TestASubjectThatDescendsSelectsEveryDepth(t *testing.T) {
 		at   entity.Ref
 		body entity.Obj
 	}{
-		{entity.RefAt("verse-dev", "finding"), entity.Obj{"stage": "open"}},
-		{entity.RefAt("verse-dev", "drift", "finding"), entity.Obj{"stage": "open"}},
-		{entity.RefAt("verse-dev", "drift", "head", "abc", "finding"), entity.Obj{"stage": "open"}},
-		{entity.RefAt("verse-dev", "drift", "head", "abc", "other"), entity.Obj{"stage": "open"}},
+		{entity.RefAt("viff-dev", "finding"), entity.Obj{"stage": "open"}},
+		{entity.RefAt("viff-dev", "drift", "finding"), entity.Obj{"stage": "open"}},
+		{entity.RefAt("viff-dev", "drift", "head", "abc", "finding"), entity.Obj{"stage": "open"}},
+		{entity.RefAt("viff-dev", "drift", "head", "abc", "other"), entity.Obj{"stage": "open"}},
 		{entity.RefAt("elsewhere", "finding"), entity.Obj{"stage": "open"}},
 	} {
 		entitytest.Set(t, store, c.at, c.body.Payload())
 	}
 
-	got := mm("verse-dev..finding").Select(store)
+	got := mm("viff-dev..finding").Select(store)
 	var names []string
 	for _, r := range got {
 		names = append(names, r.String())
 	}
 	sort.Strings(names)
-	want := []string{"verse-dev.drift.finding", "verse-dev.drift.head.abc.finding", "verse-dev.finding"}
+	want := []string{"viff-dev.drift.finding", "viff-dev.drift.head.abc.finding", "viff-dev.finding"}
 	if len(names) != len(want) {
 		t.Fatalf("selected %v, want %v", names, want)
 	}
@@ -46,7 +46,7 @@ func TestASubjectThatDescendsSelectsEveryDepth(t *testing.T) {
 	}
 	// A descent names a SET, so it is not one entity named: a rule with this subject selects
 	// rather than addressing.
-	if _, names := mm("verse-dev..finding").Names(); names {
+	if _, names := mm("viff-dev..finding").Names(); names {
 		t.Error("a descending subject reads as naming one entity")
 	}
 }
@@ -58,7 +58,7 @@ func TestARuleWithADescendingSubjectFires(t *testing.T) {
 	eng := New(store, task.AutoResolver{})
 	if err := eng.AddTrigger(Trigger{
 		Name:      "seen",
-		Condition: Condition{Subject: Match{"path": mm("verse-dev..finding").SegNodes(), "value": map[string]any{"stage": "open"}}},
+		Condition: Condition{Subject: Match{"path": mm("viff-dev..finding").SegNodes(), "value": map[string]any{"stage": "open"}}},
 		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -67,9 +67,9 @@ func TestARuleWithADescendingSubjectFires(t *testing.T) {
 	defer cancel()
 	eng.Start(ctx)
 
-	deep := entity.RefAt("verse-dev", "drift", "head", "abc", "finding")
+	deep := entity.RefAt("viff-dev", "drift", "head", "abc", "finding")
 	entitytest.Set(t, store, deep, entity.Obj{"stage": "open"}.Payload())
-	shallow := entity.RefAt("verse-dev", "finding")
+	shallow := entity.RefAt("viff-dev", "finding")
 	entitytest.Set(t, store, shallow, entity.Obj{"stage": "open"}.Payload())
 
 	for _, ref := range []entity.Ref{deep, shallow} {

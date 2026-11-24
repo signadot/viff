@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // Every spelling the grammar has reads back as itself, and a bare email reads as the person.
@@ -20,18 +20,18 @@ func TestGranteeSpellings(t *testing.T) {
 		{"user:walter@example.com", "user:walter@example.com", entity.UserKind, "walter@example.com"},
 		{"walter@example.com", "user:walter@example.com", entity.UserKind, "walter@example.com"},
 		{"agent:harness", "agent:harness", entity.AgentKind, "harness"},
-		{"runner:verse-runner", "runner:verse-runner", entity.RunnerKind, "verse-runner"},
+		{"runner:viff-runner", "runner:viff-runner", entity.RunnerKind, "viff-runner"},
 		{"system:docket", "system:docket", entity.SystemKind, "docket"},
 		{"user:*", "user:*", entity.UserKind, "*"},
 		{"agent:*", "agent:*", entity.AgentKind, "*"},
 		{"runner:*", "runner:*", entity.RunnerKind, "*"},
 		{"group:release", "group:release", entity.GroupKind, "release"},
-		{"via:verse.trigger.rule.x", "via:verse.trigger.rule.x", entity.ViaKind, ""},
-		{"via:verse.trigger.rule.drift:head-moved", "via:verse.trigger.rule.drift:head-moved", entity.ViaKind, ""},
-		{"via:verse.iods.cluster", "via:verse.iods.cluster", entity.ViaKind, ""},
-		{"via:verse.iods.*", "via:verse.iods.*", entity.ViaKind, ""},
-		{"via:verse.resolvers.gate", "via:verse.resolvers.gate", entity.ViaKind, ""},
-		{`via:verse.iods."a.b"`, `via:verse.iods."a.b"`, entity.ViaKind, ""},
+		{"via:mirror.trigger.rule.x", "via:mirror.trigger.rule.x", entity.ViaKind, ""},
+		{"via:mirror.trigger.rule.drift:head-moved", "via:mirror.trigger.rule.drift:head-moved", entity.ViaKind, ""},
+		{"via:mirror.iods.cluster", "via:mirror.iods.cluster", entity.ViaKind, ""},
+		{"via:mirror.iods.*", "via:mirror.iods.*", entity.ViaKind, ""},
+		{"via:mirror.resolvers.gate", "via:mirror.resolvers.gate", entity.ViaKind, ""},
+		{`via:mirror.iods."a.b"`, `via:mirror.iods."a.b"`, entity.ViaKind, ""},
 	} {
 		g, err := entity.ParseGrantee(tc.in)
 		if err != nil {
@@ -46,7 +46,7 @@ func TestGranteeSpellings(t *testing.T) {
 			t.Errorf("%s: the rendering %q did not read back: %+v %v", tc.in, g.String(), back, err)
 		}
 	}
-	if got := entity.Via(entity.VerseRef("trigger", "rule", "x")); got != "via:verse.trigger.rule.x" {
+	if got := entity.Via(entity.ViffRef("trigger", "rule", "x")); got != "via:mirror.trigger.rule.x" {
 		t.Errorf("Via: %q", got)
 	}
 }
@@ -56,8 +56,8 @@ func TestGranteeSpellings(t *testing.T) {
 func TestGranteeRefusals(t *testing.T) {
 	for _, in := range []string{
 		"agent", // a kind word, which a principal could once be named
-		"verse.principal.group.release",
-		"user", "verse-runner", "system", "",
+		"mirror.principal.group.release",
+		"user", "viff-runner", "system", "",
 		"wizard:x",                       // no such kind
 		"group:*",                        // a group is named, not listed under
 		"user:",                          // an empty id
@@ -65,11 +65,11 @@ func TestGranteeRefusals(t *testing.T) {
 		"user:a b",                       // an id with a space
 		"via:",                           // an empty address
 		"via:demo.pr.1",                  // the world's half acts as nobody
-		"via:verse.*.x",                  // a * that is not trailing
-		"via:verse.*",                    // no system, so nothing that acts
-		"via:verse.runners.verse-runner", // a runner acts as runner:<identity>
-		"via:verse.trigger.package.x",    // a package is not a rule
-		"verse.covers.review@run-1",      // a cover's address is no person
+		"via:viff.*.x",                   // a * that is not trailing
+		"via:viff.*",                     // no system, so nothing that acts
+		"via:mirror.runners.viff-runner", // a runner acts as runner:<identity>
+		"via:mirror.trigger.package.x",   // a package is not a rule
+		"mirror.covers.review@run-1",     // a cover's address is no person
 	} {
 		_, err := entity.ParseGrantee(in)
 		if err == nil {
@@ -80,12 +80,12 @@ func TestGranteeRefusals(t *testing.T) {
 			t.Errorf("%q: the refusal does not quote the grammar: %v", in, err)
 		}
 	}
-	for _, in := range []string{"*", "user:*", "group:x", "via:verse.iods.*"} {
+	for _, in := range []string{"*", "user:*", "group:x", "via:mirror.iods.*"} {
 		if _, err := entity.ParsePrincipal(in); err == nil {
 			t.Errorf("ParsePrincipal(%q) parsed a set as one principal", in)
 		}
 	}
-	for _, in := range []string{"user:ana@example.com", "ana@example.com", "runner:verse-runner", "via:verse.trigger.rule.x", "system:default"} {
+	for _, in := range []string{"user:ana@example.com", "ana@example.com", "runner:viff-runner", "via:mirror.trigger.rule.x", "system:default"} {
 		if _, err := entity.ParsePrincipal(in); err != nil {
 			t.Errorf("ParsePrincipal(%q): %v", in, err)
 		}
@@ -97,7 +97,7 @@ func TestEverySystemPartHoldsTheRoot(t *testing.T) {
 	system := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
 	for _, part := range []string{entity.SystemDefault, entity.SystemDocket, entity.SystemMirror,
 		entity.SystemPerms, entity.SystemSeed, entity.SystemCharter} {
-		for _, ref := range []entity.Ref{entity.RefAt("demo", "pr", "1"), entity.VerseRef("trigger", "rule", "x"), entity.PermsRef(entity.RefAt("demo"))} {
+		for _, ref := range []entity.Ref{entity.RefAt("demo", "pr", "1"), entity.ViffRef("trigger", "rule", "x"), entity.PermsRef(entity.RefAt("demo"))} {
 			if ok, err := entity.Holds(system, part, entity.OwnerLevel, ref); err != nil || !ok {
 				t.Errorf("%s does not hold owner at %s: %v", part, ref, err)
 			}
@@ -146,18 +146,18 @@ func TestTheMatchReadsTheGrammar(t *testing.T) {
 	}
 	// Each place is somebody's, so what it holds is what the grant holds out and not the
 	// system's: a place with no owner on record acts as the system, which holds everything.
-	for _, place := range []entity.Ref{entity.VerseRef("iods", "cluster"), entity.VerseRef("trigger", "rule", "x"), entity.VerseRef("iods")} {
+	for _, place := range []entity.Ref{entity.ViffRef("iods", "cluster"), entity.ViffRef("trigger", "rule", "x"), entity.ViffRef("iods")} {
 		if err := entity.Establish(system, place, "user:installer@example.com", entity.Ref{}, []entity.Grant{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	sources := grant("sources", "via:verse.iods.*")
-	if !reads("via:verse.iods.cluster", sources) || reads("via:verse.trigger.rule.x", sources) ||
-		reads("via:verse.sources", sources) {
-		t.Error("via:verse.iods.* admits what acts beneath it, and nothing else")
+	sources := grant("sources", "via:mirror.iods.*")
+	if !reads("via:mirror.iods.cluster", sources) || reads("via:mirror.trigger.rule.x", sources) ||
+		reads("via:mirror.sources", sources) {
+		t.Error("via:mirror.iods.* admits what acts beneath it, and nothing else")
 	}
 
-	stale := grant("stale", "verse.principal.group.release")
+	stale := grant("stale", "mirror.principal.group.release")
 	before := entity.PolicyOf(system).Unparsed()
 	if reads("user:anyone@example.com", stale) {
 		t.Error("a group's bare address admitted somebody")
@@ -165,7 +165,7 @@ func TestTheMatchReadsTheGrammar(t *testing.T) {
 	if entity.PolicyOf(system).Unparsed() <= before {
 		t.Error("a name that does not parse was not counted")
 	}
-	if !strings.Contains(logged.String(), "verse.principal.group.release") || !strings.Contains(logged.String(), "demo.pr.stale") {
+	if !strings.Contains(logged.String(), "mirror.principal.group.release") || !strings.Contains(logged.String(), "demo.pr.stale") {
 		t.Errorf("the log does not name the line and its record:\n%s", logged.String())
 	}
 }

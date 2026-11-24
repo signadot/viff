@@ -14,12 +14,12 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// Launch is the body of `POST /tasks`: the work verse asks a runner to start, in the spawn
-// spec's shape. It is the spec's spawn with verse's references resolved: verse sends it as is
+// Launch is the body of `POST /tasks`: the work viff asks a runner to start, in the spawn
+// spec's shape. It is the spec's spawn with viff's references resolved: viff sends it as is
 // and a runner reads it as is.
 //
 // What runs is said by which key is there: a `prompt`, for an agent (the runner's default
@@ -31,9 +31,9 @@ import (
 // cannot honour yet. A refused launch is a failed spawn, never a task run without
 // what it asked for.
 //
-//tony:schemagen=verse-runner-launch,notag
+//tony:schemagen=viff-runner-launch,notag
 type Launch struct {
-	// ID is the task's id. Verse mints it, so that it matches the task's record.
+	// ID is the task's id. Viff mints it, so that it matches the task's record.
 	ID string `tony:"field=id"`
 	// Prompt is the job, in text, for an agent. Exactly one of Prompt and Script.
 	Prompt string `tony:"field=prompt,omitzero"`
@@ -64,7 +64,7 @@ type Launch struct {
 	// ("30m"), of MinLease or more. Absent is DefaultLease.
 	Lease string `tony:"field=lease,omitzero"`
 	// Converse makes the run a conversation: when the agent goes quiet the person is handed the
-	// turn, and the run ends when they end it. Set only by verse (`verse task run --attach`), and
+	// turn, and the run ends when they end it. Set only by viff (`viff task run --attach`), and
 	// only for an offer whose `converse` is true.
 	Converse bool `tony:"field=converse,omitzero"`
 	// Occurrence is which run this is: the store revision it is about. The runner holds it and
@@ -72,40 +72,40 @@ type Launch struct {
 	Occurrence int64 `tony:"field=occurrence,omitzero"`
 	// Provenance is on whose account, and about what. A record, never authority.
 	Provenance Provenance `tony:"field=provenance,omitzero"`
-	// Credential is the token verse minted for the task: a short-lived JWT, signed by verse as an
-	// issuer, that vouches to a system outside verse that a gate let this work through, and how.
+	// Credential is the token viff minted for the task: a short-lived JWT, signed by viff as an
+	// issuer, that vouches to a system outside viff that a gate let this work through, and how.
 	// THE TOKEN ITSELF, and a secret: the question of whether this task gets one was answered
-	// before it existed, where verse minted it, and what a runner receives is the answer. Absent
+	// before it existed, where viff minted it, and what a runner receives is the answer. Absent
 	// for a task that asked for none.
 	//
 	// Every runner takes it, as part of the contract, and hands it to the task the same way: as
-	// a file of its own outside the task's workspace, which `VERSE_CREDENTIAL_FILE` names, and
+	// a file of its own outside the task's workspace, which `VIFF_CREDENTIAL_FILE` names, and
 	// never as a value in the task's environment, which every process the task starts would
 	// inherit. A runner never says it back: not on a snapshot, an event or its log. A sub-agent
-	// doesn't get it. In a runner with no sandbox (`verse up`) the file is under the host's
+	// doesn't get it. In a runner with no sandbox (`viff up`) the file is under the host's
 	// /tmp, readable by every task the runner's user runs; a sandboxed task has its own /tmp.
 	Credential string `tony:"field=credential,omitzero"`
 }
 
 // Agent is the agent a prompt is for, and how it works: its name, the settings its offer takes
 // (Offer.Agent.Settings: `model`, `effort`, a runner's own such as `temperature`), and the
-// annotations verse or the runner write for it. Written flat, its settings beside its name:
+// annotations viff or the runner write for it. Written flat, its settings beside its name:
 // `{name: codex, model: gpt-5-codex, effort: high}`.
 //
-//tony:schemagen=verse-runner-agent,notag,codec=custom
+//tony:schemagen=viff-runner-agent,notag,codec=custom
 type Agent struct {
-	// Name is the name of an agent the runner offers (`verse`, `codex`). Empty is the runner's
+	// Name is the name of an agent the runner offers (`viff`, `codex`). Empty is the runner's
 	// default agent, given the settings below.
 	Name string
 	// Settings are the agent's settings, by name, each a value its offer takes; one left out
-	// is the agent's own default, where it has one. `model` is the one verse reads.
+	// is the agent's own default, where it has one. `model` is the one viff reads.
 	Settings map[string]string
-	// Annotations are settings for the runner that verse or the runner write, never a spawn's
-	// author knob, such as `verse.portkey/virtual-key`. The runner refuses one it does not know.
+	// Annotations are settings for the runner that viff or the runner write, never a spawn's
+	// author knob, such as `viff.portkey/virtual-key`. The runner refuses one it does not know.
 	Annotations map[string]string
 }
 
-// SettingModel is the setting verse reads of every agent: the model it runs, on the record.
+// SettingModel is the setting viff reads of every agent: the model it runs, on the record.
 const SettingModel = "model"
 
 // The keys an agent is written with beside its settings, which no setting may be called.
@@ -216,7 +216,7 @@ func scalarString(n *ir.Node) (string, error) {
 }
 
 // Who is who does the work, as a task's record says it: the agent's name, "script", or "" for a
-// prompt that names none, which a runner refuses: verse binds its default agent before the launch.
+// prompt that names none, which a runner refuses: viff binds its default agent before the launch.
 func (l *Launch) Who() string {
 	switch {
 	case l.Script != "":
@@ -328,7 +328,7 @@ func tcpShapes(env systems.Environment) []systems.Shape {
 // or either with a port; without one it is the web ports, 80 and 443. Allowed hosts are reached
 // through a proxy the runner serves the task (HTTP_PROXY, HTTPS_PROXY), and nothing else is.
 //
-//tony:schemagen=verse-runner-network,notag
+//tony:schemagen=viff-runner-network,notag
 type Network struct {
 	Mode  string   `tony:"field=mode"`
 	Allow []string `tony:"field=allow,omitzero"`
@@ -342,10 +342,10 @@ const (
 )
 
 // Provenance is on whose account a launch is, and what it is about. Each field is absent when
-// verse did not know it. It is a record a runner can write down (a commit trailer), never
+// viff did not know it. It is a record a runner can write down (a commit trailer), never
 // authority.
 //
-//tony:schemagen=verse-runner-provenance,notag
+//tony:schemagen=viff-runner-provenance,notag
 type Provenance struct {
 	// Principal is who is answerable for the launch.
 	Principal string `tony:"field=principal,omitzero"`
@@ -360,7 +360,7 @@ type Provenance struct {
 // beside it (runnerd).
 func (l *Launch) Check() error {
 	if l.ID == "" {
-		return errors.New("a launch carries an `id`: verse mints it")
+		return errors.New("a launch carries an `id`: viff mints it")
 	}
 	switch {
 	case l.Prompt != "" && l.Script != "":

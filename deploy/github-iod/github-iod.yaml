@@ -2,7 +2,7 @@
 #
 # The credential first, as with Slack and Linear:
 #
-#   kubectl -n verse create secret generic verse-github \
+#   kubectl -n viff create secret generic viff-github \
 #     --from-literal=GITHUB_TOKEN=github_pat_… \
 #     --from-literal=GITHUB_WEBHOOK_SECRET=…
 #
@@ -17,13 +17,13 @@
 #
 # Install it once the pods are up (the name must match `githubIodName`, because the hint url
 # below carries it):
-#   verse iod add repos http://github-iod:9801 -root github
+#   viff iod add repos http://github-iod:9801 -root github
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: github-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: github
 spec:
@@ -35,19 +35,19 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: verse
+      app: viff
       tier: iods
       io: github
   template:
     metadata:
       labels:
-        app: verse
+        app: viff
         tier: iods
         io: github
     spec:
       containers:
       - name: github-iod
-        image: signadot/verse:latest
+        image: signadot/viff:latest
         command:
         - iod
         - github
@@ -68,18 +68,18 @@ spec:
         - name: admin
           containerPort: 9802
         env:
-        - name: VERSE_HINT_URL
-          value: http://verse:9797/iods/repos/hint
+        - name: VIFF_HINT_URL
+          value: http://viff:9797/iods/repos/hint
         envFrom:
         - secretRef:
-            name: verse-github
+            name: viff-github
         readinessProbe:
           httpGet:
             path: /io
             port: source
           initialDelaySeconds: 3
           periodSeconds: 10
-          # Explicit, for the reason versed's are: the default is one second, and /source is
+          # Explicit, for the reason viffd's are: the default is one second, and /source is
           # answered by a program that may be busy talking to somebody else's API.
           timeoutSeconds: 5
 ---
@@ -88,12 +88,12 @@ kind: Service
 metadata:
   name: github-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: github
 spec:
   selector:
-    app: verse
+    app: viff
     tier: iods
     io: github
   ports:
@@ -113,7 +113,7 @@ kind: Ingress
 metadata:
   name: github-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: github
 spec:

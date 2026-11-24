@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // THE RECORD IS THE RULE. An install is a write of a rule's record and a removal a delete of
@@ -331,7 +331,7 @@ func (e *Engine) applyCharter(c entity.Commit) {
 // standing rule already has is left as it stands — its words swapped in where they moved, so
 // the engine's copy is the record — and one whose value differs, or whose name nothing holds,
 // is placed in the old one's stead, as whose the record is. A record that does not decode is
-// said once and left standing, with whatever stood under its name: a record verse could not
+// said once and left standing, with whatever stood under its name: a record viff could not
 // read is not one it should quietly delete, and a rewrite of it is placed.
 func (e *Engine) placeRecord(rec charter.Record) {
 	t, err := ruleOf(rec)

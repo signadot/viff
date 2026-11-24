@@ -1,16 +1,16 @@
 # Why: Entities
 
-The reasons behind [Entities](../reference/entities.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [Entities](../reference/entities.md). They are for somebody changing viff; the page itself says what viff does.
 
 ## A positional argument is one step
 
-A single word `w` has two legal readings: the one segment `w`, and `split(w, delim)`. If verse
+A single word `w` has two legal readings: the one segment `w`, and `split(w, delim)`. If viff
 chose either reading, the other would be impossible to say. A positional argument cannot be
 both, so it is a step and nothing else.
 
 A flag is different. It is a different *place* on the line, not a second reading of the same
 word. So a whole address in one token is unambiguous where a flag marks it, for the same reason
-that the positional argument is not. Verse declares which grammar applies, and does not guess.
+that the positional argument is not. Viff declares which grammar applies, and does not guess.
 
 The bracketed step clauses do not break this rule. What separates them from reading a delimiter
 out of a word is the count: a delimiter changes how many segments a word is, and a bracketed

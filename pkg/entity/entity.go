@@ -1,10 +1,10 @@
-// Package entity is the verse as ONE DOCUMENT: a tony tree, addressed by kinded paths.
+// Package entity is the viff as ONE DOCUMENT: a tony tree, addressed by kinded paths.
 //
 // An entity is a node of that tree. Its address (Ref) is a path of segments at any depth —
-// `demo.pr."1"`, `verse.task.instance.x` — and its payload is whatever tony value stands there.
+// `demo.pr."1"`, `mirror.task.instance.x` — and its payload is whatever tony value stands there.
 // Nothing in the document says where an entity ends: a read names its own depth by the path it
 // asks (Doc), and a listing takes the depth from its caller (Reader.ListAt). The first segment
-// `verse` is reserved for what verse writes about its own running.
+// `viff` is reserved for what viff writes about its own running.
 //
 // The store (Store) has one write: a value merges at a path iff every precondition holds, as
 // one commit — create, update, delete, a patch to one field and a claim on an address are all
@@ -14,7 +14,7 @@
 // match on and where task state is reflected, so observing a task is observing an entity.
 //
 // A store wrapped by As is attributed: every write names a principal, and what a principal may
-// do at a node is decided by the perms mirror under `verse.perms` (Attribution, Level, Grant).
+// do at a node is decided by the perms mirror under `mirror.perms` (Attribution, Level, Grant).
 package entity
 
 //go:generate go tool tony-codegen -dir .
@@ -26,7 +26,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// Ref is the address of one concrete node of the verse: a path of segments at any depth, e.g.
+// Ref is the address of one concrete node of the viff: a path of segments at any depth, e.g.
 // `demo.pr."1"`. A pattern over addresses (`demo.pr.*`) lives a level up, in the kinded path a
 // read or a rule asks with; here a Ref always names one place.
 //
@@ -38,12 +38,12 @@ import (
 // equality test in a hundred places (`ev.Ref == subj`, `map[Ref]Payload`), and a slice is
 // neither.
 //
-// THE ROOT is which half of the verse the address is in: empty for everything the world is
-// about — a PR, a build, a person, a doer somebody registered — and `verse` for what verse
+// THE ROOT is which half of the viff the address is in: empty for everything the world is
+// about — a PR, a build, a person, a doer somebody registered — and `viff` for what viff
 // writes about its own running. It is a segment like the others (it renders, it is walked, it
 // is a level in the document), held apart so that Reserved is a comparison rather than a walk.
 type Ref struct {
-	root string // "" = the world's, VerseRoot = verse's own
+	root string // "" = the world's, ViffRoot = viff's own
 	// key is the segments BELOW the root, joined by sep — a STRING because a Ref is a map key
 	// and an equality test in a hundred places, and a slice is neither comparable nor a key.
 	// sep is a byte no address can hold: every segment comes from a path, a ref or a document
@@ -59,15 +59,15 @@ const sep = "\x00"
 // its segments the same way, and for the same reason.
 const Sep = sep
 
-// VerseRoot is the one reserved first segment: everything verse writes about its own running
+// ViffRoot is the one reserved first segment: everything viff writes about its own running
 // lives under it, and nothing else may.
 //
 // Two things come from the boundary being an address rather than a convention. A reader gets
-// `verse data` back — the top of the tree is the systems the world is about, with one key
+// `viff data` back — the top of the tree is the systems the world is about, with one key
 // beside them holding the machinery — and a WRITER can be refused: the entity routes turn away
-// a write under this segment (versed.reservedWrite), where before, anyone who could reach the
+// a write under this segment (viffd.reservedWrite), where before, anyone who could reach the
 // store could write a rule, a task record or somebody else's answer.
-const VerseRoot = "verse"
+const ViffRoot = "viff"
 
 // RefAt builds the ref standing at these segments, at whatever depth there are.
 //
@@ -76,8 +76,8 @@ const VerseRoot = "verse"
 // to the arity an address once had.
 func RefAt(segs ...string) Ref {
 	var r Ref
-	if len(segs) > 0 && segs[0] == VerseRoot {
-		r.root, segs = VerseRoot, segs[1:]
+	if len(segs) > 0 && segs[0] == ViffRoot {
+		r.root, segs = ViffRoot, segs[1:]
 	}
 	// Trailing empties are dropped rather than kept, because a SHORT ADDRESS IS SHORT: two
 	// segments name a subtree, and padding it to three with an empty made every walk render a
@@ -90,23 +90,23 @@ func RefAt(segs ...string) Ref {
 	return r
 }
 
-// VerseRef builds an address in verse's own half of the tree: `VerseRef("task", "instance", id)`
-// is `verse.task.instance.<id>`. It is a separate constructor rather than a flag on RefAt so
+// ViffRef builds an address in viff's own half of the tree: `ViffRef("task", "instance", id)`
+// is `mirror.task.instance.<id>`. It is a separate constructor rather than a flag on RefAt so
 // that reading a call says which half it is in.
-func VerseRef(segs ...string) Ref {
-	return RefAt(append([]string{VerseRoot}, segs...)...)
+func ViffRef(segs ...string) Ref {
+	return RefAt(append([]string{ViffRoot}, segs...)...)
 }
 
-// Root is which half of the verse the address is in — empty for the world's, VerseRoot for
-// verse's own. It is what a pattern compares against, and what Segs puts first.
+// Root is which half of the viff the address is in — empty for the world's, ViffRoot for
+// viff's own. It is what a pattern compares against, and what Segs puts first.
 func (r Ref) Root() string { return r.root }
 
-// Reserved reports whether the address is in verse's own half — what the write refusal asks,
+// Reserved reports whether the address is in viff's own half — what the write refusal asks,
 // and what a namespace's own predicate (mirror.IsTask and friends) asks first.
-func (r Ref) Reserved() bool { return r.root == VerseRoot }
+func (r Ref) Reserved() bool { return r.root == ViffRoot }
 
 // Name is the last segment of the path: the key the node stands at in its parent. It is what a
-// record in a place the system decides is called there — a task's id under verse.task.instance.
+// record in a place the system decides is called there — a task's id under mirror.task.instance.
 func (r Ref) Name() string {
 	segs := r.Segs()
 	if len(segs) == 0 {
@@ -119,13 +119,13 @@ func (r Ref) Name() string {
 func (r Ref) Under(prefix ...string) bool { return Under(prefix, r.Segs(), Literal) }
 
 // ChildOf reports whether the ref is exactly one segment below the path prefix: a record in a place
-// the system decides, like a task under verse.task.instance or a perms record under verse.perms.node.
+// the system decides, like a task under mirror.task.instance or a perms record under mirror.perms.node.
 func (r Ref) ChildOf(prefix ...string) bool {
 	return len(r.Segs()) == len(prefix)+1 && r.Under(prefix...)
 }
 
 // String spells an address as the kinded path it is, at every depth — `demo.pr."1"`,
-// `verse-dev.drift.head.abc`, `git.ref."x@git:ref:y"`. ParseAddr reads back exactly this, and
+// `viff-dev.drift.head.abc`, `git.ref."x@git:ref:y"`. ParseAddr reads back exactly this, and
 // there is nothing else to read.
 //
 // ONE SPELLING AT EVERY DEPTH, rather than one per depth. A grammar that spelled three segments
@@ -181,7 +181,7 @@ func ParseAddr(s string) (Ref, error) {
 	return ref, nil
 }
 
-// Segs is a ref's path: its segments, in order, `verse` first for an address in verse's own
+// Segs is a ref's path: its segments, in order, `viff` first for an address in viff's own
 // half. Its length is the address's length — there is no second count that leaves the root out.
 func (r Ref) Segs() []string {
 	var out []string
@@ -211,7 +211,7 @@ func RefOfAny(segs []string) (Ref, bool) {
 	return RefAt(segs...), true
 }
 
-// Entity is a Ref plus its payload — one node of the verse. The payload is the small
+// Entity is a Ref plus its payload — one node of the viff. The payload is the small
 // metadata the entity carries (not the underlying system's contents); stages and other
 // lifecycle facts are conventions on it — a "stage" field a trigger matches and an action
 // advances — rather than separate primitives. See payload.go: it is any tony value, and an
@@ -228,13 +228,13 @@ func RefOfAny(segs []string) (Ref, bool) {
 // published schema lying about the one identifier every surface shares. It was hand-written
 // in internal/schema/curated.tony until then.
 //
-//tony:schemagen=verse-entity,notag
+//tony:schemagen=viff-entity,notag
 type Entity struct {
 	Ref     Ref     `tony:"field=at"`
 	Payload Payload `tony:"field=payload,omitzero"`
 }
 
-// Op classifies a change to the verse. It is deliberately two-valued: a change
+// Op classifies a change to the viff. It is deliberately two-valued: a change
 // either SET an entity (it now has a payload) or DELETED it. Create-vs-update is
 // NOT distinguished — knowing "was this the first time?" needs prior state the
 // durable (logd) substrate doesn't carry on its change stream, and requiring it
@@ -261,7 +261,7 @@ func (o Op) MarshalText() ([]byte, error) { return []byte(o), nil }
 
 func (o *Op) UnmarshalText(b []byte) error { *o = Op(b); return nil }
 
-// Event is one observed change in the entity-verse — the unit triggers match on.
+// Event is one observed change in the entity-viff — the unit triggers match on.
 // To carries the entity's whole LEVEL state as of this commit, not the delta that was
 // written; it is nil on Delete. There is no "pure signal" event: anything worth
 // triggering on is a state change, so it stays durable, replayable, and uniform.
@@ -274,7 +274,7 @@ func (o *Op) UnmarshalText(b []byte) error { *o = Op(b); return nil }
 // reasoning against the grain. Once-semantics come from a state latch instead — see
 // docs/change-events.md.
 //
-//tony:schemagen=verse-event,notag
+//tony:schemagen=viff-event,notag
 type Event struct {
 	// The address the change is about, spelled the way every other surface spells one — see
 	// Entity, which this agrees with deliberately: a consumer reading a change and then reading
@@ -291,7 +291,7 @@ type Event struct {
 	Gap int   `tony:"field=gap,omitzero"` // >0: this many events dropped before this one (a slow observer)
 }
 
-// Commit is one atomic change to the verse: a revision, and every entity it changed. It is
+// Commit is one atomic change to the viff: a revision, and every entity it changed. It is
 // the unit of OBSERVATION, where Event is the unit of change — a store writes many branches
 // in one transaction, and the entities of that transaction share a revision and are true
 // together or not at all.
@@ -364,7 +364,7 @@ func (c Commit) Only(keep func(Ref) bool) Commit {
 
 // Net reports whether the commit's Changes are the net of more than its own change: a subtree
 // watch's opening picture, or one re-established, whose Changes were taken against an older copy
-// or against nothing rather than against the verse just before Rev. Comparing such a commit with
+// or against nothing rather than against the viff just before Rev. Comparing such a commit with
 // the commit before it does not say what it changed for its consumer.
 func (c Commit) Net() bool { return c.resync }
 

@@ -52,7 +52,7 @@ func TestReachAndOverlap(t *testing.T) {
 		{[]string{"demo", "*", "1"}, []string{"demo", "pr"}, false, true},
 		{[]string{"demo", "*", "1"}, []string{"other"}, false, false},
 		{[]string{"demo", "pr"}, []string{"demo", "prs"}, false, false},
-		{[]string{"verse", "task"}, []string{"task", "instance"}, false, false}, // the root is a segment
+		{[]string{"mirror", "task"}, []string{"task", "instance"}, false, false}, // the root is a segment
 		{[]string{"demo", "pr", "a.b"}, []string{"demo", "pr", "a.b"}, true, false},
 		{[]string{"demo", "pr", "*"}, []string{"demo", "pr", "*"}, true, false}, // a `*` admits the name `*`
 	} {
@@ -100,7 +100,7 @@ func TestOverlapReadsADescent(t *testing.T) {
 		why  string
 	}{
 		// The case from the residual: the descent takes `drift` and the two meet.
-		{[]string{"verse-dev", "..", "finding"}, []string{"verse-dev", "drift", "finding"}, true,
+		{[]string{"viff-dev", "..", "finding"}, []string{"viff-dev", "drift", "finding"}, true,
 			"the descent takes one segment"},
 		// Zero segments: `..` includes the position itself, as kpath's Matches has it.
 		{[]string{"a", "..", "x"}, []string{"a", "x"}, true, "a descent takes none"},

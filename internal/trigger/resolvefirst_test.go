@@ -4,15 +4,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A FIRING THAT CANNOT BE RESOLVED WRITES NOTHING. The patch is what takes the subject out of
 // the rule's selection, so one that lands ahead of a derive that then fails latches the subject
-// over a write that never happened: the rule never fires again to try, and the verse says the
+// over a write that never happened: the rule never fires again to try, and the viff says the
 // work was done and holds no record of it.
 //
 // The rule below is the shape that lost a finding on staging: a fan-out whose element names a
@@ -51,7 +51,7 @@ func TestAFiringThatCannotBeResolvedWritesNothing(t *testing.T) {
 		t.Fatalf("does not install: %v", err)
 	}
 
-	subj := entity.RefAt("git", "commit", "verse/abc")
+	subj := entity.RefAt("git", "commit", "viff/abc")
 	fire := func(findings string) error {
 		t.Helper()
 		payload, err := codec.ParseNode([]byte(`{reviewed: pending, f: `+findings+`}`), codec.Tony)

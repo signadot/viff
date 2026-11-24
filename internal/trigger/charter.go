@@ -1,17 +1,17 @@
 package trigger
 
-// The charter is its records: an installed rule is written into the verse as a
+// The charter is its records: an installed rule is written into the viff as a
 // trigger:rule:<name> entity, and the engine follows the records (follow.go).
 //
 // Everything else a restart needs is durable — a task is mirrored, a sequence's position is a
 // fact on its subject, a claim is a debt in the store, and a task's hooks are looked up by its
-// chain when it ends — so the program is too: a verse comes back up with its work in progress intact and
+// chain when it ends — so the program is too: a viff comes back up with its work in progress intact and
 // the charter standing to react to it.
 //
 // It is one entity per rule rather than one charter document, because that is what the
 // operations already are: installing writes one entity, removing deletes one, and neither
 // needs to read the others (no read-modify-write, so two installs cannot lose each other).
-// It also makes a rule addressable — `verse data trigger:rule:review` — and a charter
+// It also makes a rule addressable — `viff data trigger:rule:review` — and a charter
 // change an ordinary observable fact.
 
 import (
@@ -20,9 +20,9 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // record builds a declaration's durable payload (charter.Payload): the spec, plus the scope
@@ -89,17 +89,17 @@ func (e *Engine) asOwner(name string) (string, *cause) {
 }
 
 // ErrCharter marks an install refused by the STORE rather than by the rule: the trigger is
-// fine, the verse could not record it. A caller answering a request tells the two apart
+// fine, the viff could not record it. A caller answering a request tells the two apart
 // with errors.Is — a malformed rule is the installer's problem, an unwritable charter is
-// verse's, and reporting the second as the first sends someone to debug a correct trigger.
+// viff's, and reporting the second as the first sends someone to debug a correct trigger.
 var ErrCharter = errors.New("the charter could not be written")
 
-// persist writes t into the verse as its charter entity, and answers the revision the write
+// persist writes t into the viff as its charter entity, and answers the revision the write
 // landed at: what a caller waits for the follow to reach. A write that changed nothing lands
 // at none.
 //
 // Its failure is RETURNED rather than logged, unlike the engine's reactive writes: this one
-// is on a request path (`verse c -a`), and the record is the rule, so a trigger that did not
+// is on a request path (`viff c -a`), and the record is the rule, so a trigger that did not
 // persist is one the engine never runs. The installer hears that at install time.
 func (e *Engine) persist(t Trigger, as string, take bool) (int64, error) {
 	doc, err := t.ToTonyIR()

@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // prs seeds n demo:pr entities at a stage, returning their refs.
@@ -98,7 +98,7 @@ func TestFanOutSpawnsPerMember(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "ship $[subject.ref]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "ship $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
 	}); err != nil {
@@ -174,7 +174,7 @@ func TestFanOutRefireIsIdempotentPerMember(t *testing.T) {
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewed"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "ship $[subject.ref]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "ship $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
 	}); err != nil {
@@ -301,7 +301,7 @@ func TestSubjectSelectionIsDeterministic(t *testing.T) {
 //
 // This test asserted the opposite while a firing could be about a set. The regression is real
 // and user-visible: three PRs are three questions on the docket, and answering them one at a
-// time is the honest arity until `verse gate approve` grows a bulk form.
+// time is the honest arity until `viff gate approve` grows a bulk form.
 func TestEachSubjectRaisesItsOwnGate(t *testing.T) {
 	store := entitytest.Store(t)
 	prs(t, store, "reviewed", "1", "2", "3")
@@ -365,7 +365,7 @@ func eventuallyN(t *testing.T, why string, cond func() bool) {
 }
 
 // A WILDCARD SEGMENT is the string spelling of a set-valued Subject, and it must dispatch
-// identically to the object form — `"demo.pr.*"` is every pr, exactly as `verse flow demo.pr.*`
+// identically to the object form — `"demo.pr.*"` is every pr, exactly as `viff flow demo.pr.*`
 // addresses their live tasks. Parsed instead as a name for a node literally called "*", nothing
 // fans out and `set` creates `demo.pr.*`.
 func TestGlobSubjectFansOut(t *testing.T) {
@@ -399,7 +399,7 @@ func TestGlobSubjectFansOut(t *testing.T) {
 
 // A PREDICATE SELECTS A FAMILY at a place, where the path selects the place. A name pattern is a
 // condition on what a node HOLDS — which is where both live charters say it
-// (`value: {name: !glob "verse/auto/*/*"}`) — and a path takes no operator.
+// (`value: {name: !glob "viff/auto/*/*"}`) — and a path takes no operator.
 func TestAPredicateSelectsAFamily(t *testing.T) {
 	store := entitytest.Store(t)
 	for _, id := range []string{"hotfix-1", "hotfix-2", "feature-9"} {
@@ -470,7 +470,7 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"path": pathOf("verse", "task", "instance", "*"), "value": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"path": pathOf("mirror", "task", "instance", "*"), "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo.pr.*"), // acts on demo:pr, whatever the cause carries
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
@@ -482,7 +482,7 @@ func TestSubjectSelectsOnlyWhatItNames(t *testing.T) {
 	eng.Start(ctx)
 
 	// A completed task whose payload names `other` — which the subject does not select.
-	entitytest.Set(t, store, entity.VerseRef("task", "instance", "rev-1"),
+	entitytest.Set(t, store, entity.ViffRef("task", "instance", "rev-1"),
 		entity.Obj{"status": "done", "flow": other.String()}.Payload())
 
 	eventuallyN(t, "the firing to be observed and discarded", func() bool { return eng.Fired() == 0 })
@@ -501,7 +501,7 @@ func TestSpawnLabelIsTheIDApplyWillUse(t *testing.T) {
 		entity.RefAt("demo", "pr", "1"),
 		entity.RefAt("demo", "pr", "path/with/slashes"), // safeSeg rewrites → hashed
 	}
-	trig := Trigger{Name: "review", Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}}}}
+	trig := Trigger{Name: "review", Action: Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}}}}
 
 	for _, ref := range refs {
 		announced := New(nil, nil).spawnLabel(trig, []entity.Ref{ref})

@@ -5,12 +5,12 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // Runner is one installed runner, as `POST /runners` takes it and `GET /runners/{name}` answers
-// it: an address and somewhere to reach it, stored at `verse.runners.<name>`.
+// it: an address and somewhere to reach it, stored at `mirror.runners.<name>`.
 //
 // It carries a url and who the runner acts as, and nothing about what work may do there. A
 // grant ceiling, a tool allowlist, a label — anything saying "work here may only do this" — is
@@ -18,11 +18,11 @@ import (
 // and answering it in two places without deciding how they compose is how a ceiling comes to
 // mean two things.
 //
-//tony:schemagen=verse-installed-runner,notag
+//tony:schemagen=viff-installed-runner,notag
 type Runner struct {
-	// Name is the address: `verse.runners.<name>`.
+	// Name is the address: `mirror.runners.<name>`.
 	Name string `tony:"field=name"`
-	// URL is the runner's verse-facing base: what client.HTTP drives, and what a restart
+	// URL is the runner's viff-facing base: what client.HTTP drives, and what a restart
 	// reconstructs from. Required, with no default and no local special case — `local` is what
 	// the ABSENCE of a runner means, which keeps every runner entity somewhere to reach.
 	URL string `tony:"field=url"`
@@ -31,21 +31,21 @@ type Runner struct {
 	// A runner acts as itself, not as whoever installed it or whoever's work it runs. Defaults
 	// to the runner's name.
 	Identity string `tony:"field=identity,omitzero"`
-	// Subject is how verse recognises the runner, and every registration names one: the subject
+	// Subject is how viff recognises the runner, and every registration names one: the subject
 	// of its workload token, which on Kubernetes is `system:serviceaccount:<namespace>:<name>`,
 	// from the issuer the deployment names for its iods (`auth.iod.issuer`), or a static token's
-	// hash (`verse runner add -token-file`). The runner proves it is the runner at the describe,
-	// and at the door when it calls verse; a `runner:` named with no proof is refused. A runner is
+	// hash (`viff runner add -token-file`). The runner proves it is the runner at the describe,
+	// and at the door when it calls viff; a `runner:` named with no proof is refused. A runner is
 	// never taken at its word. The decision about who a runner is belongs here, at registration,
-	// and nowhere else (internal/versed/runnerauth.go).
+	// and nowhere else (internal/viffd/runnerauth.go).
 	Subject string `tony:"field=subject,omitzero"`
 	// Described is what the runner offers, as it described itself (GET /describe) when it was
 	// installed or last checked: the agents and scripts it runs, what each takes, and the
 	// systems each holds. Every describe is a proof, so a description is one the runner proved
-	// it is the author of. Verse writes it, from the runner, and checks a spawn naming this runner
+	// it is the author of. Viff writes it, from the runner, and checks a spawn naming this runner
 	// against it; `POST /runners` refuses it. None is a runner that was installed unprobed, has
 	// not described itself yet, or answered and did not prove it is its subject; and one that no
-	// longer passes Check (kept from an older runner or verse) is read as none: the runner is
+	// longer passes Check (kept from an older runner or viff) is read as none: the runner is
 	// asked again (Current).
 	Described *runner.Description `tony:"field=described,omitzero"`
 }
@@ -67,7 +67,7 @@ func (e Runner) Description() runner.Description {
 	return *e.Described
 }
 
-// Current is whether the registration holds a description this verse reads: one there is, and
+// Current is whether the registration holds a description this viff reads: one there is, and
 // that passes Check. Otherwise the runner is asked again, and what it says replaces it.
 func (e Runner) Current() bool {
 	return e.Described != nil && e.Described.Check() == nil
@@ -124,17 +124,17 @@ func (e Runner) Check() error {
 	if u.Host == "" {
 		return fmt.Errorf("runner %q: url %q has no host", e.Name, e.URL)
 	}
-	// A runner is never taken at its word: a registration says how verse recognises it.
+	// A runner is never taken at its word: a registration says how viff recognises it.
 	if e.Subject == "" {
-		return fmt.Errorf("runner %q: say how verse recognises it: a subject, the workload token's "+
-			"(`verse runner add -subject`) or a static token's hash (`-token-file`). A runner is never "+
+		return fmt.Errorf("runner %q: say how viff recognises it: a subject, the workload token's "+
+			"(`viff runner add -subject`) or a static token's hash (`-token-file`). A runner is never "+
 			"taken at its word", e.Name)
 	}
 	return nil
 }
 
 // RunnerRow is a runner as `GET /runners` lists it and `POST /runners` answers it: the runner as
-// installed, and what verse has recorded of the work on it. Running is now, Total is ever, and
+// installed, and what viff has recorded of the work on it. Running is now, Total is ever, and
 // LastSpawn is when it was last used, so a runner nobody names is visible as such.
 //
 // A listing row leaves out what the runner described (`GET /runners/{name}` has it); the row an
@@ -146,7 +146,7 @@ func (e Runner) Check() error {
 // Offers is the names of the doers the runner described (an agent's name, or `script`), on every
 // row, empty where it has described none: what a spawn could run there, at a glance.
 //
-//tony:schemagen=verse-runner-row,notag
+//tony:schemagen=viff-runner-row,notag
 type RunnerRow struct {
 	Runner
 	At        string   `tony:"field=at"`
@@ -157,17 +157,17 @@ type RunnerRow struct {
 	Why       string   `tony:"field=why,omitzero"`
 	Warning   string   `tony:"field=warning,omitzero"`
 	Offers    []string `tony:"field=offers"`
-	// Unreadable is why the stored registration does not decode as this verse reads it. Nothing
+	// Unreadable is why the stored registration does not decode as this viff reads it. Nothing
 	// else on such a row is read from the record: the row is there so the registration can be
 	// seen and removed by its name.
 	Unreadable string `tony:"field=unreadable,omitzero"`
 }
 
 // RunnerCheck is what `GET /runners/{name}/check` answers: the runner probed now. A runner that
-// answers describes itself afresh, and verse keeps what it says on the registration, so this
+// answers describes itself afresh, and viff keeps what it says on the registration, so this
 // GET writes `described`.
 //
-//tony:schemagen=verse-runner-check,notag
+//tony:schemagen=viff-runner-check,notag
 type RunnerCheck struct {
 	At     string         `tony:"field=at"`
 	URL    string         `tony:"field=url"`
@@ -185,7 +185,7 @@ type RunnerCheck struct {
 // ended. An iod's removal reports how many reflected places `?forget` tombstoned (Forgotten),
 // or how many `?keep` left standing (Kept).
 //
-//tony:schemagen=verse-removed,notag
+//tony:schemagen=viff-removed,notag
 type Removed struct {
 	Removed     string   `tony:"field=removed"`
 	Cancelled   []string `tony:"field=cancelled,omitzero"`

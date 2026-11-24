@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // AN OBSOLETE SWEEP settles, as the io, the pending questions under its prefix that are about
@@ -49,12 +49,12 @@ func TestTheGitOutHalfSettlesQuestionsNothingProposes(t *testing.T) {
 	}))
 	defer fake.Close()
 
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("r", t.TempDir())
 	sink := g.Sink()
-	sink.Verse = client.New(strings.TrimPrefix(fake.URL, "http://"), "agent:git-iod")
+	sink.Viff = client.New(strings.TrimPrefix(fake.URL, "http://"), "agent:git-iod")
 	sink.As = "agent:git-iod"
-	in := verseio.Input{Place: g.OutRef("r"), To: "obsolete", Value: entity.Obj{
+	in := viffio.Input{Place: g.OutRef("r"), To: "obsolete", Value: entity.Obj{
 		"to": "obsolete", "prefix": prefix, "before": "2026-10-04T21:00:00Z",
 		"keep": entity.Obj{"state": []any{"kept"}, "pulls": []any{""}},
 	}.Payload()}

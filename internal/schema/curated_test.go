@@ -18,7 +18,7 @@ import (
 // correct), the rule assumes cur ⇒ curOK ∨ ¬genOK, and the negation cur ∧ genOK ∧ ¬curOK is
 // satisfiable — codegen improves, the generated signature becomes right, and a stale curated
 // entry goes on shadowing it. That is not hypothetical: go-tony fixed three separate defects
-// in one week, and verse-entity and verse-event were retired BY HAND both times.
+// in one week, and viff-entity and viff-event were retired BY HAND both times.
 //
 // `codec=custom` is the declaration that a type's wire shape is not derivable from its Go
 // shape, which is exactly the condition under which a curated signature is warranted. So the
@@ -70,12 +70,12 @@ func TestEntitySignaturesAreGeneratedNotCurated(t *testing.T) {
 		t.Fatalf("curated: %v", err)
 	}
 	for _, n := range cur {
-		if n == "verse-entity" || n == "verse-event" {
+		if n == "viff-entity" || n == "viff-event" {
 			t.Errorf("%s is curated again — if codegen regressed, say so here rather than "+
 				"letting a hand-written signature quietly stand in for a generated one", n)
 		}
 	}
-	for _, n := range []string{"verse-entity", "verse-event"} {
+	for _, n := range []string{"viff-entity", "viff-event"} {
 		if _, ok, _ := Get(n); !ok {
 			t.Errorf("%s is not published at all", n)
 		}

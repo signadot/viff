@@ -1,30 +1,30 @@
 package api
 
-import "github.com/signadot/verse/pkg/entity"
+import "go.viff.dev/viff/pkg/entity"
 
-// Group is a named set of principals (`verse group add`): as a grantee, `group:<name>` admits its
+// Group is a named set of principals (`viff group add`): as a grantee, `group:<name>` admits its
 // members. A member is a grantee in the grammar (entity.Grammar): a principal, `<kind>:*`, `*`,
 // `group:<name>`, or a place acting.
 //
-//tony:schemagen=verse-group,notag
+//tony:schemagen=viff-group,notag
 type Group struct {
 	Name    string   `tony:"field=name"`
 	Members []string `tony:"field=members,omitzero"`
 }
 
-// GroupRow is a group where it is stored, `verse.principal.group.<name>`: one row of
+// GroupRow is a group where it is stored, `mirror.principal.group.<name>`: one row of
 // `GET /groups`, and what `GET /groups/{name}` and `POST /groups` answer.
 //
-//tony:schemagen=verse-group-row,notag
+//tony:schemagen=viff-group-row,notag
 type GroupRow struct {
 	Group
 	At string `tony:"field=at"`
 }
 
-// PermsRecord is a node's perms record as its owner reads it back (`verse perms <path>`): who
+// PermsRecord is a node's perms record as its owner reads it back (`viff perms <path>`): who
 // owns the node, what they hold out on it, and what a node created beneath it holds out.
 //
-//tony:schemagen=verse-perms-record,notag
+//tony:schemagen=viff-perms-record,notag
 type PermsRecord struct {
 	At          string         `tony:"field=at"`
 	Owner       string         `tony:"field=owner,omitzero"`
@@ -32,7 +32,7 @@ type PermsRecord struct {
 	ChildGrants entity.Payload `tony:"field=child-grants,omitzero"`
 }
 
-//tony:schemagen=verse-perms-edit,notag
+//tony:schemagen=viff-perms-edit,notag
 type PermsEdit struct {
 	At          string         `tony:"field=at"`
 	ChildGrants entity.Payload `tony:"field=child-grants,omitzero"`
@@ -46,7 +46,7 @@ type PermsEdit struct {
 // the mirror could not answer, what listings left out, and grantee names the grammar does not
 // read.
 //
-//tony:schemagen=verse-perms,notag
+//tony:schemagen=viff-perms,notag
 type Perms struct {
 	Refused    map[string]int `tony:"field=refused,omitzero"`
 	Unreadable int            `tony:"field=unreadable,omitzero"`

@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // slackAPI is a Slack Web API whose bot is in #deploys and #general, keeping each write it was
@@ -79,8 +79,8 @@ func TestATasksSlackMessageNamesTheTask(t *testing.T) {
 		t.Errorf("a reaction the policy denies: %+v", rep)
 	}
 	want := []string{
-		"Bearer xoxb-own post C1  v1.3 is out\n\n_verse task t7_",
-		"Bearer xoxb-own post C1 17.2 it holds\n\n_verse task t7_",
+		"Bearer xoxb-own post C1  v1.3 is out\n\n_viff task t7_",
+		"Bearer xoxb-own post C1 17.2 it holds\n\n_viff task t7_",
 	}
 	if strings.Join(saw, "|") != strings.Join(want, "|") {
 		t.Errorf("Slack saw %q, want %q", saw, want)

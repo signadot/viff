@@ -4,15 +4,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/mirror"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/mirror"
 )
 
 // AN ASK SETTLES ONCE. The id a firing derives for its question (gateID, selectID) names what is
 // being decided, and it is where that question is asked — until an answer settles it. A firing
 // that comes back afterwards, the subject selected again and the gate asked again, is a new
 // question with an id of its own: the answer given stands on the ask it answered, with its
-// verdict and its ballots, until that ask's keep removes it (versed askttl.go). A firing is not
+// verdict and its ballots, until that ask's keep removes it (viffd askttl.go). A firing is not
 // an edit of the ask before it.
 //
 // An asking that is still open is JOINED, under the id it stands at: a firing posing while one
@@ -36,7 +36,7 @@ func (e *Engine) askingID(base string) (string, error) {
 	ents, err := entity.BelowErr(e.store, func(ref entity.Ref) bool {
 		_, ok := askingOrdinal(base, ref.Name())
 		return ok
-	}, 1, entity.VerseRoot, mirror.AskSystem)
+	}, 1, entity.ViffRoot, mirror.AskSystem)
 	if err != nil {
 		return "", err
 	}

@@ -4,17 +4,17 @@ import (
 	"context"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// A PREDICATE THAT PANICS DOES NOT TAKE THE VERSE DOWN WITH IT.
+// A PREDICATE THAT PANICS DOES NOT TAKE THE VIFF DOWN WITH IT.
 //
 // `!let {let: [{}], in: …}` — an empty binding, which is what a typo leaves behind — makes
 // go-tony index a binding list that has no element 0. A charter is user input and its
 // predicates are evaluated on the engine's watch goroutine at every commit landing under the
-// rule, so before this the first such change exited versed. Nothing else a rule can say does
+// rule, so before this the first such change exited viffd. Nothing else a rule can say does
 // that: unparseable is refused at install, a malformed operator is a non-match, a read that
 // cannot resolve fails its own firing.
 //

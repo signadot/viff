@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/mirror"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/mirror"
 )
 
 // evaluate is THE firing rule, and the only one:
@@ -39,7 +39,7 @@ import (
 // evaluation. Latch, or run at every commit — see the install-time lint in AddTrigger.
 // subjectAddr is a subject's ADDRESS for a trace line — without the predicate, which
 // subjectText appends and which is a whole charter paragraph once a rule has comments in it.
-// A trace says which rule and where; the predicate is in `verse c rules <name>`.
+// A trace says which rule and where; the predicate is in `viff c rules <name>`.
 func subjectAddr(m Match) string {
 	if s, ok := m.address(); ok {
 		return s

@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // settleWorld is an engine observing a store with one rule installed and a subject at a stage the
@@ -32,7 +32,7 @@ func settleWorld(t *testing.T, rule Trigger, stage string) (*Engine, entity.Stor
 	return eng, store, sp
 }
 
-// claimAt writes the claim a rule's action at chain holds about demo.pr.1 as a verse before this
+// claimAt writes the claim a rule's action at chain holds about demo.pr.1 as a viff before this
 // one left it, taken at the commit occurrence, and answers it with the id of the task it guards.
 func claimAt(t *testing.T, eng *Engine, store entity.Store, chain string, spawn bool, occurrence int64) (entity.Entity, string) {
 	t.Helper()
@@ -78,7 +78,7 @@ func TestSettlingASpawnClaimRunsWhatItsTasksEndOwed(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
-			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			OnFailed: &Action{Patch: entity.Obj{"stage": "failed", "lost": ".[orphaned]"}.Payload()},
 		},
@@ -130,10 +130,10 @@ func deploy() Trigger {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "build"},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "build"},
 					OnFailed: &Action{Patch: entity.Obj{"stage": "broke", "lost": ".[orphaned]"}.Payload()}},
 				{Patch: entity.Obj{"built": "yes"}.Payload()},
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "ship"}},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "ship"}},
 			},
 			OnDone: &Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
 		},
@@ -155,7 +155,7 @@ func charterFacts(t *testing.T, store entity.Store) map[string]any {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return entity.ToObj(entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), "deploy"))
+	return entity.ToObj(entity.Get(entity.Get(entity.Get(ent.Payload, ViffRoot), CharterKey), "deploy"))
 }
 
 func elementID(eng *Engine, i int) string {
@@ -270,7 +270,7 @@ func TestAnElementsEndRunTwiceAdvancesOnce(t *testing.T) {
 	}
 }
 
-// A CLAIM THIS VERSE IS PAYING IS NOT A DEBT: a claim one of its firings took, at the address of
+// A CLAIM THIS VIFF IS PAYING IS NOT A DEBT: a claim one of its firings took, at the address of
 // one that was listed; the claim of a task the engine tracks; and the run claim of a sequence a
 // task it tracks is an element of. Settle leaves each standing.
 func TestSettleLeavesAClaimBeingPaid(t *testing.T) {
@@ -320,7 +320,7 @@ func TestSettleLeavesAClaimBeingPaid(t *testing.T) {
 	})
 }
 
-// THE RECORD AT A CLAIM'S ID MAY BE THE RUN BEFORE'S. Verse ended after a firing took its claim
+// THE RECORD AT A CLAIM'S ID MAY BE THE RUN BEFORE'S. Viff ended after a firing took its claim
 // and before its task started: the record standing at the id says how the previous run ended.
 // It is not this claim's task's end, so the claim is settled as a task with no account, and the
 // record is left as it stands.
@@ -329,7 +329,7 @@ func TestSettleDoesNotReadTheRunBeforesRecord(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
-			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			OnFailed: &Action{Patch: entity.Obj{"stage": "failed"}.Payload()},
 		},
@@ -349,7 +349,7 @@ func TestSettleDoesNotReadTheRunBeforesRecord(t *testing.T) {
 	}
 }
 
-// AN ELEMENT'S OWN CLAIM, SETTLED FIRST, LEAVES ITS RUN TO BE SETTLED. Verse ended after an
+// AN ELEMENT'S OWN CLAIM, SETTLED FIRST, LEAVES ITS RUN TO BE SETTLED. Viff ended after an
 // element's end advanced the run and before that element's claim came off; the element the run
 // advanced to has since failed with nobody to hear it. The first element's claim is paid and
 // does nothing to the run, and the run's claim then stops it.
@@ -385,7 +385,7 @@ func TestSettlingARunThatEndedReleasesItsClaim(t *testing.T) {
 	}
 }
 
-// AN ENGINE TAKES NO TASK'S END AND ARMS NO RULE UNTIL IT IS OPEN. A task the last verse left is
+// AN ENGINE TAKES NO TASK'S END AND ARMS NO RULE UNTIL IT IS OPEN. A task the last viff left is
 // handed over with its record already saying `done`. While the host has more to hand over, the
 // task stands live, its hook has not run, and the rule has fired about nothing. Once the tasks
 // are in, the engine opens: the end is taken, and the rule arms.
@@ -394,7 +394,7 @@ func TestAnEngineIsShutUntilItsTasksAreIn(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}
@@ -440,14 +440,14 @@ func TestASequenceIsDoneOnceItsOnDoneHasRun(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq:    []Action{{Patch: entity.Obj{"stage": "tidying"}.Payload()}},
-			OnDone: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "announce"}},
+			OnDone: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "announce"}},
 		},
 	}
 	eng, store, _ := settleWorld(t, rule, "closed")
 	seen := make(chan map[string]any, 1)
 	eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 		ent, _, _ := store.Get(prRef("1"))
-		seen <- entity.ToObj(entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), "tidy"))
+		seen <- entity.ToObj(entity.Get(entity.Get(entity.Get(ent.Payload, ViffRoot), CharterKey), "tidy"))
 		return &heldHandle{ch: make(chan task.Event, 1)}
 	})
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
@@ -462,7 +462,7 @@ func TestASequenceIsDoneOnceItsOnDoneHasRun(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		ent, _, _ := store.Get(prRef("1"))
-		f := entity.ToObj(entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), "tidy"))
+		f := entity.ToObj(entity.Get(entity.Get(entity.Get(ent.Payload, ViffRoot), CharterKey), "tidy"))
 		if f[seqDone] == true {
 			return
 		}
@@ -494,7 +494,7 @@ func TestSettleLeavesAClaimWaitingOnAParkedLaunch(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
-			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 			OnFailed: &Action{Patch: entity.Obj{"stage": "failed"}.Payload()},
 		},
 	}
@@ -543,7 +543,7 @@ func TestARunAtANewShapeIsCarriedOnPastTheConclusionOfTheOneBefore(t *testing.T)
 		return f[seqStep] == int64(0) && f[seqShape] == eng.shapeOf("deploy")
 	})
 	waitFacts(t, store, "the element's task tracked", func(map[string]any) bool { _, live := eng.Live(elementID(eng, 0)); return live })
-	stop() // verse goes down
+	stop() // viff goes down
 	build.finish()
 	waitField(t, store, mirror.Ref(elementID(eng, 0)), "status", string(task.Done))
 

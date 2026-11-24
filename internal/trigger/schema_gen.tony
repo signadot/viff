@@ -2,23 +2,23 @@
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
-- launch: github.com/signadot/verse/pkg/launch
+- launch: go.viff.dev/viff/pkg/launch
 define:
   derive: .[tony-base:ir]
-  onCancelled: .[nullable(verse-action)]
-  onDone: .[nullable(verse-action)]
-  onFailed: .[nullable(verse-action)]
+  onCancelled: .[nullable(viff-action)]
+  onDone: .[nullable(viff-action)]
+  onFailed: .[nullable(viff-action)]
   patch: .[tony-base:ir]
-  seq: .[array(verse-action)]
-  spawn: .[nullable(launch:verse-launch-spec)]
+  seq: .[array(viff-action)]
+  spawn: .[nullable(launch:viff-launch-spec)]
 signature:
-  name: verse-action
+  name: viff-action
 ---
 context:
 - tony-format/context
 define: {}
 signature:
-  name: verse-match
+  name: viff-match
 ---
 context:
 - tony-format/context
@@ -26,30 +26,30 @@ define:
   Facts: .[object(object)]
   Kind: .[string]
 signature:
-  name: verse-requirement
+  name: viff-requirement
 ---
 context:
 - tony-format/context
 define:
   op: .[string]
-  req: .[nullable(verse-requirement)]
+  req: .[nullable(viff-requirement)]
 signature:
-  name: verse-formula
+  name: viff-formula
 ---
 context:
 - tony-format/context
 define:
-  on: .[nullable(verse-formula)]
+  on: .[nullable(viff-formula)]
   subject: .[object(object)]
-  when: .[nullable(verse-formula)]
+  when: .[nullable(viff-formula)]
 signature:
-  name: verse-condition
+  name: viff-condition
 ---
 context:
 - tony-format/context
 define:
   chain: .[string]
-  children: .[array(verse-flow-node)]
+  children: .[array(viff-flow-node)]
   err: .[string]
   gate: .[string]
   heldBy: .[array(string)]
@@ -60,41 +60,41 @@ define:
   status: .[string]
   suspended: .[array(string)]
 signature:
-  name: verse-flow-node
+  name: viff-flow-node
 ---
 context:
 - tony-format/context
 define:
   active: .[bool]
-  roots: .[array(verse-flow-node)]
+  roots: .[array(viff-flow-node)]
   subject: .[string]
   suspended: .[array(string)]
 signature:
-  name: verse-flow-tree
+  name: viff-flow-tree
 ---
 context:
 - tony-format/context
-- task: github.com/signadot/verse/pkg/task
+- task: go.viff.dev/viff/pkg/task
 define:
   answerers: .[array(string)]
   answerersFrom: .[string]
-  deadline: .[nullable(task:verse-deadline)]
+  deadline: .[nullable(task:viff-deadline)]
   labels: .[object(string)]
   mode: .[string]
   name: .[string]
   need: .[int]
-  onDenied: .[nullable(verse-action)]
-  options: .[array(task:verse-option)]
+  onDenied: .[nullable(viff-action)]
+  options: .[array(task:viff-option)]
   pose: .[string]
 signature:
-  name: verse-trigger-gate
+  name: viff-trigger-gate
 ---
 context:
 - tony-format/context
 define:
-  gates: .[array(verse-trigger-gate)]
+  gates: .[array(viff-trigger-gate)]
 signature:
-  name: verse-gating
+  name: viff-gating
 ---
 context:
 - tony-format/context
@@ -103,16 +103,16 @@ define:
   match: .[array(object)]
   name: .[string]
 signature:
-  name: verse-stratum
+  name: viff-stratum
 ---
 context:
 - tony-format/context
 define:
-  action: !verse-action null
-  condition: !verse-condition null
-  gates: .[array(verse-trigger-gate)]
-  gating: .[nullable(verse-gating)]
+  action: !viff-action null
+  condition: !viff-condition null
+  gates: .[array(viff-trigger-gate)]
+  gating: .[nullable(viff-gating)]
   name: .[string]
   stratum: .[string]
 signature:
-  name: verse-trigger
+  name: viff-trigger

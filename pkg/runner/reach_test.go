@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A ROW THAT CAN MATCH NOTHING THE ENVIRONMENT GIVES IS REFUSED, where the launch is checked: one
@@ -17,7 +17,7 @@ func TestARowMustReachTheEnvironment(t *testing.T) {
 		Attributes: map[string]string{"repo": "github.com/acme/app"},
 		Verbs: map[string][]systems.Shape{
 			"fetch": {{}},
-			"push":  {{"ref": systems.Glob("refs/heads/verse/*")}},
+			"push":  {{"ref": systems.Glob("refs/heads/viff/*")}},
 		},
 	}}}}
 	push := func(ref *ir.Node) task.Row {
@@ -30,8 +30,8 @@ func TestARowMustReachTheEnvironment(t *testing.T) {
 	}{
 		{push(systems.Glob("refs/tags/*")), "autonomy[0]: matches nothing the environment gives (system=git verb=push ref=!glob refs/tags/*)"},
 		{push(systems.Regexp("^refs/heads/")), ""}, // wider: the environment bounds it
-		{push(systems.Glob("refs/*/verse/x")), ""}, // overlaps refs/heads/verse/*, contains it neither way
-		{push(ir.FromString("refs/heads/verse/fix")), ""},
+		{push(systems.Glob("refs/*/viff/x")), ""},  // overlaps refs/heads/viff/*, contains it neither way
+		{push(ir.FromString("refs/heads/viff/fix")), ""},
 		{task.Row{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAsk}}, ""},
 		{task.Row{Match: &task.Match{System: "git", Params: map[string]*ir.Node{"repo": systems.Glob("github.com/other/*")}}, Then: task.Then{Mode: task.ThenDeny}}, "matches nothing the environment gives (system=git repo=!glob github.com/other/*)"},
 		{task.Row{Match: &task.Match{System: "slack"}, Then: task.Then{Mode: task.ThenAllow}}, "give it in environment.systems.slack"},

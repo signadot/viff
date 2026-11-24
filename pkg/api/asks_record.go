@@ -3,11 +3,11 @@ package api
 import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// AskRecord is an ask as verse stores it at `verse.ask.<id>`: what a row of `GET /asks` (AskRow,
+// AskRecord is an ask as viff stores it at `mirror.ask.<id>`: what a row of `GET /asks` (AskRow,
 // DocketRow) holds. Every question anybody is put is one of these, whoever raised it, so the record
 // holds five kinds (Kind): a person's ask, an onward ask raised to serve another, words said to a
 // task, a task's question, and a firing's gate question. Each says its parties the same way: who
@@ -15,13 +15,13 @@ import (
 // a record carries the ones its kind and its history wrote.
 //
 // A listing answers the keys this type names, and only those: a key a writer adds and the type
-// leaves out would drop from GET /asks. A check in versed's tests holds every ask they leave to the
-// type, and versed logs a key it drops reading a record, once per record and set of keys.
+// leaves out would drop from GET /asks. A check in viffd's tests holds every ask they leave to the
+// type, and viffd logs a key it drops reading a record, once per record and set of keys.
 //
 // `about` is the first line of what the ask's subject says of itself, copied when the question is
 // posed; the subject's address is `subject`. (api.Ask.About, the request, is the address.)
 //
-//tony:schemagen=verse-ask-record,notag
+//tony:schemagen=viff-ask-record,notag
 type AskRecord struct {
 	// ID is the ask's id, the last segment of its address. A person's ask not yet posed has
 	// none stored; the listing fills it from the address.
@@ -122,7 +122,7 @@ type AskRecord struct {
 // AskRow is one ask as `GET /asks` lists it: the record as stored, and, for a record that does
 // not read as an AskRecord, why (Unreadable), beside only its id, so it can be seen.
 //
-//tony:schemagen=verse-ask-row,notag
+//tony:schemagen=viff-ask-row,notag
 type AskRow struct {
 	AskRecord
 	Unreadable string `tony:"field=unreadable,omitzero"`
@@ -133,7 +133,7 @@ type AskRow struct {
 // with `?served` or `?all`) and which plane raised it (Where: `task` for a task's question,
 // `engine` for the rest). Words said to a task ask nobody and are never on it.
 //
-//tony:schemagen=verse-docket-row,notag
+//tony:schemagen=viff-docket-row,notag
 type DocketRow struct {
 	AskRow
 	ServedBy string `tony:"field=servedBy,omitzero"`
@@ -176,10 +176,10 @@ func (r AskRecord) Kind() string {
 // AskFrom is who raised a question: exactly one of a rule (with the charter it is installed at),
 // a task, or a principal, verbatim (`user:…`, `agent:…`, `via:…`). The principal carries
 // authority: an ask's `then` runs as it, and an onward ask carries back as it. An ask a task
-// raised for its owner (`verse-ask-create`) names both: the owner as the principal, and the task
+// raised for its owner (`viff-ask-create`) names both: the owner as the principal, and the task
 // that raised it.
 //
-//tony:schemagen=verse-ask-from,notag
+//tony:schemagen=viff-ask-from,notag
 type AskFrom struct {
 	Rule      string `tony:"field=rule,omitzero"`
 	At        string `tony:"field=at,omitzero"`
@@ -190,7 +190,7 @@ type AskFrom struct {
 // AskTo is whom a question is put to: grantees in the grant grammar, or the task words were said
 // to.
 //
-//tony:schemagen=verse-ask-to,notag
+//tony:schemagen=viff-ask-to,notag
 type AskTo struct {
 	Grantees []string `tony:"field=grantees,omitzero"`
 	Task     string   `tony:"field=task,omitzero"`
@@ -200,7 +200,7 @@ type AskTo struct {
 // Followed spells it, absent for every answer, and what follows where it is the first row to
 // match, absent where that is nothing.
 //
-//tony:schemagen=verse-ask-on,notag
+//tony:schemagen=viff-ask-on,notag
 type AskOn struct {
 	Match entity.Payload `tony:"field=match,omitzero"`
 	Then  *AskFollow     `tony:"field=then,omitzero"`
@@ -210,7 +210,7 @@ type AskOn struct {
 // answer to another ask, or another ask, none being nothing. A spawn and an ask are stored as
 // their asker wrote them, and read strictly when they run.
 //
-//tony:schemagen=verse-ask-follow,notag
+//tony:schemagen=viff-ask-follow,notag
 type AskFollow struct {
 	Spawn  entity.Payload   `tony:"field=spawn,omitzero"`
 	Answer *AskFollowAnswer `tony:"field=answer,omitzero"`
@@ -220,7 +220,7 @@ type AskFollow struct {
 // AskFollowAnswer is an answer to another ask that follows an answer, as its asker: the ask,
 // the choice, words with it, whether it forces a settled ask, and the edit it answers.
 //
-//tony:schemagen=verse-ask-follow-answer,notag
+//tony:schemagen=viff-ask-follow-answer,notag
 type AskFollowAnswer struct {
 	Ask    string `tony:"field=ask"`
 	Choice string `tony:"field=choice"`
@@ -231,7 +231,7 @@ type AskFollowAnswer struct {
 
 // AskServes is the ask an onward ask serves: its id and edit, and the party it was asked for.
 //
-//tony:schemagen=verse-ask-serves,notag
+//tony:schemagen=viff-ask-serves,notag
 type AskServes struct {
 	ID   string `tony:"field=id"`
 	Edit int    `tony:"field=edit"`
@@ -242,7 +242,7 @@ type AskServes struct {
 // it answered, and through which resolver or io; Authenticated is the provider that verified the
 // answerer, where one did.
 //
-//tony:schemagen=verse-ask-ballot,notag
+//tony:schemagen=viff-ask-ballot,notag
 type AskBallot struct {
 	Choice        string   `tony:"field=choice"`
 	At            string   `tony:"field=at"`
@@ -254,7 +254,7 @@ type AskBallot struct {
 
 // AskSaid is words said on an ask, answering nothing: who said them, and what.
 //
-//tony:schemagen=verse-ask-said,notag
+//tony:schemagen=viff-ask-said,notag
 type AskSaid struct {
 	By   string `tony:"field=by"`
 	Text string `tony:"field=text"`
@@ -262,7 +262,7 @@ type AskSaid struct {
 
 // AskStale is an answer that arrived after the ask settled: what it chose, when, and its words.
 //
-//tony:schemagen=verse-ask-stale,notag
+//tony:schemagen=viff-ask-stale,notag
 type AskStale struct {
 	Verdict string   `tony:"field=verdict"`
 	At      string   `tony:"field=at"`
@@ -271,7 +271,7 @@ type AskStale struct {
 
 // AskFollowFailed is a row's then that could not run: when, and why.
 //
-//tony:schemagen=verse-ask-follow-failed,notag
+//tony:schemagen=viff-ask-follow-failed,notag
 type AskFollowFailed struct {
 	At  string `tony:"field=at"`
 	Why string `tony:"field=why"`
@@ -281,7 +281,7 @@ type AskFollowFailed struct {
 // record uses, and when it was claimed. The claim is the answer: a question pending under one has its answer decided and not yet delivered, and
 // Undelivered says why the last delivery failed, until the question is posed again and it is.
 //
-//tony:schemagen=verse-ask-followed,notag
+//tony:schemagen=viff-ask-followed,notag
 type AskFollowed struct {
 	At            string   `tony:"field=at"`
 	Verdict       string   `tony:"field=verdict,omitzero"`
@@ -298,7 +298,7 @@ type AskFollowed struct {
 // from 0, when it started, and the task it started, the answer or ask it made, or why it could
 // not run.
 //
-//tony:schemagen=verse-ask-ran,notag
+//tony:schemagen=viff-ask-ran,notag
 type AskRan struct {
 	Row      int                `tony:"field=row"`
 	At       string             `tony:"field=at"`
@@ -311,7 +311,7 @@ type AskRan struct {
 // AskFollowAnswered is an answer a row's then made: when it started, the ask it answered, the
 // status that answer got, and the refusal where it was refused.
 //
-//tony:schemagen=verse-ask-follow-answered,notag
+//tony:schemagen=viff-ask-follow-answered,notag
 type AskFollowAnswered struct {
 	At      string `tony:"field=at"`
 	Ask     string `tony:"field=ask,omitzero"`
@@ -322,7 +322,7 @@ type AskFollowAnswered struct {
 // AskFollowAsked is an ask a row's then raised: when it started, the status raising it got, the
 // ask's id, and the refusal where it was refused.
 //
-//tony:schemagen=verse-ask-follow-asked,notag
+//tony:schemagen=viff-ask-follow-asked,notag
 type AskFollowAsked struct {
 	At      string `tony:"field=at"`
 	Status  int    `tony:"field=status,omitzero"`
@@ -334,7 +334,7 @@ type AskFollowAsked struct {
 // status the served ask answered, its refusal where it refused, and a Note where nothing was
 // carried (the clock settled on no option).
 //
-//tony:schemagen=verse-ask-carried,notag
+//tony:schemagen=viff-ask-carried,notag
 type AskCarried struct {
 	At      string `tony:"field=at"`
 	Status  int    `tony:"field=status,omitzero"`

@@ -5,10 +5,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // GET /describe answers what the daemon was told the runner offers, beside the task contract.
@@ -17,7 +17,7 @@ func TestDescribeAnswersTheOffers(t *testing.T) {
 		return task.NewFailed(l.ID, reg, "no tasks here")
 	})
 	d.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{
-		{Agent: &runner.AgentOffer{Name: "verse", Settings: map[string]runner.Setting{"model": {Values: []string{"claude-*"}}}}}, {Script: true}}})
+		{Agent: &runner.AgentOffer{Name: "viff", Settings: map[string]runner.Setting{"model": {Values: []string{"claude-*"}}}}}, {Script: true}}})
 	srv := httptest.NewServer(d.HTTPHandler())
 	t.Cleanup(srv.Close)
 
@@ -30,7 +30,7 @@ func TestDescribeAnswersTheOffers(t *testing.T) {
 	if err := codec.Decode(resp.Body, &got, codec.Tony); err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != runner.DescriptionVersion || len(got.Offers) != 2 || got.Offers[0].Name() != "verse" ||
+	if got.Version != runner.DescriptionVersion || len(got.Offers) != 2 || got.Offers[0].Name() != "viff" ||
 		got.Offers[0].Agent.Settings["model"].Values[0] != "claude-*" || !got.Offers[1].Script {
 		t.Fatalf("described %+v", got)
 	}

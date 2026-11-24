@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // Filing, commenting on and closing an issue, for a runner's `linear-issue-*` tools: the Linear
-// writes verse makes that are not a reflection's. They live here because the GraphQL wire format
+// writes viff makes that are not a reflection's. They live here because the GraphQL wire format
 // does (api.go), and a second client would be a second place for the error envelope to be read
 // wrong.
 
@@ -137,7 +137,7 @@ func CloseIssue(ctx context.Context, auth, base string, hc *http.Client, identif
 		return Closed{}, err
 	}
 	if found.Issue == nil || found.Issue.ID == "" {
-		return Closed{}, verseio.Permanent(fmt.Errorf("linear: no issue %s this credential can see", identifier))
+		return Closed{}, viffio.Permanent(fmt.Errorf("linear: no issue %s this credential can see", identifier))
 	}
 	var stateID, stateName string
 	for _, s := range found.Issue.Team.States.Nodes {

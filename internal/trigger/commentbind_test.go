@@ -5,10 +5,10 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // A PAYLOAD THAT STARTS WITH A COMMENT BINDS ITS FIELDS, as one without does.
@@ -18,7 +18,7 @@ import (
 // matched and the rule fired; the binding read the root with ir.ToMap, which does not, so no
 // field was bound.
 func TestACommentedPayloadBindsItsFields(t *testing.T) {
-	payload, err := codec.ParseNode([]byte("# a comment\nrepo: signadot/verse\nhandoff: {summary: done}\n"), codec.Tony)
+	payload, err := codec.ParseNode([]byte("# a comment\nrepo: signadot/viff\nhandoff: {summary: done}\n"), codec.Tony)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -34,10 +34,10 @@ func TestACommentedPayloadBindsItsFields(t *testing.T) {
 	}
 	b := bindingFor(payload, entity.RefAt("demo", "work", "1"), payload)
 	got := bound(t, spec, b)
-	if got.Prompt != "flat=signadot/verse deep=done" {
+	if got.Prompt != "flat=signadot/viff deep=done" {
 		t.Errorf("prompt = %q", got.Prompt)
 	}
-	if repo := got.Environment.Systems["git"][0].Attributes["repo"]; repo != "signadot/verse" {
+	if repo := got.Environment.Systems["git"][0].Attributes["repo"]; repo != "signadot/viff" {
 		t.Errorf("environment.systems.git: repo = %q", repo)
 	}
 }

@@ -1,17 +1,17 @@
-site_name: Verse
+site_name: Viff
 site_description: A shared space where a team's software delivery work runs, under rules the team writes.
 # Where the site is served. What makes a page's address absolute: the canonical link on each
 # page, and the card image a link to the site unfurls with (docs/overrides/main.html).
-site_url: https://signadot.github.io/verse/
+site_url: https://signadot.github.io/viff/
 # The repository, linked with its icon from the header of every page, as tony-format's site
 # does. edit_uri is empty so the link is to the repository rather than a per-page "Edit on
 # GitHub".
-repo_url: https://github.com/signadot/verse
+repo_url: https://github.com/signadot/viff
 repo_name: GitHub
 edit_uri: ""
 
-# The site is for somebody who USES verse: writes charters, runs tasks, answers gates. The pages
-# for running a verse, extending it and changing it stay in the repository, where a person and an
+# The site is for somebody who USES viff: writes charters, runs tasks, answers gates. The pages
+# for running a viff, extending it and changing it stay in the repository, where a person and an
 # agent read them, and the site does not publish them (docs/platform.md indexes them). Nor does
 # it publish articles/, prose written for somewhere else.
 #
@@ -63,7 +63,7 @@ nav:
   - tutorial/tasks.md
   - tutorial/charters.md
   - tutorial/charters-2.md
-- Use verse:
+- Use viff:
   - reference/tasks.md
   - asking.md
   - perms-guide.md
@@ -82,7 +82,7 @@ nav:
   - systems/mcp.md
   - systems/pkg.md
   - systems/question.md
-  - systems/verse.md
+  - systems/viff.md
   - systems/inside.md
 - Reference:
   - trigger-model.md

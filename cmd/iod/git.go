@@ -9,15 +9,15 @@ import (
 	"strings"
 	"time"
 
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/github"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/github"
 )
 
 // The git source, served rather than run in task.
 //
-// verse can already reflect a local repository with `verse iod add --dir`, and that path is
+// viff can already reflect a local repository with `viff iod add --dir`, and that path is
 // not going anywhere. This is for the two cases it cannot reach: a repository on a machine
-// verse is not running on, and a repository that does not exist yet where the source lives —
+// viff is not running on, and a repository that does not exist yet where the source lives —
 // which is every pod, and is what -mirror answers.
 func gitMain(args []string) error {
 	fs := flag.NewFlagSet("git", flag.ExitOnError)
@@ -48,7 +48,7 @@ func gitMain(args []string) error {
 	if err := gitAsApp(ctx, *state); err != nil {
 		return err
 	}
-	git := verseio.NewGit()
+	git := viffio.NewGit()
 	for _, spec := range repos {
 		id, dir, err := split(spec)
 		if err != nil {
@@ -62,7 +62,7 @@ func gitMain(args []string) error {
 			return fmt.Errorf("-mirror %q: %w", spec, err)
 		}
 		if id == "" {
-			id = verseio.MirrorID(remote)
+			id = viffio.MirrorID(remote)
 		}
 		// The clone happens here, at startup, and a failure ends the task: an unreachable
 		// remote or a credential that is not in this pod is something to find out while
@@ -78,21 +78,21 @@ func gitMain(args []string) error {
 			return err
 		}
 	}
-	// No delivery routes: git's hint is a git hook (verseio.Git.InstallHook), which posts to
-	// verse directly. There is nothing for this program to receive — which is the shape every
+	// No delivery routes: git's hint is a git hook (viffio.Git.InstallHook), which posts to
+	// viff directly. There is nothing for this program to receive — which is the shape every
 	// source would have if every external system let you install a four-line shell script.
 	if err := git.SetRoot(c.root); err != nil {
 		return err
 	}
-	// The out half dials the verse, where the reflection is dialled BY it: one pass loop per
+	// The out half dials the viff, where the reflection is dialled BY it: one pass loop per
 	// repository, writing refs where this program reads them.
 	if *out {
 		sink := git.Sink()
-		// An install input installs a tree of charters into the verse, as this io
+		// An install input installs a tree of charters into the viff, as this io
 		// (pkg/io/gitinstall.go): the one client proves it at the door and makes the request.
-		sink.Verse = c.outClient(git.Root())
+		sink.Viff = c.outClient(git.Root())
 		sink.As = c.principal(git.Root())
-		if _, err := c.outHalf(ctx, git.Root(), sink, git.OutRefs(), sink.Verse); err != nil {
+		if _, err := c.outHalf(ctx, git.Root(), sink, git.OutRefs(), sink.Viff); err != nil {
 			return err
 		}
 	}
@@ -116,7 +116,7 @@ func split(spec string) (id, rest string, err error) {
 // gitAsApp makes git present a GitHub App's installation token, where the environment names an
 // app (GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID and GITHUB_APP_PRIVATE_KEY, as the github io
 // takes them), and does nothing where it names none. The token is then the only credential git
-// presents, so a fetch and a push are the app's, and what `iod git` writes (refs/verse/live, for
+// presents, so a fetch and a push are the app's, and what `iod git` writes (refs/viff/live, for
 // the repo-charters reconciler) is written as the app. It is minted again before it lapses, so
 // the deployment holds no token of a person's that can expire.
 //
@@ -131,7 +131,7 @@ func gitAsApp(ctx context.Context, state string) error {
 	if err != nil {
 		return err
 	}
-	if err := verseio.UseGitToken(ctx, tok.Token, filepath.Join(state, ".credential"), time.Minute); err != nil {
+	if err := viffio.UseGitToken(ctx, tok.Token, filepath.Join(state, ".credential"), time.Minute); err != nil {
 		return err
 	}
 	log.Printf("git presents app %s's installation %s", app.AppID, app.InstallationID)

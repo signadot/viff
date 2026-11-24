@@ -1,28 +1,28 @@
 # Local minikube. docd's data lives on your laptop fs, so it survives pod restarts, Docker
-# Desktop stop/start, AND `minikube delete` — and is browsable at ~/.verse/minikube-default.
+# Desktop stop/start, AND `minikube delete` — and is browsable at ~/.viff/minikube-default.
 #
 # Set the mount ONCE in your shell so a bare `minikube start` mounts it (minikube binds start
 # flags to MINIKUBE_* env), then you never pass --mount:
 #
 #   # ~/.zshrc
 #   export MINIKUBE_MOUNT=true
-#   export MINIKUBE_MOUNT_STRING="$HOME/.verse/minikube-default:/mnt/verse"
+#   export MINIKUBE_MOUNT_STRING="$HOME/.viff/minikube-default:/mnt/viff"
 #
 # then:  minikube start  (no args)  &&  make load  &&  make deploy PROFILE=minikube
 env:
-  image: "verse:dev"
+  image: "viff:dev"
   imagePullPolicy: "Never"
   hostPV: true
-  hostPath: "/mnt/verse"
+  hostPath: "/mnt/viff"
   # An iod turned on here (`-e slackIod=true`, with its Secret made by hand) proves itself with its
   # pod's token, which is what minikube is for: the issuer is the API server behind the cluster's
-  # CA, named in deploy/auth/minikube.tony, and its discovery document is opened to versed
+  # CA, named in deploy/auth/minikube.tony, and its discovery document is opened to viffd
   # (issuerDiscoveryOpen). The profile itself deploys no io.
   authConfig: "auth/minikube.tony"
   iodTokens: true
   issuerDiscoveryOpen: true
   # A runner turned on here (`-e runner=true`) proves itself by its pod's token, as the iods do,
-  # and serves this verse alone by the tokens versed signs for it. The signing key is a Secret
+  # and serves this viff alone by the tokens viffd signs for it. The signing key is a Secret
   # made by hand, since no secret store is here:
-  #   kubectl -n verse create secret generic verse-issuer --from-file=issuer.pem=<(openssl genrsa 2048)
+  #   kubectl -n viff create secret generic viff-issuer --from-file=issuer.pem=<(openssl genrsa 2048)
   runnerTokens: true

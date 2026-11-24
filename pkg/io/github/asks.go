@@ -12,29 +12,29 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	verseapi "github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/mirror"
+	viffapi "go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/mirror"
 )
 
 // A question asked on a pull request, and answered there (git-issue 934azhtjh12kr7mtqsn0 step 5;
 // zvf8y5n7h12kr5tgr1n0 S3).
 //
 // An input carrying `asks` names questions, and the comment this io keeps for it says what each
-// asks and how to answer: a comment saying `/verse <option>` on a line of its own. Each pass
+// asks and how to answer: a comment saying `/viff <option>` on a line of its own. Each pass
 // reads the replies on the pull request — the comments after this io's own, as the in half
 // reflects them under the repository's place — and answers one AS ITS AUTHOR: the author's GitHub account is looked
 // up for who they are (docs/reference/perms.md, "accounts in other systems"), and the answer is
-// made as that person with the account beside it, which a verse that verifies people admits
+// made as that person with the account beside it, which a viff that verifies people admits
 // through the binding and records on the ballot. It is never made as this io: an answer recorded
 // as agent:github-iod would be an answer nobody gave.
 //
-// A reply this io cannot act on — by somebody verse does not know, or naming no option the
+// A reply this io cannot act on — by somebody viff does not know, or naming no option the
 // question offers — is told so once, in a reply of its own, and not again: every reply acted on
 // is on the status under `handled`, by its comment id.
-const commandWord = "/verse"
+const commandWord = "/viff"
 
 // asked is one question the comment is about, as the status keeps it between passes: the edit
 // the comment showed, which is what a reply consents to, and the options it offered.
@@ -122,10 +122,10 @@ func (k *Sink) asksBody(ctx context.Context, text string, ids []string) (string,
 // question reads a question's record as this io, which reads what a rule's gate holds out.
 func (k *Sink) question(id string) (question, error) {
 	q := question{id: id}
-	if k.Verse == nil {
-		return q, verseio.Permanent(fmt.Errorf("this io was given no verse to read question %s from", id))
+	if k.Viff == nil {
+		return q, viffio.Permanent(fmt.Errorf("this io was given no viff to read question %s from", id))
 	}
-	doc, err := verseio.ReadAt(k.Verse, mirror.QuestionRef(id).KPath())
+	doc, err := viffio.ReadAt(k.Viff, mirror.QuestionRef(id).KPath())
 	if err != nil {
 		return q, fmt.Errorf("reading question %s: %w", id, err)
 	}
@@ -164,7 +164,7 @@ func (k *Sink) answerReplies(ctx context.Context, repo string, number int, poste
 	if !pending {
 		return nil, nil // nothing left to answer; what is said in the thread stays GitHub's
 	}
-	handled := verseio.Strs(entity.Get(status, "handled"))
+	handled := viffio.Strs(entity.Get(status, "handled"))
 	// A failure of an earlier pass that stands on the status is cleared by a pass that reads
 	// the replies and finds nothing to act on: nothing written would leave it standing.
 	recovered := entity.Str(status, "error") != ""
@@ -225,18 +225,18 @@ type reply struct {
 }
 
 // replies is the conversation on the pull request as this io itself reflects it under the
-// repository's place, `<root>.<org>.<name>.comment.<n>.<id>`, read through the verse and never
+// repository's place, `<root>.<org>.<name>.comment.<n>.<id>`, read through the viff and never
 // asked of GitHub again: the reflection is the one record of what was said, the same one a
 // charter reads, and what the in half's window holds is what there is. A reply arrives in it on
 // the comment's delivery, which also kicks a pass (cmd/iod), or on the resync. Oldest first, so
 // that two commands are acted on in the order they were made.
 func (k *Sink) replies(repo string, number int) ([]reply, error) {
-	node, err := verseio.ReadAt(k.Verse, k.g.ItemRef("comment", repo, number).KPath())
+	node, err := viffio.ReadAt(k.Viff, k.g.ItemRef("comment", repo, number).KPath())
 	if err != nil {
 		return nil, err
 	}
 	var out []reply
-	for _, name := range verseio.Fields(node) {
+	for _, name := range viffio.Fields(node) {
 		id, err := strconv.ParseInt(name, 10, 64)
 		if err != nil {
 			continue
@@ -258,14 +258,14 @@ func (k *Sink) replies(repo string, number int) ([]reply, error) {
 	return out, nil
 }
 
-// linkWord is the one `/verse` word that is never an answer: `/verse link <nonce>` is how a person
+// linkWord is the one `/viff` word that is never an answer: `/viff link <nonce>` is how a person
 // proves a GitHub account is theirs (docs/reference/perms.md, "accounts in other systems"). It may
-// be said on any issue or pull request this io reflects, where verse reads it itself when the
+// be said on any issue or pull request this io reflects, where viff reads it itself when the
 // person's CLI asks (`verify`); this io reports it only from a reply on a pull request it is
 // asking a question on, where it reads replies anyway.
 const linkWord = "link"
 
-// linking reads the `/verse link <nonce>` line from a comment, where the line is the comment's own
+// linking reads the `/viff link <nonce>` line from a comment, where the line is the comment's own
 // and the nonce the whole of it.
 func linking(body string) (nonce string, ok bool) {
 	for _, line := range strings.Split(body, "\n") {
@@ -277,8 +277,8 @@ func linking(body string) (nonce string, ok bool) {
 	return "", false
 }
 
-// link proves the GitHub account is the claimant's: the verse gave somebody the nonce
-// (`verse account -link github -account <login>`), and this io's word that this account said it in
+// link proves the GitHub account is the claimant's: the viff gave somebody the nonce
+// (`viff account -link github -account <login>`), and this io's word that this account said it in
 // a comment it reflected is what binds the two (`POST /accounts/github/heard`; perms.md, "accounts
 // in other systems"). The word is the io's own, so it is given as the io itself; the author is
 // told what became of it, once.
@@ -290,7 +290,7 @@ func (k *Sink) link(ctx context.Context, repo string, number int, c reply, nonce
 	if c.userID == 0 {
 		return tell("not linked: the comment carries no author number, so it is no evidence of whose it is.")
 	}
-	resp, err := k.Verse.Post("/accounts/github/heard", nil, verseapi.AccountHeard{
+	resp, err := k.Viff.Post("/accounts/github/heard", nil, viffapi.AccountHeard{
 		Nonce: nonce, Account: "github:" + strconv.FormatInt(c.userID, 10), Login: c.login,
 	})
 	if err != nil {
@@ -298,7 +298,7 @@ func (k *Sink) link(ctx context.Context, repo string, number int, c reply, nonce
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= http.StatusInternalServerError {
-		return false, client.StatusError(resp, "linking "+c.login) // the verse's trouble, not the author's: next pass
+		return false, client.StatusError(resp, "linking "+c.login) // the viff's trouble, not the author's: next pass
 	}
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		return tell("not linked: " + client.StatusError(resp, "`"+commandWord+" "+linkWord+"`").Error())
@@ -309,10 +309,10 @@ func (k *Sink) link(ctx context.Context, repo string, number int, c reply, nonce
 	if err := client.Decode(resp, &row); err != nil {
 		return false, err
 	}
-	return tell(fmt.Sprintf("linked: in verse, %s is %s.", c.login, row.Principal))
+	return tell(fmt.Sprintf("linked: in viff, %s is %s.", c.login, row.Principal))
 }
 
-// command reads a `/verse <option> [words]` line from a comment, where the line is the command's
+// command reads a `/viff <option> [words]` line from a comment, where the line is the command's
 // own: a comment quoting somebody else's instructions is not an answer.
 func command(body string) (option, say string, ok bool) {
 	for _, line := range strings.Split(body, "\n") {
@@ -331,7 +331,7 @@ func command(body string) (option, say string, ok bool) {
 }
 
 // act answers one command as its author, or tells the author why it cannot. It reports whether
-// the reply has been dealt with: an answer the verse refused for a reason that may pass next time
+// the reply has been dealt with: an answer the viff refused for a reason that may pass next time
 // (the question still being posed) is left for the next pass.
 func (k *Sink) act(ctx context.Context, repo string, number int, c reply, option, say string, asks []asked) (bool, error) {
 	tell := func(text string) (bool, error) {
@@ -370,12 +370,12 @@ func (k *Sink) act(ctx context.Context, repo string, number int, c reply, option
 		return false, err
 	}
 	if who == "" {
-		return tell(fmt.Sprintf("I do not know who %s is in verse, so this does not count. Claim the "+
-			"account from your verse (`verse account -link github -account %s`) and say the "+
+		return tell(fmt.Sprintf("I do not know who %s is in viff, so this does not count. Claim the "+
+			"account from your viff (`viff account -link github -account %s`) and say the "+
 			"`%s %s <nonce>` it prints in a comment here, on a line of its own. Then say it again.",
 			c.login, c.login, commandWord, linkWord))
 	}
-	body := verseapi.Resolve{ID: a.ID, Choice: option, By: who, Edit: a.Edit}
+	body := viffapi.Resolve{ID: a.ID, Choice: option, By: who, Edit: a.Edit}
 	if say != "" {
 		body.Say = []string{say}
 	}
@@ -392,10 +392,10 @@ func (k *Sink) act(ctx context.Context, repo string, number int, c reply, option
 		return false, nil // still being posed: asked again next pass
 	}
 	if resp.StatusCode >= http.StatusInternalServerError {
-		return false, nil // the verse's trouble, not the answer's: asked again next pass
+		return false, nil // the viff's trouble, not the answer's: asked again next pass
 	}
 	refusal, _ := stdio.ReadAll(resp.Body)
-	return tell(fmt.Sprintf("the verse did not take that answer: %s", strings.TrimSpace(string(refusal))))
+	return tell(fmt.Sprintf("the viff did not take that answer: %s", strings.TrimSpace(string(refusal))))
 }
 
 // placed is the question a command answers: the one pending question offering the option, matched
@@ -432,7 +432,7 @@ func placed(asks []asked, option, say string) (a *asked, canon, rest string, cou
 
 // whoIs is the principal a GitHub account is bound to, "" where no binding this io may read says.
 func (k *Sink) whoIs(ctx context.Context, userID int64) (string, error) {
-	resp, err := k.Verse.Get("/accounts/github/who", url.Values{"sub": {strconv.FormatInt(userID, 10)}})
+	resp, err := k.Viff.Get("/accounts/github/who", url.Values{"sub": {strconv.FormatInt(userID, 10)}})
 	if err != nil {
 		return "", err
 	}

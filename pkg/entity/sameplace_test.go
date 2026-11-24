@@ -8,7 +8,7 @@ import "testing"
 // (git-issue 874azhtjh12krn1xqsn0).
 func TestEveryPreconditionAboutOnePlaceHolds(t *testing.T) {
 	s := openStore(t)
-	ref := VerseRef("ask", "q1")
+	ref := ViffRef("ask", "q1")
 	set(t, s, ref, Obj{"status": "answered", "verdict": "proceed", "review": map[string]any{"by": "ann"}}.Payload())
 	not := func(status string) Require { return Require{Pattern: Obj{"status": status}.Payload().WithTag("!not")} }
 	is := Require{Pattern: Obj{"status": "answered"}.Payload()}

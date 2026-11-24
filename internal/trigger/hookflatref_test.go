@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // A HOOK NAMING A SUBJECT FIELD FLAT IS ADVISED AT INSTALL.
@@ -22,7 +22,7 @@ func TestAHookNamingASubjectFieldIsAdvised(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "claimed"}.Payload(),
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"sha": ".[covering]"}.Payload()},
 		},
 	})
@@ -50,7 +50,7 @@ func TestAHookNamingTheTaskIsNotAdvised(t *testing.T) {
 			Name:      "claim",
 			Condition: Condition{Subject: prSubject("open")},
 			Action: Action{
-				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 				OnDone: &Action{Patch: entity.Obj{"saw": ".[" + name + "]"}.Payload()},
 			},
 		})
@@ -69,7 +69,7 @@ func TestADottedHookReferenceIsNotAdvised(t *testing.T) {
 		Name:      "claim",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{
 				"sha": ".[subject.value.covering]", "sev": ".[data.severity]",
 			}.Payload()},
@@ -91,7 +91,7 @@ func TestAHookThatCannotResolveWritesTheFailureDown(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"sha": ".[covering]"}.Payload()},
 		},
 	}); err != nil {

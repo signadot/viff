@@ -9,11 +9,11 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // writeRule writes a rule's record as an install does, through the store alone.
@@ -250,7 +250,7 @@ func TestARefusedRecordIsPendingWithTheRefusal(t *testing.T) {
 }
 
 // A RESTORE SAYS WHAT THE STORE IS DOING. The charter is read from its records through a
-// watch, and until the watch is open nothing is restored and Restored is not closed: a verse
+// watch, and until the watch is open nothing is restored and Restored is not closed: a viff
 // under load at a restart says so (FollowState) rather than coming back running no rules. An
 // empty charter restores, and says nothing is wrong, because nothing is.
 func TestARestoreSaysWhatTheStoreIsDoing(t *testing.T) {

@@ -6,7 +6,7 @@
   "status_code": 200,
   "event": "pull_request_review_comment",
   "action": "created",
-  "verseWant": "github.acme.app.comment.\"7\".\"902\"",
+  "viffWant": "github.acme.app.comment.\"7\".\"902\"",
   "request": {
     "headers": {"X-GitHub-Event": "pull_request_review_comment"},
     "payload": {

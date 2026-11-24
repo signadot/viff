@@ -17,8 +17,8 @@ path in the tree of the [store](glossary.md#store). Its writer decides how long 
 | Who writes it | Address |
 |---|---|
 | the git [iod](glossary.md#iod), for a commit in a repository | `git.acme.commit.9fe1` |
-| verse, for a task | under `verse.task.instance` |
-| a [package](glossary.md#package), for a finding of its own | `repos.verse.drift.finding.abc` |
+| viff, for a task | under `mirror.task.instance` |
+| a [package](glossary.md#package), for a finding of its own | `repos.viff.drift.finding.abc` |
 
 An iod works in both directions. It writes what a system holds into the store, and a rule
 reacts to it. When a rule writes to the iod's out place, the iod carries that write back to
@@ -33,7 +33,7 @@ These pages hold the parts of a rule, and the other things a charter author look
 | [The condition of a rule](reference/condition.md) | `subject`, `on` and `when`, and what a match can say |
 | [The action of a rule](reference/action.md) | `patch`, `derive`, `spawn` and `seq`, what an action reads, the answer contract, hooks, ids and progress facts |
 | [The gates of a rule](reference/gates.md) | what a gate asks, who answers it, and how it settles |
-| [The charter](reference/charter.md) | packages, `reads:`, `sends:`, `ttl:`, a charter a task installs, `verse charter`, how a charter is stored, and what an install does not check |
+| [The charter](reference/charter.md) | packages, `reads:`, `sends:`, `ttl:`, a charter a task installs, `viff charter`, how a charter is stored, and what an install does not check |
 | [Schedules](reference/schedules.md) | time as a cause: schedules, ticks and the calendar |
 | [Entities](reference/entities.md) | addresses, payloads, merging writes, conditional writes, selection and watching |
 | [Strata](strata.md) | a declared order of levels, and `derive` |
@@ -41,7 +41,7 @@ These pages hold the parts of a rule, and the other things a charter author look
 | [Permissions](perms.md) | one owner per node, and grants for everybody else; [the detail](reference/perms.md) |
 | [Control](control.md#suspending) | what a suspension does to rules |
 | [An automatic supervisor](auto-supervisor.md) | a worked charter where an agent decides, and passes up what is not its to decide |
-| [Representation](reference/representation.md) | tony, JSON and YAML: what verse reads and what it writes |
+| [Representation](reference/representation.md) | tony, JSON and YAML: what viff reads and what it writes |
 
 The commands, and everything else, are in [the rest of the reference](reference/README.md).
 
@@ -82,7 +82,7 @@ charter has an agent review each open pull request, once somebody says yes:
     patch:
       stage: reviewing
     spawn:
-      agent: {name: verse}
+      agent: {name: viff}
       prompt: "review the pull request at $[subject.ref]"
       environment:
         systems:
@@ -116,12 +116,12 @@ Three things follow.
 selects N addresses gives N firings. Each firing has its own gate question and its own spawn id.
 No firing is about a set.
 
-**Verse reads everything at one snapshot.** The condition and the selection both come from the
+**Viff reads everything at one snapshot.** The condition and the selection both come from the
 store as it stood at C. So a firing never acts under a condition that stopped holding before
-C. The edge compares C-1 with C, not with what the engine saw last. So a commit that verse
+C. The edge compares C-1 with C, not with what the engine saw last. So a commit that viff
 reads again, after a restart or while catching up, gives the same answer as the first time.
 
-**A vacuous `on` is the usual shape.** The rule `review` above has no `on`. So verse
+**A vacuous `on` is the usual shape.** The rule `review` above has no `on`. So viff
 considers it at every commit that touches anything the rule reads. The charter ends the
 firing, not the engine. An action ends in one of two ways:
 
@@ -129,7 +129,7 @@ firing, not the engine. An action ends in one of two ways:
   selects nothing.
 - It writes the same value again. That write makes no commit, so nothing is evaluated next.
 
-A rule has a [latch](glossary.md#latch), or it runs at every commit. Verse refuses at install
+A rule has a [latch](glossary.md#latch), or it runs at every commit. Viff refuses at install
 a spawning action that cannot latch.
 
 ## Two rules, read out loud
@@ -168,7 +168,7 @@ match and the formula.
 A *[match](glossary.md#match)* is a tony selector over the store at one moment. It says which
 addresses satisfy it now. A match holds no time.
 
-A *formula* is a match that verse asks of the store as the store changes. For a cause, verse
+A *formula* is a match that viff asks of the store as the store changes. For a cause, viff
 asks it at two revisions. For a condition, it asks at one. A formula is its match and nothing
 more.
 
@@ -186,7 +186,7 @@ grammar and a type ([the condition of a rule](reference/condition.md#on-and-when
 A [gate](glossary.md#gate-of-a-rule) is neither grammar. A gate asks somebody, and it says how
 the answer settles ([gates](reference/gates.md#gates-whether-it-proceeds)).
 
-The words of a match are [tony](https://signadot.github.io/tony-format/)'s, not verse's own.
+The words of a match are [tony](https://signadot.github.io/tony-format/)'s, not viff's own.
 In tony, the same operators serve matching, patching and diffing.
 [Structured matching, patching and diffing done right](https://dev.to/scott_cotton_dc9ce3e7e632/structured-matching-patching-and-diffing-done-right-22ci)
 argues for that design.
@@ -194,11 +194,11 @@ argues for that design.
 ## The commit is the unit
 
 The sentence in [the rule](#the-rule) is a question about the whole store at one
-[revision](glossary.md#revision), not about one address. So verse asks it once per
+[revision](glossary.md#revision), not about one address. So viff asks it once per
 [commit](glossary.md#commit). The store reports each commit whole, with one change for each
 address it touched.
 
-Verse skips a rule at a commit that touched nothing the rule reads. The skip is exact, not a
+Viff skips a rule at a commit that touched nothing the rule reads. The skip is exact, not a
 guess. If nothing the rule reads changed, `on` has no edge. A rule with a vacuous `on` would
 read the same state and write the same values, and those writes make no commit. Either way,
 skipping gives the same result as running. That is why evaluating at every commit is
@@ -217,10 +217,10 @@ A rule does nothing in four cases. From outside, the four look the same.
 | the rule selected nothing | ordinary |
 | its condition did not hold | ordinary |
 | a gate denied it | ordinary |
-| a firing went wrong | a fault. Verse keeps it on the rule. |
+| a firing went wrong | a fault. Viff keeps it on the rule. |
 
-Verse keeps what went wrong at a rule's firings as the rule's `trouble`. It is not a field you
-write. `verse charter` prints the rule as its file on stdout, and says its trouble on stderr. Take
+Viff keeps what went wrong at a rule's firings as the rule's `trouble`. It is not a field you
+write. `viff charter` prints the rule as its file on stdout, and says its trouble on stderr. Take
 a rule whose patch names a field the pull request does not have:
 
 ```tony
@@ -229,7 +229,7 @@ a rule whose patch names a field the pull request does not have:
   action: {patch: {stage: seen, reviewer: .[assignee]}}
 ```
 
-After three failed firings, `verse charter` writes this on stderr:
+After three failed firings, `viff charter` writes this on stderr:
 
 ```
 note: baseline: rule copies: failed ×3, last at 2026-09-28T09:14:03Z: … (in copies) about demo.pr."1"
@@ -244,42 +244,42 @@ subject. There are two kinds.
 | `unread` | The rule could not read the store at a commit. It did not evaluate that commit, and it does not go back to it. | `rev`, the commit |
 
 Each entry is the latest of its kind. `count` is how many times it happened since the rule was
-installed or verse started. `at` is the last time. Installing the rule again clears the entry.
+installed or viff started. `at` is the last time. Installing the rule again clears the entry.
 
-`verse status` counts both kinds over every charter, as `firings: {failed, unread}`. The line
+`viff status` counts both kinds over every charter, as `firings: {failed, unread}`. The line
 is absent when nothing went wrong.
 
 A completion hook that fails is written on the record of its task, under `hook`, and on its
-subject, under `verse.charter.<rule>.hook`, until a hook of the same rule about that subject
+subject, under `@sys.charter.<rule>.hook`, until a hook of the same rule about that subject
 runs cleanly ([Progress facts](reference/action.md#progress-facts)).
 
 A spawn that starts and then fails is not the rule's trouble. It is a task that failed, such
 as a spawn whose agent no runner offers any more, since the runner that did was removed after
-the rule was installed. The task's record says so (`verse task`), and the rule's `onFailed` hook
+the rule was installed. The task's record says so (`viff task`), and the rule's `onFailed` hook
 fires. A spawn for an agent no runner offers, or one no runner's ceilings hold, is refused at
 install.
 
 ## Flow: a subject-match over live tasks
 
-A [flow](glossary.md#flow) is not a stored key. It is a match that verse evaluates over the
+A [flow](glossary.md#flow) is not a stored key. It is a match that viff evaluates over the
 subjects of *live* tasks:
 
 ```sh
-verse flow -subject demo.pr.1       # tasks whose subject matches demo.pr.1
-verse flow -subject 'demo.pr.*'     # …every pr
+viff flow -subject demo.pr.1       # tasks whose subject matches demo.pr.1
+viff flow -subject 'demo.pr.*'     # …every pr
 ```
 
-A match is how verse relates tasks. So a "relational flow" is not a second idea: it is a wider
+A match is how viff relates tasks. So a "relational flow" is not a second idea: it is a wider
 match on the subject.
 
-`verse flow` lists the live tasks a selection names. A verb takes the same selection and acts
-on what it names. A flow is a query, and verse keeps no index for it.
+`viff flow` lists the live tasks a selection names. A verb takes the same selection and acts
+on what it names. A flow is a query, and viff keeps no index for it.
 [Control](control.md) says how to hold, suspend and cancel that work.
 
 ## Lifecycle: how data leaves
 
 Data does not just disappear. First somebody writes the intent to remove it, as
-`verse.meta.vanishing`. Its value is the instant the intent was written. The removal comes
+`@sys.meta.vanishing`. Its value is the instant the intent was written. The removal comes
 later.
 
 The order follows from what a cause is. A rule fires on the rising edge of a store predicate:
@@ -293,7 +293,7 @@ an ordinary rising edge:
     on:
       path: "demo.pr.*"
       value:
-        verse:
+        viff:
           meta:
             vanishing: null
     subject: audit.record.latest
@@ -327,7 +327,7 @@ empty address creates data there. So if the removal landed first, the rule would
 again, holding only what the rule wrote, with no marker. To react to a departure, write somewhere
 else: an audit record, or an archive.
 
-`verse data` still shows vanishing data, because the marker is there to make the intent visible.
+`viff data` still shows vanishing data, because the marker is there to make the intent visible.
 Only a rule's selection hides it.
 
 **The removal itself fires nothing.** When the data goes, a predicate over it falls from
@@ -342,7 +342,7 @@ removes it. `!delete null` is the removal, at the root as at a field:
     subject:
       path: "demo.pr.*"
       value:
-        verse:
+        viff:
           meta:
             vanishing: null
   action:
@@ -362,8 +362,8 @@ charter says when to reap, how long to wait, and what happens first.
 
 ## Limits today
 
-**A condition does not combine moments.** Verse asks `on` and `when` of the store at a
-revision, so each must be answerable at one revision. Each is a match. Verse refuses the
+**A condition does not combine moments.** Viff asks `on` and `when` of the store at a
+revision, so each must be answerable at one revision. Each is a match. Viff refuses the
 operators `!until`, `!quorum`, `!fact` and `!deadline` by name wherever it reads a charter.
 
 | What you want to say | Where you write it |

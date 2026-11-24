@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/io/github"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/io/github"
 )
 
 // appKey is a fresh RSA key, PEM-encoded as GitHub hands an app's key over (PKCS#1).

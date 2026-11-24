@@ -9,9 +9,9 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/systems/systemstest"
 )
 
 // allowAll lets every step the environment gives go ahead: a row allowing each system, then
@@ -85,8 +85,8 @@ func toolSup(p Autonomy, r Resolver) *Supervisor {
 	return s
 }
 
-// The verse tools are the steps the spec names; anything else is no step.
-func TestTheVerseToolsAreSteps(t *testing.T) {
+// The viff tools are the steps the spec names; anything else is no step.
+func TestTheViffToolsAreSteps(t *testing.T) {
 	for _, tc := range []struct {
 		tu   ToolUse
 		want string
@@ -159,7 +159,7 @@ func TestTheLastRowIsTheDial(t *testing.T) {
 	if p := (Autonomy{{Then: allow}, {Then: ask}}); p.Default() != ThenAsk || p.MayAsk(StepGitPush) {
 		t.Errorf("the dial reads %s, may ask %v", p.Default(), p.MayAsk(StepGitPush))
 	}
-	p := Autonomy{{Match: on("git", "push", "ref", `!glob "refs/heads/verse/*"`), Then: allow}, {Match: on("git", "push"), Then: ask}, {Then: allow}}
+	p := Autonomy{{Match: on("git", "push", "ref", `!glob "refs/heads/viff/*"`), Then: allow}, {Match: on("git", "push"), Then: ask}, {Then: allow}}
 	if !p.MayAsk(StepGitPush) || p.MayAsk(StepCommandsRun) {
 		t.Errorf("may ask: push %v, run %v", p.MayAsk(StepGitPush), p.MayAsk(StepCommandsRun))
 	}
@@ -200,10 +200,10 @@ func TestAStepOutsideTheEnvironmentIsRefusedFirst(t *testing.T) {
 // only through `own: true` lets the task's own branch go and refuses another's.
 func TestAPushIsWithinOnTheFieldsTheRunnerFills(t *testing.T) {
 	env := systems.Environment{Systems: systems.Systems{"git": {{Attributes: map[string]string{"repo": "github.com/acme/app"},
-		Verbs: map[string][]systems.Shape{"push": {{"ref": systems.Glob("refs/heads/verse/auto/*"), "own": ir.FromBool(true)}}}}}}}
+		Verbs: map[string][]systems.Shape{"push": {{"ref": systems.Glob("refs/heads/viff/auto/*"), "own": ir.FromBool(true)}}}}}}}
 	sup := systemstest.Opened(NewSupervisor(env, Autonomy{{Then: Then{Mode: ThenAllow}}}, resolverFunc(func(GateQuestion) Resolution { return Resolution{} })), env)
 	push := func(own string) Step {
-		return NewStep(StepGitPush, map[string]string{"repo": "github.com/acme/app", "ref": "refs/heads/verse/auto/t1",
+		return NewStep(StepGitPush, map[string]string{"repo": "github.com/acme/app", "ref": "refs/heads/viff/auto/t1",
 			"delete": "false", "force": "false", "exists": "true", "own": own})
 	}
 	if res, _ := sup.Ask(context.Background(), push("true"), ToolUse{}); !res.Proceed {
@@ -387,9 +387,9 @@ func (f resolverFunc) Resolve(_ context.Context, q GateQuestion, _ ToolUse) (Res
 }
 
 // A gate id must split back into the id of whatever posed it, on GateSep and nowhere else
-// — that split is how versed routes a `gate resolve` to the owning task, and how the CLI
+// — that split is how viffd routes a `gate resolve` to the owning task, and how the CLI
 // tells a gate id from the task id it belongs to. Nothing else pins it: producer
-// (Supervisor.Check) and splitters (versed, cmd/verse) live in three packages, so a
+// (Supervisor.Check) and splitters (viffd, cmd/viff) live in three packages, so a
 // delimiter changed in one and not the others compiles, passes every other test, and fails
 // only at resolve time with "unknown or already-answered decision".
 func TestGateIDSplitsOnGateSepToItsOwner(t *testing.T) {
@@ -414,7 +414,7 @@ func TestGateIDSplitsOnGateSepToItsOwner(t *testing.T) {
 	}
 }
 
-// A task starts without asking, under any autonomy: its start is verse's, decided before it was
+// A task starts without asking, under any autonomy: its start is viff's, decided before it was
 // launched. Under `autonomy: ask` its first step asks; approved, it runs, and denied, the agent is
 // told and the task goes on.
 func TestATaskStartsWithoutAsking(t *testing.T) {

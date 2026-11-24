@@ -2,40 +2,40 @@ package slack_test
 
 import (
 	"context"
-	"github.com/signadot/verse/internal/versed/versedtest"
-	"github.com/signadot/verse/pkg/runner/runnerd/runnerdtest"
+	"go.viff.dev/viff/internal/viffd/viffdtest"
+	"go.viff.dev/viff/pkg/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/slack"
-	"github.com/signadot/verse/pkg/mirror"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/slack"
+	"go.viff.dev/viff/pkg/mirror"
 )
 
-// outRig is a real verse over a real store, a fake Slack, and the out half between them, reading
-// and writing the verse over HTTP as its own principal.
+// outRig is a real viff over a real store, a fake Slack, and the out half between them, reading
+// and writing the viff over HTTP as its own principal.
 type outRig struct {
 	store entity.Store
 	fake  *fakeSlack
 	sink  *slack.Sink
-	out   *verseio.Out
+	out   *viffio.Out
 }
 
 func newOutRig(t *testing.T) *outRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	src := newSource(t, f, slack.Config{})
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:slack-iod")
-	sink := src.Sink(verse)
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:slack-iod")
+	sink := src.Sink(viff)
 	return &outRig{store: store, fake: f, sink: sink,
-		out: verseio.NewOut(sink, src.OutRef(), verse, nil)}
+		out: viffio.NewOut(sink, src.OutRef(), viff, nil)}
 }
 
 // ask writes an input, as a person or a charter would: whom it is for is a field, and where it
@@ -49,7 +49,7 @@ func (r *outRig) ask(t *testing.T, to, name string, input entity.Obj) {
 // status reads what the out half wrote back, or nil.
 func (r *outRig) status(t *testing.T, name string) entity.Obj {
 	t.Helper()
-	e, ok, err := r.store.Get(entity.RefAt("slack", "Acme", "out", name+verseio.StatusSuffix))
+	e, ok, err := r.store.Get(entity.RefAt("slack", "Acme", "out", name+viffio.StatusSuffix))
 	if err != nil {
 		t.Fatalf("reading the status: %v", err)
 	}
@@ -140,9 +140,9 @@ func TestOutSaysADeletedMessageAgain(t *testing.T) {
 	}
 }
 
-// A person may be named as verse knows them, which is what lets a charter address the people a
+// A person may be named as viff knows them, which is what lets a charter address the people a
 // question waits on: what it reads off the record is a principal, not a Slack id.
-func TestOutSaysToSomebodyVerseKnows(t *testing.T) {
+func TestOutSaysToSomebodyViffKnows(t *testing.T) {
 	for _, target := range []string{"user:ana@example.com", "ana@example.com"} {
 		t.Run(target, func(t *testing.T) {
 			r := newOutRig(t)
@@ -195,7 +195,7 @@ func TestOutRecordsARefusalAndAsksAgainOnlyWhenEdited(t *testing.T) {
 	r.ask(t, "C999", "release", entity.Obj{"text": "staging.3 is out"})
 	r.pass(t)
 	if st := r.status(t, "release"); !strings.Contains(st["error"].(string), "not_in_channel") ||
-		st["failed"] != verseio.PermanentFailure {
+		st["failed"] != viffio.PermanentFailure {
 		t.Fatalf("status %v, want Slack's refusal, as permanent", st)
 	}
 
@@ -235,7 +235,7 @@ func TestOutRefusesWhatItCannotSay(t *testing.T) {
 	r := newOutRig(t)
 	r.ask(t, "U123", "empty", entity.Obj{"title": "no text"})
 	r.ask(t, "X1", "nowhere", entity.Obj{"text": "hi"})
-	r.ask(t, "U123", "gone"+verseio.StatusSuffix, entity.Obj{"ts": "1.1"})
+	r.ask(t, "U123", "gone"+viffio.StatusSuffix, entity.Obj{"ts": "1.1"})
 	r.pass(t)
 
 	if len(r.fake.posted) != 0 {
@@ -259,7 +259,7 @@ func (r *outRig) pose(t *testing.T, id string, record entity.Obj) {
 // message says about a question that is no longer there can be asked.
 func (r *outRig) unpose(t *testing.T, id string) {
 	t.Helper()
-	at := entity.VerseRef(mirror.AskSystem)
+	at := entity.ViffRef(mirror.AskSystem)
 	if _, _, err := r.store.Write(entity.Write{
 		At: at.At(), Value: entity.Obj{id: entity.Removed()}.Payload(),
 	}); err != nil {

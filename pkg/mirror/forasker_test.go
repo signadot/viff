@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // WHOM A RELAYED TASK'S QUESTION ASKS: a gate naming its answerers keeps them, then a frame's

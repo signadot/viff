@@ -6,13 +6,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // The user file patches the system file (per-key merge, not replace), and env
 // overrides both.
 func TestLayering(t *testing.T) {
-	etc := filepath.Join(t.TempDir(), "verse.tony")
+	etc := filepath.Join(t.TempDir(), "viff.tony")
 	if err := os.WriteFile(etc, []byte(`addr: "sys:1"
 scope: "baseline"
 llm: { model: "gpt-4o", apiKey: "sys-key", virtualKey: "sys-vk" }
@@ -20,7 +20,7 @@ llm: { model: "gpt-4o", apiKey: "sys-key", virtualKey: "sys-vk" }
 		t.Fatal(err)
 	}
 	xdg := t.TempDir()
-	if err := os.WriteFile(filepath.Join(xdg, "verse.tony"), []byte(`addr: "user:2"
+	if err := os.WriteFile(filepath.Join(xdg, "viff.tony"), []byte(`addr: "user:2"
 llm: { apiKey: "user-key" }
 `), 0o644); err != nil {
 		t.Fatal(err)
@@ -50,7 +50,7 @@ llm: { apiKey: "user-key" }
 	}
 
 	// env overrides the merged file value.
-	t.Setenv("VERSE_ADDR", "env:3")
+	t.Setenv("VIFF_ADDR", "env:3")
 	c, err = Load()
 	if err != nil {
 		t.Fatal(err)
@@ -78,12 +78,12 @@ func TestNoFiles(t *testing.T) {
 func TestLayersMayBeDifferentDialects(t *testing.T) {
 	etcDir, xdg := t.TempDir(), t.TempDir()
 	// system layer in JSON…
-	write(t, filepath.Join(etcDir, "verse.json"), `{"addr": "sys:1", "scope": "baseline",
+	write(t, filepath.Join(etcDir, "viff.json"), `{"addr": "sys:1", "scope": "baseline",
 		"llm": {"model": "gpt-4o", "apiKey": "sys-key"}}`)
 	// …patched by a user layer in YAML.
-	write(t, filepath.Join(xdg, "verse.yaml"), "addr: user:2\nllm:\n  apiKey: user-key\n")
+	write(t, filepath.Join(xdg, "viff.yaml"), "addr: user:2\nllm:\n  apiKey: user-key\n")
 
-	withLayers(t, filepath.Join(etcDir, "verse"), xdg)
+	withLayers(t, filepath.Join(etcDir, "viff"), xdg)
 
 	c, err := Load()
 	if err != nil {
@@ -104,9 +104,9 @@ func TestLayersMayBeDifferentDialects(t *testing.T) {
 // being silently ignored is a bad afternoon.
 func TestAmbiguousLayerIsAnError(t *testing.T) {
 	etcDir := t.TempDir()
-	write(t, filepath.Join(etcDir, "verse.tony"), "addr: a\n")
-	write(t, filepath.Join(etcDir, "verse.json"), `{"addr": "b"}`)
-	withLayers(t, filepath.Join(etcDir, "verse"), t.TempDir())
+	write(t, filepath.Join(etcDir, "viff.tony"), "addr: a\n")
+	write(t, filepath.Join(etcDir, "viff.json"), `{"addr": "b"}`)
+	withLayers(t, filepath.Join(etcDir, "viff"), t.TempDir())
 
 	_, err := Load()
 	if err == nil {
@@ -117,11 +117,11 @@ func TestAmbiguousLayerIsAnError(t *testing.T) {
 	}
 }
 
-// VERSE_CONFIG replaces both layers, so a test or a container can be hermetic.
+// VIFF_CONFIG replaces both layers, so a test or a container can be hermetic.
 func TestExplicitConfigPath(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "custom.yaml")
 	write(t, p, "addr: explicit:9\n")
-	withLayers(t, filepath.Join(t.TempDir(), "verse"), t.TempDir())
+	withLayers(t, filepath.Join(t.TempDir(), "viff"), t.TempDir())
 	t.Setenv(EnvConfigPath, p)
 
 	c, err := Load()
@@ -129,14 +129,14 @@ func TestExplicitConfigPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.Addr != "explicit:9" {
-		t.Errorf("addr = %q, want explicit:9 (VERSE_CONFIG replaces both layers)", c.Addr)
+		t.Errorf("addr = %q, want explicit:9 (VIFF_CONFIG replaces both layers)", c.Addr)
 	}
 }
 
 func TestFormatConfig(t *testing.T) {
 	etcDir := t.TempDir()
-	write(t, filepath.Join(etcDir, "verse.tony"), "format:\n  default: yaml\n  output: tony\n")
-	withLayers(t, filepath.Join(etcDir, "verse"), t.TempDir())
+	write(t, filepath.Join(etcDir, "viff.tony"), "format:\n  default: yaml\n  output: tony\n")
+	withLayers(t, filepath.Join(etcDir, "viff"), t.TempDir())
 
 	c, err := Load()
 	if err != nil {
@@ -153,7 +153,7 @@ func TestFormatConfig(t *testing.T) {
 	}
 
 	// env overrides the file, per knob.
-	t.Setenv("VERSE_WIRE_FORMAT", "tony")
+	t.Setenv("VIFF_WIRE_FORMAT", "tony")
 	c, err = Load()
 	if err != nil {
 		t.Fatal(err)
@@ -163,27 +163,27 @@ func TestFormatConfig(t *testing.T) {
 	}
 }
 
-// json names a rendering verse does not produce, and it is refused at BOTH doors — the
+// json names a rendering viff does not produce, and it is refused at BOTH doors — the
 // env var and the config file. The file half is the one that needs saying: it decodes
-// straight into go-tony's own format type, which knows nothing of verse's rules, so
+// straight into go-tony's own format type, which knows nothing of viff's rules, so
 // without FormatConfig.validate the setting would sit there until a response failed to
 // encode with no line number attached.
 func TestFormatConfigRefusesJSONOutput(t *testing.T) {
 	t.Run("env", func(t *testing.T) {
-		withLayers(t, filepath.Join(t.TempDir(), "verse"), t.TempDir())
-		t.Setenv("VERSE_FORMAT", "json")
+		withLayers(t, filepath.Join(t.TempDir(), "viff"), t.TempDir())
+		t.Setenv("VIFF_FORMAT", "json")
 		_, err := Load()
 		if err == nil {
-			t.Fatal("VERSE_FORMAT=json was accepted")
+			t.Fatal("VIFF_FORMAT=json was accepted")
 		}
-		if !strings.Contains(err.Error(), "VERSE_FORMAT") {
+		if !strings.Contains(err.Error(), "VIFF_FORMAT") {
 			t.Errorf("error does not name the variable: %v", err)
 		}
 	})
 	t.Run("file", func(t *testing.T) {
 		etcDir := t.TempDir()
-		write(t, filepath.Join(etcDir, "verse.tony"), "format:\n  output: json\n")
-		withLayers(t, filepath.Join(etcDir, "verse"), t.TempDir())
+		write(t, filepath.Join(etcDir, "viff.tony"), "format:\n  output: json\n")
+		withLayers(t, filepath.Join(etcDir, "viff"), t.TempDir())
 		_, err := Load()
 		if err == nil {
 			t.Fatal("format.output: json was accepted from a config file")
@@ -197,7 +197,7 @@ func TestFormatConfigRefusesJSONOutput(t *testing.T) {
 // An unset format falls through to the baseline, and a malformed one is reported rather
 // than silently becoming the baseline.
 func TestFormatFallbackAndBadValue(t *testing.T) {
-	withLayers(t, filepath.Join(t.TempDir(), "verse"), t.TempDir())
+	withLayers(t, filepath.Join(t.TempDir(), "viff"), t.TempDir())
 
 	c, err := Load()
 	if err != nil {
@@ -207,12 +207,12 @@ func TestFormatFallbackAndBadValue(t *testing.T) {
 		t.Errorf("unset default = %v, want the baseline %v", got, codec.Baseline)
 	}
 
-	t.Setenv("VERSE_FORMAT", "tny")
+	t.Setenv("VIFF_FORMAT", "tny")
 	c, err = Load()
 	if err == nil {
-		t.Fatal("a malformed VERSE_FORMAT was accepted")
+		t.Fatal("a malformed VIFF_FORMAT was accepted")
 	}
-	if !strings.Contains(err.Error(), "VERSE_FORMAT") {
+	if !strings.Contains(err.Error(), "VIFF_FORMAT") {
 		t.Errorf("error does not name the variable: %v", err)
 	}
 	// Still usable: Load's contract is that it always returns a config.
@@ -231,13 +231,13 @@ func write(t *testing.T, path, body string) {
 }
 
 // withLayers points both config layers at test directories and clears the environment
-// verse reads, so a developer's own shell cannot change the result. It also restores
+// viff reads, so a developer's own shell cannot change the result. It also restores
 // SystemPath, which is a package variable every later test in the binary would otherwise
 // inherit.
 //
 // The list is every variable Load consults and has to stay that way, because one missing
 // from it turns a test of the loader into a question about the machine running it.
-// PORTKEY_VIRTUAL_KEY is the one that bites: anybody who has pointed a verse at a real LLM
+// PORTKEY_VIRTUAL_KEY is the one that bites: anybody who has pointed a viff at a real LLM
 // has it exported, so every config they load has an LLM configured and `Available()` is true
 // with no file anywhere saying so.
 func withLayers(t *testing.T, systemBase, xdgDir string) {
@@ -247,20 +247,20 @@ func withLayers(t *testing.T, systemBase, xdgDir string) {
 	t.Cleanup(func() { SystemPath = old })
 	t.Setenv("XDG_CONFIG_HOME", xdgDir)
 	for _, k := range []string{
-		EnvConfigPath, "VERSE_ADDR", "VERSE_SCOPE", "VERSE_USER",
-		"VERSE_FORMAT", "VERSE_OUTPUT_FORMAT", "VERSE_WIRE_FORMAT",
+		EnvConfigPath, "VIFF_ADDR", "VIFF_SCOPE", "VIFF_USER",
+		"VIFF_FORMAT", "VIFF_OUTPUT_FORMAT", "VIFF_WIRE_FORMAT",
 		"OPENAI_MODEL", "PORTKEY_API_KEY", "PORTKEY_VIRTUAL_KEY", "PORTKEY_BASE_URL",
 	} {
 		t.Setenv(k, "")
 	}
 }
 
-// `user:` is who the CLI acts as, and VERSE_USER overrides the file the way the other env
+// `user:` is who the CLI acts as, and VIFF_USER overrides the file the way the other env
 // knobs do.
 func TestUserFromFileAndEnv(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "verse.tony")
+	p := filepath.Join(t.TempDir(), "viff.tony")
 	write(t, p, "user: walter@example.com\n")
-	withLayers(t, filepath.Join(t.TempDir(), "verse"), t.TempDir())
+	withLayers(t, filepath.Join(t.TempDir(), "viff"), t.TempDir())
 	t.Setenv(EnvConfigPath, p)
 
 	c, err := Load()
@@ -270,53 +270,53 @@ func TestUserFromFileAndEnv(t *testing.T) {
 	if c.User != "walter@example.com" {
 		t.Errorf("user = %q, want the file's", c.User)
 	}
-	t.Setenv("VERSE_USER", "verse-runner-bot")
+	t.Setenv("VIFF_USER", "viff-runner-bot")
 	c, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.User != "verse-runner-bot" {
-		t.Errorf("user = %q, want VERSE_USER over the file", c.User)
+	if c.User != "viff-runner-bot" {
+		t.Errorf("user = %q, want VIFF_USER over the file", c.User)
 	}
 }
 
-// The repositories whose charters verse reconciles are read from the file, and an entry that
+// The repositories whose charters viff reconciles are read from the file, and an entry that
 // names no address is refused at load, where the refusal is a line in a file.
 func TestRepoChartersFromFile(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "verse.tony")
-	write(t, p, "repoCharters:\n- repo: verse\n  github: signadot/verse\n  at: repos.verse\n  answerers: [\"user:*\"]\n")
-	withLayers(t, filepath.Join(t.TempDir(), "verse"), t.TempDir())
+	p := filepath.Join(t.TempDir(), "viff.tony")
+	write(t, p, "repoCharters:\n- repo: viff\n  github: signadot/viff\n  at: repos.viff\n  answerers: [\"user:*\"]\n")
+	withLayers(t, filepath.Join(t.TempDir(), "viff"), t.TempDir())
 	t.Setenv(EnvConfigPath, p)
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.RepoCharters) != 1 || c.RepoCharters[0].Repo != "verse" || c.RepoCharters[0].GitHub != "signadot/verse" ||
-		c.RepoCharters[0].At != "repos.verse" || len(c.RepoCharters[0].Answerers) != 1 || c.RepoCharters[0].Answerers[0] != "user:*" {
+	if len(c.RepoCharters) != 1 || c.RepoCharters[0].Repo != "viff" || c.RepoCharters[0].GitHub != "signadot/viff" ||
+		c.RepoCharters[0].At != "repos.viff" || len(c.RepoCharters[0].Answerers) != 1 || c.RepoCharters[0].Answerers[0] != "user:*" {
 		t.Fatalf("repoCharters = %+v", c.RepoCharters)
 	}
-	write(t, p, "repoCharters:\n- repo: verse\n  github: signadot/verse\n")
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "repoCharters verse") {
+	write(t, p, "repoCharters:\n- repo: viff\n  github: signadot/viff\n")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "repoCharters viff") {
 		t.Fatalf("an entry with no address loaded: %v", err)
 	}
 }
 
-// A SPAWN'S CREDENTIAL IS THE ONE IT CARRIES, and this verse's only when it carries none.
+// A SPAWN'S CREDENTIAL IS THE ONE IT CARRIES, and this viff's only when it carries none.
 //
 // There is nothing to look up: what a spawn carries is already the key, read for it from the
-// address it named by whoever named it. This verse's own is the default, which is every spawn
+// address it named by whoever named it. This viff's own is the default, which is every spawn
 // written before credentials had addresses.
-func TestASpawnsCredentialBeatsTheVersesOwn(t *testing.T) {
+func TestASpawnsCredentialBeatsTheViffsOwn(t *testing.T) {
 	llm := LLMConfig{APIKey: "pk", VirtualKey: "vk-general"}
 
 	if got := llm.VirtualKeyOr("vk-review"); got != "vk-review" {
 		t.Errorf("carried → %q, want the spawn's own", got)
 	}
 	if got := llm.VirtualKeyOr(""); got != "vk-general" {
-		t.Errorf("unnamed → %q, want this verse's", got)
+		t.Errorf("unnamed → %q, want this viff's", got)
 	}
-	// A verse with none, asked by a spawn with none: no virtual key at all, which is the
-	// account key alone and the state every verse was in before this.
+	// A viff with none, asked by a spawn with none: no virtual key at all, which is the
+	// account key alone and the state every viff was in before this.
 	if got := (LLMConfig{APIKey: "pk"}).VirtualKeyOr(""); got != "" {
 		t.Errorf("neither → %q, want no virtual key", got)
 	}
@@ -327,7 +327,7 @@ func TestASpawnsCredentialBeatsTheVersesOwn(t *testing.T) {
 func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 	load := func(body string) (*Config, error) {
 		t.Helper()
-		path := filepath.Join(t.TempDir(), "verse.tony")
+		path := filepath.Join(t.TempDir(), "viff.tony")
 		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -363,21 +363,21 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 		t.Errorf("google = %+v", g)
 	}
 
-	// A verse with no auth block is one that verifies nobody.
+	// A viff with no auth block is one that verifies nobody.
 	if c, err := load("addr: \"x:1\"\n"); err != nil || c.Auth.Principal.Mode != "" || len(c.Auth.Principal.Providers) != 0 {
 		t.Errorf("no auth block = %+v, %v", c.Auth, err)
 	}
 
 	// The issuer is a url and a key file, both or neither.
-	if c, err := load("auth: {issuer: {url: \"https://verse.example.com\", key: /etc/verse/issuer.pem}}\n"); err != nil ||
-		c.Auth.Issuer.URL != "https://verse.example.com" || c.Auth.Issuer.Key != "/etc/verse/issuer.pem" {
+	if c, err := load("auth: {issuer: {url: \"https://viff.example.com\", key: /etc/viff/issuer.pem}}\n"); err != nil ||
+		c.Auth.Issuer.URL != "https://viff.example.com" || c.Auth.Issuer.Key != "/etc/viff/issuer.pem" {
 		t.Errorf("auth.issuer = %+v, %v", c.Auth.Issuer, err)
 	}
 
-	// Verse's own issuer is no provider's and not the workload tokens': a token it signs toward a
+	// Viff's own issuer is no provider's and not the workload tokens': a token it signs toward a
 	// runner opens nothing at its own door.
 	if _, err := load("auth: {issuer: {url: \"https://login.example.com\", key: /k.pem}, principal: {providers: " +
-		"{corp: {issuer: \"https://login.example.com\", clientId: verse-cli}}}}\n"); err == nil || !strings.Contains(err.Error(), "auth.issuer.url") {
+		"{corp: {issuer: \"https://login.example.com\", clientId: viff-cli}}}}\n"); err == nil || !strings.Contains(err.Error(), "auth.issuer.url") {
 		t.Errorf("an issuer url that is a provider's = %v", err)
 	}
 	if _, err := load("auth: {issuer: {url: \"https://oidc.example/id/1/\", key: /k.pem}, iod: {issuer: \"https://oidc.example/id/1\"}}\n"); err == nil ||
@@ -387,25 +387,25 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 
 	// Iods: an issuer-less provider trusting an io, with what it may do, and the iods' own block.
 	if c, err := load("auth: {principal: {providers: {slack: {iods: [workspace], domains: [example.com], acts: any}, " +
-		"corp: {issuer: \"https://login.example.com\", clientId: verse-cli}, github: {iods: [gh]}}}, " +
-		"iod: {issuer: \"https://oidc.eks.us-west-2.amazonaws.com/id/1\", audience: verse, " +
-		"accounts: {\"system:serviceaccount:verse:slack-iod\": {principal: \"agent:slack-iod\", iod: workspace}}, " +
-		"static: [{file: /run/verse/git-iod.token, principal: \"agent:git-iod\"}]}}\n"); err != nil {
+		"corp: {issuer: \"https://login.example.com\", clientId: viff-cli}, github: {iods: [gh]}}}, " +
+		"iod: {issuer: \"https://oidc.eks.us-west-2.amazonaws.com/id/1\", audience: viff, " +
+		"accounts: {\"system:serviceaccount:viff:slack-iod\": {principal: \"agent:slack-iod\", iod: workspace}}, " +
+		"static: [{file: /run/viff/git-iod.token, principal: \"agent:git-iod\"}]}}\n"); err != nil {
 		t.Errorf("iods block: %v", err)
 	} else {
 		if sl := c.Auth.Principal.Providers["slack"]; sl.Acts != ActsAny || len(sl.IOs) != 1 || sl.IOs[0] != "workspace" {
 			t.Errorf("slack = %+v", sl)
 		}
 		iod := c.Auth.Iod
-		if iod.Audience != "verse" || iod.Accounts["system:serviceaccount:verse:slack-iod"].IO != "workspace" ||
+		if iod.Audience != "viff" || iod.Accounts["system:serviceaccount:viff:slack-iod"].IO != "workspace" ||
 			len(iod.Static) != 1 || iod.Static[0].Principal != "agent:git-iod" {
 			t.Errorf("iod = %+v", iod)
 		}
 	}
 
 	for _, bad := range []struct{ what, body, want string }{
-		{"an issuer with no key", "auth: {issuer: {url: \"https://verse.example.com\"}}", "both a url and a key"},
-		{"an issuer whose url is none", "auth: {issuer: {url: verse, key: /k.pem}}", "relying party"},
+		{"an issuer with no key", "auth: {issuer: {url: \"https://viff.example.com\"}}", "both a url and a key"},
+		{"an issuer whose url is none", "auth: {issuer: {url: viff, key: /k.pem}}", "relying party"},
 		{"an unknown mode", "auth: {principal: {mode: sometimes}}", "not a mode"},
 		{"a provider with no client", "auth: {principal: {providers: {google: {issuer: \"https://accounts.google.com\"}}}}", "clientId is required"},
 		{"a provider with no issuer", "auth: {principal: {providers: {google: {clientId: a}}}}", "not an issuer's URL"},
@@ -416,8 +416,8 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 		{"a provider named iod", "auth: {principal: {providers: {iod: {iods: [x]}}}}", "iods' own"},
 		{"acts that are neither word", "auth: {principal: {providers: {slack: {iods: [workspace], acts: some}}}}", "not control or any"},
 		{"acts on an issuer", "auth: {principal: {providers: {google: {issuer: \"https://accounts.google.com\", clientId: a, acts: any}}}}", "goes with `iods`"},
-		{"iod accounts with no issuer", "auth: {iod: {accounts: {\"system:serviceaccount:verse:slack-iod\": {principal: \"agent:slack-iod\"}}}}", "no issuer of those tokens"},
-		{"an iod account that is no agent", "auth: {iod: {issuer: \"https://oidc.example.com/id/1\", accounts: {\"system:serviceaccount:verse:slack-iod\": {principal: \"user:ana@example.com\"}}}}", "not an io's principal"},
+		{"iod accounts with no issuer", "auth: {iod: {accounts: {\"system:serviceaccount:viff:slack-iod\": {principal: \"agent:slack-iod\"}}}}", "no issuer of those tokens"},
+		{"an iod account that is no agent", "auth: {iod: {issuer: \"https://oidc.example.com/id/1\", accounts: {\"system:serviceaccount:viff:slack-iod\": {principal: \"user:ana@example.com\"}}}}", "not an io's principal"},
 		{"a static io with no file", "auth: {iod: {static: [{principal: \"agent:slack-iod\"}]}}", "path of the token"},
 		{"a bundle with no issuer", "auth: {iod: {ca: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt}}", "no issuer is named"},
 		{"an iod issuer that is a provider's", "auth: {principal: {providers: {a: {issuer: \"https://a.example.com\", clientId: a}}}, iod: {issuer: \"https://a.example.com\"}}", "names one party"},

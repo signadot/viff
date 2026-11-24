@@ -1,7 +1,7 @@
 // Package answer is the contract a spawn puts on its own final message.
 //
 // An agent ends by talking: the loop stops when the model stops calling tools, and the
-// result is whatever prose it stopped on (pkg/runner/runnerd/verse/llm.go). So "the
+// result is whatever prose it stopped on (pkg/runner/runnerd/viff/llm.go). So "the
 // model finished the job" and "the model stopped talking" are the same observation, and a
 // charter that reads `.[data.class]` finds out at PATCH time — after the work is done and the
 // tokens are spent — that the agent narrated instead of answering. The failure lands on a hook
@@ -16,8 +16,8 @@
 // cannot fail — the failure mode is deleted rather than made rarer.
 //
 // The contract is a tony MATCH PATTERN, and it is matched as written by the same tony.Match
-// that decides a `when`, an address segment and a `verse data` filter (entity.SafeMatch,
-// cmd/verse/filter.go). One vocabulary across every place verse asks a question of a document
+// that decides a `when`, an address segment and a `viff data` filter (entity.SafeMatch,
+// cmd/viff/filter.go). One vocabulary across every place viff asks a question of a document
 // is the whole of what a charter author has to learn, and it is what keeps a contract from
 // growing a second grammar with its own rules about what resolves before the match. A schema
 // document's `accept:` clause is accepted as a spelling of one, because a pattern written for a
@@ -39,7 +39,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/eval"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // Contract is a parsed, ready-to-check answer contract.
@@ -75,7 +75,7 @@ func ParseSource(src string) (*Contract, error) {
 // is refused here rather than accepted and ignored — see matchable.
 //
 // A malformed contract is an error here rather than a surprise at check time. This runs on
-// the engine side before a spawn is issued (versed.launchOf) as well as in the driver, so
+// the engine side before a spawn is issued (viffd.launchOf) as well as in the driver, so
 // a charter that wrote a contract it cannot mean fails the firing instead of paying for a
 // model call and then failing the check it could never have passed.
 func Parse(doc *ir.Node) (*Contract, error) {
@@ -97,7 +97,7 @@ func Parse(doc *ir.Node) (*Contract, error) {
 	// The source is rendered once, here, and it is what the agent is shown — in the frame
 	// up front and in a repair afterwards. Rendered rather than carried as the author's own
 	// keystrokes because the author no longer writes text: a contract arrives as the
-	// document it is, so this is the only text there is, and it is the same text `verse
+	// document it is, so this is the only text there is, and it is the same text `viff
 	// data` prints for the rule.
 	src, err := render(accept)
 	if err != nil {
@@ -116,7 +116,7 @@ func Parse(doc *ir.Node) (*Contract, error) {
 //
 // Refused rather than resolved, because resolving them is a second grammar: definitions to
 // expand, a base vocabulary to merge in, and an expansion standing between the charter's
-// document and what the answer is held to. A match is what every other pattern in verse is, and
+// document and what the answer is held to. A match is what every other pattern in viff is, and
 // `!irtype`, `!or` and `!all` say what a contract has ever needed to say.
 func matchable(doc, accept *ir.Node) error {
 	if hasField(doc, "define") {
@@ -294,7 +294,7 @@ func (f *Failure) Repair(c *Contract, failTool string) string {
 	// wrong is the writing of one. See example.go for why it is json when nothing else here is.
 	if ex := c.Example(); ex != "" {
 		fmt.Fprintf(&b, "\nAn answer of this shape satisfies it — json is accepted everywhere "+
-			"verse takes an answer, since valid json is valid tony:\n\n  %s\n", ex)
+			"viff takes an answer, since valid json is valid tony:\n\n  %s\n", ex)
 	}
 	b.WriteString("\nReply with the corrected answer and nothing else — no preamble, no " +
 		"commentary after it. Everything you want to say about the work has already been said.\n")

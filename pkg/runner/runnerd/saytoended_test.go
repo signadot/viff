@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // WORDS TO AN ENDED TASK ARE REFUSED OVER THE WIRE AS WHAT THEY ARE: runnerd answers 410, and the

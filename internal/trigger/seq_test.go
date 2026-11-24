@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // seqEngine records the ids it spawns, in order, and drives them to completion.
@@ -42,7 +42,7 @@ func seqFacts(t *testing.T, store entity.Store, ref entity.Ref, trig string) ent
 	if !ok {
 		return nil
 	}
-	return entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), trig)
+	return entity.Get(entity.Get(entity.Get(e.Payload, ViffRoot), CharterKey), trig)
 }
 
 // The elements run IN ORDER, one task at a time, each id naming its position in the
@@ -56,8 +56,8 @@ func TestSeqRunsInOrder(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "lint $[subject.ref]"}},
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "lint $[subject.ref]"}},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"}},
 				{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			},
 		},
@@ -110,8 +110,8 @@ func TestSeqPublishesProgress(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{Seq: []Action{
-			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one"}},
-			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "two"}},
+			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "one"}},
+			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "two"}},
 		}},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -119,10 +119,10 @@ func TestSeqPublishesProgress(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
-		f := entity.Get(entity.Get(entity.Get(p, VerseRoot), CharterKey), "review")
+		f := entity.Get(entity.Get(entity.Get(p, ViffRoot), CharterKey), "review")
 		d := entity.Get(f, seqDone)
 		return d != nil && d.Bool
-	}, "verse.review.done latched")
+	}, "viff.review.done latched")
 
 	f := seqFacts(t, store, prRef("1"), "review")
 	if got := entity.Get(f, seqSteps); got == nil || got.Int64 == nil || *got.Int64 != 2 {
@@ -150,8 +150,8 @@ func TestSeqCarrierOnDoneFiresAfterAll(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one"}},
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "two"}},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "one"}},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "two"}},
 			},
 			OnDone: &Action{Patch: entity.Obj{"stage": "sequence-done"}.Payload()},
 		},
@@ -178,10 +178,10 @@ func TestSeqFailStops(t *testing.T) {
 		Action: Action{
 			Seq: []Action{
 				{
-					Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "this will fail"},
+					Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "this will fail"},
 					OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
 				},
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "must not run"}},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "must not run"}},
 			},
 			OnDone: &Action{Patch: entity.Obj{"stage": "must-not-reach"}.Payload()},
 		},
@@ -267,8 +267,8 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{Seq: []Action{
-			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one"}},
-			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "two"}},
+			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "one"}},
+			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "two"}},
 		}, OnDone: &Action{Patch: entity.Obj{"stage": "done"}.Payload()}},
 	}
 	if err := eng.AddTrigger(tr); err != nil {
@@ -280,7 +280,7 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 		t.Error("an untouched subject reads as already done")
 	}
 	if err := eng.patchEntity("review", 0, ref, ref, entity.Obj{
-		VerseRoot: entity.Obj{CharterKey: entity.Obj{"review": entity.Obj{seqStep: 2, seqDone: true, seqShape: shape}}},
+		ViffRoot: entity.Obj{CharterKey: entity.Obj{"review": entity.Obj{seqStep: 2, seqDone: true, seqShape: shape}}},
 	}.Payload()); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -305,12 +305,12 @@ func TestSeqStoppedRunReleasesItsClaim(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{Seq: []Action{
 			{
-				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "this will fail"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "this will fail"},
 				// An off-ramp that does NOT advance the subject, so nothing but the run's own
 				// record can be what stops it running again.
 				OnFailed: &Action{Patch: entity.Obj{"note": "failed"}.Payload()},
 			},
-			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "must not run"}},
+			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "must not run"}},
 		}},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -336,7 +336,7 @@ func TestSeqStoppedRunReleasesItsClaim(t *testing.T) {
 	}
 	// And the conclusion is a FACT, which is what stops the re-run now.
 	if got := entity.Str(seqFacts(t, store, ref, "review"), seqEnded); got != string(task.Failed) {
-		t.Errorf("verse.charter.review.%s = %q, want %q", seqEnded, got, task.Failed)
+		t.Errorf("@sys.charter.review.%s = %q, want %q", seqEnded, got, task.Failed)
 	}
 
 	// Stir the subject: it still matches, the claim is free, and it must still not re-run.
@@ -363,7 +363,7 @@ func TestSeqProgressPerTriggerDoesNotClobber(t *testing.T) {
 		if err := eng.AddTrigger(Trigger{
 			Name:      name,
 			Condition: Condition{Subject: prSubject("open")},
-			Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "work"}}}},
+			Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "work"}}}},
 		}); err != nil {
 			t.Fatalf("AddTrigger %s: %v", name, err)
 		}
@@ -371,7 +371,7 @@ func TestSeqProgressPerTriggerDoesNotClobber(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
-		v := entity.Get(entity.Get(p, VerseRoot), CharterKey)
+		v := entity.Get(entity.Get(p, ViffRoot), CharterKey)
 		for _, n := range []string{"alpha", "beta"} {
 			d := entity.Get(entity.Get(v, n), seqDone)
 			if d == nil || !d.Bool {
@@ -389,13 +389,13 @@ func TestNavigate(t *testing.T) {
 		Name: "review",
 		Action: Action{
 			Seq: []Action{
-				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "zero"}},
+				{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "zero"}},
 				{
-					Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one"},
-					OnFailed: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one-failed"}},
+					Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "one"},
+					OnFailed: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "one-failed"}},
 				},
 			},
-			OnDone: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "after"}},
+			OnDone: &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "after"}},
 		},
 	}
 	for chain, want := range map[string]string{
@@ -489,20 +489,20 @@ func TestSeqValidation(t *testing.T) {
 		act  Action
 	}{
 		{"spawn and seq together", Action{
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "x"},
-			Seq:   []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "y"}}},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "x"},
+			Seq:   []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "y"}}},
 		}},
 		{"onDone on a non-last element", Action{Seq: []Action{
-			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "x"}, OnDone: &Action{Patch: entity.Obj{"a": 1}.Payload()}},
-			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "y"}},
+			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "x"}, OnDone: &Action{Patch: entity.Obj{"a": 1}.Payload()}},
+			{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "y"}},
 		}}},
 		{"nested seq via an element", Action{Seq: []Action{
-			{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "inner"}}}},
+			{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "inner"}}}},
 		}}},
 		{"nested seq via an element's hook", Action{Seq: []Action{
 			{
-				Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "x"},
-				OnFailed: &Action{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "inner"}}}},
+				Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "x"},
+				OnFailed: &Action{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "inner"}}}},
 			},
 		}}},
 	}
@@ -517,7 +517,7 @@ func TestSeqValidation(t *testing.T) {
 		Name:      "ok",
 		Condition: cond,
 		Action: Action{
-			Seq:    []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "x"}}},
+			Seq:    []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "x"}}},
 			OnDone: &Action{Patch: entity.Obj{"stage": "done"}.Payload()},
 		},
 	}); err != nil {
@@ -533,7 +533,7 @@ func TestSeqMirrorsCanonicalChain(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("open")},
-		Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "work"}}}},
+		Action:    Action{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "work"}}}},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}

@@ -4,7 +4,7 @@
 // A resolver answers asks. It is INSTALLED rather than declared in a charter, because a resolver
 // outlives any one rule and is managed by whoever supervises rather than by whoever wrote the
 // work. Its `match` says which asks it watches; whom it answers for is granted, by a person at
-// `verse.for.<person>` and by a place's owner on record at the place (entity.Answer).
+// `viff.for.<person>` and by a place's owner on record at the place (entity.Answer).
 package resolver
 
 import (
@@ -17,42 +17,42 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/internal/trigger"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// System is where resolvers live: `verse.resolvers.<name>`, one name beneath it and nothing else.
+// System is where resolvers live: `mirror.resolvers.<name>`, one name beneath it and nothing else.
 const System = "resolvers"
 
 // Ref addresses a resolver: its name, which is the whole of its address.
 func Ref(name string) entity.Ref {
-	return entity.VerseRef(System, name)
+	return entity.ViffRef(System, name)
 }
 
 // IsResolver reports whether an address is a resolver's.
-func IsResolver(ref entity.Ref) bool { return ref.ChildOf(entity.VerseRoot, System) }
+func IsResolver(ref entity.Ref) bool { return ref.ChildOf(entity.ViffRoot, System) }
 
 // Resolver is a service that watches asks and answers for whoever granted it: what
 // `POST /resolvers` takes and `GET /resolvers/{name}` answers.
 //
-//tony:schemagen=verse-installed-resolver,notag
+//tony:schemagen=viff-installed-resolver,notag
 type Resolver struct {
-	// Name is its address: `verse.resolvers.<name>`.
+	// Name is its address: `mirror.resolvers.<name>`.
 	Name string `tony:"field=name"`
 	// Match is the asks it watches: what they are about, and their labels. It routes nothing and
 	// owns nothing: whom the resolver answers for is granted (entity.Answer), and a match says
 	// only which of those asks it serves.
 	Match *Match `tony:"field=match,omitzero"`
-	// Method says what answers: a service, which dials verse.
+	// Method says what answers: a service, which dials viff.
 	Method Method `tony:"field=method"`
 }
 
 // Match is the asks a resolver watches. An absent dimension admits any ask; an empty match admits
 // every ask put to whoever granted the resolver.
 //
-//tony:schemagen=verse-resolver-match,notag
+//tony:schemagen=viff-resolver-match,notag
 type Match struct {
 	// About is the address the ask is about, as a kinded path: an ask about that node or one
 	// beneath it is matched. A path and nothing else: a value changes while an ask stands, and
@@ -103,20 +103,20 @@ func (m *Match) Admits(about entity.Ref, labels map[string]string) bool {
 }
 
 // Method is what answers. Its service acts as the resolver by being whoever installed it
-// (api.ResolverHeader), and dials verse; verse never dials it, so nothing here is an address verse
+// (api.ResolverHeader), and dials viff; viff never dials it, so nothing here is an address viff
 // uses.
 //
-//tony:schemagen=verse-resolver-method,notag
+//tony:schemagen=viff-resolver-method,notag
 type Method struct {
 	// Driver is `service`, which runs wherever its installer runs it. `llm` and `script` are
-	// drivers over the same protocol, run by verse, and are not built.
+	// drivers over the same protocol, run by viff, and are not built.
 	Driver string `tony:"field=driver"`
 	// URL is where the service runs, a note for an operator reading the record. Optional, and
 	// never dialled or parsed.
 	URL string `tony:"field=url,omitzero"`
 }
 
-// DriverService is the one driver: a service, which dials verse.
+// DriverService is the one driver: a service, which dials viff.
 const DriverService = "service"
 
 // Check validates a resolver, refusing what this build cannot honour rather than storing it.
@@ -126,7 +126,7 @@ func (r Resolver) Check() error {
 	}
 	if r.Match == nil {
 		return fmt.Errorf("resolver %q: needs a `match` — the asks it watches (`match: {}` for every "+
-			"ask put to whoever grants it); whom it answers for is granted, `verse resolver grant`", r.Name)
+			"ask put to whoever grants it); whom it answers for is granted, `viff resolver grant`", r.Name)
 	}
 	if err := r.Match.check(); err != nil {
 		return fmt.Errorf("resolver %q: %w", r.Name, err)
@@ -134,8 +134,8 @@ func (r Resolver) Check() error {
 	switch r.Method.Driver {
 	case DriverService:
 	case "url":
-		return fmt.Errorf("resolver %q: driver %q is %q — verse never dials a resolver's service, "+
-			"which dials verse; method.url may stay, as a note of where it runs", r.Name, r.Method.Driver, DriverService)
+		return fmt.Errorf("resolver %q: driver %q is %q — viff never dials a resolver's service, "+
+			"which dials viff; method.url may stay, as a note of where it runs", r.Name, r.Method.Driver, DriverService)
 	case "":
 		return fmt.Errorf("resolver %q: method.driver is required", r.Name)
 	case "llm", "script":
@@ -164,7 +164,7 @@ func CheckFields(node *ir.Node) error {
 		"condition": retired + "a resolver does not own the questions about a subject; `match: " +
 			"{about: <path>}` says which asks it watches, and a place's owner on record grants it there",
 		"byRef": retired + "nothing names a resolver; whoever it answers for grants it, " +
-			"`verse resolver grant`",
+			"`viff resolver grant`",
 		"deadline": retired + "a resolver hands nothing up; it escalates by raising an onward ask, " +
 			"whose clock fits inside the ask it serves",
 		"exclusive": retired + "whose answer counts is the party's grant; a party's resolver " +
@@ -175,7 +175,7 @@ func CheckFields(node *ir.Node) error {
 			return checkFields(val, "resolver match", map[string]string{
 				"about": "", "labels": "",
 				"to": "a match does not route (9ce3bva0): whom a resolver answers for is granted, " +
-					"`verse resolver grant`",
+					"`viff resolver grant`",
 			}, nil)
 		}
 		if field == "method" {
@@ -183,9 +183,9 @@ func CheckFields(node *ir.Node) error {
 				"driver": "", "url": "",
 				"who":    retired + "the person driver is gone; a person answers for themselves",
 				"group":  retired + "the group driver is gone; a group's members answer for themselves",
-				"vector": retired + "a resolver is a service, and runs nothing verse gates",
-				"tools":  retired + "a resolver is a service, and runs nothing verse gates",
-				"grant":  retired + "a resolver is a service, and runs nothing verse gates",
+				"vector": retired + "a resolver is a service, and runs nothing viff gates",
+				"tools":  retired + "a resolver is a service, and runs nothing viff gates",
+				"grant":  retired + "a resolver is a service, and runs nothing viff gates",
 			}, nil)
 		}
 		return nil
@@ -236,7 +236,7 @@ func checkFields(node *ir.Node, what string, fields map[string]string, descend f
 // who asks.
 func List(r entity.Reader) []Resolver {
 	var out []Resolver
-	for _, ent := range entity.Below(r, IsResolver, 1, entity.VerseRoot, System) {
+	for _, ent := range entity.Below(r, IsResolver, 1, entity.ViffRoot, System) {
 		var res Resolver
 		if err := codec.FromNode(ent.Payload, &res); err != nil {
 			// A resolver this build cannot read is one it cannot honour either — and it SAYS so,

@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A supervisor is a charter rule about questions. Nothing in the engine knows that — this is
@@ -27,7 +27,7 @@ func TestACharterRuleFiresOnAPendingQuestion(t *testing.T) {
 	if err := codec.Unmarshal([]byte(`{
 		name: escalate-writes,
 		condition: {
-			subject: {path: "verse.ask.*", value:  {status: pending, step: files.write}},
+			subject: {path: "mirror.ask.*", value:  {status: pending, step: files.write}},
 		},
 		action: {patch: {escalated: true}},
 	}`), &trig, codec.Tony); err != nil {

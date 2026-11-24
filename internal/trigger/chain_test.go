@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A spawn id is `<chain>@<subject>`, and the chain half is a real kpath: the address of the
@@ -36,7 +36,7 @@ func TestChainIsAKPath(t *testing.T) {
 
 // The root of a chain prefix-matches everything under it, which is how "every task of
 // this trigger" is asked without globbing ids. Uses go-tony v0.0.92's MatchesPrefix, so
-// this also pins the upstream behaviour verse now depends on (issue 61766xadh12kstqqcnn0).
+// this also pins the upstream behaviour viff now depends on (issue 61766xadh12kstqqcnn0).
 func TestChainPrefixMatching(t *testing.T) {
 	root, err := kpath.Parse("review")
 	if err != nil {
@@ -60,7 +60,7 @@ func TestChainPrefixMatching(t *testing.T) {
 // A spawn id is pasted back onto a command line constantly (task show, gate resolve,
 // task events), so it must survive a shell word unquoted. This is the constraint that
 // kept kpath's bracket syntax OUT of the id: under zsh, review.seq[2]@demo.pr.1 dies with
-// "no matches found" before verse ever runs. The same principle a task id follows.
+// "no matches found" before viff ever runs. The same principle a task id follows.
 func TestSpawnIDIsPasteSafe(t *testing.T) {
 	const globs = `*?[]{}()~!$&;'"<>|` + "`\\"
 	ids := []string{

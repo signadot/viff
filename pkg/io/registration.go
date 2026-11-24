@@ -9,18 +9,18 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// System is where installed sources live: `verse.iods.<name>`. A source's name is the whole
+// System is where installed sources live: `mirror.iods.<name>`. A source's name is the whole
 // of its address. WHAT it reflects is on the registration, not in it: `root`, the root segment
 // of the tree the source writes (`git`, `github`), and `owns`, the places it claims there.
 const System = "iods"
 
 // Ref addresses an installed source.
 func Ref(name string) entity.Ref {
-	return entity.VerseRef(System, name)
+	return entity.ViffRef(System, name)
 }
 
 // Entity is one installed source: an address, somewhere to reach it, and what it claims.
@@ -28,8 +28,8 @@ func Ref(name string) entity.Ref {
 // Three ways to reach one, and exactly one of them is set. They differ only in where the
 // net.Conn comes from — `Reflect` is the same call down all three:
 //
-//	url      verse dials the source
-//	dial-in  the source dials verse, and verse dials back down that connection
+//	url      viff dials the source
+//	dial-in  the source dials viff, and viff dials back down that connection
 //	dir      the in-process git source, with no network at all
 //
 // This is deliberately NOT the runner's "a runner with no url is refused". There, absence
@@ -39,9 +39,9 @@ func Ref(name string) entity.Ref {
 //
 // It is what `POST /iods` takes and `GET /iods/{name}` answers.
 //
-//tony:schemagen=verse-installed-iod,notag
+//tony:schemagen=viff-installed-iod,notag
 type Entity struct {
-	// Name is the address: `verse.iods.<name>`.
+	// Name is the address: `mirror.iods.<name>`.
 	Name string `tony:"field=name"`
 	// Root is the root segment of the tree this source writes — `git`, `github`, `linear` —
 	// which is also which connector it is: an install checks it against what the source says
@@ -70,9 +70,9 @@ type Entity struct {
 	// it, and who may ask. Absent for an io that only reflects, which is most of them today.
 	Out *OutHalf `tony:"field=out,omitzero"`
 
-	// LastReflect and LastError are written by VERSE, not by an operator: when verse last wrote
+	// LastReflect and LastError are written by VIFF, not by an operator: when viff last wrote
 	// from this source, and the last failure (cleared by the next success). They are declared
-	// here so that `verse iod show` piped back into `verse iod add` is not refused for
+	// here so that `viff iod show` piped back into `viff iod add` is not refused for
 	// carrying fields it was just handed, and so a listing can read them without a second
 	// decode. Check ignores them.
 	LastReflect string   `tony:"field=lastReflect,omitzero"`
@@ -82,11 +82,11 @@ type Entity struct {
 // OutHalf is what a registration says about acting back on the external system.
 //
 // It exists so that an install is ONE act. Before it, standing up an out half meant a flag naming
-// a principal, a place hardcoded in the connector, and four `verse perms` lines an operator had to
-// know and get right — and a verse that knew none of it, so `verse iod` could show a healthy io
+// a principal, a place hardcoded in the connector, and four `viff perms` lines an operator had to
+// know and get right — and a viff that knew none of it, so `viff iod` could show a healthy io
 // whose out half had been refused for an hour.
 //
-//tony:schemagen=verse-iod-out,notag
+//tony:schemagen=viff-iod-out,notag
 type OutHalf struct {
 	// Places are where it reads what is asked of it, as kinded paths. Each must lie inside this
 	// registration's claim (an io may only be asked for things in its own slice) and outside the
@@ -104,11 +104,11 @@ type OutHalf struct {
 	// may ask is an io that will never do anything — allowed, since a place whose grants are
 	// managed by hand is a legitimate arrangement, and saying so here is the way to say it.
 	Requesters []string `tony:"field=requesters,omitzero"`
-	// LastError is written by verse from what the io reports, not by an operator: the last
-	// failure that stopped a pass, and when it began. Verse never dials an out half, so the only
+	// LastError is written by viff from what the io reports, not by an operator: the last
+	// failure that stopped a pass, and when it began. Viff never dials an out half, so the only
 	// way it can know is to be told (POST /iods/<name>/pass). When a pass last finished and what
 	// it did are the report's too, and stand in scratch at this record's `out`, not on the
-	// record: they are about now, and a `verse iod` listing reads them from there.
+	// record: they are about now, and a `viff iod` listing reads them from there.
 	LastError *Failure `tony:"field=lastError,omitzero"`
 }
 
@@ -117,9 +117,9 @@ type OutHalf struct {
 // COUNTS OF THE LAST PASS, not totals: a total would be a number nobody can act on, while "the
 // last pass delivered nothing and failed twice" is the sentence an operator wants when they ask
 // why a message has not arrived. What the io is doing right now is the pass's own business; this
-// is the part verse cannot see for itself. It is what `POST /iods/{name}/pass` takes.
+// is the part viff cannot see for itself. It is what `POST /iods/{name}/pass` takes.
 //
-//tony:schemagen=verse-iod-pass,notag
+//tony:schemagen=viff-iod-pass,notag
 type OutPass struct {
 	Delivered int    `tony:"field=delivered,omitzero"`
 	Failed    int    `tony:"field=failed,omitzero"`
@@ -133,11 +133,11 @@ type OutPass struct {
 //
 // When is the instant the source ENTERED this failure, not the last time it repeated. A source
 // failing the same way every minute keeps the When it started with, so the distance between it
-// and lastPass is how long this has been going on, and a `verse iod` listing can say "since
+// and lastPass is how long this has been going on, and a `viff iod` listing can say "since
 // 20:39" rather than "now" about something that has been broken since breakfast. A NEW error —
 // different text — is a new failure and takes a new When.
 //
-// A string rather than a time.Time because every timestamp verse stores is an RFC3339 string
+// A string rather than a time.Time because every timestamp viff stores is an RFC3339 string
 // and nothing in the tree tony-encodes a time.Time; one that did would be the odd one out in
 // the very record an operator reads.
 //
@@ -146,7 +146,7 @@ type OutPass struct {
 // a zero timestamp would say midnight in 1970 rather than "nobody recorded it". FromTonyIR
 // reads that shape and leaves When nil.
 //
-//tony:schemagen=verse-iod-failure,notag,codec=custom
+//tony:schemagen=viff-iod-failure,notag,codec=custom
 type Failure struct {
 	Error string  `tony:"field=error"`
 	When  *string `tony:"field=when,omitzero"`
@@ -209,7 +209,7 @@ func (f *Failure) ToTonyIR(_ ...gomap.MapOption) (*ir.Node, error) {
 
 // Check validates a source before it is installed.
 //
-// A VERB rather than a raw write, for the reason `verse runner add` is one: a write has nowhere
+// A VERB rather than a raw write, for the reason `viff runner add` is one: a write has nowhere
 // to put the checks. What they cover is what cannot be discovered later — an address that
 // cannot be addressed, a way in that is not one, and a claim that does not parse. Whether the
 // far side is a source at all is a separate question, answered by probing, because it is the
@@ -236,7 +236,7 @@ func (e Entity) Check() error {
 		return err
 	}
 	// Every claim parses, HERE, where the operator is present. A claim that failed to parse at
-	// install would leave a registration whose ownership verse cannot read — so it could be
+	// install would leave a registration whose ownership viff cannot read — so it could be
 	// proved disjoint from nothing, and every later install in its root would be refused for
 	// a reason belonging to this one.
 	if _, err := ParseOwns(e.Owns); err != nil {
@@ -274,7 +274,7 @@ func (o *OutHalf) check(name string) error {
 // CheckClaimed refuses an out half whose places fall outside what the io claims, and is asked
 // with the claim the install SETTLED ON rather than the one the request carried.
 //
-// The difference is the whole reason it is its own call. An operator types `verse iod add slack
+// The difference is the whole reason it is its own call. An operator types `viff iod add slack
 // <url> --root slack --out slack.Signadot.out` and names no claim at all: the claim comes from
 // probing the io, which happens after the request is read. Asked of the request, this check saw
 // an empty claim and refused every out half an operator ever typed — the deployment path, since
@@ -328,8 +328,8 @@ func (e Entity) checkReach() error {
 	switch len(set) {
 	case 1:
 	case 0:
-		return fmt.Errorf("source %q: needs exactly one way in — `url` (verse dials it), "+
-			"`dial-in` (it dials verse), or `dir` (the in-process git source)", e.Name)
+		return fmt.Errorf("source %q: needs exactly one way in — `url` (viff dials it), "+
+			"`dial-in` (it dials viff), or `dir` (the in-process git source)", e.Name)
 	default:
 		return fmt.Errorf("source %q: %s are all set, and they are three different ways in — "+
 			"name exactly one", e.Name, strings.Join(set, ", "))
@@ -422,10 +422,10 @@ func ownsAreDocuments(node *ir.Node) error {
 }
 
 // Find reads one installed source by what a CLI argument names: its address as it is stored and
-// listed (`verse.iods.laptop`), or its name (`laptop`) — an operator reading `verse data` and
-// one typing `verse iod show` should not have to know two spellings of one thing.
+// listed (`mirror.iods.laptop`), or its name (`laptop`) — an operator reading `viff data` and
+// one typing `viff iod show` should not have to know two spellings of one thing.
 //
-// FindErr is the same read reporting whether it HAPPENED — see versed's findRunnerErr.
+// FindErr is the same read reporting whether it HAPPENED — see viffd's findRunnerErr.
 func Find(r entity.Reader, ref string) (Entity, bool) {
 	e, ok, _ := FindErr(r, ref)
 	return e, ok
@@ -456,10 +456,10 @@ func List(r entity.Reader) []Entity {
 // ListErr is List, reporting the error THIS read failed with — see entity.ListErr.
 func ListErr(r entity.Reader) ([]Entity, error) {
 	var out []Entity
-	// At the subtree — see versed's installedRunners for why a List(pred) is the wrong read here: it is a
-	// Match on the root, so listing the sources read the whole verse, sources' own output
+	// At the subtree — see viffd's installedRunners for why a List(pred) is the wrong read here: it is a
+	// Match on the root, so listing the sources read the whole viff, sources' own output
 	// included.
-	registry := []string{entity.VerseRoot, System}
+	registry := []string{entity.ViffRoot, System}
 	ents, err := entity.ListAtErr(r, registry, len(registry)+1, IsRegistration)
 	if err != nil {
 		return nil, err
@@ -478,8 +478,8 @@ func ListErr(r entity.Reader) ([]Entity, error) {
 }
 
 // IsRegistration reports whether an address is an installed source's — the namespace's own
-// question, since the reserved root rather than the registry's name is what makes it verse's.
-func IsRegistration(ref entity.Ref) bool { return ref.Under(entity.VerseRoot, System) }
+// question, since the reserved root rather than the registry's name is what makes it viff's.
+func IsRegistration(ref entity.Ref) bool { return ref.Under(entity.ViffRoot, System) }
 
 // NameOf is the source's name from either spelling: the whole address as it is listed and
 // stored, or the name alone. Anything else names no source.
@@ -488,7 +488,7 @@ func NameOf(ref string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if at := entity.RefAt(segs...); at.ChildOf(entity.VerseRoot, System) {
+	if at := entity.RefAt(segs...); at.ChildOf(entity.ViffRoot, System) {
 		return at.Name(), at.Name() != ""
 	}
 	if len(segs) != 1 || segs[0] == "" {

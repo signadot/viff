@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/calltool"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/calltool"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // newScriptTask builds a script's task, rooted at root: the script runs once, by its #! line or
@@ -27,9 +27,9 @@ import (
 // shell is given from this process (task.ShellEnv), and set is set beside them: the launch's
 // `with.env`, and where the task's credential file is.
 //
-// Nothing asks before it runs: the script is one action, and no step; verse decided to start it.
+// Nothing asks before it runs: the script is one action, and no step; viff decided to start it.
 // What it may then do beyond its directory is call the task's tools from its shell, with
-// `verse-call-tool` (bin, "" for none) over a socket this serves: tools, the ones its repos give
+// `viff-call-tool` (bin, "" for none) over a socket this serves: tools, the ones its repos give
 // it, and `question-ask`. Each call is an action of the task, the same step the agent's use of the tool
 // is, so the same gates decide it; a refusal is an answer the script reads, not the end of its
 // run. What the answerer of a call's question says goes back with the call's answer, approved or
@@ -44,15 +44,15 @@ import (
 // (exit 1). WaitDelay bounds how long a background child holds the script's output open.
 //
 // stop ends the socket, once the task has ended.
-func newScriptTask(l runner.Launch, root string, env, set []string, tools []verse.Tool, bin string,
+func newScriptTask(l runner.Launch, root string, env, set []string, tools []viff.Tool, bin string,
 	reg *task.Registry, ceilings map[string]systems.Ceiling) (p *task.Task, stop func(), err error) {
-	tools = offered(append(append([]verse.Tool{}, tools...), verse.Ask(reg)), l.Environment)
+	tools = offered(append(append([]viff.Tool{}, tools...), viff.Ask(reg)), l.Environment)
 	s := &scriptTask{script: l.Script, root: root, env: env, set: set, bin: bin,
-		tools: map[string]verse.Tool{}, calls: make(chan *toolCall)}
+		tools: map[string]viff.Tool{}, calls: make(chan *toolCall)}
 	for _, t := range tools {
 		s.tools[t.Name] = t
 	}
-	dir, err := os.MkdirTemp("", "verse-tools-")
+	dir, err := os.MkdirTemp("", "viff-tools-")
 	if err != nil {
 		return nil, nil, fmt.Errorf("a directory for the tools socket: %w", err)
 	}
@@ -75,7 +75,7 @@ func newScriptTask(l runner.Launch, root string, env, set []string, tools []vers
 	s.sock = srv.Path()
 	sup := task.NewSupervisor(l.Environment, l.Autonomy, reg)
 	sup.SetCeilings(ceilings)
-	sup.SetStepOf(verse.StepOf(tools))
+	sup.SetStepOf(viff.StepOf(tools))
 	return task.NewTask(l.ID, sup, s, s), func() { srv.Close(); os.RemoveAll(dir) }, nil
 }
 
@@ -85,9 +85,9 @@ func newScriptTask(l runner.Launch, root string, env, set []string, tools []vers
 type scriptTask struct {
 	script, root string
 	env, set     []string // the shell's: names passed through, and NAME=value set
-	bin, sock    string   // verse-call-tool, "" for none, and the socket it calls
+	bin, sock    string   // viff-call-tool, "" for none, and the socket it calls
 
-	tools map[string]verse.Tool
+	tools map[string]viff.Tool
 	// calls carries each call from the socket to Next; proposed is the one Next last put in
 	// front of the loop, until the loop has decided about it and Next answers it.
 	calls    chan *toolCall
@@ -284,7 +284,7 @@ func (s *scriptTask) start(ctx context.Context, tu task.ToolUse) task.StepResult
 	c.Env = withTools(append(task.ShellEnv(s.env), s.set...), toolsEnv(s.sock, s.bin))
 	r := &running{done: make(chan struct{})}
 	c.Stdout, c.Stderr = &r.out, &r.out
-	// A child the script left running (`verse-call-tool question-ask ... &`) holds its output open, and
+	// A child the script left running (`viff-call-tool question-ask ... &`) holds its output open, and
 	// Wait would wait for it: the script's exit is its end, and the child's output is cut off
 	// after this.
 	c.WaitDelay = scriptWaitDelay
@@ -349,7 +349,7 @@ func scriptCommand(ctx context.Context, script string) (*exec.Cmd, func(), error
 	if prog == "" {
 		return nil, nil, errors.New("the script's #! line names no program")
 	}
-	f, err := os.CreateTemp("", "verse-script-*")
+	f, err := os.CreateTemp("", "viff-script-*")
 	if err != nil {
 		return nil, nil, fmt.Errorf("the script could not be written: %w", err)
 	}

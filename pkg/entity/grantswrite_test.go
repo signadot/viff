@@ -3,8 +3,8 @@ package entity_test
 import (
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // A WRITE OF A GRANTS LIST REPLACES THE LIST. An array write merges by position and truncates,

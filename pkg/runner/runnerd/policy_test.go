@@ -50,7 +50,7 @@ func stream(t *testing.T, url string, d time.Duration) string {
 func TestPutPolicyReplacesARunningTasksPolicy(t *testing.T) {
 	srv := offering(t)
 	tasks := srv.URL + "/tasks/"
-	if code, msg := postLaunch(t, srv.URL, `{id: g1, agent: {name: verse}, prompt: go, environment: {systems: {files: {write: {}}}}, autonomy: [{match: {system: files, verb: write}, then: ask}, {then: ask}]}`); code != http.StatusCreated {
+	if code, msg := postLaunch(t, srv.URL, `{id: g1, agent: {name: viff}, prompt: go, environment: {systems: {files: {write: {}}}}, autonomy: [{match: {system: files, verb: write}, then: ask}, {then: ask}]}`); code != http.StatusCreated {
 		t.Fatalf("launch = %d %s", code, msg)
 	}
 	for _, tc := range []struct {
@@ -86,7 +86,7 @@ func TestPutPolicyReplacesARunningTasksPolicy(t *testing.T) {
 func TestPutPolicyOnAnEndedTaskIsGone(t *testing.T) {
 	srv := offering(t)
 	tasks := srv.URL + "/tasks/"
-	postLaunch(t, srv.URL, `{id: g2, agent: {name: verse}, prompt: go}`)
+	postLaunch(t, srv.URL, `{id: g2, agent: {name: viff}, prompt: go}`)
 	send(t, http.MethodPost, tasks+"g2/cancel", `{reason: done with it}`)
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		if _, snap := send(t, http.MethodGet, tasks+"g2", ""); strings.Contains(snap, "status: cancelled") {
@@ -102,7 +102,7 @@ func TestPutPolicyOnAnEndedTaskIsGone(t *testing.T) {
 func TestAPausedTaskSaysSo(t *testing.T) {
 	srv := offering(t)
 	tasks := srv.URL + "/tasks/"
-	postLaunch(t, srv.URL, `{id: p1, agent: {name: verse}, prompt: go}`)
+	postLaunch(t, srv.URL, `{id: p1, agent: {name: viff}, prompt: go}`)
 	status := func() string {
 		_, snap := send(t, http.MethodGet, tasks+"p1", "")
 		for _, line := range strings.Split(snap, "\n") {
@@ -127,7 +127,7 @@ func TestAPausedTaskSaysSo(t *testing.T) {
 func TestALaunchIsAnsweredWithTheTask(t *testing.T) {
 	srv := offering(t)
 	for _, want := range []int{http.StatusCreated, http.StatusOK} {
-		code, body := postLaunch(t, srv.URL, `{id: l1, agent: {name: verse}, prompt: go}`)
+		code, body := postLaunch(t, srv.URL, `{id: l1, agent: {name: viff}, prompt: go}`)
 		if code != want || !strings.Contains(body, "id: l1") || !strings.Contains(body, "status: running") {
 			t.Fatalf("= %d\n%s\nwant %d and the task's snapshot", code, body, want)
 		}
@@ -138,7 +138,7 @@ func TestALaunchIsAnsweredWithTheTask(t *testing.T) {
 func TestControlSaysWho(t *testing.T) {
 	srv := offering(t)
 	tasks := srv.URL + "/tasks/"
-	postLaunch(t, srv.URL, `{id: w1, agent: {name: verse}, prompt: go}`)
+	postLaunch(t, srv.URL, `{id: w1, agent: {name: viff}, prompt: go}`)
 	send(t, http.MethodPost, tasks+"w1/pause", `{by: "user:ana"}`)
 	send(t, http.MethodPost, tasks+"w1/resume", `{by: "user:bob"}`)
 	send(t, http.MethodPost, tasks+"w1/cancel", `{reason: enough, by: "user:cy"}`)
@@ -163,7 +163,7 @@ func TestControlSaysWho(t *testing.T) {
 func TestACancelWithNoReasonSaysSo(t *testing.T) {
 	srv := offering(t)
 	tasks := srv.URL + "/tasks/"
-	postLaunch(t, srv.URL, `{id: c0, agent: {name: verse}, prompt: go}`)
+	postLaunch(t, srv.URL, `{id: c0, agent: {name: viff}, prompt: go}`)
 	send(t, http.MethodPost, tasks+"c0/cancel", "")
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		if _, snap := send(t, http.MethodGet, tasks+"c0", ""); strings.Contains(snap, "status: cancelled") {

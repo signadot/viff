@@ -16,7 +16,7 @@ import (
 // branch the delta does not name is a branch the commit did not change.
 
 // changesAt is the changes between before and after at the nodes each pattern reaches, in path
-// order, stamped with rev. The documents are the verse (the store root's key already stripped).
+// order, stamped with rev. The documents are the viff (the store root's key already stripped).
 // delta, when given, is the commit's patch at the same rooting, and the walk goes only where it
 // reaches; a nil delta compares everything the patterns reach.
 func changesAt(patterns []*kpath.KPath, before, after, delta *ir.Node, rev int64) []Event {

@@ -8,9 +8,9 @@ import (
 	"github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/parser"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/exprs"
-	"github.com/signadot/verse/pkg/launch"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/exprs"
+	"go.viff.dev/viff/pkg/launch"
 )
 
 // Reading a value OUT of what fired an action, and writing it.
@@ -321,7 +321,7 @@ func answerReads(n entity.Payload, env launch.Binding, read readFn) error {
 }
 
 // THE OLD SPELLING. Before a patch's and a derive's values were expressions, a reference was
-// `$name`, a kpath read by verse: `$subject.value.sha`. Left as it is, that text is now text,
+// `$name`, a kpath read by viff: `$subject.value.sha`. Left as it is, that text is now text,
 // and a patch would write the six words onto the subject where it meant the sha. A prompt can
 // carry `$HOME` to an agent as written; a fact cannot carry a reference nobody resolved. So it is
 // refused at install, by name, with the spelling to write (legacyRef).
@@ -567,7 +567,7 @@ func (e *Engine) subjectFor(oc occasion, subj entity.Ref, w subjectWants) (map[s
 	if w.commit {
 		if oc.commit.Rev == 0 {
 			return nil, fmt.Errorf("%s.%s: this firing has no causing commit, so there is no "+
-				"revision to name. A completion hook reads at the head, the verse as it is when "+
+				"revision to name. A completion hook reads at the head, the viff as it is when "+
 				"its task ends, and names that", refSubject, subjPartCommit)
 		}
 		commit = oc.commit.Rev
@@ -576,7 +576,7 @@ func (e *Engine) subjectFor(oc occasion, subj entity.Ref, w subjectWants) (map[s
 }
 
 // subjectValueAt reads the subject's payload at the occasion's commit: the one that caused the
-// firing, and for a completion hook the head, the verse as it is when the task ends (applyHook).
+// firing, and for a completion hook the head, the viff as it is when the task ends (applyHook).
 func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, error) {
 	// Free when the causing commit changed this subject, which is the ordinary rule about the
 	// entity that changed: the payload at C is already in the commit.
@@ -588,7 +588,7 @@ func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, e
 	if oc.commit.Rev == 0 {
 		return nil, fmt.Errorf("%s.%s: this firing has no causing commit to read at, so there "+
 			"is no revision at which to pin the subject's state. A completion hook reads at "+
-			"the head, the verse as it is when its task ends", refSubject, subjPartValue)
+			"the head, the viff as it is when its task ends", refSubject, subjPartValue)
 	}
 	// A fan-out member the commit did not touch, read at C: one firing about a set would
 	// otherwise mix one member's state at C with another's at whatever the store had reached by
@@ -628,7 +628,7 @@ func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, e
 // whose subject is a PR — the subject is read from the store. That read is CURRENT rather
 // than as-of-the-commit, which is the one place this is looser than the model wants; it
 // tightens for free once a firing carries the snapshot it was evaluated against, and doing it
-// here would mean a whole-verse read per subject.
+// here would mean a whole-viff read per subject.
 func (e *Engine) refPayload(ev entity.Event, subj entity.Ref, src refSource) entity.Payload {
 	if src == fromCause {
 		return ev.To

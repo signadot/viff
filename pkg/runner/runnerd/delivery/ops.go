@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner/runnerd/mcpclient"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // AN OP IS ONE ACT THE RUNNER PERFORMS FOR A TASK, and the table below is every one of them. An
@@ -108,16 +108,16 @@ var ops = map[string]op{
 	OpSlackRead:  named(OpSlackRead, (*Server).slack, "channel", "thread", "since").withNumbers("limit"),
 	OpSlackReact: named(OpSlackReact, (*Server).slack, "channel", "message", "emoji"),
 
-	OpVerseAskCreate:      named(OpVerseAskCreate, (*Server).verseAskCreate, "ask"),
-	OpVerseAskGet:         named(OpVerseAskGet, (*Server).verseAskGet, "ask"),
-	OpVerseAskList:        named(OpVerseAskList, (*Server).verseAskList),
-	OpVerseDataGet:        named(OpVerseDataGet, (*Server).verseRouted, "query"),
-	OpVerseDataPut:        named(OpVerseDataPut, (*Server).verseRouted, "query").withBody(),
-	OpVerseDataRm:         named(OpVerseDataRm, (*Server).verseRouted, "query"),
-	OpVerseCharterGet:     named(OpVerseCharterGet, (*Server).verseRouted, "query"),
-	OpVerseCharterCheck:   named(OpVerseCharterCheck, (*Server).verseRouted, "query").withBody(),
-	OpVerseCharterInstall: named(OpVerseCharterInstall, (*Server).verseRouted, "query").withBody(),
-	OpVerseCharterRemove:  named(OpVerseCharterRemove, (*Server).verseRouted, "query"),
+	OpViffAskCreate:      named(OpViffAskCreate, (*Server).viffAskCreate, "ask"),
+	OpViffAskGet:         named(OpViffAskGet, (*Server).viffAskGet, "ask"),
+	OpViffAskList:        named(OpViffAskList, (*Server).viffAskList),
+	OpViffDataGet:        named(OpViffDataGet, (*Server).viffRouted, "query"),
+	OpViffDataPut:        named(OpViffDataPut, (*Server).viffRouted, "query").withBody(),
+	OpViffDataRm:         named(OpViffDataRm, (*Server).viffRouted, "query"),
+	OpViffCharterGet:     named(OpViffCharterGet, (*Server).viffRouted, "query"),
+	OpViffCharterCheck:   named(OpViffCharterCheck, (*Server).viffRouted, "query").withBody(),
+	OpViffCharterInstall: named(OpViffCharterInstall, (*Server).viffRouted, "query").withBody(),
+	OpViffCharterRemove:  named(OpViffCharterRemove, (*Server).viffRouted, "query"),
 
 	// A command run with a secret: apart, since it may take the whole of its hour, and no push
 	// waits on it; the deadline is the longest run and the kill and the wait after it.

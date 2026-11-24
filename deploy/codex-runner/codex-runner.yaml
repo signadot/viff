@@ -1,35 +1,35 @@
-# The codex runner: the verse runner in its own image with Codex in it, offering the codex agent
+# The codex runner: the viff runner in its own image with Codex in it, offering the codex agent
 # (`agent: {name: codex}`), which it drives over Codex's client protocol so that every command
 # and patch Codex proposes is decided by the task's autonomy (docs/reference/runnerd.md,
 # "Codex, gated inside the run").
 #
-# It is a SECOND runner beside verse-runner, not a change to it: its own image, Deployment,
+# It is a SECOND runner beside viff-runner, not a change to it: its own image, Deployment,
 # Service, ConfigMap and credential, in the `runners` tier beside it with `runner: codex` to
 # select it alone, so it can be removed on its own and the runner the charters name goes on
-# untouched. Verse learns about it the same way:
+# untouched. Viff learns about it the same way:
 #
-#   verse runner add codex http://codex-runner:9802 --identity codex-runner \
-#     --subject system:serviceaccount:verse:codex-runner
+#   viff runner add codex http://codex-runner:9802 --identity codex-runner \
+#     --subject system:serviceaccount:viff:codex-runner
 #
 # Everything about the pod that is bubblewrap's — hostUsers, procMount, seccompProfile — is as
-# deploy/verse-runner/verse-runner.yaml has it, and explained there.
+# deploy/viff-runner/viff-runner.yaml has it, and explained there.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: codex-runner-config
-  labels: {app: verse, tier: runners, runner: codex}
+  labels: {app: viff, tier: runners, runner: codex}
 data:
-  verse-runner.tony: |
+  viff-runner.tony: |
     listen: ":9802"
-    # The one verse this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
-    # names it in the pod's environment, VERSE_URL and VERSE_ISSUER, from the `issuer` knob,
-    # since this file is every cluster's, and gives it its token (VERSE_TOKEN_FILE). The runner
+    # The one viff this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
+    # names it in the pod's environment, VIFF_URL and VIFF_ISSUER, from the `issuer` knob,
+    # since this file is every cluster's, and gives it its token (VIFF_TOKEN_FILE). The runner
     # does not start without both.
     # One bare mirror per repository, on the state volume, shared by the tasks. The forge is
-    # github.com, and the token is GITHUB_TOKEN (the verse-runner Secret, below).
+    # github.com, and the token is GITHUB_TOKEN (the viff-runner Secret, below).
     repos:
       mirrors: /state/mirrors
-    # The secret store, as deploy/verse-runner has it: the projected volume below, read by the
+    # The secret store, as deploy/viff-runner has it: the projected volume below, read by the
     # runner at each act and by no task. A deployment moves a system to it by naming its secret
     # (`systems: {slack: slack-bot, linear-issue: linear}`), and its variable is then not read.
     secrets: {dir: /secrets}
@@ -50,14 +50,14 @@ data:
     # spawn's environment may give, held at install, at launch and again at each act. A ceiling
     # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer
     # is closed to it; a block naming no verb (`{}`) allows every verb of its system.
-    # The example org's repositories, and their branches under verse/; main of example/app, which
+    # The example org's repositories, and their branches under viff/; main of example/app, which
     # a merge rule lands on. Placeholders, closed until a deployment names its own
     # (`runnerConfig`). No network ceiling: tasks get what the sandbox builds. What a doer's
     # shell is given of the runner's environment is its `shellEnv`, by name: never a secret.
     # Codex alone: no `script:`, so this runner offers no scripts.
     agents:
       codex:
-        # How Codex runs here. The key is OPENAI_API_KEY (the verse-codex Secret, below); the
+        # How Codex runs here. The key is OPENAI_API_KEY (the viff-codex Secret, below); the
         # task process writes it as Codex's login file in a CODEX_HOME of its own, so it is in no
         # environment a command could inherit. The sandbox is Codex's own, inside bwrap's: an
         # approved command may write the workspace and /tmp, and nothing else. Codex's API is
@@ -84,52 +84,52 @@ data:
               fetch: {}
               push:
               - {ref: refs/heads/main, force: false, delete: false}
-              - {ref: !regexp "^refs/heads/verse/"}
+              - {ref: !regexp "^refs/heads/viff/"}
             - repo: !regexp "^github\\.com/example/"
               fetch: {}
-              push: {ref: !regexp "^refs/heads/verse/"}
+              push: {ref: !regexp "^refs/heads/viff/"}
           git-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
           github: {ceiling: {repo: !regexp "^github\\.com/example/"}}
           github-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
           # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
-          # verse-linear, SLACK_BOT_TOKEN from verse-slack): a ceiling naming either is what makes
+          # viff-linear, SLACK_BOT_TOKEN from viff-slack): a ceiling naming either is what makes
           # the runner offer the system, and where its variable is unset the runner starts with it
-          # closed, and says so. TEAM stands for the team the Linear iod reflects, and `verse`
+          # closed, and says so. TEAM stands for the team the Linear iod reflects, and `viff`
           # for a channel the Slack bot is in. A Slack shape names one channel, so two channels
           # are two shapes.
           linear-issue: {ceiling: {create: {team: TEAM}, comment: {issue: !glob "TEAM-*"}, close: {issue: !glob "TEAM-*"}}}
           slack:
             ceiling:
-              read: [{channel: verse}]
-              post: [{channel: verse}]
-              reply: [{channel: verse}]
-              react: [{channel: verse}]
+              read: [{channel: viff}]
+              post: [{channel: viff}]
+              reply: [{channel: viff}]
+              react: [{channel: viff}]
           files: {ceiling: {}}
           commands: {ceiling: {}}
           question: {ceiling: {}}
-          verse: {ceiling: {}}
+          viff: {ceiling: {}}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: codex-runner
-  labels: {app: verse, tier: runners, runner: codex}
+  labels: {app: viff, tier: runners, runner: codex}
 spec:
   replicas: 1
   strategy: {type: Recreate}
   selector:
-    matchLabels: {app: verse, tier: runners, runner: codex}
+    matchLabels: {app: viff, tier: runners, runner: codex}
   template:
     metadata:
-      labels: {app: verse, tier: runners, runner: codex}
+      labels: {app: viff, tier: runners, runner: codex}
     spec:
       hostUsers: false
       containers:
       - name: codex-runner
-        image: signadot/verse-runner:codex
+        image: signadot/viff-runner:codex
         args:
         - -config
-        - /config/verse-runner.tony
+        - /config/viff-runner.tony
         - -sandbox
         - bwrap
         ports:
@@ -141,13 +141,13 @@ spec:
         # comes from the store entry `codexSecretKey` names (deploy/README.md, Credentials),
         # and is made by hand only where that knob is empty:
         #
-        #   kubectl -n verse create secret generic verse-codex \
+        #   kubectl -n viff create secret generic viff-codex \
         #     --from-literal=OPENAI_API_KEY=<key>
         #
         # Optional: a runner without it starts, and its first codex spawn fails.
         envFrom:
         - secretRef:
-            name: verse-codex
+            name: viff-codex
             optional: true
         env:
         # Codex writes its logs and state under $HOME/.codex when it is given no login of its
@@ -155,25 +155,25 @@ spec:
         # writable path inside the sandbox, and /tmp is the one there is.
         - name: HOME
           value: /tmp
-        # What this runner pushes with: the same token verse-runner pushes with, held by a
+        # What this runner pushes with: the same token viff-runner pushes with, held by a
         # different process. The task never sees it.
         - name: GITHUB_TOKEN
           valueFrom:
-            secretKeyRef: {name: verse-runner, key: gitToken, optional: true}
+            secretKeyRef: {name: viff-runner, key: gitToken, optional: true}
         # Linear's and Slack's, for the tasks' linear-issue and slack calls: the keys the iods read
         # from the same Secrets. The runner makes each call itself, so a task never has them.
         - name: LINEAR_API_KEY
           valueFrom:
-            secretKeyRef: {name: verse-linear, key: LINEAR_API_KEY, optional: true}
+            secretKeyRef: {name: viff-linear, key: LINEAR_API_KEY, optional: true}
         - name: SLACK_BOT_TOKEN
           valueFrom:
-            secretKeyRef: {name: verse-slack, key: SLACK_BOT_TOKEN, optional: true}
+            secretKeyRef: {name: viff-slack, key: SLACK_BOT_TOKEN, optional: true}
         volumeMounts:
         - {name: config, mountPath: /config, readOnly: true}
         - {name: state, mountPath: /state}
         - {name: secrets, mountPath: /secrets, readOnly: true}
         readinessProbe:
-          # The server up, and nothing else (deploy/verse-runner, the same probe).
+          # The server up, and nothing else (deploy/viff-runner, the same probe).
           httpGet: {path: /ready, port: control}
           initialDelaySeconds: 2
           periodSeconds: 10
@@ -190,29 +190,29 @@ spec:
         configMap: {name: codex-runner-config}
       - name: state
         emptyDir: {}
-      # The secret store, as deploy/verse-runner has it and explains it: every source optional,
-      # the iods' keys under the store's names, verse-runner-secrets for the rest, no subPath.
+      # The secret store, as deploy/viff-runner has it and explains it: every source optional,
+      # the iods' keys under the store's names, viff-runner-secrets for the rest, no subPath.
       - name: secrets
         projected:
           sources:
           - secret:
-              name: verse-slack
+              name: viff-slack
               optional: true
               items: [{key: SLACK_BOT_TOKEN, path: slack-bot}]
           - secret:
-              name: verse-linear
+              name: viff-linear
               optional: true
               items: [{key: LINEAR_API_KEY, path: linear}]
           - secret:
-              name: verse-runner-secrets
+              name: viff-runner-secrets
               optional: true
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: codex-runner
-  labels: {app: verse, tier: runners, runner: codex}
+  labels: {app: viff, tier: runners, runner: codex}
 spec:
-  selector: {app: verse, tier: runners, runner: codex}
+  selector: {app: viff, tier: runners, runner: codex}
   ports:
   - {name: control, port: 9802, targetPort: control}

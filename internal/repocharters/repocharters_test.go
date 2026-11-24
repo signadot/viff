@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 var update = flag.Bool("update", false, "rewrite the reference example from the template")
@@ -50,14 +50,14 @@ func TestARenderingIsForItsRepository(t *testing.T) {
 	}
 	s := string(got)
 	for _, want := range []string{
-		"reads: [git.r, github.acme.r, verse.schedule]", `path: 'verse.schedule."repo-charters.r:minute".tick.*'`, "at: repo-charters.r\n", "- from: install\n", "to: git.r.out", "to: github.acme.r.out", `path: "repo-charters.r.candidate.*"`,
+		"reads: [git.r, github.acme.r, mirror.schedule]", `path: 'mirror.schedule."repo-charters.r:minute".tick.*'`, "at: repo-charters.r\n", "- from: install\n", "to: git.r.out", "to: github.acme.r.out", `path: "repo-charters.r.candidate.*"`,
 		`to: "install.repos.r"`, `-answerers "user:*" -answerers "group:owners" -answerers "agent:git-iod"`, "tree.charters", "into repos.r?", `path: "github.acme.r.pr.*"`, `to: "pr.$[subject.value.pr]"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("the rendering for r lacks %q", want)
 		}
 	}
-	if strings.Contains(s, "verse.out") || strings.Contains(s, "signadot") {
+	if strings.Contains(s, "viff.out") || strings.Contains(s, "signadot") {
 		t.Errorf("the rendering for r speaks of another instance")
 	}
 	// No answerers: the question is left to whom the task acts for, and the key is absent.

@@ -46,7 +46,7 @@ func TestAReadOnlyPathMayNotReachTheRunnersOwn(t *testing.T) {
 	if err := os.Symlink(real, base); err != nil {
 		t.Fatal(err)
 	}
-	run := filepath.Join(base, "var", "verse")
+	run := filepath.Join(base, "var", "viff")
 	work, control, mirrors := filepath.Join(run, "work"), filepath.Join(run, "control"), filepath.Join(base, "mirrors")
 	for _, d := range []string{work, control, mirrors, filepath.Join(base, "cache", "go")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -59,14 +59,14 @@ func TestAReadOnlyPathMayNotReachTheRunnersOwn(t *testing.T) {
 	}
 	kept := KeptDirs(work, control, mirrors, "", "")
 	for p, want := range map[string]string{
-		run:                                     "control", // the parent of control and work
-		control:                                 "control", // the directory itself
-		filepath.Join(work, "task-1"):           "work",    // a task's own, not made yet
-		filepath.Join(real, "var/verse/work/x"): "work",    // the same, spelled the other way
-		filepath.Join(mirrors, "o/r"):           "mirrors", // a repository, not made yet
-		link:                                    "control", // the parent again, by a link
-		filepath.Join(link, "control", "new"):   "control", // through the link, not made yet
-		filepath.Join(base, "var"):              "control", // further up
+		run:                                    "control", // the parent of control and work
+		control:                                "control", // the directory itself
+		filepath.Join(work, "task-1"):          "work",    // a task's own, not made yet
+		filepath.Join(real, "var/viff/work/x"): "work",    // the same, spelled the other way
+		filepath.Join(mirrors, "o/r"):          "mirrors", // a repository, not made yet
+		link:                                   "control", // the parent again, by a link
+		filepath.Join(link, "control", "new"):  "control", // through the link, not made yet
+		filepath.Join(base, "var"):             "control", // further up
 	} {
 		err := CheckReadOnly([]string{filepath.Join(base, "cache", "go"), p}, kept)
 		if err == nil || !strings.Contains(err.Error(), "the runner's "+want) {
@@ -82,7 +82,7 @@ func TestAReadOnlyPathMayNotReachTheRunnersOwn(t *testing.T) {
 // runner keeps (or appeared there) is left out of the task, and said.
 func TestALaunchLeavesOutAPathThatNowReachesTheRunnersOwn(t *testing.T) {
 	base := t.TempDir()
-	control := filepath.Join(base, "verse-runner-control-1")
+	control := filepath.Join(base, "viff-runner-control-1")
 	cache := filepath.Join(base, "cache")
 	for _, d := range []string{control, cache} {
 		if err := os.Mkdir(d, 0o755); err != nil {
@@ -162,11 +162,11 @@ func TestTheSecretStoreIsWhereNoSandboxBindsIt(t *testing.T) {
 	}
 	kept := KeptDirs(work, control, mirrors, "", "")
 	for dir, want := range map[string]string{
-		"/etc/verse/secrets":             "every task's sandbox has",
+		"/etc/viff/secrets":              "every task's sandbox has",
 		"/opt/secrets":                   "every task's sandbox has",
 		"/usr/local/share/secrets":       "every task's sandbox has",
 		"/etc":                           "every task's sandbox has",
-		filepath.Join(intoEtc, "verse"):  "every task's sandbox has",
+		filepath.Join(intoEtc, "viff"):   "every task's sandbox has",
 		"/":                              "the whole machine",
 		base:                             "overlaps the runner's control directory",
 		filepath.Join(work, "t1", "s"):   "overlaps the runner's work directory",

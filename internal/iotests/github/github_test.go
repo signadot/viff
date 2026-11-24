@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/github"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/github"
 )
 
 func newSource(t *testing.T, f *fakeGitHub, cfg github.Config) *github.GitHub {
@@ -25,7 +25,7 @@ func newSource(t *testing.T, f *fakeGitHub, cfg github.Config) *github.GitHub {
 	return src
 }
 
-func payloads(rn verseio.Reflection) map[string]entity.Obj {
+func payloads(rn viffio.Reflection) map[string]entity.Obj {
 	out := map[string]entity.Obj{}
 	for _, e := range rn.Entities {
 		out[e.Ref.String()] = entity.ToObj(e.Payload)
@@ -125,11 +125,11 @@ func TestASecondPassOverUnchangedDataWritesNothing(t *testing.T) {
 
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 
 	wrote := func() int {
 		n := -1
-		rf.OnPass(func(pass verseio.Pass) {
+		rf.OnPass(func(pass viffio.Pass) {
 			if pass.Err != nil {
 				t.Fatalf("pass: %v", pass.Err)
 			}
@@ -228,7 +228,7 @@ func TestAClosedItemIsWindowedAndAgesOut(t *testing.T) {
 	r.issue(2, "just closed", "closed", "2026-01-02T00:00:00Z")
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Settled: 1})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	pass := func() {
 		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 			t.Fatal(err)
@@ -308,7 +308,7 @@ func TestTheSystemIsTheOperatorsToChoose(t *testing.T) {
 			t.Fatalf("a cover outside the chosen system: %+v", c)
 		}
 	}
-	for _, o := range verseio.Describe(src).Owns {
+	for _, o := range viffio.Describe(src).Owns {
 		if !strings.HasPrefix(o.At, "github-internal.") {
 			t.Fatalf("a claim outside the chosen system: %s", o.At)
 		}
@@ -316,7 +316,7 @@ func TestTheSystemIsTheOperatorsToChoose(t *testing.T) {
 	// Two systems are disjoint on the first segment, which is the whole reason this is a flag:
 	// a deployer who wants no coordination owes nobody a disjointness proof.
 	other := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
-	ok, err := verseio.Disjoint(verseio.Describe(src).Owns, verseio.Describe(other).Owns)
+	ok, err := viffio.Disjoint(viffio.Describe(src).Owns, viffio.Describe(other).Owns)
 	if err != nil || !ok {
 		t.Fatalf("two systems were not provably disjoint: ok=%v err=%v", ok, err)
 	}
@@ -334,7 +334,7 @@ func TestOwnsCoversWhatItReflectsAndNoMore(t *testing.T) {
 	f.repo("acme/other")
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
 
-	claims, err := verseio.ParseOwns(verseio.Describe(src).Owns)
+	claims, err := viffio.ParseOwns(viffio.Describe(src).Owns)
 	if err != nil {
 		t.Fatalf("github declares a claim that does not parse: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestOwnsCoversWhatItReflectsAndNoMore(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range rn.Entities {
-		places := verseio.Claimed(claims, e.Ref)
+		places := viffio.Claimed(claims, e.Ref)
 		if len(places) != 1 || places[0].Ref != e.Ref {
 			t.Fatalf("%s is reflected; Claimed = %v, want the whole entity", e.Ref, places)
 		}
@@ -354,13 +354,13 @@ func TestOwnsCoversWhatItReflectsAndNoMore(t *testing.T) {
 		entity.RefAt("github", "acme", "other", "repo"),
 		entity.RefAt("github", "other", "app", "issue", "1"),
 	} {
-		if places := verseio.Claimed(claims, ref); len(places) != 0 {
+		if places := viffio.Claimed(claims, ref); len(places) != 0 {
 			t.Fatalf("%s is claimed but not written: %v", ref, places)
 		}
 	}
 	// Two repositories are two places, so their claims are apart with nothing else said.
 	two := newSource(t, f, github.Config{Repos: []string{"acme/other"}})
-	ok, err := verseio.Disjoint(verseio.Describe(src).Owns, verseio.Describe(two).Owns)
+	ok, err := viffio.Disjoint(viffio.Describe(src).Owns, viffio.Describe(two).Owns)
 	if err != nil || !ok {
 		t.Fatalf("two repositories were not provably disjoint: ok=%v err=%v", ok, err)
 	}
@@ -474,7 +474,7 @@ func TestTheRunWindowSlidesAndTombstones(t *testing.T) {
 	r.run(2, "ci", "completed", "failure", "bbbb")
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Runs: 2})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	pass := func() {
 		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 			t.Fatal(err)
@@ -513,7 +513,7 @@ func TestALongRunningRunFallsOutOfASmallWindow(t *testing.T) {
 	r.run(1, "nightly", "in_progress", "", "aaaa") // still going
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Runs: 1})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	pass := func() {
 		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 			t.Fatal(err)
@@ -634,7 +634,7 @@ func TestDiscussionsTurnedOffLeaveWhatIsStandingAlone(t *testing.T) {
 	r.discussion(9, "a discussion", false, "2026-01-02T00:00:00Z")
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	pass := func() {
 		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 			t.Fatalf("a repository without discussions should still reflect: %v", err)
@@ -673,7 +673,7 @@ func TestAGraphQLRefusalIsNotAnEmptyAnswer(t *testing.T) {
 	var logged []string
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"},
 		Log: func(format string, args ...any) { logged = append(logged, fmt.Sprintf(format, args...)) }})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -709,7 +709,7 @@ func TestAClosedDiscussionIsWindowed(t *testing.T) {
 	r.discussion(2, "answered", true, "2026-01-02T00:00:00Z")
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Settled: 1})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	pass := func() {
 		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 			t.Fatal(err)
@@ -733,7 +733,7 @@ func TestAClosedDiscussionIsWindowed(t *testing.T) {
 // ── the budget ───────────────────────────────────────────────────────────────
 
 // THE THRESHOLDS, NAMED BEFORE THE NUMBERS ARE READ, because one chosen after seeing the data is
-// not a threshold. A personal token has 5,000 requests an hour and verse resyncs every minute,
+// not a threshold. A personal token has 5,000 requests an hour and viff resyncs every minute,
 // so 60 passes an hour share that: about 83 chargeable requests per pass across every repository
 // a deployment reflects.
 //
@@ -891,7 +891,7 @@ func TestSkippingDiscussionsCostsNothingAndDeletesNothing(t *testing.T) {
 	store := entitytest.Store(t)
 
 	with := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
-	rf := verseio.NewReflector(with, store, 0)
+	rf := viffio.NewReflector(with, store, 0)
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -902,7 +902,7 @@ func TestSkippingDiscussionsCostsNothingAndDeletesNothing(t *testing.T) {
 
 	// The operator switches them off, and what was reflected stays.
 	without := newSource(t, f, github.Config{Repos: []string{"acme/app"}, SkipDiscussions: true})
-	rf2 := verseio.NewReflector(without, store, 0)
+	rf2 := viffio.NewReflector(without, store, 0)
 	if err := rf2.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -1029,7 +1029,7 @@ func TestCommentsAreReflectedAndWindowed(t *testing.T) {
 
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Comments: 2})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	pass := func() {
 		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 			t.Fatal(err)
@@ -1102,7 +1102,7 @@ func TestAReviewCommentCarriesItsLocation(t *testing.T) {
 	r.comment(904, 7, "a conversation comment", false, "2026-01-06T00:00:00Z")
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
-	if err := verseio.NewReflector(src, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
+	if err := viffio.NewReflector(src, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
 	get := func(id int64) map[string]any {
@@ -1167,7 +1167,7 @@ func TestACommentJoinsToItsItemByRef(t *testing.T) {
 	r.comment(100, 2, "on the PR", false, "2026-01-02T00:00:00Z")
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}})
-	if err := verseio.NewReflector(src, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
+	if err := viffio.NewReflector(src, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
 	on := entity.Get(mustGet(t, store, src.CommentRef("acme/app", 2, 100)), "on")
@@ -1241,8 +1241,8 @@ func TestATargetedCommentPassAgreesAndCoversOnlyItself(t *testing.T) {
 //
 // GitHub's web UI submits CRLF, so nearly every comment body carries `\r\n`. A string holding
 // one renders as a tony block scalar whose next sibling key comes back at column zero, the
-// document is imbalanced, and verse refuses the whole reflection as undecodable: every pass
-// fails, the slice freezes at whatever it last held, and `verse iod` shows an io that is
+// document is imbalanced, and viff refuses the whole reflection as undecodable: every pass
+// fails, the slice freezes at whatever it last held, and `viff iod` shows an io that is
 // alive and reflecting nothing. Found against a real repository, one comment after it started
 // working. Upstream: item 21 of tony-format#f69agjyeh12ksa25cnn0.
 //
@@ -1274,7 +1274,7 @@ func TestARealCommentBodySurvivesTheWire(t *testing.T) {
 		t.Fatalf("a reflection carrying a real comment body did not survive the wire: %v\n%s",
 			err, wire)
 	}
-	var back verseio.Reflection
+	var back viffio.Reflection
 	if err := codec.FromNode(parsed, &back); err != nil {
 		t.Fatalf("decode: %v", err)
 	}

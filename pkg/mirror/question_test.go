@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // pose publishes one question, the way the registry's OnPost does.
@@ -31,7 +31,7 @@ func runStep(command string) task.Step {
 // ids returns the question ids a pattern picks, so a test can say what a rule would fire on.
 func ids(t *testing.T, store entity.Store, p entity.Pattern) []string {
 	t.Helper()
-	p.Path = []*ir.Node{ir.FromString(entity.VerseRoot), ir.FromString(AskSystem),
+	p.Path = []*ir.Node{ir.FromString(entity.ViffRoot), ir.FromString(AskSystem),
 		ir.FromString("*")}
 	var out []string
 	for _, ref := range p.Select(store) {
@@ -282,7 +282,7 @@ func TestAQuestionSaysWhoItWaitsOn(t *testing.T) {
 	same(t, waitsOn(t, store, "run-a~d2"), []string{`audience:demo.pr."1"`})
 
 	// Named nobody, about nothing: whoever the docket holds questions out to.
-	if err := entity.SetChildGrants(store, entity.VerseRef(AskSystem),
+	if err := entity.SetChildGrants(store, entity.ViffRef(AskSystem),
 		entity.Levels{entity.ReadWrite: {"user:*"}, entity.Read: {entity.Everyone}}); err != nil {
 		t.Fatal(err)
 	}
@@ -427,7 +427,7 @@ func TestAnOptionWithNoNeedIsRecordedAsOneBallot(t *testing.T) {
 }
 
 // A QUESTION A FRAME POSES SAYS WHOM IT WAITS ON, as one the registry poses does: a remote
-// runner's questions are on `verse question` and in Slack as a local one's are.
+// runner's questions are on `viff question` and in Slack as a local one's are.
 func TestAFramePosedQuestionSaysWhomItWaitsOn(t *testing.T) {
 	store := docket(t)
 	const ann = "user:ann@example.com"

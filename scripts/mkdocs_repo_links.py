@@ -2,7 +2,7 @@
 
 The docs are read in three places: on the site, in the repository by a person, and in the
 repository by an agent. A page the site excludes (mkdocs.yml, exclude_docs) is still in the
-repository, and so is every file outside docs/, such as a charter under .verse/charters. A
+repository, and so is every file outside docs/, such as a charter under .viff/charters. A
 relative link to either is right for the two readers there. On the site that link would 404,
 so this rewrites it, at build time only, to the file on GitHub. The source keeps the relative
 link.
@@ -10,7 +10,7 @@ link.
 A link inside a fenced code block is left alone.
 
 The links go to the files at `main`, the ref the published site is built from. A preview built
-from a branch sets VERSE_DOCS_REF to that branch, or to a commit, so its links go to the files it
+from a branch sets VIFF_DOCS_REF to that branch, or to a commit, so its links go to the files it
 was built from; the ref has to be on GitHub for them to resolve.
 """
 
@@ -50,7 +50,7 @@ def _rewrite(text, page, files, base, docs_dir):
 
 
 def on_page_markdown(markdown, page, config, files):
-    ref = os.environ.get("VERSE_DOCS_REF") or "main"
+    ref = os.environ.get("VIFF_DOCS_REF") or "main"
     base = config["repo_url"].rstrip("/") + "/blob/" + ref
     parts = FENCE.split(markdown)
     out, in_fence, i = [], False, 0

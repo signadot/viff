@@ -2,17 +2,17 @@ package linear_test
 
 import (
 	"context"
-	"github.com/signadot/verse/internal/versed/versedtest"
-	"github.com/signadot/verse/pkg/runner/runnerd/runnerdtest"
+	"go.viff.dev/viff/internal/viffd/viffdtest"
+	"go.viff.dev/viff/pkg/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/linear"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/linear"
 )
 
 // The second out half, and the reason there is one: everything below runs on the same io.Out as
@@ -22,13 +22,13 @@ import (
 type outRig struct {
 	store entity.Store
 	fake  *fakeLinear
-	out   *verseio.Out
+	out   *viffio.Out
 }
 
 func newOutRig(t *testing.T) *outRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	f := newFake()
 	f.team("ENG", "Engineering")
@@ -37,9 +37,9 @@ func newOutRig(t *testing.T) *outRig {
 	if len(places) != 1 {
 		t.Fatalf("out places %v, want one per team", places)
 	}
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:linear-iod")
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:linear-iod")
 	return &outRig{store: store, fake: f,
-		out: verseio.NewOut(src.Sink(), places[0], verse, nil)}
+		out: viffio.NewOut(src.Sink(), places[0], viff, nil)}
 }
 
 func (r *outRig) ask(t *testing.T, issue, name string, input entity.Obj) {
@@ -57,7 +57,7 @@ func (r *outRig) pass(t *testing.T) {
 
 func (r *outRig) status(t *testing.T, name string) entity.Obj {
 	t.Helper()
-	e, ok, err := r.store.Get(entity.RefAt("linear", "ENG", "out", name+verseio.StatusSuffix))
+	e, ok, err := r.store.Get(entity.RefAt("linear", "ENG", "out", name+viffio.StatusSuffix))
 	if err != nil {
 		t.Fatalf("reading the status: %v", err)
 	}
@@ -70,14 +70,14 @@ func (r *outRig) status(t *testing.T, name string) entity.Obj {
 // An input is a comment on the issue its target names, and the status says which comment it is.
 func TestAnInputBecomesACommentOnItsIssue(t *testing.T) {
 	r := newOutRig(t)
-	r.ask(t, "ENG-42", "review", entity.Obj{"text": "verse says this is waiting on a decision"})
+	r.ask(t, "ENG-42", "review", entity.Obj{"text": "viff says this is waiting on a decision"})
 	r.pass(t)
 
 	if len(r.fake.comments) != 1 {
 		t.Fatalf("comments %v, want one", r.fake.comments)
 	}
 	// The identifier a person types was resolved to the uuid the mutation takes.
-	if c := r.fake.comments[0]; c["issue"] != "uuid-ENG-42" || c["body"] != "verse says this is waiting on a decision" {
+	if c := r.fake.comments[0]; c["issue"] != "uuid-ENG-42" || c["body"] != "viff says this is waiting on a decision" {
 		t.Errorf("commented %v, want it on the issue, as written", c)
 	}
 	st := r.status(t, "review")
@@ -151,7 +151,7 @@ func TestAnIssueItCannotSeeIsRecordedAndAskedAgainOnlyWhenEdited(t *testing.T) {
 	r.ask(t, "ENG-9999", "review", entity.Obj{"text": "waiting"})
 	r.pass(t)
 	st := r.status(t, "review")
-	if err, _ := st["error"].(string); !strings.Contains(err, "no issue ENG-9999") || st["failed"] != verseio.PermanentFailure {
+	if err, _ := st["error"].(string); !strings.Contains(err, "no issue ENG-9999") || st["failed"] != viffio.PermanentFailure {
 		t.Fatalf("status %v, want the issue named, as permanent", st)
 	}
 

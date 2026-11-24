@@ -37,9 +37,9 @@ Save the response **verbatim** — the test reads GitHub's own delivery envelope
 `request.payload`), so nothing has to be edited or trimmed. Scrub anything private first; these
 are real payloads and they land in the repository.
 
-To pin an exact ref rather than only "finer than the repository", add a `verseWant` key at the
+To pin an exact ref rather than only "finer than the repository", add a `viffWant` key at the
 top level of the file:
 
 ```json
-{ "event": "issues", "verseWant": "github.acme.app.issue.\"42\"", "request": { ... } }
+{ "event": "issues", "viffWant": "github.acme.app.issue.\"42\"", "request": { ... } }
 ```

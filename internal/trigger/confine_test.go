@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A confined engine refuses, at install, a rule that would write outside it — where "write" is
@@ -73,7 +73,7 @@ func TestAConfinedCharterReadsWhatItDeclares(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "abc"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "head", "viff"), entity.Obj{"sha": "abc"}.Payload())
 	waitField(t, store, entity.RefAt("drift", "finding", "latest"), "saw", "yes")
 }
 
@@ -142,7 +142,7 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 		c.eng.Start(ctx)
 	}
 
-	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"), entity.Obj{"sha": "abc"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "head", "viff"), entity.Obj{"sha": "abc"}.Payload())
 	waitField(t, store, entity.RefAt("mine", "note", "n"), "saw", "yes")
 	waitField(t, store, entity.RefAt("theirs", "note", "n"), "saw", "yes")
 
@@ -168,7 +168,7 @@ func TestTwoConfinedChartersDoNotWriteIntoEachOther(t *testing.T) {
 // usable at all: two charters both reacting to `git:*` is the ordinary arrangement, not an
 // exotic one, and a source is nobody's package to be inside.
 //
-// comment-drift's own `head-moved` is the shape, reduced: select `git.head.verse`, derive into
+// comment-drift's own `head-moved` is the shape, reduced: select `git.head.viff`, derive into
 // `drift:head`. It reads its subject and writes somewhere else, so the subject's address is a
 // READ and only the derive is confined.
 func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
@@ -192,7 +192,7 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 - name: head-moved
   stratum: reflected
   condition:
-    subject: git.head.verse
+    subject: git.head.viff
   action:
     derive:
     - path: "drift.head"
@@ -205,8 +205,8 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.RefAt("git", "head", "verse"),
-		entity.Obj{"repo": "verse", "sha": "abc"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "head", "viff"),
+		entity.Obj{"repo": "viff", "sha": "abc"}.Payload())
 	// The derived entity lands under the package's own address, keyed by the derive's own id.
 	deadline := time.After(3 * time.Second)
 	for {
@@ -214,7 +214,7 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 		// AT THE DEPTH THE DERIVE LANDS: `drift.head`, the rule that derived, and the three
 		// segments of the source entity it derived about.
 		for _, e := range store.ListAt([]string{"drift", "head"}, 2+1+3, nil) {
-			if entity.Str(e.Payload, "repo") == "verse" {
+			if entity.Str(e.Payload, "repo") == "viff" {
 				found = true
 			}
 		}
@@ -232,7 +232,7 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: touch-the-source
   condition:
-    subject: git.head.verse
+    subject: git.head.viff
   action:
     patch: {touched: "yes"}
 `)); err == nil {
@@ -241,23 +241,23 @@ func TestAPackageMaySubjectOnASourceItOnlyReads(t *testing.T) {
 }
 
 // THE CONFINEMENT'S ROOT IS PART OF IT, at install as at the write: a package at `demo` that
-// declares it reads `verse.demo` may still not install a rule patching `verse.demo.pr`, which
+// declares it reads `viff.demo` may still not install a rule patching `viff.demo.pr`, which
 // mayWrite would refuse at every firing.
-func TestAConfinementDoesNotReachIntoVersesHalf(t *testing.T) {
+func TestAConfinementDoesNotReachIntoViffsHalf(t *testing.T) {
 	eng := New(entitytest.Store(t), denyResolver{})
 	eng.Confine(SubtreeAt("demo"))
-	eng.SetReads([]Subtree{SubtreeAt(entity.VerseRoot, "demo")})
-	subject := mm("verse.demo.pr.*")
+	eng.SetReads([]Subtree{SubtreeAt(entity.ViffRoot, "demo")})
+	subject := mm("viff.demo.pr.*")
 	if err := eng.AddTrigger(Trigger{
-		Name:      "reach-verse",
+		Name:      "reach-viff",
 		Condition: Condition{Subject: subject},
 		Action:    Action{Patch: entity.Obj{"touched": true}.Payload()},
 	}); err == nil || !strings.Contains(err.Error(), "outside") {
-		t.Fatalf("a package at demo installed a rule patching verse.demo.pr, or was refused for "+
+		t.Fatalf("a package at demo installed a rule patching viff.demo.pr, or was refused for "+
 			"something other than its confinement: %v", err)
 	}
-	if err := eng.mayWrite(entity.VerseRef("demo", "pr", "1")); err == nil {
-		t.Fatal("the run-time check admitted verse.demo.pr.1 for a package at demo")
+	if err := eng.mayWrite(entity.ViffRef("demo", "pr", "1")); err == nil {
+		t.Fatal("the run-time check admitted viff.demo.pr.1 for a package at demo")
 	}
 	// The world's demo.pr stays its own.
 	if err := eng.AddTrigger(Trigger{

@@ -30,8 +30,8 @@ systems:
   - repo: acme/app
     fetch: {}
     push:
-    - {ref: !glob "refs/heads/verse/auto/*", exists: false}
-    - {ref: !glob "refs/heads/verse/auto/*", own: true}
+    - {ref: !glob "refs/heads/viff/auto/*", exists: false}
+    - {ref: !glob "refs/heads/viff/auto/*", own: true}
   - repo: github.com/acme/docs
     fetch: {}
   slack:
@@ -91,8 +91,8 @@ func TestAnEnvironmentIsChecked(t *testing.T) {
 		`systems: {git: {repo: acme/app, push: [{ref: "refs/heads/a"}, {exists: maybe}]}}`:      "push[1].exists:",
 		`systems: {git: {repo: acme/app, push: {exists: "false"}}}`:                             "write false, unquoted",
 		`systems: {git: {repo: acme/app, push: {ref: "refs/heads/*"}}}`:                         "is written `!glob",
-		`systems: {git: {repo: acme/app, push: {ref: "refs/heads/verse/**"}}}`:                  `!regexp "^refs/heads/verse/"`,
-		`systems: {git: {repo: acme/app, push: {ref: !glob "refs/heads/verse/**"}}}`:            "`**` is `*`",
+		`systems: {git: {repo: acme/app, push: {ref: "refs/heads/viff/**"}}}`:                   `!regexp "^refs/heads/viff/"`,
+		`systems: {git: {repo: acme/app, push: {ref: !glob "refs/heads/viff/**"}}}`:             "`**` is `*`",
 		`systems: {git: {repo: acme/app, push: {ref: !gloob "refs/heads/*"}}}`:                  "!gloob is no operator",
 		`systems: {git: [{repo: acme/app, fetch: {}}, {repo: GitHub.com/Acme/App, fetch: {}}]}`: "one block per repo",
 		`systems: {slack: [{post: {}}, {read: {}}]}`:                                            "one block",
@@ -133,11 +133,11 @@ func TestAStepIsWithinTheEnvironmentByItsBlockAndShape(t *testing.T) {
 		fields map[string]string
 		within bool
 	}{
-		{"git.push", push("github.com/acme/app", "refs/heads/verse/auto/x", "false", "false"), true},
-		{"git.push", push("github.com/acme/app", "refs/heads/verse/auto/x", "true", "true"), true},
-		{"git.push", push("github.com/acme/app", "refs/heads/verse/auto/x", "true", "false"), false}, // another task's branch
+		{"git.push", push("github.com/acme/app", "refs/heads/viff/auto/x", "false", "false"), true},
+		{"git.push", push("github.com/acme/app", "refs/heads/viff/auto/x", "true", "true"), true},
+		{"git.push", push("github.com/acme/app", "refs/heads/viff/auto/x", "true", "false"), false}, // another task's branch
 		{"git.push", push("github.com/acme/app", "refs/heads/main", "true", "true"), false},
-		{"git.push", push("github.com/acme/docs", "refs/heads/verse/auto/x", "false", "false"), false}, // docs gives no push
+		{"git.push", push("github.com/acme/docs", "refs/heads/viff/auto/x", "false", "false"), false}, // docs gives no push
 		{"git.fetch", map[string]string{"repo": "acme/docs"}, true},
 		{"git.fetch", map[string]string{"repo": "github.com/acme/other"}, false},
 		{"slack.post", map[string]string{"channel": "deploys"}, true},
@@ -168,13 +168,13 @@ func TestAPatternWithinAnother(t *testing.T) {
 		form, outer, inner string
 		within             bool
 	}{
-		{FormRef, `!regexp "^refs/heads/verse/"`, `!glob "refs/heads/verse/auto/*"`, true},
-		{FormRef, `!regexp "^refs/heads/verse/"`, `refs/heads/verse/auto/x`, true},
-		{FormRef, `!regexp "^refs/heads/verse/"`, `!regexp "^refs/heads/verse/auto/"`, true},
+		{FormRef, `!regexp "^refs/heads/viff/"`, `!glob "refs/heads/viff/auto/*"`, true},
+		{FormRef, `!regexp "^refs/heads/viff/"`, `refs/heads/viff/auto/x`, true},
+		{FormRef, `!regexp "^refs/heads/viff/"`, `!regexp "^refs/heads/viff/auto/"`, true},
 		{FormRef, `!glob "refs/heads/*"`, `refs/heads/main`, true},
 		{FormRef, `!glob "refs/heads/*"`, `!regexp "^refs/heads/"`, false},
 		{FormRef, `!glob "refs/heads/*"`, `refs/heads/a/b`, false},
-		{FormRef, `!glob "refs/heads/verse/auto/*"`, `!regexp "^refs/heads/verse/"`, false},
+		{FormRef, `!glob "refs/heads/viff/auto/*"`, `!regexp "^refs/heads/viff/"`, false},
 		{FormRepo, `!glob "acme/*"`, `github.com/acme/app`, true},
 		{FormRepo, `!glob "github.com/acme/*"`, `!glob "github.com/acme/*"`, true},
 		{FormRepo, `!glob "github.com/acme/a*"`, `!glob "github.com/acme/*"`, false},
@@ -246,15 +246,15 @@ func TestAFieldIsMatchedAsItsFormReadsIt(t *testing.T) {
 	if !e.Allows("commands.run", run("go test ./x/...")) || e.Allows("commands.run", run("cd x && go test ./...")) {
 		t.Error("an anchored regexp")
 	}
-	e, err = readEnv(t, `systems: {verse: {charter-install: {at: "play.issues.*"}}}`)
+	e, err = readEnv(t, `systems: {viff: {charter-install: {at: "play.issues.*"}}}`)
 	if err != nil || e.Check() != nil {
 		t.Fatal(err, e.Check())
 	}
-	at := func(a string) *ir.Node { return FieldsDoc("verse.charter-install", map[string]string{"at": a}) }
-	if !e.Allows("verse.charter-install", at("play.issues.issue")) || !e.Allows("verse.charter-install", at("play.issues.issue.x")) {
+	at := func(a string) *ir.Node { return FieldsDoc("viff.charter-install", map[string]string{"at": a}) }
+	if !e.Allows("viff.charter-install", at("play.issues.issue")) || !e.Allows("viff.charter-install", at("play.issues.issue.x")) {
 		t.Error("an address under the pattern is refused")
 	}
-	if e.Allows("verse.charter-install", at("play.issues")) || e.Allows("verse.charter-install", at("play")) {
+	if e.Allows("viff.charter-install", at("play.issues")) || e.Allows("viff.charter-install", at("play")) {
 		t.Error("an address above the pattern is allowed")
 	}
 }
@@ -266,7 +266,7 @@ func TestPatternsMeet(t *testing.T) {
 		meet       bool
 	}{
 		{FormRef, `!glob "refs/*/x"`, `!glob "refs/heads/*"`, true},
-		{FormRef, `!glob "refs/heads/verse/auto/*"`, `!regexp "^refs/heads/verse/"`, true},
+		{FormRef, `!glob "refs/heads/viff/auto/*"`, `!regexp "^refs/heads/viff/"`, true},
 		{FormRef, `!glob "refs/tags/*"`, `!glob "refs/heads/*"`, false},
 		{FormRef, `!glob "refs/heads/*"`, `refs/heads/a/b`, false},
 		{FormRef, `!regexp "^refs/heads/"`, `refs/heads/a/b`, true},
@@ -343,7 +343,7 @@ func TestARefusalSaysWhatTheEnvironmentGives(t *testing.T) {
 		{"files.write", map[string]string{"path": "x"}, "gives no `files`"},
 		{"git.fetch", map[string]string{"repo": "github.com/acme/other"}, "no block for repo github.com/acme/other (it has: github.com/acme/app, github.com/acme/docs)"},
 		{"git.push", map[string]string{"repo": "github.com/acme/docs", "ref": "refs/heads/x"}, "`git` for github.com/acme/docs gives no `push` (it gives: fetch)"},
-		{"git.push", push, `it gives {exists: false, ref: !glob refs/heads/verse/auto/*}, {own: true, ref: !glob refs/heads/verse/auto/*}`},
+		{"git.push", push, `it gives {exists: false, ref: !glob refs/heads/viff/auto/*}, {own: true, ref: !glob refs/heads/viff/auto/*}`},
 	} {
 		why, refused := e.Refuses(c.step, FieldsDoc(c.step, c.fields))
 		if !refused || !strings.Contains(why, c.says) {
@@ -382,17 +382,17 @@ func TestARowReachesTheEnvironment(t *testing.T) {
 	}{
 		{"git", "", nil, true},
 		{"git", "push", nil, true},
-		{"git", "push", params("ref", `!regexp "^refs/heads/"`), true},      // wider: the environment bounds it
-		{"git", "push", params("ref", `!glob "refs/*/verse/auto/x"`), true}, // overlaps, contains neither way
-		{"git", "push", params("ref", `!glob "refs/tags/*"`), false},        // no value in common
-		{"git", "push", params("repo", `github.com/acme/docs`), false},      // that block gives no push
+		{"git", "push", params("ref", `!regexp "^refs/heads/"`), true},     // wider: the environment bounds it
+		{"git", "push", params("ref", `!glob "refs/*/viff/auto/x"`), true}, // overlaps, contains neither way
+		{"git", "push", params("ref", `!glob "refs/tags/*"`), false},       // no value in common
+		{"git", "push", params("repo", `github.com/acme/docs`), false},     // that block gives no push
 		{"git", "fetch", params("repo", `!glob "github.com/acme/*"`), true},
 		{"git", "fetch", params("repo", `!glob "github.com/other/*"`), false}, // no block for it
 		{"git", "push", params("own", `true`, "exists", `false`), true},       // each in some shape... and both free in neither
 		{"slack", "post", params("channel", `general`), false},
 		{"files", "write", nil, false},
 		{"git", "", params("ref", `!glob "refs/tags/*"`), false}, // fetch carries no ref, and no push shape meets it
-		{"git", "", params("ref", `refs/heads/verse/auto/x`), true},
+		{"git", "", params("ref", `refs/heads/viff/auto/x`), true},
 	} {
 		if got := e.Reaches(c.system, verbs(c.verb), c.params); got != c.reaches {
 			t.Errorf("%s.%s %v: reaches %v, want %v", c.system, c.verb, c.params, got, c.reaches)

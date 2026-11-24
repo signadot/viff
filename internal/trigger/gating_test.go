@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 func rule(t *testing.T, doc string) Trigger {
@@ -24,9 +24,9 @@ func rule(t *testing.T, doc string) Trigger {
 func TestAResolverNamedForGatesIsRetired(t *testing.T) {
 	for what, doc := range map[string]string{
 		"gating.resolver": `{name: v, condition: {subject: {path: "change.pr.*"}},
-			gating: {resolver: "verse.resolvers.r", gates: [{name: ship, mode: ask}]}, action: {patch: {stage: x}}}`,
+			gating: {resolver: "mirror.resolvers.r", gates: [{name: ship, mode: ask}]}, action: {patch: {stage: x}}}`,
 		"spawn.resolver": `{name: v, condition: {subject: {path: "change.pr.*"}},
-			action: {spawn: {prompt: p, resolver: "verse.resolvers.r"}}}`,
+			action: {spawn: {prompt: p, resolver: "mirror.resolvers.r"}}}`,
 	} {
 		node, err := codec.ParseNode([]byte(doc), codec.Tony)
 		if err != nil {
@@ -43,7 +43,7 @@ func TestAResolverNamedForGatesIsRetired(t *testing.T) {
 // task without what its charter says; a value bound at the firing is still the firing's.
 func TestASpawnsUnknownKeysAreRefused(t *testing.T) {
 	for doc, want := range map[string]string{
-		`{name: v, condition: {subject: {path: "a.*"}}, action: {spawn: {prompt: p, doer: {agent: verse}}}}`:                                                                               "spawn: unknown field \"doer\"",
+		`{name: v, condition: {subject: {path: "a.*"}}, action: {spawn: {prompt: p, doer: {agent: viff}}}}`:                                                                                "spawn: unknown field \"doer\"",
 		`{name: v, condition: {subject: {path: "a.*"}}, action: {seq: [{spawn: {prompt: p, policy: []}}]}}`:                                                                                "seq[0]: spawn: unknown field \"policy\"",
 		`{name: v, condition: {subject: {path: "a.*"}}, action: {spawn: {prompt: p}, onDone: {spawn: {script: s, with: {}}}}}`:                                                             "onDone: spawn: unknown field \"with\"",
 		`{name: v, condition: {subject: {path: "a.*"}}, action: {spawn: {prompt: p, environment: {vars: {A: $[subject.ref]}, systems: {git: {repo: $[subject.value.repo], fetch: {}}}}}}}`: "",

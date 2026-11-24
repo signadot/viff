@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/systems/systemstest"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // workEnv is an environment giving the shell and file writes, the steps these tests' drivers
@@ -103,7 +103,7 @@ loop:
 	}
 }
 
-// A remote runner enumerates its tasks so versed can union them into `task list`/
+// A remote runner enumerates its tasks so viffd can union them into `task list`/
 // `get`: ListTasks/TaskSnapshot are a thin client over the remote's GET /tasks.
 func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
@@ -149,7 +149,7 @@ func TestHTTPRunnerListsRemoteTasks(t *testing.T) {
 }
 
 // A runner that REFUSES a launch must not read as one that took it. The status used to be
-// discarded, so 400/403/501 all came back as a live remote handle: versed mirrored a
+// discarded, so 400/403/501 all came back as a live remote handle: viffd mirrored a
 // task:instance for work that was never started and the flow waited on it forever, so the
 // refusal surfaced as a hang. A runner declining a launch it cannot host is the whole
 // mechanism by which a runner gets to refuse, and it is inert unless this reads it.
@@ -222,7 +222,7 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 			"unreachable runner is not a task that does not exist", err)
 	}
 
-	// Answering with something undecodable is also not an empty verse: discarding this is how
+	// Answering with something undecodable is also not an empty viff: discarding this is how
 	// a format drift on either end reads as a runner with nothing running.
 	junk := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -234,9 +234,9 @@ func TestHTTPRunnerListReportsWhyItIsEmpty(t *testing.T) {
 	}
 }
 
-// A task that finished while verse was away is re-attached on restart, and the re-attached
-// handle delivers how it ended: verse resumes the task rather than orphaning it when the work
-// outlived it (versed.reconcileTasks).
+// A task that finished while viff was away is re-attached on restart, and the re-attached
+// handle delivers how it ended: viff resumes the task rather than orphaning it when the work
+// outlived it (viffd.reconcileTasks).
 func TestResumeReAttachesToRemoteTask(t *testing.T) {
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
 		sup := systemstest.Opened(task.NewSupervisor(workEnv, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), workEnv)
@@ -249,7 +249,7 @@ func TestResumeReAttachesToRemoteTask(t *testing.T) {
 	pol.Launch(runner.Launch{ID: "t1", Agent: &runner.Agent{Name: "test"}, Prompt: "task", Environment: openNet}) // runs on the remote to completion
 	time.Sleep(300 * time.Millisecond)                                                                            // let it finish (retained in the ring)
 
-	// "verse restart": attach afresh, and read the stream until it says how the task ended.
+	// "viff restart": attach afresh, and read the stream until it says how the task ended.
 	events, stop := pol.Attach("t1").Subscribe()
 	defer stop()
 	deadline := time.After(5 * time.Second)

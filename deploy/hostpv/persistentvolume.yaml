@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: verse-docd-data
+  name: viff-docd-data
 spec:
   capacity:
     storage: 10Gi
@@ -11,7 +11,7 @@ spec:
   # "") binds to this PV. claimRef pre-binds it to the StatefulSet's generated PVC.
   storageClassName: ""
   hostPath:
-    path: /mnt/verse
+    path: /mnt/viff
   claimRef:
-    namespace: verse
+    namespace: viff
     name: data-docd-0

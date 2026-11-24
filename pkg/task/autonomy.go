@@ -12,7 +12,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // AN AUTONOMY IS ONE ORDERED LIST OVER EVERY CALL A TASK MAKES. Each row names a call by its
@@ -35,7 +35,7 @@ import (
 //
 //	autonomy:
 //	- {match: {system: git, verb: push, ref: refs/heads/main}, then: deny}
-//	- {match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*"}, then: allow}
+//	- {match: {system: git, verb: push, ref: !glob "refs/heads/viff/auto/*"}, then: allow}
 //	- {match: {system: git, verb: push}, then: {ask: {need: 2, answerers: [group:release], within: 4h}}}
 //	- {then: ask}
 //
@@ -45,7 +45,7 @@ type Autonomy []Row
 
 // Row is one line of an autonomy: which calls, and what happens to them.
 //
-//tony:schemagen=verse-task-policy-row,notag
+//tony:schemagen=viff-task-policy-row,notag
 type Row struct {
 	// Name names the row in the questions it poses and on the record, and is what a hook's
 	// `onDenied` refers to. Absent, the row is named by its place: `autonomy[2]`.
@@ -60,12 +60,12 @@ type Row struct {
 // `{system: git, verb: push, ref: refs/heads/main}`. Every row but the default names its
 // system; a verb left out matches any of the system's, and one may be a pattern over their names
 // (`verb: !or [data-put, data-rm]`); a param is a pattern over the step's field of that name, in
-// tony's grammar (`ref: !glob "refs/heads/verse/*"`, `force: true`, `command: !regexp "git
+// tony's grammar (`ref: !glob "refs/heads/viff/*"`, `force: true`, `command: !regexp "git
 // push"`; systems.MatchField), an absent field meeting none of them. A param the verbs do not
 // have is refused, and so is an expression, `$[…]`: a match is a pattern over what the task does,
 // not bound by the firing.
 //
-//tony:schemagen=verse-task-policy-match,notag,codec=custom
+//tony:schemagen=viff-task-policy-match,notag,codec=custom
 type Match struct {
 	System string
 	// Verb is the verb the row names by name; empty where it names any, or a pattern.
@@ -79,7 +79,7 @@ type Match struct {
 // Then is what a row does with a call: `deny`, `ask` or `allow`, or `{ask: {…}}`,
 // an ask with its shape (Ask).
 //
-//tony:schemagen=verse-task-policy-then,notag,codec=custom
+//tony:schemagen=viff-task-policy-then,notag,codec=custom
 type Then struct {
 	Mode string
 	// Ask is the ask's shape, with `then: {ask: {…}}`; nil with a bare `then: ask`.
@@ -95,12 +95,12 @@ const (
 )
 
 // Ask is how an `ask` row asks: what the question takes to settle, who is asked, how long it
-// stands, and what verse adds to it. THE RUNNER CARRIES THE ROW WHOLE AND READS THREE OF THESE:
-// `need`, `answerers` and `within`. `default` and `labels` are verse's, which keeps the clock
-// and the docket: a runner poses the question without them, and verse adds them when it
+// stands, and what viff adds to it. THE RUNNER CARRIES THE ROW WHOLE AND READS THREE OF THESE:
+// `need`, `answerers` and `within`. `default` and `labels` are viff's, which keeps the clock
+// and the docket: a runner poses the question without them, and viff adds them when it
 // records it. One shape, in the charter, on the wire, on the record and in a slide.
 //
-//tony:schemagen=verse-task-policy-ask,notag
+//tony:schemagen=viff-task-policy-ask,notag
 type Ask struct {
 	// Need is how many approvals the call takes. Absent is one.
 	Need int `tony:"field=need,omitzero"`
@@ -109,11 +109,11 @@ type Ask struct {
 	Answerers []string `tony:"field=answerers,omitzero"`
 	// Within is how long the question stands, as a duration; after it, Default.
 	Within string `tony:"field=within,omitzero"`
-	// Default is what silence settles on when Within passes: `deny`, `proceed`. Verse's: the
+	// Default is what silence settles on when Within passes: `deny`, `proceed`. Viff's: the
 	// runner never reads it.
 	Default string `tony:"field=default,omitzero"`
 	// Labels are what the question says about itself for whoever watches asks: `team:
-	// payments`, `slack: C0EXAMPLE000`. Verse's: the runner never reads them.
+	// payments`, `slack: C0EXAMPLE000`. Viff's: the runner never reads them.
 	Labels map[string]string `tony:"field=labels,omitzero"`
 }
 
@@ -526,7 +526,7 @@ func (p Autonomy) Check() error {
 		if err := r.Check(); err != nil {
 			return fmt.Errorf("[%d]: %w", i, err)
 		}
-		// A question carries its row's name, and verse reads the row's ask by it: two rows of
+		// A question carries its row's name, and viff reads the row's ask by it: two rows of
 		// one name would pose one's question under the other's ask.
 		if r.Name != "" {
 			if at, dup := named[r.Name]; dup {
@@ -548,7 +548,7 @@ func (p Autonomy) Check() error {
 
 // notRowGates is the gates of the questions that are no row's: a conversation's turn (the loop),
 // codex's own question, the `question-ask` tool's, and a step the environment refused
-// (EnvironmentGate). A question carries its row's name as its gate, and verse reads the row's ask
+// (EnvironmentGate). A question carries its row's name as its gate, and viff reads the row's ask
 // by it, so no row takes one of these.
 var notRowGates = []string{"turn", "ask", systems.Tool("question", "ask"), EnvironmentGate}
 

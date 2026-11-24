@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/signadot/verse/pkg/api"
+	"go.viff.dev/viff/pkg/api"
 )
 
 // Transport stamps every request with the contract version this program speaks and who it acts
@@ -16,7 +16,7 @@ import (
 // listing, a write, a stream and a poll, and a stamp that covers three of the four is one that is
 // missing when it matters. Every request passes through one place, so the stamp goes there.
 //
-// The INCOMPATIBLE case fails the request here, in the client, even though versed refuses it too.
+// The INCOMPATIBLE case fails the request here, in the client, even though viffd refuses it too.
 // The two are not redundant: the server's refusal is what stops a skewed write from happening at
 // all, and this one still reports the truth when the server is old enough not to look at the
 // header — which, on the day a check like this starts to matter, is the server you are talking to.
@@ -39,7 +39,7 @@ type Transport struct {
 	// program acts for somebody else: for an io relaying a person it identified, the account
 	// `<provider>:<id>`, the Slack member who typed, the GitHub login who commented. When it
 	// answers one, the request carries the Bearer, the Principal and this together, which is the
-	// one case a bearer and a name travel side by side: versed admits it as the person through
+	// one case a bearer and a name travel side by side: viffd admits it as the person through
 	// the account's binding, and only from a program the deployment trusts for the provider. ""
 	// acts for nobody.
 	For func() (string, error)
@@ -100,7 +100,7 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if err != nil {
 		return resp, err
 	}
-	// A server that says nothing is not a server that disagrees. It may be a verse older than the
+	// A server that says nothing is not a server that disagrees. It may be a viff older than the
 	// check, a runner, or a proxy, and none of those is a version to compare against. The
 	// check is between two things that both speak this contract.
 	theirs := resp.Header.Get(api.VersionHeader)

@@ -15,26 +15,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/calltool"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/calltool"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/secretstore"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// VERSE-SECRET-EXEC IS THE COMMAND IN PLACE: built as main builds it and run against the tools
+// VIFF-SECRET-EXEC IS THE COMMAND IN PLACE: built as main builds it and run against the tools
 // a task's process offers, the command's stdout and stderr are its own, its stdin the command's
 // input, its exit status the command's; a refusal is 126 with the reason; and a signal to it
 // kills the run and is its exit status.
-func TestVerseSecretExecRunsTheCommandInPlace(t *testing.T) {
+func TestViffSecretExecRunsTheCommandInPlace(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("no go on PATH to build verse-secret-exec with")
+		t.Skip("no go on PATH to build viff-secret-exec with")
 	}
-	bin := filepath.Join(t.TempDir(), "verse-secret-exec")
-	if out, err := exec.Command("go", "build", "-o", bin, "github.com/signadot/verse/cmd/verse-secret-exec").CombinedOutput(); err != nil {
-		t.Fatalf("building verse-secret-exec: %v\n%s", err, out)
+	bin := filepath.Join(t.TempDir(), "viff-secret-exec")
+	if out, err := exec.Command("go", "build", "-o", bin, "go.viff.dev/viff/cmd/viff-secret-exec").CombinedOutput(); err != nil {
+		t.Fatalf("building viff-secret-exec: %v\n%s", err, out)
 	}
 	// A root short enough for a unix socket's path under it, on macOS too.
 	root, err := os.MkdirTemp("", "vx")
@@ -120,7 +120,7 @@ func TestVerseSecretExecRunsTheCommandInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 400 {
-		if b, _ := os.ReadFile(filepath.Join(root, ".verse", "exec", "e3.out")); len(b) > 0 {
+		if b, _ := os.ReadFile(filepath.Join(root, ".viff", "exec", "e3.out")); len(b) > 0 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -132,7 +132,7 @@ func TestVerseSecretExecRunsTheCommandInPlace(t *testing.T) {
 	if code := status(cmd.Wait()); code != 128+int(syscall.SIGTERM) || o.String() != "up\n" || time.Since(began) > 20*time.Second {
 		t.Errorf("the signalled run: exit %d, stdout %q, stderr %q, after %s", code, o, e, time.Since(began))
 	}
-	if got, err := os.ReadFile(filepath.Join(root, ".verse", "exec", "e3.exit")); err != nil || !strings.HasPrefix(string(got), "killed: the task let go") {
+	if got, err := os.ReadFile(filepath.Join(root, ".viff", "exec", "e3.exit")); err != nil || !strings.HasPrefix(string(got), "killed: the task let go") {
 		t.Errorf("the signalled run's end: %q, %v", got, err)
 	}
 	cl.Close()

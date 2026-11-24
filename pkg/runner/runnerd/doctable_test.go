@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // THE RUNNER API'S DOC IS WHAT BOTH RUNTIMES SERVE. pkg/runner/doc.go's table is the contract a runner

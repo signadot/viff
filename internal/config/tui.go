@@ -8,15 +8,15 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// TUIConfig is `verse tui`'s section of the config: how often it reads, where it opens, which
+// TUIConfig is `viff tui`'s section of the config: how often it reads, where it opens, which
 // sections it shows, the places it keeps names for, and which keys do what. Every field is
-// optional, and a flag given to `verse tui` overrides the field it names. The tui checks it
+// optional, and a flag given to `viff tui` overrides the field it names. The tui checks it
 // when it starts (an unknown section or action, a key bound twice) and says what is wrong
 // rather than ignoring it.
 //
-//tony:schemagen=verse-tui-config,notag
+//tony:schemagen=viff-tui-config,notag
 type TUIConfig struct {
-	// Every is how often the screen reads the verse again, a duration of at least 200ms. Empty
+	// Every is how often the screen reads the viff again, a duration of at least 200ms. Empty
 	// is 2s; --every overrides it.
 	Every string `tony:"field=every,omitzero"`
 	// Start is the section the screen opens on: questions, tasks, data, charters or runners.
@@ -33,14 +33,14 @@ type TUIConfig struct {
 	// section's table lists them.
 	Bookmarks map[string]string `tony:"field=bookmarks,omitzero"`
 	// Keys binds actions to keys: each action named (move.down, answer.proceed, task.cancel…)
-	// takes the keys listed, in place of its default ones, and [] leaves it unbound. `verse tui
+	// takes the keys listed, in place of its default ones, and [] leaves it unbound. `viff tui
 	// --commands` lists every action and its keys.
 	Keys map[string][]string `tony:"field=keys,omitzero"`
 }
 
 // TUITasksConfig is how the Tasks section lists tasks.
 //
-//tony:schemagen=verse-tui-tasks-config,notag
+//tony:schemagen=viff-tui-tasks-config,notag
 type TUITasksConfig struct {
 	// Recent is how many finished tasks are listed, the newest first; 0 is 15. --all lists
 	// every one.
@@ -73,7 +73,7 @@ func tuiFields(merged *ir.Node) error {
 		return nil
 	}
 	sort.Strings(unknown)
-	return fmt.Errorf("%s: no such field (verse tui --config prints every one)", strings.Join(unknown, ", "))
+	return fmt.Errorf("%s: no such field (viff tui --config prints every one)", strings.Join(unknown, ", "))
 }
 
 // field is the value of an object's field name, or nil.

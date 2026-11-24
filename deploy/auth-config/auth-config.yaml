@@ -1,12 +1,12 @@
-# verse's `auth` block, as a file: who verifies people, which iods are trusted for whose accounts,
+# viff's `auth` block, as a file: who verifies people, which iods are trusted for whose accounts,
 # and how the iods prove themselves (docs/reference/up.md, `auth`). The file `authConfig` names,
-# carried in whole, and named to versed by VERSE_CONFIG (deploy/build.tony's authConfig patch).
+# carried in whole, and named to viffd by VIFF_CONFIG (deploy/build.tony's authConfig patch).
 # Only a binary is in the image, so the file comes in as a ConfigMap.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: verse-auth
+  name: viff-auth
   labels:
-    app: verse
+    app: viff
 data:
-  verse.tony: !file $[authConfig]
+  viff.tony: !file $[authConfig]

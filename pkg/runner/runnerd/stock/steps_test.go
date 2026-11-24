@@ -12,13 +12,13 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/mcpclient"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // stepInputs is a use of each stock tool that is a step, as a model would call it: one each
@@ -68,16 +68,16 @@ var stepInputs = map[string]map[string]any{
 	"mcp-linear-set_fields": {"id": "ENG-7", "k": "v"},
 	"mcp-linear-needs_more": {"id": "ENG-7", "team": "ENG"},
 
-	"verse-ask-create":      {"name": "land", "question": "Land it?", "to": "user:ana@example.com, group:leads", "label": "team=payments", "on": "[{match: {verdict: proceed}, then: {spawn: {script: \"true\"}}}]"},
-	"verse-ask-get":         {"name_or_id": "land"},
-	"verse-ask-list":        {},
-	"verse-data-get":        {"at": "acme.notes.n1"},
-	"verse-data-put":        {"at": "acme.notes.n1", "value": "{stage: open}"},
-	"verse-data-rm":         {"at": "acme.notes.n1"},
-	"verse-charter-get":     {"path": "repos.r.hello"},
-	"verse-charter-check":   {"at": "repos.r", "charters": "at: repos.r.hello\n"},
-	"verse-charter-install": {"charters": "at: repos.r.hello\n"},
-	"verse-charter-remove":  {"path": "repos.r.hello.rules.lift"},
+	"viff-ask-create":      {"name": "land", "question": "Land it?", "to": "user:ana@example.com, group:leads", "label": "team=payments", "on": "[{match: {verdict: proceed}, then: {spawn: {script: \"true\"}}}]"},
+	"viff-ask-get":         {"name_or_id": "land"},
+	"viff-ask-list":        {},
+	"viff-data-get":        {"at": "acme.notes.n1"},
+	"viff-data-put":        {"at": "acme.notes.n1", "value": "{stage: open}"},
+	"viff-data-rm":         {"at": "acme.notes.n1"},
+	"viff-charter-get":     {"path": "repos.r.hello"},
+	"viff-charter-check":   {"at": "repos.r", "charters": "at: repos.r.hello\n"},
+	"viff-charter-install": {"charters": "at: repos.r.hello\n"},
+	"viff-charter-remove":  {"path": "repos.r.hello.rules.lift"},
 }
 
 // inTheCheckout is the stock tools that are a step and are performed in the task's checkout,
@@ -99,7 +99,7 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	for _, name := range []string{"github", "github-issue", "git-issue"} {
 		env.Systems[name] = []systems.Block{{Attributes: map[string]string{"repo": "acme/svc"}, Verbs: everyVerb(name)}}
 	}
-	for _, name := range []string{"linear-issue", "slack", "verse"} {
+	for _, name := range []string{"linear-issue", "slack", "viff"} {
 		env.Systems[name] = []systems.Block{{Verbs: everyVerb(name)}}
 	}
 	// pkg's shape names `as`: one that says nothing of it renames nothing, and the use renames.
@@ -125,8 +125,8 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 		Services: delivery.Services{LinearAuth: delivery.Holds("a-key"), SlackToken: delivery.Holds("xoxb-a-token"),
 			GitHubAPI: "https://api.github.invalid",
 			MCP:       mcpclient.Servers{"linear": {URL: mcpURL, Timeout: 5 * time.Second}},
-			Verse: func(_ context.Context, _, method, path string, _ []byte) (int, string, error) {
-				t.Errorf("a request reached verse: %s %s", method, path)
+			Viff: func(_ context.Context, _, method, path string, _ []byte) (int, string, error) {
+				t.Errorf("a request reached viff: %s %s", method, path)
 				return http.StatusInternalServerError, "", nil
 			}}}
 	var mu sync.Mutex
@@ -159,7 +159,7 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	secret, _ := secretTools(cl, ws, env)
 	tools = append(append(tools, slackTools(cl)...), secret...)
 	tools = append(tools, pkgTools(cl)...)
-	tools = append(append(append(tools, verseTools(cl)...), verseDataTools(cl)...), verseCharterTools(cl)...)
+	tools = append(append(append(tools, viffTools(cl)...), viffDataTools(cl)...), viffCharterTools(cl)...)
 	// The tools of a server's list, as the task builds them, for a doer that takes any name.
 	tools = append(tools, mcpTools(cl, mcpLists(cl, []string{"linear"}, env), nil, io.Discard)...)
 	seen := map[string]bool{}
@@ -169,7 +169,7 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 		}
 		seen[tl.Name] = true
 		// A stock tool's name is its step's (git-push, git.push): the tools are filtered by their
-		// step (verse.Tool.StepName), and one whose name said another step would read otherwise
+		// step (viff.Tool.StepName), and one whose name said another step would read otherwise
 		// wherever a name is read. An MCP tool's name is `mcp-<server>-<tool>`, its step's system
 		// first, and its Step says the rest.
 		if tl.Step == task.StepMCPCall {
@@ -213,8 +213,8 @@ func TestEachToolsStepIsTheRunners(t *testing.T) {
 	}
 }
 
-// toolStep is the step a use of tl is, as the loop works it out (verse's stepOf).
-func toolStep(tl verse.Tool, in map[string]any) (task.Step, bool) {
+// toolStep is the step a use of tl is, as the loop works it out (viff's stepOf).
+func toolStep(tl viff.Tool, in map[string]any) (task.Step, bool) {
 	if tl.Build != nil {
 		return tl.Build(in)
 	}

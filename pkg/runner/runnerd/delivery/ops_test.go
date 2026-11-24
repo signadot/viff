@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // answer is one request as the server answers it, outside Serve: read, and performed with its
@@ -57,16 +57,16 @@ var wellFormed = map[string]Request{
 	OpSlackRead:  {Fields: map[string]string{"channel": "deploys"}},
 	OpSlackReact: {Fields: map[string]string{"channel": "deploys", "message": "1700000000.000100", "emoji": "eyes"}},
 
-	OpVerseAskCreate:      {Fields: map[string]string{"ask": "{name: land, question: \"Land it?\"}"}},
-	OpVerseAskGet:         {Fields: map[string]string{"ask": "land"}},
-	OpVerseAskList:        {},
-	OpVerseDataGet:        {Fields: map[string]string{"query": "at=acme.notes.n1"}},
-	OpVerseDataPut:        {Body: "{at: acme.notes.n1, payload: {stage: open}}"},
-	OpVerseDataRm:         {Fields: map[string]string{"query": "at=acme.notes.n1"}},
-	OpVerseCharterGet:     {Fields: map[string]string{"query": "path=repos.r.hello"}},
-	OpVerseCharterCheck:   {Body: "at: repos.r.hello\n", Fields: map[string]string{"query": "at=repos.r"}},
-	OpVerseCharterInstall: {Body: "at: repos.r.hello\n"},
-	OpVerseCharterRemove:  {Fields: map[string]string{"query": "path=repos.r.hello.rules.lift"}},
+	OpViffAskCreate:      {Fields: map[string]string{"ask": "{name: land, question: \"Land it?\"}"}},
+	OpViffAskGet:         {Fields: map[string]string{"ask": "land"}},
+	OpViffAskList:        {},
+	OpViffDataGet:        {Fields: map[string]string{"query": "at=acme.notes.n1"}},
+	OpViffDataPut:        {Body: "{at: acme.notes.n1, payload: {stage: open}}"},
+	OpViffDataRm:         {Fields: map[string]string{"query": "at=acme.notes.n1"}},
+	OpViffCharterGet:     {Fields: map[string]string{"query": "path=repos.r.hello"}},
+	OpViffCharterCheck:   {Body: "at: repos.r.hello\n", Fields: map[string]string{"query": "at=repos.r"}},
+	OpViffCharterInstall: {Body: "at: repos.r.hello\n"},
+	OpViffCharterRemove:  {Fields: map[string]string{"query": "path=repos.r.hello.rules.lift"}},
 
 	OpSecretExec: {Body: "{argv: [npm, publish, --ignore-scripts]}", Fields: map[string]string{"name": "npm-token", "dir": "packages/a"}},
 
@@ -107,8 +107,8 @@ func opsTask(t *testing.T, l *runner.Launch) (*Server, Task) {
 	}
 	s := &Server{Mirrors: mirrors, Log: io.Discard, HTTP: &http.Client{Transport: unreached{t}}, Ceilings: performs(names...),
 		Services: Services{LinearAuth: Holds("a-key"), SlackToken: Holds("xoxb-a-token"), GitHubAPI: "https://api.github.invalid",
-			Verse: func(_ context.Context, _, method, path string, _ []byte) (int, string, error) {
-				t.Errorf("a request reached verse: %s %s", method, path)
+			Viff: func(_ context.Context, _, method, path string, _ []byte) (int, string, error) {
+				t.Errorf("a request reached viff: %s %s", method, path)
 				return http.StatusInternalServerError, "", nil
 			}}}
 	tk := Task{ID: "t1", Workspace: ws, Launch: l, Credential: func(workspace.Repo) (string, error) { return "the-runners-own", nil },
@@ -187,9 +187,9 @@ func TestEveryOpAsksAboutADocumentedStep(t *testing.T) {
 // and the runner dropped is something the task believes was done. A name with nothing under it
 // is no name, and a document of several lines crosses whole.
 func TestARequestNamesOnlyWhatItsOpReads(t *testing.T) {
-	l := within(nil, "slack", "verse")
-	s := &Server{Log: io.Discard, Ceilings: performs("slack", "verse"), Services: Services{SlackToken: Holds("xoxb-a-token"),
-		Verse: func(_ context.Context, _, _, _ string, body []byte) (int, string, error) {
+	l := within(nil, "slack", "viff")
+	s := &Server{Log: io.Discard, Ceilings: performs("slack", "viff"), Services: Services{SlackToken: Holds("xoxb-a-token"),
+		Viff: func(_ context.Context, _, _, _ string, body []byte) (int, string, error) {
 			return http.StatusCreated, "{id: land-1a2b}", nil
 		}}}
 	tk := Task{ID: "t1", Workspace: &workspace.Workspace{}, Launch: l}
@@ -222,12 +222,12 @@ func TestARequestNamesOnlyWhatItsOpReads(t *testing.T) {
 			t.Errorf("%s %v: %+v, want %q", c.req.Op, c.req.Fields, rep, c.want)
 		}
 	}
-	rep = s.answer(tk, frame(t, Request{Op: OpVerseAskList, Fields: map[string]string{"ask": "land"}}))
-	if !strings.Contains(rep.Error, "verse.ask-list reads no `ask` (it reads: nothing)") {
+	rep = s.answer(tk, frame(t, Request{Op: OpViffAskList, Fields: map[string]string{"ask": "land"}}))
+	if !strings.Contains(rep.Error, "viff.ask-list reads no `ask` (it reads: nothing)") {
 		t.Errorf("a listing that names an ask: %+v", rep)
 	}
 	ask := "name: land\nquestion: |\n  Land it?\n  Or wait?\n"
-	rep = s.answer(tk, frame(t, Request{Op: OpVerseAskCreate, Fields: map[string]string{"ask": ask, "query": ""}}))
+	rep = s.answer(tk, frame(t, Request{Op: OpViffAskCreate, Fields: map[string]string{"ask": ask, "query": ""}}))
 	if !rep.OK || !strings.Contains(rep.Out, "land-1a2b") {
 		t.Errorf("a raise whose ask is several lines, beside an empty name: %+v", rep)
 	}
@@ -298,9 +298,9 @@ func TestAnActFollowsEveryStepItAskedAbout(t *testing.T) {
 // them dropped: a push asked with `delete: true` beside `fields` would be a push. The refusal
 // names the request, so the one who asked hears it.
 func TestANameBesideFieldsIsRefused(t *testing.T) {
-	s, tk := opsTask(t, within(nil, "verse", "git"))
+	s, tk := opsTask(t, within(nil, "viff", "git"))
 	for _, raw := range []string{
-		"{id: 4, op: verse.data-get, query: at=small}",
+		"{id: 4, op: viff.data-get, query: at=small}",
 		"{id: 4, op: push, fields: {repo: svc, branch: old}, delete: true}",
 	} {
 		rep := s.answer(tk, []byte(raw))

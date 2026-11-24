@@ -1,7 +1,7 @@
 # Resolvers
 
 A **[resolver](../glossary.md#resolver)** is an installed service that answers asks for whoever
-grants it, at `verse.resolvers.<name>`. [Resolvers](../attached-resolvers.md) is the guide; this
+grants it, at `mirror.resolvers.<name>`. [Resolvers](../attached-resolvers.md) is the guide; this
 page is the reference.
 
 ## The resolver
@@ -11,7 +11,7 @@ name:  carols-desk
 match:
   about:  demo.pr.*
   labels: { team: payments }
-method: { driver: service, url: "https://desk.internal/verse" }
+method: { driver: service, url: "https://desk.internal/viff" }
 ```
 
 | field | | |
@@ -20,10 +20,10 @@ method: { driver: service, url: "https://desk.internal/verse" }
 | `match` | required | The asks it watches. `match: {}` is every ask put to whoever grants it. |
 | `match.about` | optional | A kinded path, with no `value`. An ask about that node or beneath it is admitted. An ask about nothing is admitted only by a match with no `about`. |
 | `match.labels` | optional | Labels the ask carries, each equal. |
-| `method.driver` | required | `service`: a service that dials verse, wherever its installer runs it. `llm` and `script` are not built. |
-| `method.url` | optional | Where the service runs, a note for whoever reads the record. Verse never dials it. |
+| `method.driver` | required | `service`: a service that dials viff, wherever its installer runs it. `llm` and `script` are not built. |
+| `method.url` | optional | Where the service runs, a note for whoever reads the record. Viff never dials it. |
 
-Verse refuses these at install, each with why:
+Viff refuses these at install, each with why:
 
 | Refused | Reason |
 |---|---|
@@ -31,9 +31,9 @@ Verse refuses these at install, each with why:
 | `match.about` with a `value` | a value changes while an ask stands, so overlap could not be decided |
 | `match.to` | a match does not route: whom a resolver answers for is granted |
 | `condition`, `byRef`, `deadline`, `escalatesAfter`, `exclusive` | retired: nothing owns questions, nothing names a resolver, a resolver escalates by an onward ask, and whose answer counts is the party's grant |
-| `method.driver: url` | the driver is `service`: verse never dials a resolver's service, which dials verse |
+| `method.driver: url` | the driver is `service`: viff never dials a resolver's service, which dials viff |
 | `method.driver: person` or `group`, `method.who`, `method.group` | retired: a person answers for themselves, and a resolver that forwards raises an onward ask |
-| `method.vector`, `.tools`, `.grant` | retired: a resolver is a service and runs nothing verse gates |
+| `method.vector`, `.tools`, `.grant` | retired: a resolver is a service and runs nothing viff gates |
 | a new `match` that would meet another resolver's where it already answers | two resolvers never answer for one party on one ask (409) |
 | an unknown field | it would decode to nothing |
 
@@ -42,9 +42,9 @@ names its `answerers`, and whoever is asked grants the resolver that answers for
 
 ## Whom it answers for
 
-An [`answer`](perms.md#levels) grant naming `via:verse.resolvers.<name>`:
+An [`answer`](perms.md#levels) grant naming `via:mirror.resolvers.<name>`:
 
-- at `verse.for.<person>`, for a person, made by their first grant and owned by them;
+- at `viff.for.<person>`, for a person, made by their first grant and owned by them;
 - at a place, by its owner, reaching beneath it as any grant does.
 
 It is held only by being named: owning the node holds none of it, and a resolver holds none through
@@ -65,8 +65,8 @@ it read it.
 ## The routes
 
 A resolver's service is whoever installed it, acting as it: a request presents the installer in
-`Verse-Principal` and names the resolver in `Verse-Resolver`, by name or address, and is made as
-`via:verse.resolvers.<name>`. Presented by anybody else, or by nobody, it is refused with 403.
+`Viff-Principal` and names the resolver in `Viff-Resolver`, by name or address, and is made as
+`via:mirror.resolvers.<name>`. Presented by anybody else, or by nobody, it is refused with 403.
 
 ```
 POST   /resolvers                       install one (the document above)
@@ -76,7 +76,7 @@ DELETE /resolvers/{name}                remove it, withdrawing the onward asks i
 POST   /resolvers/{name}/grant {for?}   let it answer for you, or for a place on record as yours
 POST   /resolvers/{name}/revoke {for?}  and take that back
 GET    /resolvers/{name}/asks           as the resolver: the waiting asks it serves, and for whom
-GET    /watch?at=verse.ask              as the resolver: its subscription
+GET    /watch?at=mirror.ask              as the resolver: its subscription
 POST   /asks/{id}/answer {choice, for?} as the resolver: an answer for a party it serves
 POST   /asks {…, serves, for?}          as the resolver: an onward ask
 GET    /asks/{id}/served                which resolver serves the ask for you, if any
@@ -102,12 +102,12 @@ of the place it is about — is refused with 409, naming the resolver, unless it
 ## The verbs
 
 ```sh
-verse resolver                                        # list the resolvers
-verse resolver add <file>                             # install one (- = stdin)
-verse resolver show   verse.resolvers.carols-desk     # or carols-desk
-verse resolver remove verse.resolvers.carols-desk
-verse resolver grant  carols-desk [--for <place>]     # let it answer for you, or for a place on record as yours
-verse resolver revoke carols-desk [--for <place>]     # and take that back
+viff resolver                                        # list the resolvers
+viff resolver add <file>                             # install one (- = stdin)
+viff resolver show   mirror.resolvers.carols-desk     # or carols-desk
+viff resolver remove mirror.resolvers.carols-desk
+viff resolver grant  carols-desk [--for <place>]     # let it answer for you, or for a place on record as yours
+viff resolver revoke carols-desk [--for <place>]     # and take that back
 ```
 
-You may drop the leading `verse.resolvers.` and type only the name.
+You may drop the leading `mirror.resolvers.` and type only the name.

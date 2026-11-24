@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A SPAWN NAMING AN ABSENT FIELD UNDER A BOUND ONE IS REFUSED, and the refusal is a failed
@@ -34,7 +34,7 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
 			eng.SetSpawner(func(id string, spec launch.Spec) task.Handle {
 				mu.Lock()
 				defer mu.Unlock()
-				// As versed's spawner does: a refused launch starts nothing and is a failed task.
+				// As viffd's spawner does: a refused launch starts nothing and is a failed task.
 				if spec.Refusal != "" {
 					refused = append(refused, spec.Refusal)
 					return task.FailedHandle(spec.Refusal)
@@ -49,7 +49,7 @@ func TestASpawnNamingAnAbsentPathIsRefusedAsAFailedTask(t *testing.T) {
   action:
     patch: {stage: developing}
     spawn:
-      agent: {name: verse}
+      agent: {name: viff}
       autonomy: [{then: allow}]
       prompt: "`+c.prompt+`"
     onFailed:
@@ -105,7 +105,7 @@ func TestADollarThatIsNotAnExpressionLaunchesAsWritten(t *testing.T) {
   action:
     patch: {stage: developing}
     spawn:
-      agent: {name: verse}
+      agent: {name: viff}
       autonomy: [{then: allow}]
       prompt: "never=[$never] home=[$HOME] stage=[$[stage]] file=[$[stage].go]"
 `)); err != nil {

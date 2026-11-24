@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
 #
-# seed-demo.sh — put a small demo world into a RUNNING verse: a charter and the entities it
+# seed-demo.sh — put a small demo world into a RUNNING viff: a charter and the entities it
 # reacts to, so every listing has something to show and there is a live gate waiting for you
 # the moment it finishes.
 #
-# It is the missing first five minutes. `verse up` gives you an empty verse, and an empty
-# verse looks the same as a broken one: `verse data`, `verse charter` and `verse question`
+# It is the missing first five minutes. `viff up` gives you an empty viff, and an empty
+# viff looks the same as a broken one: `viff data`, `viff charter` and `viff question`
 # all answer with nothing. This seeds enough that they don't, and prints what to type next.
 #
 # Unlike test/smoke.sh — which builds its own binaries and runs its own isolated server — this
-# talks to YOUR verse, and leaves what it writes behind for you to play with.
+# talks to YOUR viff, and leaves what it writes behind for you to play with.
 #
-#   ./verse up                       # in another terminal (or: make seed-demo)
+#   ./viff up                       # in another terminal (or: make seed-demo)
 #   ./scripts/seed-demo.sh
 #   ./scripts/seed-demo.sh --scope me        # …into a copy-on-write scope instead of baseline
 #   ./scripts/seed-demo.sh --clean           # remove what a previous run seeded
 #
-# Env: VERSE (the binary, default: ./verse then `verse` on PATH), VERSE_ADDR (the verse to
-# seed, default: verse's own default). Both are the CLI's own knobs; nothing here is a
+# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff to
+# seed, default: viff's own default). Both are the CLI's own knobs; nothing here is a
 # second configuration.
 set -euo pipefail
 
-# The scripts live in scripts/ and act on the checkout above them: the `./verse` a
+# The scripts live in scripts/ and act on the checkout above them: the `./viff` a
 # build produces is at the root, and so is the reader's cwd.
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -51,40 +51,40 @@ die() {
 	exit 1
 }
 
-# The binary, in the order you are likely to have one: an explicit VERSE, the build a
+# The binary, in the order you are likely to have one: an explicit VIFF, the build a
 # checkout produces, then PATH.
-BIN=${VERSE:-}
+BIN=${VIFF:-}
 if [ -z "$BIN" ]; then
-	if [ -x ./verse ]; then
-		BIN=./verse
-	elif command -v verse >/dev/null 2>&1; then
-		BIN=verse
+	if [ -x ./viff ]; then
+		BIN=./viff
+	elif command -v viff >/dev/null 2>&1; then
+		BIN=viff
 	else
-		die "no verse binary — build one (go build -o verse ./cmd/verse) or set VERSE=<path>"
+		die "no viff binary — build one (go build -o viff ./cmd/viff) or set VIFF=<path>"
 	fi
 fi
 
-# THE BINARY HAS TO SPEAK `state`. These scripts read the verse as one document at a kinded
+# THE BINARY HAS TO SPEAK `state`. These scripts read the viff as one document at a kinded
 # path, and a CLI from before that has `entity` instead — whose failure is a usage error and
-# the whole command tree, which says nothing about why. The trap is a STALE `./verse` in the
+# the whole command tree, which says nothing about why. The trap is a STALE `./viff` in the
 # working directory: it is preferred over $PATH above, so a checkout that built one months ago
 # keeps using it long after `go install` refreshed the real one.
-# `|| true` into a variable, NOT a pipe from "$BIN": bare `verse` exits 1 (it just printed
+# `|| true` into a variable, NOT a pipe from "$BIN": bare `viff` exits 1 (it just printed
 # usage), and these scripts run under `set -o pipefail`, which hands that 1 to the whole
 # pipeline however well the grep matched — so the pipe spelling fired this guard on every
 # binary, current ones included.
-_verse_cmds=$("$BIN" 2>&1 || true)
-if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
-	die "$BIN does not have \`verse data\` — it predates the one-document read.
-     Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
-     or point VERSE=<path> at a current one."
+_viff_cmds=$("$BIN" 2>&1 || true)
+if ! printf '%s\n' "$_viff_cmds" | grep -qE '^ *data '; then
+	die "$BIN does not have \`viff data\` — it predates the one-document read.
+     Rebuild it (go build -o viff ./cmd/viff), remove a stale ./viff so \$PATH wins,
+     or point VIFF=<path> at a current one."
 fi
 v() { "$BIN" ${scope[@]+"${scope[@]}"} "$@"; }
 
 # Talk to it before writing to it: every failure below would otherwise be one "connection
-# refused" per command, which reads as a broken script rather than a verse that isn't up.
+# refused" per command, which reads as a broken script rather than a viff that isn't up.
 v status >/dev/null 2>&1 ||
-	die "no verse answering at ${VERSE_ADDR:-its default address} — start one with \`$BIN up\` (or pass VERSE_ADDR=host:port)"
+	die "no viff answering at ${VIFF_ADDR:-its default address} — start one with \`$BIN up\` (or pass VIFF_ADDR=host:port)"
 
 TRIGGERS=(demo-review demo-escalate)
 ENTITIES=(
@@ -97,7 +97,7 @@ if $clean; then
 	for t in "${TRIGGERS[@]}"; do v charter -r rules "$t" >/dev/null 2>&1 || true; done
 	ok "removed the seeded triggers"
 	# Unquoted: each entry IS the steps of one address, and the shell splitting it into words
-	# is how `verse data` takes one.
+	# is how `viff data` takes one.
 	# shellcheck disable=SC2086
 	for e in "${ENTITIES[@]}"; do v data $e --rm >/dev/null 2>&1 || true; done
 	ok "removed the seeded entities"
@@ -154,7 +154,7 @@ for _ in $(seq 1 50); do
 	sleep 0.2
 done
 [ -n "$escalated" ] && ok "demo-escalate advanced demo.task.hotfix-1 → escalated (auto: nobody was asked)" ||
-	printf '  \033[33m~\033[0m demo.task.hotfix-1 has not advanced yet — `verse data demo task hotfix-1`\n'
+	printf '  \033[33m~\033[0m demo.task.hotfix-1 has not advanced yet — `viff data demo task hotfix-1`\n'
 
 GID=
 for _ in $(seq 1 50); do
@@ -163,7 +163,7 @@ for _ in $(seq 1 50); do
 	sleep 0.2
 done
 [ -n "$GID" ] && ok "demo-review is holding demo.pr.1 at a gate: $GID" ||
-	printf '  \033[33m~\033[0m no gate yet — `verse question` in a moment\n'
+	printf '  \033[33m~\033[0m no gate yet — `viff question` in a moment\n'
 
 scope_note=""
 [ ${#scope[@]} -gt 0 ] && scope_note=" ${scope[*]}"
@@ -184,7 +184,7 @@ Watch it move (another terminal, before approving):
 
   $BIN$scope_note watch demo
 
-Then drive it yourself — a put is how you speak to the verse:
+Then drive it yourself — a put is how you speak to the viff:
 
   $BIN$scope_note data demo pr 2 --put '{stage: open}'   open the draft; demo-review fires again
 

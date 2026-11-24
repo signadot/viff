@@ -17,9 +17,9 @@ import (
 // descendant.
 func TestWatchSubtreeReportsAtTheDepthItWasAsked(t *testing.T) {
 	s := openStore(t)
-	deep := RefAt("verse-dev", "drift", "head", "abc")
+	deep := RefAt("viff-dev", "drift", "head", "abc")
 
-	ch, unsub, err := s.WatchSubtree(4, "verse-dev", "drift")
+	ch, unsub, err := s.WatchSubtree(4, "viff-dev", "drift")
 	if err != nil {
 		t.Fatalf("watch: %v", err)
 	}
@@ -40,9 +40,9 @@ func TestWatchSubtreeReportsAtTheDepthItWasAsked(t *testing.T) {
 // questions, which is the whole of what "entity-hood is a lens" costs.
 func TestTwoDepthsOverOneSubtreeAreTwoQuestions(t *testing.T) {
 	s := openStore(t)
-	deep := RefAt("verse-dev", "drift", "head", "abc")
+	deep := RefAt("viff-dev", "drift", "head", "abc")
 
-	ch, unsub, err := s.WatchSubtree(3, "verse-dev", "drift")
+	ch, unsub, err := s.WatchSubtree(3, "viff-dev", "drift")
 	if err != nil {
 		t.Fatalf("watch: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestTwoDepthsOverOneSubtreeAreTwoQuestions(t *testing.T) {
 
 	set(t, s, deep, Obj{"sha": "deadbeef"}.Payload())
 	ev := oneChange(t, ch, "the deep write seen at the ordinary arity")
-	if want := RefAt("verse-dev", "drift", "head"); ev.Ref != want {
+	if want := RefAt("viff-dev", "drift", "head"); ev.Ref != want {
 		t.Fatalf("reported %s, want the three-segment ancestor %s", ev.Ref, want)
 	}
 	if inner := Get(ev.To, "abc"); inner == nil {
@@ -63,13 +63,13 @@ func TestTwoDepthsOverOneSubtreeAreTwoQuestions(t *testing.T) {
 // it, whole. Neither is the stream picking a depth.
 func TestAnObserverIsAnsweredAtItsOwnPatterns(t *testing.T) {
 	s := openStore(t)
-	deepCh, unsubDeep := s.Observe(PrefixPattern([]string{"verse-dev", "drift"}, 4))
+	deepCh, unsubDeep := s.Observe(PrefixPattern([]string{"viff-dev", "drift"}, 4))
 	defer unsubDeep()
-	aboveCh, unsubAbove := s.Observe(PrefixPattern([]string{"verse-dev", "drift"}, 3))
+	aboveCh, unsubAbove := s.Observe(PrefixPattern([]string{"viff-dev", "drift"}, 3))
 	defer unsubAbove()
 	time.Sleep(200 * time.Millisecond) // the root watch opens lazily, on the first observer
 
-	deep := RefAt("verse-dev", "drift", "head", "abc")
+	deep := RefAt("viff-dev", "drift", "head", "abc")
 	set(t, s, deep, Obj{"sha": "deadbeef"}.Payload())
 
 	c := oneCommitOf(t, deepCh, "the deep write")
@@ -77,23 +77,23 @@ func TestAnObserverIsAnsweredAtItsOwnPatterns(t *testing.T) {
 		t.Fatalf("at the write's own depth: %+v, want [%s]", c.Changes, deep)
 	}
 	c = oneCommitOf(t, aboveCh, "the same write, asked about one level up")
-	want := RefAt("verse-dev", "drift", "head")
+	want := RefAt("viff-dev", "drift", "head")
 	if len(c.Changes) != 1 || c.Changes[0].Ref != want || Get(c.Changes[0].To, "abc") == nil {
 		t.Fatalf("one level up: %+v, want [%s] holding what changed inside it", c.Changes, want)
 	}
 	// And a commit answers about a path it was not observed at, from the delta it carries.
-	if !c.Changed(deep) || !c.Changed(want) || c.Changed(RefAt("verse-dev", "drift", "other")) {
+	if !c.Changed(deep) || !c.Changed(want) || c.Changed(RefAt("viff-dev", "drift", "other")) {
 		t.Fatal("Changed did not answer the write, the node above it, and not a sibling")
 	}
 }
 
 // ONE LENGTH, WITH OR WITHOUT A DELTA. A subtree watch's commit carries no delta, so Changed
-// answers from its Changes, and the path it is asked about carries `verse` as a segment like any
-// other. Counted without the root, every address in verse's own half was one level short, and
+// answers from its Changes, and the path it is asked about carries `viff` as a segment like any
+// other. Counted without the root, every address in viff's own half was one level short, and
 // the causal chain, which asks this of every firing, began afresh at each one.
 func TestChangedCountsTheRootWithoutADelta(t *testing.T) {
 	s := openStore(t)
-	ref := VerseRef("task", "instance", "run-1")
+	ref := ViffRef("task", "instance", "run-1")
 	segs := ref.Segs()
 	ch, unsub, err := s.WatchSubtree(len(segs), segs[:len(segs)-1]...)
 	if err != nil {
@@ -102,7 +102,7 @@ func TestChangedCountsTheRootWithoutADelta(t *testing.T) {
 	defer unsub()
 
 	set(t, s, ref, Obj{"status": "running"}.Payload())
-	c := oneCommitOf(t, ch, "the write in verse's half")
+	c := oneCommitOf(t, ch, "the write in viff's half")
 	if !c.Changed(ref) {
 		t.Fatalf("Changed(%s) = false over Changes %+v", ref, c.Changes)
 	}

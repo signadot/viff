@@ -5,7 +5,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // Whether two declarations say the same thing, asked of a rule a record holds against the one

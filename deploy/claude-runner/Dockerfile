@@ -1,4 +1,4 @@
-# The claude runner image: the verse runner image with Claude Code in it.
+# The claude runner image: the viff runner image with Claude Code in it.
 #
 # Built via `make claude-runner-docker`; it COPYs the same locally cross-compiled runnerd the
 # other images do, for the reason that Dockerfile gives. It is a separate image because what it
@@ -50,14 +50,14 @@ RUN case "${TARGETARCH}" in \
  && claude --version
 
 COPY dist/linux/${TARGETARCH}/runnerd /usr/local/bin/runnerd
-# A task's scripts call its tools with verse-call-tool, which the runner finds beside itself and
+# A task's scripts call its tools with viff-call-tool, which the runner finds beside itself and
 # binds into each task's sandbox.
-COPY dist/linux/${TARGETARCH}/verse-call-tool /usr/local/bin/verse-call-tool
-# And run a command with a secret, as if in place, with verse-secret-exec beside it.
-COPY dist/linux/${TARGETARCH}/verse-secret-exec /usr/local/bin/verse-secret-exec
+COPY dist/linux/${TARGETARCH}/viff-call-tool /usr/local/bin/viff-call-tool
+# And run a command with a secret, as if in place, with viff-secret-exec beside it.
+COPY dist/linux/${TARGETARCH}/viff-secret-exec /usr/local/bin/viff-secret-exec
 
 VOLUME ["/state"]
 EXPOSE 9802
 
 ENTRYPOINT ["runnerd"]
-CMD ["-config", "/config/verse-runner.tony", "-sandbox", "bwrap"]
+CMD ["-config", "/config/viff-runner.tony", "-sandbox", "bwrap"]

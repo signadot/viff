@@ -1,8 +1,8 @@
 package trigger
 
 import (
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/launch"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/launch"
 )
 
 // ActsAsSubjectOver answers the place this rule selects its subjects in, where any of its

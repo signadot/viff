@@ -32,7 +32,7 @@ func fakeTools() []Tool {
 			Description: "Push this task's committed work.",
 			Params: map[string]any{
 				// As the runner's own tools declare it: a Go string slice, not the decoded shape.
-				"repo":   map[string]any{"type": "string", "enum": []string{"verse", "docs"}},
+				"repo":   map[string]any{"type": "string", "enum": []string{"viff", "docs"}},
 				"branch": map[string]any{"type": "string"},
 				"delete": map[string]any{"type": "boolean"},
 			},
@@ -79,7 +79,7 @@ func TestToolsAreListedAsTheModelSeesThem(t *testing.T) {
 		t.Fatalf("what the list carries: %+v", tools)
 	}
 	repo, _ := tools[0].Params["repo"].(map[string]any)
-	if enum, _ := repo["enum"].([]any); len(enum) != 2 || enum[0] != "verse" {
+	if enum, _ := repo["enum"].([]any); len(enum) != 2 || enum[0] != "viff" {
 		t.Fatalf("the enum crossed as %#v", repo)
 	}
 }
@@ -88,16 +88,16 @@ func TestACallReachesTheHostAndItsResultTheCaller(t *testing.T) {
 	var got seen
 	_, c := start(t, func(_ context.Context, tool string, in map[string]any) (string, bool, error) {
 		got = seen{tool, in}
-		return "pushed verse to verse/x", false, nil
+		return "pushed viff to viff/x", false, nil
 	})
-	res, err := c.Call(context.Background(), "push", map[string]any{"branch": "verse/x", "delete": false})
+	res, err := c.Call(context.Background(), "push", map[string]any{"branch": "viff/x", "delete": false})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Refused || res.Out != "pushed verse to verse/x" {
+	if res.Refused || res.Out != "pushed viff to viff/x" {
 		t.Fatalf("result: %+v", res)
 	}
-	if got.tool != "push" || got.input["branch"] != "verse/x" || got.input["delete"] != false {
+	if got.tool != "push" || got.input["branch"] != "viff/x" || got.input["delete"] != false {
 		t.Fatalf("the host saw %+v", got)
 	}
 }
@@ -143,7 +143,7 @@ func TestAnUnknownToolIsRefusedWithTheList(t *testing.T) {
 func TestOutCrossesAsItIs(t *testing.T) {
 	// Free text with the shapes a pretty rendering trips on: trailing spaces, blank lines, a
 	// colon, a leading dash.
-	out := "pushed verse to verse/x:  \n\n- 3 commits \n  a: b\n"
+	out := "pushed viff to viff/x:  \n\n- 3 commits \n  a: b\n"
 	_, c := start(t, func(context.Context, string, map[string]any) (string, bool, error) {
 		return out, false, nil
 	})
@@ -167,7 +167,7 @@ func TestTheInputIsCheckedAgainstTheSchema(t *testing.T) {
 		input map[string]any
 		want  string
 	}{
-		{"push", map[string]any{"repo": "other"}, `repo: "other" is not one of verse, docs`},
+		{"push", map[string]any{"repo": "other"}, `repo: "other" is not one of viff, docs`},
 		{"push", map[string]any{"force": true}, `push has no parameter "force"`},
 		{"push", map[string]any{"delete": "yes"}, "delete: want a boolean, not a string"},
 		{"ask", map[string]any{"question": ""}, "ask requires question"},
@@ -387,7 +387,7 @@ func TestDescribeIsTheToolWithItsSchemaNormalised(t *testing.T) {
 	}
 }
 
-// A tool with a parameter named `input` cannot be offered: verse-call-tool takes the whole
+// A tool with a parameter named `input` cannot be offered: viff-call-tool takes the whole
 // input as `-input`, and the list grows on the server with no change to the binary.
 func TestAToolWithAParameterNamedInputIsRefusedAtStart(t *testing.T) {
 	s := &Server{Tools: []Tool{{Name: "odd", Params: map[string]any{Reserved: map[string]any{"type": "string"}}}}}

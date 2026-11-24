@@ -5,8 +5,8 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 func at(t *testing.T, s string) *kpath.KPath {
@@ -19,7 +19,7 @@ func at(t *testing.T, s string) *kpath.KPath {
 }
 
 // LiteralPrefix says where a read at a path is asked of the store, which is the difference
-// between reading a subtree and reading the verse and discarding it.
+// between reading a subtree and reading the viff and discarding it.
 func TestLiteralPrefix(t *testing.T) {
 	for _, c := range []struct {
 		at     string
@@ -48,8 +48,8 @@ func TestLiteralPrefix(t *testing.T) {
 // A READ AT AN EMPTY PATH IS AN ANSWER, NOT AN OUTAGE.
 //
 // logd distinguishes them — not_found says the path is empty, a failure says the store could
-// not be read — and verse folds the second into a 503. Recording the first as a read error
-// made `verse data <a system nothing has written>` report the verse as unavailable, which
+// not be read — and viff folds the second into a 503. Recording the first as a read error
+// made `viff data <a system nothing has written>` report the viff as unavailable, which
 // only became reachable once reads went to their path instead of to the root.
 func TestReadAtAnAbsentPathIsNotAnOutage(t *testing.T) {
 	s := entitytest.OpenStore(t)

@@ -11,14 +11,14 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // THE SECRET STORE IS A DIRECTORY THE FILE NAMES, absolute and below /, and under no directory
-// every sandbox has: `secrets: {dir: /etc/verse/secrets}` would hand every task every secret.
+// every sandbox has: `secrets: {dir: /etc/viff/secrets}` would hand every task every secret.
 func TestTheSecretStoresDirectoryIsWhereNoSandboxHasIt(t *testing.T) {
 	write := func(body string) string {
 		t.Helper()
@@ -32,7 +32,7 @@ func TestTheSecretStoresDirectoryIsWhereNoSandboxHasIt(t *testing.T) {
 		"script: {}\nsecrets: {}\n":                              "secrets: `dir` names the directory",
 		"script: {}\nsecrets: {dir: secrets}\n":                  "secrets.dir: \"secrets\" is not an absolute path below /",
 		"script: {}\nsecrets: {dir: /}\n":                        "secrets.dir: \"/\" is not an absolute path below /",
-		"script: {}\nsecrets: {dir: /etc/verse/secrets}\n":       "secrets.dir: /etc/verse/secrets is under a directory every task's sandbox has",
+		"script: {}\nsecrets: {dir: /etc/viff/secrets}\n":        "secrets.dir: /etc/viff/secrets is under a directory every task's sandbox has",
 		"script: {}\nsecrets: {dir: /opt/secrets}\n":             "every task would read every secret",
 		"script: {}\nsecrets: {dir: /usr/../etc/secrets}\n":      "every task would read every secret",
 		"script: {}\nsecrets: {dir: /secrets, mode: \"0400\"}\n": "mode",
@@ -164,13 +164,13 @@ func TestThePerformedSystemsAreOneTable(t *testing.T) {
 		}
 	}
 	// What the table says is what the runner said before there was one.
-	everything := Config{Repos: &Repos{Mirrors: "/m"}, reachesVerse: true, SecretStore: &SecretStore{Dir: "/secrets"},
+	everything := Config{Repos: &Repos{Mirrors: "/m"}, reachesViff: true, SecretStore: &SecretStore{Dir: "/secrets"},
 		MCP: &MCP{Servers: map[string]MCPServer{"linear": {URL: "https://mcp.linear.app/mcp"}}},
 		Pkg: &Pkg{Cellar: "/state/cellar", Manager: "apt", Repos: []string{"deb http://deb.debian.org/debian bookworm main"}},
 		Script: &Script{Systems: map[string]System{
 			"slack": {Ceiling: systems.Open()}, "linear-issue": {Ceiling: systems.Open()}, "secret": {Ceiling: ceiling(t, `{name: npm-token}`)},
 			"mcp": {Ceiling: ceiling(t, `{server: linear}`)}, "pkg": {Ceiling: systems.Open()}}}}
-	if got := everything.performs(); !slices.Equal(got, []string{"git", "git-issue", "github", "github-issue", "linear-issue", "slack", "secret", "mcp", "pkg", "verse"}) {
+	if got := everything.performs(); !slices.Equal(got, []string{"git", "git-issue", "github", "github-issue", "linear-issue", "slack", "secret", "mcp", "pkg", "viff"}) {
 		t.Errorf("a runner that performs everything performs %v", got)
 	}
 	// A secret ceiling with no store to read from performs nothing.
@@ -214,7 +214,7 @@ func TestASystemNamesItsSecretInOneMap(t *testing.T) {
 		"secrets.systems.mcp: mcp names each server's secret with the server (`mcp.servers.<name>.auth.secret`)":              with(map[string]string{"mcp": "x"}),
 		"secrets.systems.git: git acts with the forge's token (GITHUB_TOKEN), which is not the store's":                       with(map[string]string{"git": "git-token"}),
 		"secrets.systems.github-issue: github-issue acts with the forge's token":                                              with(map[string]string{"github-issue": "t"}),
-		"secrets.systems.verse: verse acts with no credential of its own to name":                                             with(map[string]string{"verse": "t"}),
+		"secrets.systems.viff: viff acts with no credential of its own to name":                                               with(map[string]string{"viff": "t"}),
 		"secrets.systems.slack: \"SLACK_BOT_TOKEN\" is no secret's name":                                                      with(map[string]string{"slack": "SLACK_BOT_TOKEN"}),
 		"secrets.systems.slack: \"../slack\" is no secret's name":                                                             with(map[string]string{"slack": "../slack"}),
 		"secrets.systems.slack: a secret's name is not empty":                                                                 with(map[string]string{"slack": ""}),
@@ -334,7 +334,7 @@ func TestAScriptPostsToSlackWithTheStoresToken(t *testing.T) {
 	env := envOf(netOpen, nil, nil)
 	env.Systems["slack"] = []systems.Block{{Verbs: deploys}}
 	rt.Launch(runner.Launch{ID: "s1", Environment: env, Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
-		Script: "#!/bin/sh\nverse-call-tool slack-post -channel deploys -text 'v1.3 is rolling out'\necho \"exit=$?\"\nenv | grep -c xoxb || true"})
+		Script: "#!/bin/sh\nviff-call-tool slack-post -channel deploys -text 'v1.3 is rolling out'\necho \"exit=$?\"\nenv | grep -c xoxb || true"})
 	snap := ended(t, rt, "s1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "posted in #deploys") || !strings.Contains(snap.Result, "exit=0") {
 		t.Fatalf("task: %+v", snap)

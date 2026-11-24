@@ -3,23 +3,23 @@
 # Before this deploys, the credential has to exist — it is the whole difference between this
 # source and the git one:
 #
-#   kubectl -n verse create secret generic verse-slack \
+#   kubectl -n viff create secret generic viff-slack \
 #     --from-literal=SLACK_BOT_TOKEN=xoxb-… \
 #     --from-literal=SLACK_SIGNING_SECRET=…
 #
-# Not `optional: true` like verse-llm. A Slack source without a token has nothing to reflect,
+# Not `optional: true` like viff-llm. A Slack source without a token has nothing to reflect,
 # and a pod that starts anyway would install clean and fail every pass — so it fails to start,
 # in front of whoever deployed it.
 #
 # Install it once the pods are up (the name must match `slackIodName`, because the hint url
 # below carries it):
-#   verse iod add workspace http://slack-iod:9801 -root slack
+#   viff iod add workspace http://slack-iod:9801 -root slack
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: slack-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: slack
 spec:
@@ -29,32 +29,32 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: verse
+      app: viff
       tier: iods
       io: slack
   template:
     metadata:
       labels:
-        app: verse
+        app: viff
         tier: iods
         io: slack
     spec:
       containers:
       - name: slack-iod
-        image: signadot/verse:latest
+        image: signadot/viff:latest
         command:
         - iod
         - slack
         - -addr
         - :9801
-        # A source's own rate limit. verse resyncs every minute and Slack's per-method budget
-        # is not verse's to know about, so the window that keeps a delivery storm from
+        # A source's own rate limit. viff resyncs every minute and Slack's per-method budget
+        # is not viff's to know about, so the window that keeps a delivery storm from
         # spending it lives here, next to the token. See io.Throttle.
         - -min-interval
         - "30s"
         # BOTH HALVES. The out half is why this connector exists on staging: a gate's question
         # reaches the people it waits on as a Slack message, and their reply answers it. It
-        # dials verse rather than being dialled, so it needs nothing open to the cluster.
+        # dials viff rather than being dialled, so it needs nothing open to the cluster.
         - -out
         ports:
         - name: source
@@ -65,19 +65,19 @@ spec:
           containerPort: 9802
         env:
         # Where a verified delivery becomes a hint. The registration name in this path is what
-        # ties the two together: verse 404s a hint for a name it has no registration under.
-        - name: VERSE_HINT_URL
-          value: http://verse:9797/iods/workspace/hint
+        # ties the two together: viff 404s a hint for a name it has no registration under.
+        - name: VIFF_HINT_URL
+          value: http://viff:9797/iods/workspace/hint
         envFrom:
         - secretRef:
-            name: verse-slack
+            name: viff-slack
         readinessProbe:
           httpGet:
             path: /io
             port: source
           initialDelaySeconds: 3
           periodSeconds: 10
-          # Explicit, for the reason versed's are (see deploy/source/versed-deployment.yaml):
+          # Explicit, for the reason viffd's are (see deploy/source/viffd-deployment.yaml):
           # the default is one second, and /source is answered by a program that may be busy
           # talking to somebody else's API.
           timeoutSeconds: 5
@@ -87,12 +87,12 @@ kind: Service
 metadata:
   name: slack-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: slack
 spec:
   selector:
-    app: verse
+    app: viff
     tier: iods
     io: slack
   ports:
@@ -101,7 +101,7 @@ spec:
     targetPort: source
 ---
 # Slack's Events API needs a url IT can reach, which is the one thing a reflection does not:
-# verse dials the source, the source dials verse, and only this leg comes from the internet.
+# viff dials the source, the source dials viff, and only this leg comes from the internet.
 # Dropped unless `slackWebhookHost` is set — without it the source still converges, one resync
 # behind. Point the Slack app's Request URL at https://<host>/slack/events.
 apiVersion: networking.k8s.io/v1
@@ -109,7 +109,7 @@ kind: Ingress
 metadata:
   name: slack-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: slack
 spec:

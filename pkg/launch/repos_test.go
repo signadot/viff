@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // A repository's name and its base, and a tracker's repository, are what a charter has reason

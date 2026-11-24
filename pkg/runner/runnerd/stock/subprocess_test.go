@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // taskArg makes this test binary the runner's task process (TestMain), as `runnerd -task` is.
@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// serve serves the verse runner as a standalone runner, with its task processes confined by sb.
+// serve serves the viff runner as a standalone runner, with its task processes confined by sb.
 // work is where the tasks' directories are made.
 func serve(t *testing.T, s Secrets, sb runnerd.Sandbox) (rt client.Launcher, work string) {
 	t.Helper()
@@ -79,7 +79,7 @@ func script(t *testing.T, rt client.Launcher, id, src string) task.Snapshot {
 // process has none of the runner's secrets: not in its environment, though the runner's has them.
 func TestATaskRunsInAProcessOfItsOwn(t *testing.T) {
 	const key = "pk-test-secret"
-	t.Setenv(verse.EnvAPIKey, key)
+	t.Setenv(viff.EnvAPIKey, key)
 	rt, work := serve(t, Secrets{PortkeyAPIKey: key}, runnerd.Unconfined{})
 	in := script(t, rt, "t1", "#!/bin/sh\necho $$ $PWD $HOME\nenv | grep -c "+key+" || true")
 	if in.Status != task.Done {
@@ -142,7 +142,7 @@ func TestBwrapConfinesATask(t *testing.T) {
 	}
 	in := script(t, rt, "t1", `#!/bin/sh
 touch mine && echo wrote-own
-touch /usr/verse-test 2>/dev/null || echo no-usr
+touch /usr/viff-test 2>/dev/null || echo no-usr
 ls .. | grep -q another-task || echo no-others
 touch /tmp/scratch && echo own-tmp
 (exec 3</proc/$PPID/environ) 2>/dev/null || (exec 3</proc/$PPID/mem) 2>/dev/null || echo process-unreadable
@@ -158,7 +158,7 @@ touch /tmp/scratch && echo own-tmp
 }
 
 // A task in a process of its own has its gates replaced through the runner, and says so; the
-// client's handle is how verse does it.
+// client's handle is how viff does it.
 func TestGatesReachATaskInItsOwnProcess(t *testing.T) {
 	rt, _ := serve(t, Secrets{}, runnerd.Unconfined{})
 	if l := rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, Script: "sleep 2", Environment: envOf(netOpen, nil, nil)}); l.Err() != "" {

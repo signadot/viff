@@ -11,11 +11,11 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// A gate question is published as an ask of its own, `verse.ask.<id>`, rather than as a field
+// A gate question is published as an ask of its own, `mirror.ask.<id>`, rather than as a field
 // on whatever raised it: every question is an ask, on the one docket asks stand on (ask.go).
 //
 // Two things force that. A trigger gate is posed by a FIRING, before anything spawns — there is
@@ -24,18 +24,18 @@ import (
 // all. Both are the same shape: the record needs somewhere to live, and "whose it is" does not
 // answer that.
 //
-// The id is the question's own (`<task>~d<n>`, where verse minted it), and its `from` says who
+// The id is the question's own (`<task>~d<n>`, where viff minted it), and its `from` says who
 // raised it, so a predicate selects one run's questions by `from: {task: …}` whatever the id.
 // QuestionRef addresses one question: the ask it is.
 func QuestionRef(id string) entity.Ref { return AskRef(id) }
 
 // RuleRef addresses the record of one rule of the charter installed at an address:
-// `verse.trigger.rule.<at>:<name>`, and the bare name for baseline. It is spelled here and
+// `mirror.trigger.rule.<at>:<name>`, and the bare name for baseline. It is spelled here and
 // used by the trigger package, rather than the other way round, because a question is co-owned
 // by the rule that posed it and the mirror is what writes that down — and mirror cannot import
 // trigger.
 func RuleRef(at, name string) entity.Ref {
-	return entity.VerseRef("trigger", "rule", RecordID(at, name))
+	return entity.ViffRef("trigger", "rule", RecordID(at, name))
 }
 
 // RecordID is the id a charter's durable records carry: the name alone for baseline, and
@@ -49,7 +49,7 @@ func RecordID(at, name string) string {
 
 // poseRecord writes the question's own record, once: the system's, under what posed it — the task,
 // or the rule of the charter that asked — and holding out what the default on
-// `verse.ask` says, or the gate's own answerers when it named them, or the resolver's
+// `mirror.ask` says, or the gate's own answerers when it named them, or the resolver's
 // answerers when a resolver owns it. The resolver is on the record FROM THE WRITE THAT MAKES IT:
 // a record that held the default out first and was narrowed to the resolver afterwards is a
 // question every person may settle for as long as the second write takes, and for good when it
@@ -76,7 +76,7 @@ func poseRecord(store entity.Store, q task.GateQuestion, taskID string) error {
 	// good and with nothing to show for it. Tried a few times, since a store under load refuses
 	// a write now and then, and then said, to a caller that does not pose without it.
 	// A PERSON'S ASK IS ITS ASKER'S RECORD, written by the verb with who reads it and who answers
-	// it (versed postAsk). Posing it writes the question's fields onto that record and leaves the
+	// it (viffd postAsk). Posing it writes the question's fields onto that record and leaves the
 	// record as the verb wrote it: re-established as the docket's, the ask would stop being its
 	// asker's, and its asker could no longer withdraw it.
 	if owner, err := ownerOnRecord(store, ref); err != nil {
@@ -141,7 +141,7 @@ func poseRecordOnce(store entity.Store, ref, origin entity.Ref, subject string, 
 }
 
 // Parties is whom an ask is put to, as the nodes their `answer` grants stand on (entity.Answer):
-// each principal it names at `verse.for.<principal>`, a group standing for its members as they
+// each principal it names at `viff.for.<principal>`, a group standing for its members as they
 // are when it is asked; or, where it names nobody, what it is about. A whole kind, a place acting
 // and an address's audience are nobody a resolver answers for, and name no party.
 func Parties(store entity.Store, subject string, answerers []string) []entity.Ref {
@@ -229,7 +229,7 @@ func CheckAudience(store entity.Store, subject string, answerers []string) error
 }
 
 // nobody is the id of a principal no one is, for asking what a whole kind holds.
-const nobody = "nobody@verse.invalid"
+const nobody = "nobody@viff.invalid"
 
 // expandGroups is names with each group replaced by its members.
 func expandGroups(store entity.Store, names []string) []string {
@@ -342,7 +342,7 @@ func namesValue(names []string) any {
 // A READER CANNOT WORK THIS OUT. `to` is there only where the gate named somebody, and the
 // rest of who may answer — the resolver a question was handed to, the rung that took it after an
 // escalation, the docket's own default — is on the question's perms record, which only the system
-// may read. So a docket, a charter deriving one message per person, and `verse question` would each
+// may read. So a docket, a charter deriving one message per person, and `viff question` would each
 // have to guess, and would each guess differently.
 //
 // It is the question's own `read-write` line, which is the same fact the answer route checks, with
@@ -442,7 +442,7 @@ func labelsValue(labels map[string]string) any {
 	return o
 }
 
-// LabelsOf reads an ask's labels, nil where it has none. Only verse writes them, as strings.
+// LabelsOf reads an ask's labels, nil where it has none. Only viff writes them, as strings.
 func LabelsOf(p entity.Payload) map[string]string {
 	fs := entity.Fields(entity.Get(p, LabelsField))
 	if len(fs) == 0 {
@@ -467,7 +467,7 @@ const (
 	// trail.
 	//
 	// The name says "the asker is gone" and that was once the only way to get here: a task
-	// that died with a previous verse. It is no longer, and the difference matters to whoever
+	// that died with a previous viff. It is no longer, and the difference matters to whoever
 	// was going to answer. A task's loop now WITHDRAWS a standing question when an operator
 	// intervenes — a say that redirects the run, a pause about to suspend it — and there the
 	// asker is alive and somebody chose this. Same settling; not the same news.
@@ -506,7 +506,7 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 		rec["edit"] = q.Edit
 	}
 	// Absent rather than empty, for the reason the gate listing already compacts: a missing
-	// key is visible, an empty one is camouflage. A bare `verse task run` is about nothing,
+	// key is visible, an empty one is camouflage. A bare `viff task run` is about nothing,
 	// and a relayed gate legitimately carries no rule and no mode.
 	for k, v := range map[string]string{
 		// What is being decided, in words, when the gate wrote any (trigger.Gate.Pose) — the
@@ -564,7 +564,7 @@ func PostQuestion(store entity.Store, p task.Pending, taskID string) (posed bool
 	if err := poseRecord(store, q, taskID); err != nil {
 		// Closed, and loud: nobody is asked until it is posed again, which is a gate that waits
 		// rather than one that anybody settles.
-		fmt.Fprintf(os.Stderr, "verse: question %s is NOT posed — who may answer it could not be "+
+		fmt.Fprintf(os.Stderr, "viff: question %s is NOT posed — who may answer it could not be "+
 			"written, so nobody is asked until it is posed again: %v\n", q.ID, err)
 		return false
 	}
@@ -927,7 +927,7 @@ func PostFrameQuestion(store entity.Store, ev task.Event, taskID, run, subject s
 	// The record first, for the reason Pose writes it first: a question standing without one is
 	// everybody's to answer.
 	if err := poseRecord(store, task.GateQuestion{ID: ev.ID, Answerers: answerers}, taskID); err != nil {
-		fmt.Fprintf(os.Stderr, "verse: question %s is NOT posed — who may answer it could not be "+
+		fmt.Fprintf(os.Stderr, "viff: question %s is NOT posed — who may answer it could not be "+
 			"written, so nobody is asked until it is posed again: %v\n", ev.ID, err)
 		return false
 	}
@@ -1006,8 +1006,8 @@ func AnswerQuestion(store entity.Store, id string, res task.Resolution) {
 
 // ClaimRecord is a resolution as a question's claim records it (`followed`, api.AskFollowed):
 // when, and the answer in the keys the answered record uses, so a reader of either reads one
-// shape. The claim is the answer (versed consequence.go), and what the rows of a person's ask's
-// `on` match (versed askon.go).
+// shape. The claim is the answer (viffd consequence.go), and what the rows of a person's ask's
+// `on` match (viffd askon.go).
 func ClaimRecord(res task.Resolution, now time.Time) entity.Obj {
 	rec := resolutionKeys(res)
 	rec["at"] = now.UTC().Format(time.RFC3339)
@@ -1037,7 +1037,7 @@ func resolutionKeys(res task.Resolution) entity.Obj {
 		rec["why"] = res.Note
 	}
 	// What the answerer said alongside the verdict. It rides Steer rather than Note because
-	// that is where an answer's prose goes — `verse question approve --say "but not on friday"`
+	// that is where an answer's prose goes — `viff question approve --say "but not on friday"`
 	// is an instruction to the task, and the record of a decision that omitted it would
 	// keep the yes and lose the condition on it.
 	if len(res.Steer) > 0 {
@@ -1086,12 +1086,12 @@ func answerRecord(res task.Resolution) entity.Obj {
 // fact that it was never decided, is the trail. `orphaned` is the same word a restart uses
 // for the same fact — the party who could have answered no longer exists.
 //
-// An ask the task raised for its owner (`verse-ask-create`) is not the task's to leave open: it is
-// the owner's, versed waits on it, and it stands after the task.
+// An ask the task raised for its owner (`viff-ask-create`) is not the task's to leave open: it is
+// the owner's, viffd waits on it, and it stands after the task.
 func OrphanQuestions(store entity.Store, taskID string) {
 	for _, ent := range entity.Below(store, func(ref entity.Ref) bool {
 		return IsQuestion(ref)
-	}, 1, entity.VerseRoot, AskSystem) {
+	}, 1, entity.ViffRoot, AskSystem) {
 		p := entity.ToObj(ent.Payload)
 		if p["status"] != QuestionPending {
 			continue
@@ -1143,7 +1143,7 @@ func DropQuestion(store entity.Store, id, why string) { dropQuestion(store, id, 
 
 // HoldQuestion is DropQuestion for a suspension's withdrawal: the question is withdrawn to be asked
 // again when the suspension lifts, and says so (`suspended`), so it is kept meanwhile rather than
-// going as a settled ask does (versed askttl.go).
+// going as a settled ask does (viffd askttl.go).
 func HoldQuestion(store entity.Store, id, why string) {
 	dropQuestion(store, id, why, entity.Obj{SuspendedField: true})
 }
@@ -1302,7 +1302,7 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 		return
 	}
 	// AN ASK ASKED AGAIN IS NOT GOING. Its expiry was the settled round's, and a question that
-	// waits again stands until it settles again (versed askttl.go).
+	// waits again stands until it settles again (viffd askttl.go).
 	if entity.Get(e.Payload, "expires") != nil {
 		rec["expires"] = entity.Removed()
 	}
@@ -1326,7 +1326,7 @@ func clearPriorAnswer(store entity.Store, ref entity.Ref, rec entity.Obj) {
 	// the same reason: the clock started when the question was first asked.
 	// THE CLAIM GOES WITH THE ROUND, AS THE BALLOTS DO. A question that was answered and is
 	// posed again is a new question under an old id, and the claim that settled the last one
-	// (`followed`, versed consequence.go) is not its answer: cleared, so this asking takes a
+	// (`followed`, viffd consequence.go) is not its answer: cleared, so this asking takes a
 	// claim of its own; what the last claim ran stays marked (`ran`), so it is not run again. A PENDING or orphaned question posed again keeps its claim: that is an
 	// answer decided and not yet heard, delivered now that something waits on it again.
 	if status == QuestionAnswered {

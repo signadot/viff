@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A task's stream that drops, and then a subscribe the client reports as a failed frame, both

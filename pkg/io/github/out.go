@@ -13,12 +13,12 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// The out half: a comment on an issue or a pull request, kept in step with what the verse asks
+// The out half: a comment on an issue or a pull request, kept in step with what the viff asks
 // for. It is the Linear io's out half pointed at GitHub, and it is the first of what the review
 // environment needs from GitHub (git-issue jdvbwvjah12krsstqsn0; the steps are on the branch's
 // issue, 934azhtjh12kr7mtqsn0).
@@ -43,12 +43,12 @@ import (
 //
 //	to:   pr.42
 //	text: "Deploy this?"                 # optional: the question says itself without it
-//	asks: verse.trigger.rule.deploy~3    # or a list of ids
+//	asks: mirror.trigger.rule.deploy~3    # or a list of ids
 //
 // The comment says what each question asks and how to answer it: a comment on the pull request
-// saying `/verse <option>` on a line of its own. Each pass reads the replies and answers one as
+// saying `/viff <option>` on a line of its own. Each pass reads the replies and answers one as
 // its author, through the author's GitHub account binding, so the ballot is theirs; an author
-// verse does not know is told so once. The comment is redrawn as the question settles. The
+// viff does not know is told so once. The comment is redrawn as the question settles. The
 // status also carries `handled`, the replies already acted on.
 //
 // AND A REVIEW, when the input carries `review` (step 4):
@@ -81,7 +81,7 @@ import (
 //
 // answered with `closed: true`, `closedAt`, and `closedBy`, the account GitHub says closed it. A
 // pull request is closed unmerged. One already closed is recorded as it is, with `already: true`:
-// that is how a close made around verse shows on the status. `to` says which kind it closes, and a
+// that is how a close made around viff shows on the status. `to` says which kind it closes, and a
 // number that is the other kind is refused, since closing the wrong thing is not undone by a
 // status.
 //
@@ -92,11 +92,11 @@ import (
 //
 // merged only while the pull request's head is still that sha, and answered with `merged: true`,
 // the merge commit as `commit`, and `mergedAt`. A pull request already merged is recorded as it is,
-// with no `commit` of this io's: that is how a merge made around verse shows on the status.
+// with no `commit` of this io's: that is how a merge made around viff shows on the status.
 //
 // AND A PULL REQUEST FOR A BRANCH, when the input carries `open` (step 2):
 //
-//	to:   branch.verse/repo-charter-review-x     # everything after the first dot is the branch
+//	to:   branch.viff/repo-charter-review-x     # everything after the first dot is the branch
 //	open: {base: main, title: "…", body: "…"}  # base defaults to the repository's default branch
 //
 // answered with `number, url, postedAt, updatedAt, posted`, and `adopted: true` where a person had
@@ -117,8 +117,8 @@ import (
 // (the name a status stands under on the page) to the status asked for under it:
 //
 //	commitStatus:
-//	  verse:         {state: pending, description: "waiting for an answer", sha: <head>}
-//	  "verse/check": {state: success, description: "installs cleanly"}
+//	  viff:         {state: pending, description: "waiting for an answer", sha: <head>}
+//	  "viff/check": {state: success, description: "installs cleanly"}
 //
 // each a commit status on the pull request's head (`sha`, or the head GitHub reports when it is
 // left out), linking to the pull request: `state` is pending, success, failure or error. Each
@@ -141,11 +141,11 @@ import (
 // is about goes wrong and right. It is how a charter files what
 // went wrong where the repository's people read, with no number to know before the issue exists.
 type Sink struct {
-	// Verse is the verse this io reads questions and bindings from, as itself. Nil reads none,
+	// Viff is the viff this io reads questions and bindings from, as itself. Nil reads none,
 	// and an input carrying `asks` is refused for good.
-	Verse *client.Client
+	Viff *client.Client
 	// As makes a request as a person this io relays, named with their GitHub account
-	// (`github:<user id>`), which is how a `/verse` comment answers a question as its author
+	// (`github:<user id>`), which is how a `/viff` comment answers a question as its author
 	// (asks.go). Nil answers nobody: a command is read and told it cannot count.
 	As func(principal, account string) *client.Client
 
@@ -185,34 +185,34 @@ func (g *GitHub) repoOf(place entity.Ref) string {
 func target(to string) (int, error) {
 	kind, num, ok := strings.Cut(to, ".")
 	if kind == "branch" {
-		return 0, verseio.Permanent(fmt.Errorf("`to` %q names a branch, which takes `open`; a comment goes on pr.<number> or issue.<number>", to))
+		return 0, viffio.Permanent(fmt.Errorf("`to` %q names a branch, which takes `open`; a comment goes on pr.<number> or issue.<number>", to))
 	}
 	if !ok || (kind != "pr" && kind != "issue") {
-		return 0, verseio.Permanent(fmt.Errorf("`to` is pr.<number> or issue.<number>, not %q", to))
+		return 0, viffio.Permanent(fmt.Errorf("`to` is pr.<number> or issue.<number>, not %q", to))
 	}
 	n, err := strconv.Atoi(num)
 	if err != nil || n <= 0 {
-		return 0, verseio.Permanent(fmt.Errorf("`to` %q: %q is not a pull request or issue number", to, num))
+		return 0, viffio.Permanent(fmt.Errorf("`to` %q: %q is not a pull request or issue number", to, num))
 	}
 	return n, nil
 }
 
 // Deliver does what one input asks, and says GitHub's refusal of it as permanent (a 4xx other than
-// a timeout or a rate limit), so it is not asked again until the input changes (verseio.Permanent).
-func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error) {
+// a timeout or a rate limit), so it is not asked again until the input changes (viffio.Permanent).
+func (k *Sink) Deliver(ctx context.Context, in viffio.Input) (entity.Obj, error) {
 	fields, err := k.deliver(ctx, in)
 	var he *httpError
-	if err != nil && !verseio.IsPermanent(err) && asHTTPError(err, &he) && he.refusal() {
-		err = verseio.Permanent(err)
+	if err != nil && !viffio.IsPermanent(err) && asHTTPError(err, &he) && he.refusal() {
+		err = viffio.Permanent(err)
 	}
 	return fields, err
 }
 
 // deliver comments on one issue or pull request, or updates the comment it already left there.
-func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error) {
+func (k *Sink) deliver(ctx context.Context, in viffio.Input) (entity.Obj, error) {
 	repo := k.g.repoOf(in.Place)
 	if repo == "" {
-		return nil, verseio.Permanent(fmt.Errorf("%s is no repository's out place this io serves", in.Place))
+		return nil, viffio.Permanent(fmt.Errorf("%s is no repository's out place this io serves", in.Place))
 	}
 	if spec := entity.Get(in.Value, "open"); spec != nil {
 		return k.openWith(ctx, repo, in, spec)
@@ -231,9 +231,9 @@ func (k *Sink) deliver(ctx context.Context, in verseio.Input) (entity.Obj, error
 		return k.close(ctx, repo, in)
 	}
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
-	asks := verseio.Strs(entity.Get(in.Value, "asks"))
+	asks := viffio.Strs(entity.Get(in.Value, "asks"))
 	if text == "" && len(asks) == 0 {
-		return nil, verseio.Permanent(fmt.Errorf("an input carries {to, text}, and this one has no text"))
+		return nil, viffio.Permanent(fmt.Errorf("an input carries {to, text}, and this one has no text"))
 	}
 	var asked []asked
 	if len(asks) > 0 {
@@ -333,7 +333,7 @@ func (k *Sink) say(ctx context.Context, repo string, number int, text string, st
 // openWith opens the pull request an `open` input asks for and, where the input also carries
 // `text` or `asks`, keeps the comment on it and reads its replies; where it carries `closed:
 // true`, closes it. The fields of each stand together on the one status.
-func (k *Sink) openWith(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+func (k *Sink) openWith(ctx context.Context, repo string, in viffio.Input, spec entity.Payload) (entity.Obj, error) {
 	fields, err := k.open(ctx, repo, in, spec)
 	if err != nil {
 		return nil, err
@@ -357,7 +357,7 @@ func (k *Sink) openWith(ctx context.Context, repo string, in verseio.Input, spec
 		}
 	}
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
-	asks := verseio.Strs(entity.Get(in.Value, "asks"))
+	asks := viffio.Strs(entity.Get(in.Value, "asks"))
 	if text != "" || len(asks) > 0 {
 		var asked []asked
 		if len(asks) > 0 {
@@ -377,7 +377,7 @@ func (k *Sink) openWith(ctx context.Context, repo string, in verseio.Input, spec
 	}
 	if spec := entity.Get(in.Value, "merge"); spec != nil {
 		if in.To == issueTarget {
-			return fields, verseio.Permanent(fmt.Errorf("an issue is not merged: `merge` is a pull request's"))
+			return fields, viffio.Permanent(fmt.Errorf("an issue is not merged: `merge` is a pull request's"))
 		}
 		more, err := k.mergeAt(ctx, repo, number, spec, in.Status)
 		if err != nil {
@@ -455,15 +455,15 @@ func fingerprint(text string) string {
 
 // commitStatuses keeps one commit status per context on the pull request's head, as
 // `commitStatus` asks: a map from GitHub's context (the name a status stands under on the page,
-// `verse`, `verse/check`) to `{state, description, sha}`. Each context is its own status, so two
-// rules saying two things (what verse decided, what the charter check found) write two keys and
+// `viff`, `viff/check`) to `{state, description, sha}`. Each context is its own status, so two
+// rules saying two things (what viff decided, what the charter check found) write two keys and
 // neither overwrites the other. What each did is recorded under the same context in the input's
 // status, `commitStatus.<context>`.
 func (k *Sink) commitStatuses(ctx context.Context, repo string, number int, spec, status entity.Payload, fields entity.Obj) entity.Obj {
 	out := entity.Obj{}
-	names := verseio.Fields(spec)
+	names := viffio.Fields(spec)
 	if len(names) == 0 || ir.Uncomment(spec).Type != ir.ObjectType {
-		return entity.Obj{"commitStatusError": "`commitStatus` maps a context (`verse`) to {state, description, sha}"}
+		return entity.Obj{"commitStatusError": "`commitStatus` maps a context (`viff`) to {state, description, sha}"}
 	}
 	sort.Strings(names)
 	was := entity.Get(status, "commitStatus")
@@ -555,17 +555,17 @@ const issueTarget = "issue"
 // open keeps one pull request for a branch: adopted where a person opened one, opened otherwise,
 // and, for one this io opened, its title and body in step with the input. With `to: issue` it
 // keeps one issue instead (openIssue).
-func (k *Sink) open(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+func (k *Sink) open(ctx context.Context, repo string, in viffio.Input, spec entity.Payload) (entity.Obj, error) {
 	if in.To == issueTarget {
 		return k.openIssue(ctx, repo, in, spec)
 	}
 	kind, branch, _ := strings.Cut(in.To, ".")
 	if kind != "branch" || branch == "" {
-		return nil, verseio.Permanent(fmt.Errorf("`open` asks for a pull request from a branch, or an issue: `to` is branch.<name> or issue, not %q", in.To))
+		return nil, viffio.Permanent(fmt.Errorf("`open` asks for a pull request from a branch, or an issue: `to` is branch.<name> or issue, not %q", in.To))
 	}
 	title := strings.TrimSpace(entity.Str(spec, "title"))
 	if title == "" {
-		return nil, verseio.Permanent(fmt.Errorf("`open` carries a title"))
+		return nil, viffio.Permanent(fmt.Errorf("`open` carries a title"))
 	}
 	body := entity.Str(spec, "body")
 	fp := fingerprint(title + "\x00" + body)
@@ -627,10 +627,10 @@ func (k *Sink) open(ctx context.Context, repo string, in verseio.Input, spec ent
 // input from then on. It is how a charter files what went wrong where the repository's people
 // read, with no number to know before the issue exists; `text`, `asks` and `closed` then apply
 // to it as to a pull request this io opened.
-func (k *Sink) openIssue(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+func (k *Sink) openIssue(ctx context.Context, repo string, in viffio.Input, spec entity.Payload) (entity.Obj, error) {
 	title := strings.TrimSpace(entity.Str(spec, "title"))
 	if title == "" {
-		return nil, verseio.Permanent(fmt.Errorf("`open` carries a title"))
+		return nil, viffio.Permanent(fmt.Errorf("`open` carries a title"))
 	}
 	body := entity.Str(spec, "body")
 	fp := fingerprint(title + "\x00" + body)
@@ -663,7 +663,7 @@ func prNumber(status entity.Payload) (int, bool) {
 }
 
 // merge merges a pull request at the sha it was asked for, once.
-func (k *Sink) merge(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+func (k *Sink) merge(ctx context.Context, repo string, in viffio.Input, spec entity.Payload) (entity.Obj, error) {
 	number, err := target(in.To)
 	if err != nil {
 		return nil, err
@@ -679,7 +679,7 @@ func (k *Sink) mergeAt(ctx context.Context, repo string, number int, spec, statu
 	}
 	sha := entity.Str(spec, "sha")
 	if sha == "" {
-		return nil, verseio.Permanent(fmt.Errorf("`merge` carries the sha it merges at, so a head that moved since " +
+		return nil, viffio.Permanent(fmt.Errorf("`merge` carries the sha it merges at, so a head that moved since " +
 			"the decision is not merged"))
 	}
 	p, err := k.g.api.readPull(ctx, repo, number)
@@ -700,7 +700,7 @@ func (k *Sink) mergeAt(ctx context.Context, repo string, number int, spec, statu
 		if p.Head != nil {
 			head = p.Head.SHA
 		}
-		return nil, verseio.Permanent(fmt.Errorf("pr.%d's head is %s, and the merge was decided at %s: a head that "+
+		return nil, viffio.Permanent(fmt.Errorf("pr.%d's head is %s, and the merge was decided at %s: a head that "+
 			"moved is a different change, so it is not merged", number, head, sha))
 	}
 	m, err := k.g.api.mergePull(ctx, repo, number, sha, entity.Str(spec, "method"))
@@ -712,13 +712,13 @@ func (k *Sink) mergeAt(ctx context.Context, repo string, number int, spec, statu
 
 // keepPull keeps several things on one pull request in one input, for a pull request somebody
 // else opened: the question's comment (`text`, `asks`; its facts as `comment`, `commentUrl`,
-// `commentPosted`, `commentAt`), verse's review (`review`; reviewBeside), and its commit statuses
+// `commentPosted`, `commentAt`), viff's review (`review`; reviewBeside), and its commit statuses
 // (`commitStatus`; commitStatuses). It is how the repo-charters reconciler asks its question on a
 // pull request to main, beside its answer and its check as statuses (git-issue dzxn44gw).
 //
 // The comment's failure is the input's, retried; a review or a status GitHub refuses is said
 // beside the rest and does not stop the comment, whose replies are where the answer comes from.
-func (k *Sink) keepPull(ctx context.Context, repo string, in verseio.Input) (entity.Obj, error) {
+func (k *Sink) keepPull(ctx context.Context, repo string, in viffio.Input) (entity.Obj, error) {
 	number, err := target(in.To)
 	if err != nil {
 		return nil, err
@@ -730,7 +730,7 @@ func (k *Sink) keepPull(ctx context.Context, repo string, in verseio.Input) (ent
 		}
 	}
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
-	asks := verseio.Strs(entity.Get(in.Value, "asks"))
+	asks := viffio.Strs(entity.Get(in.Value, "asks"))
 	if text != "" || len(asks) > 0 {
 		var asked []asked
 		if len(asks) > 0 {
@@ -756,7 +756,7 @@ func (k *Sink) keepPull(ctx context.Context, repo string, in verseio.Input) (ent
 	return fields, nil
 }
 
-// reviewBeside keeps verse's review on a pull request as `review` asks, its facts beside the rest
+// reviewBeside keeps viff's review on a pull request as `review` asks, its facts beside the rest
 // of the input's status: `reviewEvent`, `review` (its id), `reviewSha` (the commit it names, when
 // it names one), `reviewPosted` (the fingerprint of what it said) and `reviewedAt`.
 // `{event: request-changes, body}` blocks a merge where main's protection requires reviews, and
@@ -773,7 +773,7 @@ func (k *Sink) reviewBeside(ctx context.Context, repo string, number int, spec, 
 	failed := func(err error) entity.Obj {
 		out := entity.Obj{"reviewError": err.Error(), "reviewRefused": entity.Removed()}
 		var he *httpError
-		if verseio.IsPermanent(err) || (asHTTPError(err, &he) && he.refusal()) {
+		if viffio.IsPermanent(err) || (asHTTPError(err, &he) && he.refusal()) {
 			out["reviewRefused"] = ask.fp
 		}
 		if entity.Str(status, "reviewError") == err.Error() {
@@ -829,14 +829,14 @@ func readReview(spec entity.Payload) reviewAsk {
 func (k *Sink) post(ctx context.Context, repo string, number int, ask reviewAsk) (review, error) {
 	event, ok := reviewEvents[ask.word]
 	if !ok {
-		return review{}, verseio.Permanent(fmt.Errorf("a review's `event` is approve, request-changes, comment or dismiss, not %q", ask.word))
+		return review{}, viffio.Permanent(fmt.Errorf("a review's `event` is approve, request-changes, comment or dismiss, not %q", ask.word))
 	}
 	if event != "APPROVE" && strings.TrimSpace(ask.body) == "" {
-		return review{}, verseio.Permanent(fmt.Errorf("a review that %s carries a body: GitHub refuses one without", map[string]string{
+		return review{}, viffio.Permanent(fmt.Errorf("a review that %s carries a body: GitHub refuses one without", map[string]string{
 			"REQUEST_CHANGES": "requests changes", "COMMENT": "comments"}[event]))
 	}
 	if event == "COMMENT" {
-		if _, err := k.dismissOwn(ctx, repo, number, "verse: superseded by a later review that comments",
+		if _, err := k.dismissOwn(ctx, repo, number, "viff: superseded by a later review that comments",
 			"APPROVED", "CHANGES_REQUESTED"); err != nil {
 			return review{}, err
 		}
@@ -848,7 +848,7 @@ func (k *Sink) post(ctx context.Context, repo string, number int, ask reviewAsk)
 // and answers how many: all of them, not only the latest, so no earlier one is left to count.
 func (k *Sink) dismissOwn(ctx context.Context, repo string, number int, message string, states ...string) (int, error) {
 	if strings.TrimSpace(message) == "" {
-		return 0, verseio.Permanent(fmt.Errorf("a dismissal carries a body, the reason GitHub shows"))
+		return 0, viffio.Permanent(fmt.Errorf("a dismissal carries a body, the reason GitHub shows"))
 	}
 	self, err := k.g.api.self(ctx)
 	if err != nil {
@@ -875,7 +875,7 @@ func (k *Sink) dismissOwn(ctx context.Context, repo string, number int, message 
 var reviewEvents = map[string]string{"approve": "APPROVE", "request-changes": "REQUEST_CHANGES", "comment": "COMMENT"}
 
 // review posts a review on a pull request, and a new one when what it should say changes.
-func (k *Sink) review(ctx context.Context, repo string, in verseio.Input, spec entity.Payload) (entity.Obj, error) {
+func (k *Sink) review(ctx context.Context, repo string, in viffio.Input, spec entity.Payload) (entity.Obj, error) {
 	number, err := target(in.To)
 	if err != nil {
 		return nil, err
@@ -903,7 +903,7 @@ func (k *Sink) review(ctx context.Context, repo string, in verseio.Input, spec e
 }
 
 // close closes an issue or a pull request, once.
-func (k *Sink) close(ctx context.Context, repo string, in verseio.Input) (entity.Obj, error) {
+func (k *Sink) close(ctx context.Context, repo string, in viffio.Input) (entity.Obj, error) {
 	if entity.Get(in.Status, "closed") != nil {
 		return nil, nil // closed, by this io or before it was asked: nothing is left to do
 	}
@@ -917,7 +917,7 @@ func (k *Sink) close(ctx context.Context, repo string, in verseio.Input) (entity
 	}
 	asked, _, _ := strings.Cut(in.To, ".")
 	if is := map[bool]string{true: "pr", false: "issue"}[it.isPullRequest()]; is != asked {
-		return nil, verseio.Permanent(fmt.Errorf("`to` is %s, and #%d is %s.%d: nothing is closed that was not named",
+		return nil, viffio.Permanent(fmt.Errorf("`to` is %s, and #%d is %s.%d: nothing is closed that was not named",
 			in.To, number, is, number))
 	}
 	out := entity.Obj{"closed": true}

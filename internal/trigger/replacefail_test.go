@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // failsAt refuses the next n writes at one address, as a store under load refuses a write now
@@ -36,8 +36,8 @@ func TestAReplacementThatCannotBeWrittenLeavesTheRuleAndItsOwner(t *testing.T) {
 	inner := &failsAt{Store: entitytest.OpenStore(t), at: rule}
 	store := entity.As(inner, entity.SystemDefault)
 	// Anybody installs a rule, as the seed says.
-	if err := entity.SetGrants(store, entity.VerseRef(charter.System, charter.RuleKind), []entity.Grant{{
-		At: entity.VerseRef(charter.System, charter.RuleKind).Segs(), Below: true,
+	if err := entity.SetGrants(store, entity.ViffRef(charter.System, charter.RuleKind), []entity.Grant{{
+		At: entity.ViffRef(charter.System, charter.RuleKind).Segs(), Below: true,
 		To: map[entity.Level][]string{entity.OwnerLevel: {entity.Everyone}},
 	}}); err != nil {
 		t.Fatal(err)

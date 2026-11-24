@@ -11,7 +11,7 @@ package trigger
 //	all:    !list-paths { at: "git.repo.*", path: branch }
 //	ref:    !get-path { at: [git, repo, .[subject.value.head]], path: branch }
 //
-// ONE ADDRESS, all the way down. A verse is one document (pkg/entity/doc.go, and `verse data`
+// ONE ADDRESS, all the way down. A viff is one document (pkg/entity/doc.go, and `viff data`
 // answers it), so an entity address is a path prefix and the
 // path simply continues it into the payload. That used to need the object form's `path:` key,
 // because an id may contain dots and the colon spelling could not say where the id ended; the
@@ -36,7 +36,7 @@ package trigger
 // value slot takes one. `!list-paths` takes one because it has already paid for it. The refusal
 // used to cover both, inherited from `!read`, which named exactly one entity and bought four
 // things by doing so: no ordering to define, no "it matched three", no truncation, and no cost
-// that grows with the verse. The cardinality split paid three of them on the list side — the
+// that grows with the viff. The cardinality split paid three of them on the list side — the
 // order is Match.Select's, "it matched three" is what a list IS, and `id: "*"` already walks a
 // whole kind — so what was left was the refusal without its argument. Narrowing a walk of the
 // kind is the CHEAPER read, not the more expensive one. (Truncation is the fourth and is still
@@ -75,9 +75,9 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/exprs"
-	"github.com/signadot/verse/pkg/launch"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/exprs"
+	"go.viff.dev/viff/pkg/launch"
 )
 
 // The two tags, and the payload-path key they share.
@@ -97,7 +97,7 @@ func isWildSeg(seg *ir.Node) bool {
 	return seg.Type == ir.StringType && seg.String == "*"
 }
 
-// addressPattern reads an address written as a path — `[verse-dev, drift, finding, "*"]`, or
+// addressPattern reads an address written as a path — `[viff-dev, drift, finding, "*"]`, or
 // the same as a dotted string — into the per-segment matches a path is.
 func addressPattern(v *ir.Node) ([]*ir.Node, error) {
 	switch {
@@ -247,7 +247,7 @@ func (p pathSpec) validateAt() error {
 //
 //	value: !let                                     # what it reads as
 //	  let:
-//	  - tip:   !get-path {at: "git.head.verse", path: sha}
+//	  - tip:   !get-path {at: "git.head.viff", path: sha}
 //	  - fresh: !list-paths {at: "m.proposal.*", value: {base: .[tip]}, path: branch}
 //	  in: {branches: .[fresh]}
 //
@@ -258,7 +258,7 @@ func (p pathSpec) validateAt() error {
 // fire or not on an answer nobody computed. It was filed as a panic (git-issue
 // jwqdhfrxh12krpvbg9n0), which go-tony v0.0.179 fixed; what the panic was covering is this.
 //
-// Refusing is the whole fix available here. Resolving it would mean verse expanding let
+// Refusing is the whole fix available here. Resolving it would mean viff expanding let
 // bindings in order, ahead of tony, so a read could stand in a binding's scope — a real change
 // to when substitution happens, and the open half of that issue.
 func (p pathSpec) checkNoBinding() error {
@@ -324,7 +324,7 @@ func pathKind(n *ir.Node) string {
 // pathSpec is one path read, as far as it is knowable at install.
 type pathSpec struct {
 	kind string // GetPathTag or ListPathsTag
-	// At is the address the read reaches, one segment at a time — `at: "verse-dev.drift.finding.*"`.
+	// At is the address the read reaches, one segment at a time — `at: "viff-dev.drift.finding.*"`.
 	// `path` below is the FIELD path inside what it reaches and keeps that name, which is why
 	// the address is `at:` here and `path:` in a match: in a read the two would collide.
 	At   []*ir.Node
@@ -420,7 +420,7 @@ func readSpec(n *ir.Node) (pathSpec, error) {
 				spec.Path = v.String
 			default:
 				return spec, fmt.Errorf("!%s: unknown key %q (want %s and %s%s) — an address is a "+
-					"kinded path, `at: \"git.verse.head\"`", kind, f.String, readKeyAt, pathKey,
+					"kinded path, `at: \"git.viff.head\"`", kind, f.String, readKeyAt, pathKey,
 					map[bool]string{true: ", " + mKeyValue}[kind == ListPathsTag])
 			}
 		}

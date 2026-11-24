@@ -1,52 +1,52 @@
 #:schema https://pitchfork.jdx.dev/schema.json
 #
-# A verse on this machine, as pitchfork daemons (https://pitchfork.jdx.dev), laid out as staging is:
-# the store, versed, and a runner, each a process of its own (docs/platform/local-verse.md). The one-time setup first (binaries,
+# A viff on this machine, as pitchfork daemons (https://pitchfork.jdx.dev), laid out as staging is:
+# the store, viffd, and a runner, each a process of its own (docs/platform/local-viff.md). The one-time setup first (binaries,
 # configs, keys and token, Claude Code's MCP server, the runner's registration):
 #
-#   scripts/verse-local.sh setup
-#   pitchfork start -l           # this file's daemons: the store, then versed, then the runner
+#   scripts/viff-local.sh setup
+#   pitchfork start -l           # this file's daemons: the store, then viffd, then the runner
 #   pitchfork stop -l            # all three, in reverse
-#   pitchfork logs store versed runner --tail
+#   pitchfork logs store viffd runner --tail
 #
-# Inside this repo the short names do; anywhere else they are verse/store, verse/versed and
-# verse/runner, whatever the clone's directory is called.
+# Inside this repo the short names do; anywhere else they are viff/store, viff/viffd and
+# viff/runner, whatever the clone's directory is called.
 #
-# Every address and path is a setting (scripts/verse-local.env, with yours in
-# ~/.config/verse-local.env), which setup renders into ~/.verse/local/local.env; each run line and
+# Every address and path is a setting (scripts/viff-local.env, with yours in
+# ~/.config/viff-local.env), which setup renders into ~/.viff/local/local.env; each run line and
 # readiness check sources that, so none is written here. A setting changed takes a setup and a
 # restart. Personal changes to this file go in pitchfork.local.toml, which git ignores.
 
-namespace = "verse"
+namespace = "viff"
 
 # logd and docd, on the data dir, on the store's addresses: logd's, docd's client face (what
-# versed dials), its mount face and its admin face. Its logd config is setup's, with the
+# viffd dials), its mount face and its admin face. Its logd config is setup's, with the
 # compaction cutoff the settings name. `o` is the one this tree pins, which setup installs beside
-# verse. Ready when it says all its listeners are up.
+# viff. Ready when it says all its listeners are up.
 [daemons.store]
-run = 'f="$HOME/.verse/local/local.env"; [ -f "$f" ] || { echo "verse-local: no $f; run scripts/verse-local.sh setup" >&2; exit 1; }; . "$f" && exec "$VERSE_LOCAL_BIN/o" sys up --data "$VERSE_LOCAL_DATA" --logd-addr "$VERSE_LOCAL_LOGD_ADDR" --docd-addr "$VERSE_LOCAL_DOCD_ADDR" --docd-mount-addr "$VERSE_LOCAL_DOCD_MOUNT_ADDR" --admin-addr "$VERSE_LOCAL_STORE_ADMIN_ADDR" --config "$VERSE_LOCAL_DATA/logd.verse.tony"'
+run = 'f="$HOME/.viff/local/local.env"; [ -f "$f" ] || { echo "viff-local: no $f; run scripts/viff-local.sh setup" >&2; exit 1; }; . "$f" && exec "$VIFF_LOCAL_BIN/o" sys up --data "$VIFF_LOCAL_DATA" --logd-addr "$VIFF_LOCAL_LOGD_ADDR" --docd-addr "$VIFF_LOCAL_DOCD_ADDR" --docd-mount-addr "$VIFF_LOCAL_DOCD_MOUNT_ADDR" --admin-addr "$VIFF_LOCAL_STORE_ADMIN_ADDR" --config "$VIFF_LOCAL_DATA/logd.viff.tony"'
 ready_output = 'System up\.'
 retry = 3
 
-# versed: the engine and the API, on the store above, starting no runner of its own. It signs as
+# viffd: the engine and the API, on the store above, starting no runner of its own. It signs as
 # the issuer its config names, with the key in the data dir, so a restart keeps every token it
 # signed good. A SIGTERM is its graceful stop.
-[daemons.versed]
-run = 'f="$HOME/.verse/local/local.env"; [ -f "$f" ] || { echo "verse-local: no $f; run scripts/verse-local.sh setup" >&2; exit 1; }; . "$f" && VERSE_CONFIG="$VERSE_LOCAL_CONFIG" exec "$VERSE_LOCAL_BIN/verse" up --addr "$VERSE_LOCAL_ADDR" --docd-addr "$VERSE_LOCAL_DOCD_ADDR" --local-runner=false'
+[daemons.viffd]
+run = 'f="$HOME/.viff/local/local.env"; [ -f "$f" ] || { echo "viff-local: no $f; run scripts/viff-local.sh setup" >&2; exit 1; }; . "$f" && VIFF_CONFIG="$VIFF_LOCAL_CONFIG" exec "$VIFF_LOCAL_BIN/viff" up --addr "$VIFF_LOCAL_ADDR" --docd-addr "$VIFF_LOCAL_DOCD_ADDR" --local-runner=false'
 depends = ["store"]
-ready_cmd = { run = '. "$HOME/.verse/local/local.env" && curl -sf -o /dev/null "http://$VERSE_LOCAL_ADDR/healthz"', timeout = "120s" }
+ready_cmd = { run = '. "$HOME/.viff/local/local.env" && curl -sf -o /dev/null "http://$VIFF_LOCAL_ADDR/healthz"', timeout = "120s" }
 retry = 3
 stop_signal = { signal = "SIGTERM", timeout = "30s" }
 
 # The runner: scripts, and the agents its runner.tony names (claude; codex where OPENAI_API_KEY or a
-# codex login is there; the verse agent with PORTKEY_API_KEY). Each task runs in a bubblewrap sandbox
-# on Linux, and unconfined, as you, on macOS, which has none; VERSE_SANDBOX (bwrap or none) says
+# codex login is there; the viff agent with PORTKEY_API_KEY). Each task runs in a bubblewrap sandbox
+# on Linux, and unconfined, as you, on macOS, which has none; VIFF_SANDBOX (bwrap or none) says
 # otherwise, in the runner dir's env. Its credentials are in that env, 0600, read into its
-# environment alone. It proves itself to versed with its token; registered once (setup), it says
+# environment alone. It proves itself to viffd with its token; registered once (setup), it says
 # hello at each start.
 [daemons.runner]
-run = 'f="$HOME/.verse/local/local.env"; [ -f "$f" ] || { echo "verse-local: no $f; run scripts/verse-local.sh setup" >&2; exit 1; }; . "$f" && cd "$VERSE_LOCAL_RUNNER_DIR" && export PATH="$VERSE_LOCAL_BIN:$HOME/.local/bin:$PATH" && if [ -f env ]; then set -a; . ./env; set +a; fi && sandbox="${VERSE_SANDBOX:-$( [ "$(uname -s)" = Darwin ] && echo none || echo bwrap )}" && exec "$VERSE_LOCAL_BIN/runnerd" -config runner.tony -token-file token -sandbox "$sandbox"'
-depends = ["versed"]
-ready_cmd = { run = '. "$HOME/.verse/local/local.env" && curl -sf -o /dev/null "http://$VERSE_LOCAL_RUNNER_LISTEN/ready"', timeout = "30s" }
+run = 'f="$HOME/.viff/local/local.env"; [ -f "$f" ] || { echo "viff-local: no $f; run scripts/viff-local.sh setup" >&2; exit 1; }; . "$f" && cd "$VIFF_LOCAL_RUNNER_DIR" && export PATH="$VIFF_LOCAL_BIN:$HOME/.local/bin:$PATH" && if [ -f env ]; then set -a; . ./env; set +a; fi && sandbox="${VIFF_SANDBOX:-$( [ "$(uname -s)" = Darwin ] && echo none || echo bwrap )}" && exec "$VIFF_LOCAL_BIN/runnerd" -config runner.tony -token-file token -sandbox "$sandbox"'
+depends = ["viffd"]
+ready_cmd = { run = '. "$HOME/.viff/local/local.env" && curl -sf -o /dev/null "http://$VIFF_LOCAL_RUNNER_LISTEN/ready"', timeout = "30s" }
 retry = true
 stop_signal = { signal = "SIGTERM", timeout = "15s" }

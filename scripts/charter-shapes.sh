@@ -3,7 +3,7 @@
 # charter-shapes.sh — the coarse-grained shapes a charter rule comes in, one command each,
 # so you can install one, make it fire, and read what it did.
 #
-# Every rule verse runs has the same four parts (condition / gates / action, under a name).
+# Every rule viff runs has the same four parts (condition / gates / action, under a name).
 # What varies is which parts are present, and the variations below are the ones that change
 # how a rule BEHAVES rather than what it is about. Each acts on its own kind — demo.latch.*,
 # demo.seq.* — so several can stand at once without arguing over an entity.
@@ -18,11 +18,11 @@
 #   ./scripts/charter-shapes.sh remove  [shape]   uninstall one, or all of them
 #   ./scripts/charter-shapes.sh clean             uninstall all, and delete the entities they acted on
 #
-# Env: VERSE (the binary, default: ./verse then `verse` on PATH), VERSE_ADDR (the verse to
+# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff to
 # talk to). --scope <name> works on every subcommand.
 set -euo pipefail
 
-# The scripts live in scripts/ and act on the checkout above them: the `./verse` a
+# The scripts live in scripts/ and act on the checkout above them: the `./viff` a
 # build produces is at the root, and so is the reader's cwd.
 cd "$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -37,7 +37,7 @@ describe() {
 	case "$1" in
 	patch) echo "condition + patch. No task at all: a rule can be pure state." ;;
 	latch) echo "spawn + onDone. The shape that settles — the action advances the subject out of its own selection." ;;
-	ask) echo "one ask gate. The firing waits for a person (verse question)." ;;
+	ask) echo "one ask gate. The firing waits for a person (viff question)." ;;
 	seq) echo "seq of two steps, with an onFailed off-ramp. The depth axis." ;;
 	when) echo "a condition on ANOTHER entity: act on these, while that holds." ;;
 	on) echo "a cause: fire on the rising edge, not while it stays true (and no backlog)." ;;
@@ -119,7 +119,7 @@ shape_tony() {
 		;;
 	derive)
 		cat <<-'TONY'
-			# A charter file may hold strata as well as rules; `verse c -a` sorts them
+			# A charter file may hold strata as well as rules; `viff c -a` sorts them
 			# and installs the ordering first. A rule's subject must be inside its own
 			# stratum, and a derive must land in a strictly higher one — both checked at
 			# install, neither reading the store.
@@ -188,31 +188,31 @@ while [ $# -gt 0 ]; do
 done
 set -- "${args[@]+"${args[@]}"}"
 
-BIN=${VERSE:-}
+BIN=${VIFF:-}
 if [ -z "$BIN" ]; then
-	if [ -x ./verse ]; then
-		BIN=./verse
-	elif command -v verse >/dev/null 2>&1; then
-		BIN=verse
+	if [ -x ./viff ]; then
+		BIN=./viff
+	elif command -v viff >/dev/null 2>&1; then
+		BIN=viff
 	else
-		die "no verse binary — build one (go build -o verse ./cmd/verse) or set VERSE=<path>"
+		die "no viff binary — build one (go build -o viff ./cmd/viff) or set VIFF=<path>"
 	fi
 fi
 
-# THE BINARY HAS TO SPEAK `state`. These scripts read the verse as one document at a kinded
+# THE BINARY HAS TO SPEAK `state`. These scripts read the viff as one document at a kinded
 # path, and a CLI from before that has `entity` instead — whose failure is a usage error and
-# the whole command tree, which says nothing about why. The trap is a STALE `./verse` in the
+# the whole command tree, which says nothing about why. The trap is a STALE `./viff` in the
 # working directory: it is preferred over $PATH above, so a checkout that built one months ago
 # keeps using it long after `go install` refreshed the real one.
-# `|| true` into a variable, NOT a pipe from "$BIN": bare `verse` exits 1 (it just printed
+# `|| true` into a variable, NOT a pipe from "$BIN": bare `viff` exits 1 (it just printed
 # usage), and these scripts run under `set -o pipefail`, which hands that 1 to the whole
 # pipeline however well the grep matched — so the pipe spelling fired this guard on every
 # binary, current ones included.
-_verse_cmds=$("$BIN" 2>&1 || true)
-if ! printf '%s\n' "$_verse_cmds" | grep -qE '^ *data '; then
-	die "$BIN does not have \`verse data\` — it predates the one-document read.
-     Rebuild it (go build -o verse ./cmd/verse), remove a stale ./verse so \$PATH wins,
-     or point VERSE=<path> at a current one."
+_viff_cmds=$("$BIN" 2>&1 || true)
+if ! printf '%s\n' "$_viff_cmds" | grep -qE '^ *data '; then
+	die "$BIN does not have \`viff data\` — it predates the one-document read.
+     Rebuild it (go build -o viff ./cmd/viff), remove a stale ./viff so \$PATH wins,
+     or point VIFF=<path> at a current one."
 fi
 v() { "$BIN" ${scope[@]+"${scope[@]}"} "$@"; }
 
@@ -226,7 +226,7 @@ need_shape() {
 }
 up_or_die() {
 	v status >/dev/null 2>&1 ||
-		die "no verse answering at ${VERSE_ADDR:-its default address} — start one with \`$BIN up\`"
+		die "no viff answering at ${VIFF_ADDR:-its default address} — start one with \`$BIN up\`"
 }
 
 # remove_shape takes a shape out, whatever it declared. A shape is usually one rule; `derive`
@@ -275,7 +275,7 @@ drive_shape() {
 # What to look at once it has fired — different per shape, because what a shape DOES is
 # visible in a different place: a gate, the docket, a flow, or just the entity.
 next_steps() {
-	# The subject twice: as the STEPS `verse data` takes, and as the one token `flow show`
+	# The subject twice: as the STEPS `viff data` takes, and as the one token `flow show`
 	# takes — a flow is keyed by its subject as the store renders it.
 	local sub_at="demo $1 1" sub="demo.$1.\"1\"" c="$BIN"
 	[ ${#scope[@]} -gt 0 ] && c="$BIN ${scope[*]}"
@@ -368,7 +368,7 @@ clean)
 	v data ci status shapes --rm >/dev/null 2>&1 || true
 	v data ci status release --rm >/dev/null 2>&1 || true
 	# The derived entity is addressed by the ENGINE — the place, the rule, then the subject's own
-	# segments — so it is named here rather than guessed at: nothing else in the verse knows to
+	# segments — so it is named here rather than guessed at: nothing else in the viff knows to
 	# clean it up.
 	v data derived feature shape-derive demo derive 1 --rm >/dev/null 2>&1 || true
 	ok "every shape trigger and the entities they acted on are gone"

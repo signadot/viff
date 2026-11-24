@@ -19,9 +19,9 @@ The rest of this page says what those words mean, in the order you need them.
 
 | Word | Meaning |
 |---|---|
-| **node** | anything with an [address](glossary.md#address): `demo.pr.1`, a field of it (`demo.pr.1.stage`), or a rule (`verse.trigger.rule.review`). An address has steps, so every node has nodes above it, up to the root. |
-| **principal** | who is acting: a person, an agent, a runner, or verse itself |
-| **record** | what verse keeps about a node: its owner, the grants on it, and the grants that a node created beneath it starts with. Only verse writes records. You read and set your own records with `verse perms`. |
+| **node** | anything with an [address](glossary.md#address): `demo.pr.1`, a field of it (`demo.pr.1.stage`), or a rule (`mirror.trigger.rule.review`). An address has steps, so every node has nodes above it, up to the root. |
+| **principal** | who is acting: a person, an agent, a runner, or viff itself |
+| **record** | what viff keeps about a node: its owner, the grants on it, and the grants that a node created beneath it starts with. Only viff writes records. You read and set your own records with `viff perms`. |
 | **permission level** | what somebody may do at a node: `read`, `read-write` or `owner`. Each of the three includes the one before it. `control` is a fourth level beside them. It lets somebody steer work: run, cancel, pause, resume, say, change an autonomy, and suspend. |
 | **grant** | a line on a node's record. It gives a permission level to somebody who is not the node's owner. |
 
@@ -35,7 +35,7 @@ the records give them at that node, as owner or by grant. The word *holds* means
 
 A [principal](glossary.md#principal) is a name with its kind in front, such as
 `user:ana@example.com`. A person is `user:`, an agent is `agent:`, and a runner is `runner:`.
-Verse itself is `system:`. Something installed that acts, such as a rule, is `via:<address>`
+Viff itself is `system:`. Something installed that acts, such as a rule, is `via:<address>`
 ([what acts on its own](#what-acts-on-its-own)).
 
 A [grantee](glossary.md#grantee) is who a grant is to. A grantee is a principal, or a set of
@@ -45,14 +45,14 @@ group's members, `audience:<address>` for whoever holds the same level at that a
 [The grammar](reference/perms.md#the-grammar) is in the reference.
 
 Every request names who makes it. The CLI sends the `user:` or `agent:` in its config. On the
-commands that take it, the flag `-as` names somebody else. Verse refuses a request that writes
+commands that take it, the flag `-as` names somebody else. Viff refuses a request that writes
 and names nobody.
 
-**A principal is what the request says, unless the verse verifies it.** By default, verse
+**A principal is what the request says, unless the viff verifies it.** By default, viff
 trusts a name as much as it trusts `-as`, and no more. A deployment can name the identity
 providers its people sign in with. A request that carries a token from one of them is then made
-as the person the token proves. Verse refuses a token that proves nobody. The rest of the model
-is the same either way: every act names a party, and verse checks the act against what that
+as the person the token proves. Viff refuses a token that proves nobody. The rest of the model
+is the same either way: every act names a party, and viff checks the act against what that
 party may do.
 [Who a request is from](reference/perms.md#who-a-request-is-from) is in the reference.
 
@@ -69,19 +69,19 @@ the node above. You may also create where a grant says you may (`child-owner`, b
 
 **A node's first grants are `child-grants`, or its creator's.** A node you create starts with
 the grants that the nearest `child-grants` above it names. You can also give it grants of your
-own as you create it. `verse data notes ana todo -put '{…}' -grants '[]'` makes a note that
+own as you create it. `viff data notes ana todo -put '{…}' -grants '[]'` makes a note that
 nobody else reads, from its first commit. The node and its record land together, so the node is
 never readable more widely than you said
 ([creating with grants](reference/entities.md#creating-with-grants)).
 
 **Owners above co-own.** Whoever owns `demo` may do anything to `demo.pr.1`, whoever made it.
 
-**Ownership moves only by creating and deleting.** Verse has no transfer. To give something to
+**Ownership moves only by creating and deleting.** Viff has no transfer. To give something to
 somebody, they make it. Deleting a node forgets its record and every record beneath it.
 Whoever creates there next starts with no record.
 
 **A place can be taken before anything goes in it.** Run
-`verse perms spaces you -grants '[]'` where nothing stands yet, and the place is yours. Without
+`viff perms spaces you -grants '[]'` where nothing stands yet, and the place is yours. Without
 `-grants`, the command only reads the record. A node that already stands belongs to its owner,
 and the command does not take it from them. A place goes to whoever takes it first
 ([creating and taking a place](reference/perms.md#creating-and-taking-a-place)).
@@ -89,7 +89,7 @@ and the command does not take it from them. A place goes to whoever takes it fir
 ## Grants
 
 ```tony
-# the record of spaces.you, as `verse perms spaces you` shows it
+# the record of spaces.you, as `viff perms spaces you` shows it
 owner: user:you@example.com
 grants:
 - read: [user:ana@example.com]        # this node and everything beneath it
@@ -112,7 +112,7 @@ Know three things about grants before the rest:
   created later. It changes nothing that exists.
 
 A **[group](glossary.md#group)** is a named set of grantees with an owner
-(`verse group add payments ana@…`). Verse reads the members of a group when it checks a grant.
+(`viff group add payments ana@…`). Viff reads the members of a group when it checks a grant.
 So membership changes without a change to the grants that name the group.
 
 ## What acts on its own
@@ -131,7 +131,7 @@ thing's record.
 A rule can do exactly what its installer can do, and it sees exactly what its installer can
 see. An iod writes into the store as its installer, into places its installer owns.
 
-Verse refuses an install over somebody else's place. Verse also refuses an install that would
+Viff refuses an install over somebody else's place. Viff also refuses an install that would
 leave no owner on record. A thing with no owner acts as nobody, so it would stand there and do
 nothing.
 
@@ -149,21 +149,21 @@ is a principal and never a grantee: nothing is granted to one.
 
 ## The top of the tree
 
-The root is a node with a record, like any other node. `verse perms --root` shows it. In an
-open verse, anybody may make a top-level place, and owns what they make. Everyone may read it. A
+The root is a node with a record, like any other node. `viff perms --root` shows it. In an
+open viff, anybody may make a top-level place, and owns what they make. Everyone may read it. A
 deployment may allow only admins to make a top-level place. Then everybody else works in places
 that an admin opens to them
 ([the root and the config](platform/perms.md#the-root-and-the-config), in the repository).
 
-## Verse's own half
+## Viff's own half
 
-Everything under `verse` belongs to the system: rules, tasks, runners, iods, resolvers,
+Everything under `viff` belongs to the system: rules, tasks, runners, iods, resolvers,
 schedules, open questions, and the records themselves. You do not write there directly. You
 make things with the verbs that own them (`charter -a`, `task run`, `iod add`,
 `question approve`). What a verb makes for you is yours.
 
-In an open verse, anybody may use those verbs. Anybody may read what stands under `verse`,
-except the records, which you read with `verse perms`. A rule may watch verse's own half and
+In an open viff, anybody may use those verbs. Anybody may read what stands under `viff`,
+except the records, which you read with `viff perms`. A rule may watch viff's own half and
 react to it. A rule may not write into it.
 
 ## Tasks and gates
@@ -171,9 +171,9 @@ react to it. A rule may not write into it.
 A [task](glossary.md#task) belongs to its spawner. The runner that works the task is granted
 `read-write` and `control` on that task and nothing else.
 
-A task may act on verse itself, as its owner would, through the
-[verse system](systems/verse.md). The runner carries each such request with its own token, and
-names the task. Verse admits it as the task's owner, and only while the task runs
+A task may act on viff itself, as its owner would, through the
+[viff system](systems/viff.md). The runner carries each such request with its own token, and
+names the task. Viff admits it as the task's owner, and only while the task runs
 ([a task carried by its runner](reference/perms.md#a-task-carried-by-its-runner)). The runner
 gains nothing by it: the request may do what the owner may, and no more.
 
@@ -192,7 +192,7 @@ A resolver answers a question only when the question is held out to that resolve
 that works a task cannot answer that task's questions. The runner's grant is on the task, and a
 question is not part of the task.
 
-Verse records an answer, a `say`, a cancel or a change of autonomy as made *by* whoever made the
+Viff records an answer, a `say`, a cancel or a change of autonomy as made *by* whoever made the
 request. A remote worker reports on its own task: its status, its output, the decisions it saw.
 That report never decides who answered a question or what they chose.
 
@@ -209,15 +209,15 @@ refused: user:bob@example.com holds read at demo.pr.1 and writing it needs read-
 the nearest owner on record is user:alice@example.com at demo
 ```
 
-Verse refuses a read of one thing you may not read. A listing, a watch or a replay leaves it
+Viff refuses a read of one thing you may not read. A listing, a watch or a replay leaves it
 out. So you see the same set whichever way you ask.
 
-You read and set records with [`verse perms`](reference/perms.md#verse-perms).
+You read and set records with [`viff perms`](reference/perms.md#viff-perms).
 
 <a id="suspending"></a>
 ## Suspending
 
-Suspending work (`verse flow suspend`) needs `control` over the charter it names, or at the
+Suspending work (`viff flow suspend`) needs `control` over the charter it names, or at the
 subject it names. A suspension covers only the work that its holder has `control` over when the
 work would run. So a wide selector does not reach into places that somebody else comes to own.
 [Control](control.md) has the commands, and [the reference](reference/perms.md#suspending) has

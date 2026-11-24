@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // AN ABSENT PATH IS REFUSED AND NAMED, and the text is left as written: `$[subject.value.never]`

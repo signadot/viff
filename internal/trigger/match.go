@@ -9,10 +9,10 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/tony-format/go-tony/mergeop"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// Match is a POINT-IN-TIME selector over the entity-verse: "which entities satisfy this
+// Match is a POINT-IN-TIME selector over the entity-viff: "which entities satisfy this
 // right now". It is the atom of the trigger model and the leaf of every Formula, and it is
 // deliberately the ONE type that knows the match grammar — so growing that grammar (globs,
 // references, !and/!or, nested payload matches) is a change here and nowhere else.
@@ -24,7 +24,7 @@ import (
 // It is map-backed and carries two things: a PATH, the address the match reaches, and a payload
 // predicate `value`. The path is a list of segments, each a name, a bare `*` (any one segment),
 // or a tony operator over one segment (`!glob "hotfix-*"`, `!or [open, merged]`). There are no
-// positions with names of their own — an address is a path from the top of the tree, `verse` a
+// positions with names of their own — an address is a path from the top of the tree, `viff` a
 // segment like any other.
 //
 // `value` IS A TONY MATCH TOO, evaluated at the payload ROOT. A payload is an ir.Node
@@ -96,12 +96,12 @@ import (
 // on a completion trigger advances the PR that task was about. There is no deferred reference
 // form: the pattern IS the reference (see Trigger.resolveSubject).
 //
-//tony:schemagen=verse-match,notag,codec=custom
+//tony:schemagen=viff-match,notag,codec=custom
 type Match map[string]any
 
 // The keys a match carries: the address it reaches and the payload predicate.
 const (
-	mKeyPath  = "path"  // the address as a path: `[verse-dev, drift, head, "*"]`
+	mKeyPath  = "path"  // the address as a path: `[viff-dev, drift, head, "*"]`
 	mKeyValue = "value" // the payload predicate: any tony match, at the payload root
 )
 
@@ -122,7 +122,7 @@ var removedKeys = map[string]string{
 
 // addressIsAPath is the refusal for every positional key: an address is a path.
 const addressIsAPath = "an address is a path from the top of the tree — write `path: [demo, pr, " +
-	"\"*\"]` (or the string `demo.pr.*`); `verse` is its first segment when it is verse's own, and " +
+	"\"*\"]` (or the string `demo.pr.*`); `viff` is its first segment when it is viff's own, and " +
 	"a glob inside a segment is `!glob \"hotfix-*\"`"
 
 // Validate reports whether the match carries only known keys of the right shape. It is what makes
@@ -343,7 +343,7 @@ func checkOps(n *ir.Node) error {
 	for _, t := range semTags(n.Tag) {
 		name, _, _ := ir.TagArgs(t)
 		name = strings.TrimPrefix(name, "!")
-		// A path read is verse's own, answered before tony is handed the match (path.go), so
+		// A path read is viff's own, answered before tony is handed the match (path.go), so
 		// the one of the two that tony has no operator for is an operator here all the same.
 		if name == ListPathsTag {
 			continue
@@ -412,7 +412,7 @@ func present(n *ir.Node) (*ir.Node, bool) { return n, n != nil }
 func (m Match) MatchRef(ref entity.Ref) bool { return entity.Pattern{Path: m.SegNodes()}.MatchRef(ref) }
 
 // ParseExpr parses an address expression into a Match — the ONE string surface for addressing by
-// identity, shared by the CLI (`verse flow --subject <addr>`) and the charter wire. It is a KINDED
+// identity, shared by the CLI (`viff flow --subject <addr>`) and the charter wire. It is a KINDED
 // PATH, and a whole `*` segment is any one segment:
 //
 //	demo.pr.1         one node
@@ -437,8 +437,8 @@ func ParseExpr(s string) (Match, error) {
 	// meaning the list form gives those characters. Flattened to text, a quoted `*` read back as
 	// the wildcard and a rule about one node fired on every node beside it.
 	//
-	// A SUBJECT IS A QUESTION, so it takes `..`: `verse-dev..finding` selects every finding
-	// beneath verse-dev, at whatever depth the rule that derived it put one.
+	// A SUBJECT IS A QUESTION, so it takes `..`: `viff-dev..finding` selects every finding
+	// beneath viff-dev, at whatever depth the rule that derived it put one.
 	segs, err := entity.PatternNodes(s)
 	if err != nil {
 		return nil, err
@@ -484,7 +484,7 @@ func (m Match) SegNodes() []*ir.Node {
 	return p
 }
 
-// PathMatch is a path given as nodes — `path: ""…""` and `!verse-path [a b c]` alike.
+// PathMatch is a path given as nodes — `path: ""…""` and `!viff-path [a b c]` alike.
 func PathMatch(steps []*ir.Node) (Match, error) {
 	segs := make([]*ir.Node, 0, len(steps))
 	for i, n := range steps {
@@ -512,15 +512,15 @@ func PathMatch(steps []*ir.Node) (Match, error) {
 	return Match{mKeyPath: segs}, nil
 }
 
-// Subtree is a watched slice of the verse: the address levels above an entity's id, root
+// Subtree is a watched slice of the viff: the address levels above an entity's id, root
 // included. It is an ARRAY rather than a slice because it is a map key in half the places it
 // is used — one watch per distinct subtree — and a slice is not comparable.
 //
 // The root is first and is usually empty: a rule is about what the world is about. A rule that
-// says `root: verse` watches verse's own half, one level deeper, and `Path` is what turns
+// says `root: viff` watches viff's own half, one level deeper, and `Path` is what turns
 // either shape into the segments a watch takes.
 type Subtree struct {
-	// kp is the address as a KINDED PATH — `demo.pr`, `verse.task.instance` — which is the
+	// kp is the address as a KINDED PATH — `demo.pr`, `mirror.task.instance` — which is the
 	// spelling the store, a read and a watch all take, and the one go-tony can compare.
 	//
 	// A string rather than a parsed *KPath because a Subtree is a MAP KEY (one watch per
@@ -529,7 +529,7 @@ type Subtree struct {
 	// rather than per event.
 	kp string
 	// pat is the whole pattern this subtree was cut from, as a kinded path — `demo.pr.*`,
-	// `verse-dev..finding` — when a match named it. The watch is opened with it: the prefix
+	// `viff-dev..finding` — when a match named it. The watch is opened with it: the prefix
 	// says where to read and the pattern says which nodes are reported, which is the only way
 	// to say a question that reaches across depths.
 	pat string
@@ -558,7 +558,7 @@ func (s Subtree) Pattern() *kpath.KPath {
 	return entity.PrefixPattern(s.Path(), s.depth)
 }
 
-// SubtreeAt builds the subtree standing at these segments, a leading `verse` being the root
+// SubtreeAt builds the subtree standing at these segments, a leading `viff` being the root
 // like any other segment.
 //
 // Its depth is the segments' own: this names A PLACE, and the caller that watches one named
@@ -583,7 +583,7 @@ func (s Subtree) Path() []string {
 	return segs
 }
 
-// Named is how many segments the subtree names, root included. Zero is the whole verse, which
+// Named is how many segments the subtree names, root included. Zero is the whole viff, which
 // is not something a watch may open.
 func (s Subtree) Named() int { return len(s.Path()) }
 
@@ -596,11 +596,11 @@ func (s Subtree) Parent() Subtree {
 	return SubtreeAt(segs[:len(segs)-1]...)
 }
 
-// root is the half of the verse this subtree is in — `verse` for verse's own, empty for the
+// root is the half of the viff this subtree is in — `viff` for viff's own, empty for the
 // world's, which is also what a subtree naming nothing at all is.
 func (s Subtree) root() string {
-	if segs := s.Path(); len(segs) > 0 && segs[0] == entity.VerseRoot {
-		return entity.VerseRoot
+	if segs := s.Path(); len(segs) > 0 && segs[0] == entity.ViffRoot {
+		return entity.ViffRoot
 	}
 	return ""
 }

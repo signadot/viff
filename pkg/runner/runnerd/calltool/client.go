@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // Client is a program's end: the socket the task process answers on.
@@ -49,7 +49,7 @@ func (c *Client) Call(ctx context.Context, tool string, input map[string]any) (R
 
 // The host in the URL is a name for the socket, not an address: the transport dials the path
 // whatever it says.
-const base = "http://verse-call-tool"
+const base = "http://viff-call-tool"
 
 func (c *Client) do(ctx context.Context, method, route string, body, out any) error {
 	var r io.Reader

@@ -9,20 +9,20 @@ import (
 // The kinds a name carries before its colon. A principal is `<kind>:<id>` for an identity and
 // `via:<path>` for a place acting; a grantee is a principal, a kind with `*` for every principal
 // of it, a group, or `*` for everyone. The kind is IN THE NAME, so nothing consults a listing to
-// tell a runner called verse-runner from a person called that: `runner:verse-runner` and
-// `user:verse-runner` are different strings.
+// tell a runner called viff-runner from a person called that: `runner:viff-runner` and
+// `user:viff-runner` are different strings.
 const (
 	// UserKind is a person, by email.
 	UserKind = "user"
-	// AgentKind is an operator agent: a harness driving verse through the api, a principal of
+	// AgentKind is an operator agent: a harness driving viff through the api, a principal of
 	// its own and not the person whose terminal it runs in.
 	AgentKind = "agent"
 	// RunnerKind is a runner, by the identity it acts as.
 	RunnerKind = "runner"
-	// SystemKind is versed itself, and the part after the colon says which of its own acts
+	// SystemKind is viffd itself, and the part after the colon says which of its own acts
 	// wrote (SystemDocket and the rest). Any principal of the kind owns the root.
 	SystemKind = "system"
-	// GroupKind is a SET: `verse.principal.group.<name>` lists its members, and `group:<name>`
+	// GroupKind is a SET: `mirror.principal.group.<name>` lists its members, and `group:<name>`
 	// admits them, each as themselves. Nothing acts as a group, so it is never a principal.
 	GroupKind = "group"
 	// ViaKind is a place acting — a rule, a source, a resolver — named by its address.
@@ -37,7 +37,7 @@ const (
 	AudienceKind = "audience"
 	// AnsweringKind is WHOEVER ANSWERS FOR A PLACE: `answering:<address>`, in a grant's `read`,
 	// admits whoever holds `answer` at the address (Answer) — the resolvers answering for a
-	// person at `verse.for.<person>`, or for a place. It is how an ask is read by the resolver
+	// person at `viff.for.<person>`, or for a place. It is how an ask is read by the resolver
 	// serving it (9ce3bva0, S2). A set, so never a principal.
 	AnsweringKind = "answering"
 	// PairKind is a rule's task acting for whoever wrote the record it is about, as
@@ -72,15 +72,15 @@ func PairOf(principal string) (asker, bound string, ok bool) {
 }
 
 // Everyone is the grantee that names every principal — a request that names nobody included,
-// which is what lets a read made from curl with no `user:` behind it see an open verse.
+// which is what lets a read made from curl with no `user:` behind it see an open viff.
 const Everyone = "*"
 
-// actors is where in verse's half a place acts, by system, and the kind beneath it that does
-// ("" for any): a rule fires as `verse.trigger.rule.<name>`, a source reflects as
-// `verse.iods.<name>`, a resolver answers as `verse.resolvers.<name>`. A
+// actors is where in viff's half a place acts, by system, and the kind beneath it that does
+// ("" for any): a rule fires as `mirror.trigger.rule.<name>`, a source reflects as
+// `mirror.iods.<name>`, a resolver answers as `mirror.resolvers.<name>`. A
 // `via:` naming anywhere else names nobody — a runner has an address and acts as
-// `runner:<identity>`, so `via:verse.runners.verse-runner` would look right and admit no one.
-// The owning packages import this one, so the names are spelled here and a test in versed holds
+// `runner:<identity>`, so `via:mirror.runners.viff-runner` would look right and admit no one.
+// The owning packages import this one, so the names are spelled here and a test in viffd holds
 // them to the packages' own.
 var actors = map[string]string{"trigger": "rule", "iods": "", "resolvers": ""}
 
@@ -107,10 +107,10 @@ func Grammar() string {
 }
 
 // ParseGrantee reads a name in the grammar. A bare string holding an `@` and no colon is a
-// person's email, `user:<s>` — unless it is an address in verse's own half, which is no
+// person's email, `user:<s>` — unless it is an address in viff's own half, which is no
 // person. Every other
-// bare word names nothing and is refused — which is where `user`, `agent`, `verse-runner` and
-// `verse.principal.group.<name>` stop meaning anything.
+// bare word names nothing and is refused — which is where `user`, `agent`, `viff-runner` and
+// `mirror.principal.group.<name>` stop meaning anything.
 func ParseGrantee(s string) (Grantee, error) {
 	if s == Everyone {
 		return Grantee{Kind: Everyone}, nil
@@ -118,8 +118,8 @@ func ParseGrantee(s string) (Grantee, error) {
 	kind, rest, found := strings.Cut(s, ":")
 	if !found {
 		switch {
-		case strings.HasPrefix(s, VerseRoot+"."):
-			return Grantee{}, refuseName(s, "an address in verse's half is no person; a place "+
+		case strings.HasPrefix(s, ViffRoot+"."):
+			return Grantee{}, refuseName(s, "an address in viff's half is no person; a place "+
 				"acting is via:<address>, and a group is group:<name>")
 		case strings.Contains(s, "@"):
 			kind, rest = UserKind, s
@@ -162,7 +162,7 @@ func ParseGrantee(s string) (Grantee, error) {
 	return Grantee{}, refuseName(s, fmt.Sprintf("%q is not a kind", kind))
 }
 
-// viaPath reads a via's address: a path in verse's own half, where a place acts, with at most a
+// viaPath reads a via's address: a path in viff's own half, where a place acts, with at most a
 // trailing `*`.
 func viaPath(s string) ([]string, error) {
 	if s == "" {
@@ -177,13 +177,13 @@ func viaPath(s string) ([]string, error) {
 			return nil, fmt.Errorf("a `*` is a whole TRAILING segment, covering what is beneath")
 		}
 	}
-	if len(segs) < 2 || segs[0] != VerseRoot {
-		return nil, fmt.Errorf("a place that acts is in verse's own half, verse.<system>...")
+	if len(segs) < 2 || segs[0] != ViffRoot {
+		return nil, fmt.Errorf("a place that acts is in viff's own half, viff.<system>...")
 	}
 	kind, acts := actors[segs[1]]
 	if !acts || (kind != "" && len(segs) > 2 && segs[2] != Everyone && segs[2] != kind) {
-		return nil, fmt.Errorf("nothing acts through %s: a rule acts as verse.trigger.rule.<name>, "+
-			"a source as verse.iods.<name>, a resolver as verse.resolvers.<name>", s)
+		return nil, fmt.Errorf("nothing acts through %s: a rule acts as mirror.trigger.rule.<name>, "+
+			"a source as mirror.iods.<name>, a resolver as mirror.resolvers.<name>", s)
 	}
 	return segs, nil
 }
@@ -228,12 +228,12 @@ func (g Grantee) String() string {
 	return g.Kind + ":" + g.ID
 }
 
-// ForSystem is where a person says whom they let answer for them: `verse.for.<principal>`, their
+// ForSystem is where a person says whom they let answer for them: `viff.for.<principal>`, their
 // own node, whose `answer` grants name the resolvers that do (Answer).
 const ForSystem = "for"
 
 // ForRef is the node a principal's `answer` grants stand on.
-func ForRef(principal string) Ref { return VerseRef(ForSystem, principal) }
+func ForRef(principal string) Ref { return ViffRef(ForSystem, principal) }
 
 // Answering spells the grantee that admits whoever holds `answer` at ref.
 func Answering(ref Ref) string { return AnsweringKind + ":" + ref.String() }
@@ -244,7 +244,7 @@ func Audience(ref Ref) string { return AudienceKind + ":" + ref.String() }
 // Via spells the principal of a place acting: whoever writes as a rule, a source or a resolver.
 func Via(ref Ref) string { return ViaKind + ":" + ref.String() }
 
-// The parts of versed that write on its own behalf, each a name so a record says which act
+// The parts of viffd that write on its own behalf, each a name so a record says which act
 // wrote it. They are attribution, not authority: any principal of SystemKind owns the root and
 // passes every check, and nothing grants to one part rather than another.
 const (
@@ -260,14 +260,14 @@ const (
 	// SystemCharter installs the charter the deployment stands behind, so its rules resolve to it.
 	SystemCharter = SystemKind + ":charter"
 	// SystemIdentity writes identity claims and the bindings verified from them: which external
-	// account is which principal (internal/versed/identity.go).
+	// account is which principal (internal/viffd/identity.go).
 	SystemIdentity = SystemKind + ":identity"
 	// SystemDefault is what remains: the restore at start, and whatever else names no part. It
 	// is the owner of the root.
 	SystemDefault = SystemKind + ":default"
 )
 
-// IsSystem reports whether a principal is versed itself, whichever part.
+// IsSystem reports whether a principal is viffd itself, whichever part.
 func IsSystem(principal string) bool { return KindOf(principal) == SystemKind }
 
 // KindOf is the kind a name carries before its colon, and "" for a name that carries none.

@@ -7,7 +7,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // ServeTask is a task's process, started by a SubprocessHandler: an InProcessHandler holding the

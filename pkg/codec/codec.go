@@ -1,4 +1,4 @@
-// Package codec is the one place in verse that knows about serialization formats.
+// Package codec is the one place in viff that knows about serialization formats.
 //
 // Everything that reads or writes a document — the HTTP wire, the CLI, charter files,
 // config — goes through here rather than importing parse/encode/gomap directly, so that
@@ -12,11 +12,11 @@
 // JSON is an INPUT DECLARATION, never a rendering. A .json file, an
 // `application/json` body and `-i json` all keep working — valid JSON is valid tony
 // (pinned by TestUpstreamJSONParsesAsTony), so they are simply parsed by the tony parser
-// and mean the same thing they always did. What is gone is asking verse to *emit* JSON:
-// `-o json`, `VERSE_FORMAT=json` and `Accept: application/json` are refused, each with a
+// and mean the same thing they always did. What is gone is asking viff to *emit* JSON:
+// `-o json`, `VIFF_FORMAT=json` and `Accept: application/json` are refused, each with a
 // sentence saying so.
 //
-// The reason is tags. verse's own grammar — charters, matches, formulas — is tagged, and
+// The reason is tags. viff's own grammar — charters, matches, formulas — is tagged, and
 // JSON has no tag syntax. Rendering a tagged document as JSON therefore means rewriting
 // it into a tag-keyed object (`!or [a, b]` → `{"or": ["a","b"]}`), which is unambiguous
 // only where the surrounding keyspace is closed. Inside a match's `fields` — an open user
@@ -65,16 +65,16 @@ const (
 	JSON = format.JSONFormat
 )
 
-// Writable reports whether f is a format verse renders. It is the one predicate behind
-// every refusal, so "what can verse emit" has a single answer to change.
+// Writable reports whether f is a format viff renders. It is the one predicate behind
+// every refusal, so "what can viff emit" has a single answer to change.
 func Writable(f Format) bool { return f != JSON }
 
 // ErrNotWritable explains the refusal, in the terms the person hitting it needs: what to
 // ask for instead, and the reassurance that their INPUT is unaffected.
-const ErrNotWritable = "verse does not render json (tony and yaml are the output formats); " +
+const ErrNotWritable = "viff does not render json (tony and yaml are the output formats); " +
 	"json input is still accepted everywhere, since valid json is valid tony"
 
-// Baseline is verse's representation when nothing overrides it — no config, no env, no
+// Baseline is viff's representation when nothing overrides it — no config, no env, no
 // flag, no header.
 //
 // It is tony, and it is now the only rendering a fresh install can produce (YAML being the
@@ -125,10 +125,10 @@ func Parse(s string) (Format, error) {
 }
 
 // ParseOutput resolves the name of a format to WRITE. It is Parse plus the one refusal:
-// "json" names a dialect verse reads but does not render.
+// "json" names a dialect viff reads but does not render.
 //
-// Every knob that picks an output format goes through here — `-o`, VERSE_FORMAT,
-// VERSE_OUTPUT_FORMAT, VERSE_WIRE_FORMAT, `?format=` on a response — so the refusal
+// Every knob that picks an output format goes through here — `-o`, VIFF_FORMAT,
+// VIFF_OUTPUT_FORMAT, VIFF_WIRE_FORMAT, `?format=` on a response — so the refusal
 // happens where a person can still act on it, rather than deep inside the encoder with a
 // half-written body.
 func ParseOutput(s string) (Format, error) {
@@ -266,7 +266,7 @@ func ParseNodes(data []byte, f Format) ([]*ir.Node, error) {
 //     only that it is tony, which JSON already is.
 //   - LEADING WHITESPACE. `  {"a": 1}` is rejected by go-tony's JSON parser
 //     ("imbalanced document: trailing material") and accepted by its tony parser. An
-//     indented body from a shell heredoc is not a thing verse should refuse.
+//     indented body from a shell heredoc is not a thing viff should refuse.
 //
 // YAML keeps its own parser: a YAML document is NOT tony (nor the reverse), so the same
 // argument does not run.
@@ -305,8 +305,8 @@ func EncodeNodeWire(w io.Writer, n *ir.Node, f Format) error { return encodeNode
 //
 // Colour is a property of the DESTINATION, not of the document, so this is a separate
 // entry point rather than a flag on the others: only a caller that knows it is writing to
-// a terminal should reach for it. Piped output must stay clean — `verse … | jq` and
-// `verse … | o v` both break on escape codes.
+// a terminal should reach for it. Piped output must stay clean — `viff … | jq` and
+// `viff … | o v` both break on escape codes.
 func EncodeNodeColor(w io.Writer, n *ir.Node, f Format) error {
 	return encodeNodeOpts(w, n, f, false, true)
 }
@@ -331,7 +331,7 @@ func encodeNode(w io.Writer, n *ir.Node, f Format, wire bool) error {
 // comments are independent choices, and while they were made in separate functions the
 // coloured ones quietly rendered without comments. That is the only path a terminal ever
 // takes, so every comment in a charter was invisible to the operator who wrote it while
-// `verse c rules <name> | cat` printed them all.
+// `viff c rules <name> | cat` printed them all.
 func encodeNodeOpts(w io.Writer, n *ir.Node, f Format, wire, color bool) error {
 	if n == nil {
 		n = ir.Null()

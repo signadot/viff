@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // What a launch says about its repos is checked before anything is checked out: a name that
@@ -81,10 +81,10 @@ func TestARowNamesARepoWhateverItsCase(t *testing.T) {
 // A branch a task names is read as its full ref, and what git refuses in a name is refused.
 func TestABranchRefIsChecked(t *testing.T) {
 	for _, c := range []struct{ branch, ref, says string }{
-		{"verse/auto/t1", "refs/heads/verse/auto/t1", ""},
-		{"refs/heads/verse/auto/t1", "refs/heads/verse/auto/t1", ""},
+		{"viff/auto/t1", "refs/heads/viff/auto/t1", ""},
+		{"refs/heads/viff/auto/t1", "refs/heads/viff/auto/t1", ""},
 		{" main ", "refs/heads/main", ""},
-		{"verse/auto/..", "", "not a branch name"},
+		{"viff/auto/..", "", "not a branch name"},
 		{"-f", "", "not a branch name"},
 		{"", "", "no branch named"},
 		{"a b", "", "not a branch name"},

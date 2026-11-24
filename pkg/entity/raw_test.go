@@ -27,10 +27,10 @@ func same(a, b Payload) bool { return mergeop.RawEqual(a, b) }
 
 // A value written under Raw is STORED rather than executed, operators and all. This is the
 // whole point: a rule, a goal, any tony document which is itself written in the operator
-// grammar, could not be written into the verse at all before the escape existed.
+// grammar, could not be written into the viff at all before the escape existed.
 func TestRawStoresOperatorsAsData(t *testing.T) {
 	store := openStore(t)
-	ref := VerseRef("trigger", "rule", "hotfix")
+	ref := ViffRef("trigger", "rule", "hotfix")
 	rule := doc(t, `{id: !glob "hotfix-*", patch: {tmp: !delete null, stage: reviewed}}`)
 
 	set(t, store, ref, Obj{"spec": Raw(rule)}.Payload())
@@ -49,7 +49,7 @@ func TestRawStoresOperatorsAsData(t *testing.T) {
 // in the version after, which for a rule means a condition nobody wrote.
 func TestRawReplacesRatherThanMerges(t *testing.T) {
 	store := openStore(t)
-	ref := VerseRef("trigger", "rule", "hotfix")
+	ref := ViffRef("trigger", "rule", "hotfix")
 	set(t, store, ref, Obj{"spec": Raw(doc(t, `{id: "a", gates: [approval]}`))}.Payload())
 
 	next := doc(t, `{id: "a"}`)
@@ -129,7 +129,7 @@ func TestModifyRetriesOverAStoredOperator(t *testing.T) {
 // an OPERATION, and a read that drops it takes it out of a charter that reads back otherwise
 // intact.
 //
-// The bare one is the change. It used to be dropped — verse spelled "this field is gone" by
+// The bare one is the change. It used to be dropped — viff spelled "this field is gone" by
 // writing a bare null and hid every bare null it read — which made a legal value unstorable at
 // any depth, `!raw` included, since the escape is consumed by read time. The rule that paid for
 // it is the absence latch: `value: !not {reviewed: null}` came back as `!not {}`, a perfectly
@@ -137,7 +137,7 @@ func TestModifyRetriesOverAStoredOperator(t *testing.T) {
 // Absence is `!delete` on the way in now, and a null is a null.
 func TestBothKindsOfNullAreDataInAStoredSpec(t *testing.T) {
 	store := openStore(t)
-	ref := VerseRef("trigger", "rule", "hotfix")
+	ref := ViffRef("trigger", "rule", "hotfix")
 	set(t, store, ref, Obj{"spec": Raw(doc(t, `{tmp: !delete null, gone: null, stage: open}`))}.Payload())
 
 	e, _, _ := store.Get(ref)

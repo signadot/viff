@@ -8,7 +8,7 @@ import "testing"
 // That correspondence is the whole point of returning it, and it is the one thing here that
 // depends on the substrate rather than on this package: logd answers a patch with the commit
 // the transaction took, and the root watch stamps its deltas from the same sequence. Nothing
-// in verse can enforce that, so it is pinned here — a store that reported a revision from a
+// in viff can enforce that, so it is pinned here — a store that reported a revision from a
 // different sequence would let a writer correlate its own write with somebody else's commit,
 // which is worse than reporting nothing.
 //

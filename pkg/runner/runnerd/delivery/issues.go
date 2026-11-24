@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/io/linear"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/io/linear"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // AN ISSUE TRACKER IS A SYSTEM WITH A NAME, and each act on one is a verb of it. GitHub's issues

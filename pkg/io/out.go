@@ -14,23 +14,23 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	verseapi "github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	viffapi "go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// The OUT half: what the verse asks of an external system, done, and what became of it written
+// The OUT half: what the viff asks of an external system, done, and what became of it written
 // back. It is the reflection's law run the other way round, and the one thing that differs is
 // which side dials.
 //
-// A reflection is dialled BY verse and answers what is true over there. An out half dials verse:
+// A reflection is dialled BY viff and answers what is true over there. An out half dials viff:
 // it reads what is asked of it under the place it owns, makes the external system match, and
 // writes a status beside each request saying what happened. Nothing pushes it, nothing queues for
 // it, and nothing is delivered exactly once — a pass reads the truth and does the difference, so
 // a crash mid-pass costs a repeat of one comparison rather than a lost message.
 //
-// Somebody (a person with `verse data`, a charter's `derive`) writes an INPUT anywhere under the
+// Somebody (a person with `viff data`, a charter's `derive`) writes an INPUT anywhere under the
 // place, and this answers with its STATUS at the sibling `<name>~status`. An input is a node
 // carrying `to`, which says whom or what it is about — a channel, a person, an issue — and the
 // connector reads the rest.
@@ -60,7 +60,7 @@ import (
 type Out struct {
 	sink  Sink
 	place entity.Ref
-	verse *client.Client
+	viff  *client.Client
 	log   func(string, ...any)
 	now   func() time.Time
 	kick  chan struct{}
@@ -152,7 +152,7 @@ type Input struct {
 	// derive lands.
 	At   entity.Ref
 	Name string
-	// To is whom or what it is about, off the input's own `to`: a channel, a person verse knows,
+	// To is whom or what it is about, off the input's own `to`: a channel, a person viff knows,
 	// an issue. What a connector makes of it is the connector's.
 	To string
 	// Value is what they asked for, and Status what the last pass recorded — nil the first time.
@@ -162,25 +162,25 @@ type Input struct {
 // StatusSuffix ends the name of every status, and of no input.
 //
 // A SIBLING, NOT A CHILD. An input is the writer's document and grows structure over time; a
-// status inside it would one day collide with a field of the same name. `~` is verse's mark for a
+// status inside it would one day collide with a field of the same name. `~` is viff's mark for a
 // name derived from another (a question id is `<task>~<gate>`), and it needs no quoting in a shell
 // or a url.
 const StatusSuffix = "~status"
 
-// Reporting names the registration this half belongs to, so every pass tells verse what it did.
-// Verse dials a reflection and therefore knows how it is doing; it never dials an out half, so
+// Reporting names the registration this half belongs to, so every pass tells viff what it did.
+// Viff dials a reflection and therefore knows how it is doing; it never dials an out half, so
 // without this a listing shows one half of an io and calls it the io.
 func (o *Out) Reporting(name string) *Out {
 	o.name = name
 	return o
 }
 
-// NewOut runs sink against place, reading and writing the verse through verse.
-func NewOut(sink Sink, place entity.Ref, verse *client.Client, log func(string, ...any)) *Out {
+// NewOut runs sink against place, reading and writing the viff through viff.
+func NewOut(sink Sink, place entity.Ref, viff *client.Client, log func(string, ...any)) *Out {
 	if log == nil {
 		log = func(string, ...any) {}
 	}
-	return &Out{sink: sink, place: place, verse: verse, log: log, now: time.Now,
+	return &Out{sink: sink, place: place, viff: viff, log: log, now: time.Now,
 		kick: make(chan struct{}, 1)}
 }
 
@@ -215,9 +215,9 @@ func (o *Out) Run(ctx context.Context, every time.Duration) {
 	}
 }
 
-// Pass finds every input under the place and asks the sink for each, then tells verse what it
-// did. The report is last, and it is not part of the pass's success: a verse that would not take
-// it is a verse this half has just read and written, so saying so twice adds nothing.
+// Pass finds every input under the place and asks the sink for each, then tells viff what it
+// did. The report is last, and it is not part of the pass's success: a viff that would not take
+// it is a viff this half has just read and written, so saying so twice adds nothing.
 func (o *Out) Pass(ctx context.Context) error {
 	place, err := o.Read(o.place.KPath())
 	if err != nil {
@@ -251,7 +251,7 @@ func (o *Out) Pass(ctx context.Context) error {
 
 // outboxes is the places packages declared this io reads beside its own (GET /outboxes).
 func (o *Out) outboxes() ([]entity.Ref, error) {
-	resp, err := o.verse.Get("/outboxes", url.Values{"to": {o.place.KPath()}})
+	resp, err := o.viff.Get("/outboxes", url.Values{"to": {o.place.KPath()}})
 	if err != nil {
 		return nil, err
 	}
@@ -310,12 +310,12 @@ func (o *Out) walk(ctx context.Context, node *ir.Node, at []string, pass *OutPas
 	}
 }
 
-// report tells verse what a pass did, for a registration that asked to be told.
+// report tells viff what a pass did, for a registration that asked to be told.
 func (o *Out) report(p OutPass) {
 	if o.name == "" {
 		return
 	}
-	resp, err := o.verse.Post("/iods/"+url.PathEscape(o.name)+"/pass", nil, p)
+	resp, err := o.viff.Post("/iods/"+url.PathEscape(o.name)+"/pass", nil, p)
 	if err != nil {
 		o.log("io out: reporting a pass: %v", err)
 		return
@@ -420,7 +420,7 @@ func (o *Out) failWith(in Input, err error, said entity.Obj) {
 func (o *Out) Write(in Input, fields entity.Obj) {
 	segs := in.At.Segs()
 	at := entity.RefAt(append(append([]string{}, segs[:len(segs)-1]...), in.Name+StatusSuffix)...)
-	resp, err := o.verse.Post("/entity", nil, verseapi.PutEntity{At: at.KPath(), Payload: fields.Payload()})
+	resp, err := o.viff.Post("/entity", nil, viffapi.PutEntity{At: at.KPath(), Payload: fields.Payload()})
 	if err != nil {
 		o.log("io out: writing %s: %v", at, err)
 		return
@@ -432,12 +432,12 @@ func (o *Out) Write(in Input, fields entity.Obj) {
 }
 
 // Read answers the document standing at a place, or nil when nothing stands there.
-func (o *Out) Read(at string) (*ir.Node, error) { return ReadAt(o.verse, at) }
+func (o *Out) Read(at string) (*ir.Node, error) { return ReadAt(o.viff, at) }
 
 // ReadAt is that read without an Out to hang it off: what a sink uses when what it is asked for is
 // not all it needs to know, and a gate's record is the case in hand.
-func ReadAt(verse *client.Client, at string) (*ir.Node, error) {
-	resp, err := verse.Get("/state", url.Values{"at": {at}})
+func ReadAt(viff *client.Client, at string) (*ir.Node, error) {
+	resp, err := viff.Get("/state", url.Values{"at": {at}})
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", at, err)
 	}

@@ -2,14 +2,14 @@
 
 The `question` system is the questions that a task puts to people. The agent or script hands the
 turn over and waits on the docket for an answer. A task that asks as the person it runs for, and
-goes on, uses the [verse system](verse.md) instead.
+goes on, uses the [viff system](viff.md) instead.
 
 It is not the question a runner asks before a step, when an autonomy row of the task says
 `ask`. That question comes from the autonomy, not from a call of the task.
 
 ## What a charter sees
 
-Every question is a record at `verse.ask.<id>`, whoever asked it: a person with `verse ask`, a
+Every question is a record at `mirror.ask.<id>`, whoever asked it: a person with `viff ask`, a
 rule's gate, or a task with this tool. A rule reacts to one as it reacts to any data. A
 charter installed at the system level is what carries the docket to people in Slack
 ([asking](../asking.md)).
@@ -30,7 +30,7 @@ the environment gives `question`.
 
 ```tony
 spawn:
-  agent: {name: verse}
+  agent: {name: viff}
   environment: {systems: {network: {mode: open}, question: {}}}
   prompt: "Decide whether $[subject.ref] can be rolled back, and ask before you say so."
   autonomy:
@@ -43,12 +43,12 @@ spawn:
 |---|---|---|
 | `question-ask` | puts a question to the person the task runs for, or to the answerers it names, and waits; the answer is the call's result. With `options`, the answer is one of them. With `within`, silence settles on `default`. | `question.ask` |
 
-The question is the task's, and it is on the docket beside every other question. `verse
+The question is the task's, and it is on the docket beside every other question. `viff
 question` lists it, and the answer given there is what the tool returns. In a conversation, the
-agent asks after every answer, to give the person the turn. A script asks with `verse-call-tool
+agent asks after every answer, to give the person the turn. A script asks with `viff-call-tool
 question-ask`, and reads the answer on its standard output.
 
 ## Where the credential lives
 
-Nowhere. A question is verse's own record. The runner poses it, and the answer comes back
-through verse. No system outside verse is reached, so no credential is needed.
+Nowhere. A question is viff's own record. The runner poses it, and the answer comes back
+through viff. No system outside viff is reached, so no credential is needed.

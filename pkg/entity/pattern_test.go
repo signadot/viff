@@ -59,7 +59,7 @@ func TestMatchPayloadIntegerWidthsAgree(t *testing.T) {
 	}
 }
 
-// 2 and 2.0 are DIFFERENT VALUES, which is tony's position and now verse's. A payload
+// 2 and 2.0 are DIFFERENT VALUES, which is tony's position and now viff's. A payload
 // predicate is a tony match, so it takes tony's semantics rather than keeping a second,
 // nearly-identical numeric comparison of its own — having two was how they would drift.
 //
@@ -165,7 +165,7 @@ func TestMatchPayloadScalarsAndAbsence(t *testing.T) {
 // At points the predicate at a place INSIDE the payload, so a predicate can be written about
 // a subtree without restating the shape above it. Rooted at `labels`, `{urgent: true}` is the
 // same question as `{labels: {urgent: true}}` asked at the root — and the equivalence is the
-// point: `verse watch --if-at labels --if '{urgent: true}'` must mean what a charter means.
+// point: `viff watch --if-at labels --if '{urgent: true}'` must mean what a charter means.
 func TestMatchPayloadRootedAtAPath(t *testing.T) {
 	payload := Obj{"stage": "open", "labels": Obj{"urgent": true, "team": "core"}}.Payload()
 
@@ -276,7 +276,7 @@ func TestPatternSurvivesTheWire(t *testing.T) {
 	in := patternAt("git", "ref", "*")
 	in.Path[1] = ir.FromString("re*")
 	in.Path[1].Tag = "!glob"
-	in.Predicate = Obj{"repo": "verse"}.Payload()
+	in.Predicate = Obj{"repo": "viff"}.Payload()
 	in.At = []string{"labels"}
 	node, err := gomap.ToTonyIR(in)
 	if err != nil {

@@ -1,30 +1,30 @@
 # Runners
 
 This page lists the commands, routes and fields of runners. A
-[runner](../glossary.md#runner) is a place where verse runs a [task](../glossary.md#task).
+[runner](../glossary.md#runner) is a place where viff runs a [task](../glossary.md#task).
 For what a runner is and why it has this shape, see [../runners.md](../runners.md). For the
 contract that a runner serves, see [../task-control.md](../task-control.md). To build a
 runner, copy [examples/runner](examples/runner/main.go).
 
-A runner is installed as data at `verse.runners.<name>`, its registration. The registration carries its `name` and three fields:
+A runner is installed as data at `mirror.runners.<name>`, its registration. The registration carries its `name` and three fields:
 
 | Field | What it holds |
 |---|---|
-| `url` | the base URL of task control that faces verse. `client.HTTP` drives this URL, and a restart rebuilds the runner from it. Required. |
-| `identity` | the [principal](../glossary.md#principal) that the runner acts as. Verse writes the reports of a task as this principal. A spawn grants this principal `read-write` and `control` on the task. A runner acts as itself. It never acts as its installer, or as the person whose work it runs. Default: the runner's name ([perms.md](../perms.md)). |
-| `subject` | how verse recognises the runner: the subject of its workload token, `system:serviceaccount:<namespace>:<name>` on Kubernetes, from the issuer the deployment names under `auth.iod` ([runners at the door](perms.md#runners-at-the-door)); or, for a runner proved by a static token, the token's hash, `sha256:<64 lowercase hex digits>`, which `verse runner add -token-file` computes. Required: a runner is never taken at its word. Verse refuses a workload subject where it names no such issuer, any subject where it issues no tokens of its own (`auth.issuer`, which is what it proves itself to the runner with; `verse up` always does), and one another registration or an iod (`auth.iod.accounts`, or the hash of a token in `auth.iod.static`) already holds, since a token proves one principal, and in a named scope, since a principal is one thing across the verse. |
+| `url` | the base URL of task control that faces viff. `client.HTTP` drives this URL, and a restart rebuilds the runner from it. Required. |
+| `identity` | the [principal](../glossary.md#principal) that the runner acts as. Viff writes the reports of a task as this principal. A spawn grants this principal `read-write` and `control` on the task. A runner acts as itself. It never acts as its installer, or as the person whose work it runs. Default: the runner's name ([perms.md](../perms.md)). |
+| `subject` | how viff recognises the runner: the subject of its workload token, `system:serviceaccount:<namespace>:<name>` on Kubernetes, from the issuer the deployment names under `auth.iod` ([runners at the door](perms.md#runners-at-the-door)); or, for a runner proved by a static token, the token's hash, `sha256:<64 lowercase hex digits>`, which `viff runner add -token-file` computes. Required: a runner is never taken at its word. Viff refuses a workload subject where it names no such issuer, any subject where it issues no tokens of its own (`auth.issuer`, which is what it proves itself to the runner with; `viff up` always does), and one another registration or an iod (`auth.iod.accounts`, or the hash of a token in `auth.iod.static`) already holds, since a token proves one principal, and in a named scope, since a principal is one thing across the viff. |
 
-Verse writes one more, and refuses it by hand: `described`, what the runner offers, as it said
+Viff writes one more, and refuses it by hand: `described`, what the runner offers, as it said
 at the last describe ([runners.md](../runners.md#who-the-runner-is)). Every describe is a proof,
 so a description is there only while the runner proved it is its `subject`: one that answers and
 does not prove it has its description removed, and takes no spawn until a check finds it proving
 itself. The handshake is made again before every launch, so `described` is the last launch's
-result at the latest. A registration an older verse wrote may hold `verified` or `unverified`
-beside it; verse removes both at the next describe. One an older verse wrote with no `subject`
-is a registration this verse can't read: `verse runner` lists it with why, it is no runner at the
-door and takes no spawn, and `verse runner add` under its name, with its `subject`, replaces it.
+result at the latest. A registration an older viff wrote may hold `verified` or `unverified`
+beside it; viff removes both at the next describe. One an older viff wrote with no `subject`
+is a registration this viff can't read: `viff runner` lists it with why, it is no runner at the
+door and takes no spawn, and `viff runner add` under its name, with its `subject`, replaces it.
 
-A listing row (`verse runner`) also says `offers`, the names of the doers the runner described,
+A listing row (`viff runner`) also says `offers`, the names of the doers the runner described,
 an agent's name or `script`, empty where it has described none.
 
 The `name` is the whole of the address. It may not contain `/`, because it is a segment of
@@ -33,13 +33,13 @@ the route that serves it.
 ## Commands
 
 ```
-verse runner                              what is installed, with running/total/lastSpawn
+viff runner                              what is installed, with running/total/lastSpawn
         [-probe]                           …and what each one says right now (not recorded)
-verse runner add <name> <url>              install one, probing the url first
+viff runner add <name> <url>              install one, probing the url first
        add [-file <f>] | [file] | stdin    …or as a document (.tony/.json/.yaml)
            [-no-probe]                     install without asking the url what it is
            [-identity <id>]                it acts as runner:<id> (default: its name)
-           [-subject <sub>]                verse recognises it by its workload token's subject
+           [-subject <sub>]                viff recognises it by its workload token's subject
            [-token-file <f>]               …or by the hash of the static token in f
        show <ref>                          its registration
        check <ref>                         ask this runner what it is, right now
@@ -50,19 +50,19 @@ verse runner add <name> <url>              install one, probing the url first
 
 A `<ref>` has two forms:
 
-- `verse.runners.gpu`: the whole [address](../glossary.md#address), as verse lists and
+- `mirror.runners.gpu`: the whole [address](../glossary.md#address), as viff lists and
   stores it;
 - `gpu`: the name, as you type it on a command line.
 
-Verse does not accept the middle form, `runners.gpu`. The address of a runner is its name and
+Viff does not accept the middle form, `runners.gpu`. The address of a runner is its name and
 nothing else, so each name is unique on its own. Adding a runner with a name that stands
 replaces the runner.
 
 On the task side:
 
 ```
-verse ps  [-runner <ref>]                  only the work on that runner (`local` = the local runner)
-verse task run -f <spawn>                 run a spawn there: its `runner:` names the runner
+viff ps  [-runner <ref>]                  only the work on that runner (`local` = the local runner)
+viff task run -f <spawn>                 run a spawn there: its `runner:` names the runner
 ```
 
 ## Routes
@@ -73,16 +73,16 @@ verse task run -f <spawn>                 run a spawn there: its `runner:` names
 | `POST /runners` | installs a runner. `?probe=false` skips the check. The answer is `201` and the runner's row as the listing shows it, with what the runner described and `reach`, plus `warning` when the runner is unreachable (`api.RunnerRow`). |
 | `GET /runners/{name}` | returns the registration |
 | `GET /runners/{name}/check` | returns `{at, url, reach}`, and `why` when the URL is not a runner or did not prove it is the one registered; records what the runner said, or removes what it said before where it did not prove itself |
-| `POST /runners/hello` | the check, asked by the runner itself with its own token: verse finds the registration by the token's subject and describes the runner now, retrying briefly a url nothing answers at. The answer is the check's: `200` when the runner was described, even when it says `not verified`, since what is wrong is then its token, which trying again will not fix; `503` when nothing answered at its url, or another describe of it is in flight, so the runner's backoff keeps announcing until verse has heard what it is. A token no registration names, and a runner's name with no token, are refused `401` at the door; anyone else gets `400`. One describe in flight per registration. |
+| `POST /runners/hello` | the check, asked by the runner itself with its own token: viff finds the registration by the token's subject and describes the runner now, retrying briefly a url nothing answers at. The answer is the check's: `200` when the runner was described, even when it says `not verified`, since what is wrong is then its token, which trying again will not fix; `503` when nothing answered at its url, or another describe of it is in flight, so the runner's backoff keeps announcing until viff has heard what it is. A token no registration names, and a runner's name with no token, are refused `401` at the door; anyone else gets `400`. One describe in flight per registration. |
 | `DELETE /runners/{name}` | removes the runner. Pass `?cancel=<why>` or `?leave=true`. When work is running and you give neither, the answer is `409` and names both. |
 | `GET /tasks?runner=<ref>` | lists the work on one runner |
 
 `reach` is one of `a runner`, `not a runner`, `unreachable`, or `not verified`: it answered
 as a runner and did not prove it is its registration's `subject`,
-which is also what a verse that presented no token of its own gets, since the runner answers
-its token to the verse it verified alone. A runner that refused the token verse presented (it
-serves another verse) is `unreachable`, since the deployment fixes it. Verse writes nothing about `reach` to the
-store. Verse answers it live and then discards it, so a column of reachability
+which is also what a viff that presented no token of its own gets, since the runner answers
+its token to the viff it verified alone. A runner that refused the token viff presented (it
+serves another viff) is `unreachable`, since the deployment fixes it. Viff writes nothing about `reach` to the
+store. Viff answers it live and then discards it, so a column of reachability
 is always as of now.
 
 A route that names one runner has two answers when it does not find the runner:
@@ -90,20 +90,20 @@ A route that names one runner has two answers when it does not find the runner:
 | Status | Answer |
 |---|---|
 | `404` | `in your view, no runner "<name>" is installed`. The runner is not installed, or you may not read it. The answer is the same for both. |
-| `503` | `runner "<name>" could not be read: …`. The store did not answer. Verse knows of nothing missing, so ask again. |
+| `503` | `runner "<name>" could not be read: …`. The store did not answer. Viff knows of nothing missing, so ask again. |
 
-The listing leaves out the runners that you may not read. It answers `503` when verse could
+The listing leaves out the runners that you may not read. It answers `503` when viff could
 not read the store.
 
 ## On a spawn
 
-A spawn names no runner. Verse routes it, in its own view of the registrations, to a runner that
+A spawn names no runner. Viff routes it, in its own view of the registrations, to a runner that
 offers its doer and takes it, the one carrying fewest tasks first, then by name, handshaken
 before the launch and passed over for the next where the handshake fails
 ([where a spawn runs](../runners.md#where-a-spawn-runs)). A spawn that writes `runner:` is
 refused for the field.
 
-Verse **refuses a spawn that no runner takes**, on both paths:
+Viff **refuses a spawn that no runner takes**, on both paths:
 
 - an ad-hoc run gets `400`, saying why: no runner offers its doer; each runner that offers it,
   and why it would not take it; the registrations passed over, not described or unreadable; or
@@ -111,24 +111,24 @@ Verse **refuses a spawn that no runner takes**, on both paths:
 - a charter is refused at install where no runner offers its doer or takes its spawn as
   written, and a firing no runner takes becomes a failed spawn, its reason on the flow.
 
-Verse never runs the task somewhere else without saying so. A person's permissions on
-`verse.runners` govern installing, removing and seeing runners, not where their work runs. When
-verse could not read the registrations, the refusal says so, and says nothing about what is
+Viff never runs the task somewhere else without saying so. A person's permissions on
+`mirror.runners` govern installing, removing and seeing runners, not where their work runs. When
+viff could not read the registrations, the refusal says so, and says nothing about what is
 installed.
 
 ## On the task
 
-`verse.task.instance` carries both the URL and the name of the runner:
+`mirror.task.instance` carries both the URL and the name of the runner:
 
 | Field | What it holds |
 |---|---|
 | `runner` | the resolved URL. A restart attaches again with it. |
-| `runnerName` | the `verse.runners.<name>` that the spawn named, when it named one |
+| `runnerName` | the `mirror.runners.<name>` that the spawn named, when it named one |
 | `runnerSubject` | the subject that registration held at the spawn. The door holds a runner carrying a request for the task to it ([permissions](perms.md#runners-at-the-door)). |
-| `startedAt` | when the task began. Verse carries it across a new attach, and does not stamp it again. |
+| `startedAt` | when the task began. Viff carries it across a new attach, and does not stamp it again. |
 
 A restart can act on the URL with nothing else present. So removing a runner's registration cannot
-leave running work stranded. A person reads the name, and `verse ps -runner` selects on the
+leave running work stranded. A person reads the name, and `viff ps -runner` selects on the
 name. The name keeps working after the registration is gone.
 
 ## What a caller can tell about a control call
@@ -162,4 +162,4 @@ One field cannot do both jobs, so the task carries both.
 
 ### Why a ref has no middle form
 
-Verse does not accept `runners.gpu` because two ways to say one thing is one too many.
+Viff does not accept `runners.gpu` because two ways to say one thing is one too many.

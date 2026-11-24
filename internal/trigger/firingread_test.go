@@ -5,19 +5,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// A firing reads the places its rule names and NOT the whole verse — the difference between a
+// A firing reads the places its rule names and NOT the whole viff — the difference between a
 // read whose cost is flat and one that grows with everything anybody else has written.
 func TestAFiringReadsOnlyThePlacesItsRuleNames(t *testing.T) {
 	store := &countingStore{Store: entitytest.Store(t)}
 	eng := New(store, task.AutoResolver{})
 
-	head := entity.RefAt("git", "verse", "head")
+	head := entity.RefAt("git", "viff", "head")
 	cursor := entity.RefAt("drive", "cursor", "at")
 	entitytest.Set(t, store, head, entity.Obj{"sha": "bbb222"}.Payload())
 	entitytest.Set(t, store, cursor, entity.Obj{"stage": "idle"}.Payload())
@@ -31,7 +31,7 @@ func TestAFiringReadsOnlyThePlacesItsRuleNames(t *testing.T) {
   action:
     patch:
       stage: claimed
-      covering: !get-path {at: "git.verse.head", path: sha}
+      covering: !get-path {at: "git.viff.head", path: sha}
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -42,13 +42,13 @@ func TestAFiringReadsOnlyThePlacesItsRuleNames(t *testing.T) {
 	entitytest.Set(t, store, cursor, entity.Obj{"stage": "idle", "poke": 1}.Payload())
 	waitField(t, store, cursor, "covering", "bbb222") // the action's read was answered
 
-	if whole := store.wholeVerse(); whole != 0 {
-		t.Fatalf("%d of the firing's snapshots read the whole verse — a firing pays the log "+
+	if whole := store.wholeViff(); whole != 0 {
+		t.Fatalf("%d of the firing's snapshots read the whole viff — a firing pays the log "+
 			"replay for every entity its rule cannot see, on a store that only grows", whole)
 	}
 	// And it held what the ACTION reads, which is the half `reads()` does not cover: the
-	// condition never names `git.verse.head`, only the patch does.
-	if !store.narrowedTo("git", "verse") {
+	// condition never names `git.viff.head`, only the patch does.
+	if !store.narrowedTo("git", "viff") {
 		t.Fatal("no snapshot was narrowed to the place the action reads — the read would have " +
 			"been answered with nothing")
 	}
@@ -65,7 +65,7 @@ func TestAFiringTakesOneSnapshotForEveryReferenceInIt(t *testing.T) {
 
 	subj := entity.RefAt("drive", "item", "a")
 	entitytest.Set(t, store, subj, entity.Obj{"stage": "open", "note": "hello"}.Payload())
-	entitytest.Set(t, store, entity.RefAt("git", "verse", "head"), entity.Obj{"sha": "bbb222"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "viff", "head"), entity.Obj{"sha": "bbb222"}.Payload())
 
 	if err := eng.AddTrigger(mustParseCharter(t, `
 - name: two-reads
@@ -75,7 +75,7 @@ func TestAFiringTakesOneSnapshotForEveryReferenceInIt(t *testing.T) {
     patch:
       stage: seen
       note: .[subject.value.note]
-      covering: !get-path {at: "git.verse.head", path: sha}
+      covering: !get-path {at: "git.viff.head", path: sha}
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
@@ -96,9 +96,9 @@ func TestAFiringTakesOneSnapshotForEveryReferenceInIt(t *testing.T) {
 
 // A read whose address cannot be worked out at install narrows to NOTHING, and a snapshot
 // narrowed to nothing would answer "nothing" for a read that should have found something. So the
-// whole verse is what it falls back to: the expensive answer, in the one case where the cheap one
+// whole viff is what it falls back to: the expensive answer, in the one case where the cheap one
 // would be wrong.
-func TestARuleThatCannotNameWhatItReadsReadsTheWholeVerse(t *testing.T) {
+func TestARuleThatCannotNameWhatItReadsReadsTheWholeViff(t *testing.T) {
 	trig := mustParseCharter(t, `
 - name: templated
   condition:
@@ -119,7 +119,7 @@ func TestARuleThatCannotNameWhatItReadsReadsTheWholeVerse(t *testing.T) {
     subject: {path: "drive.cursor.at"}
   action:
     patch:
-      covering: !get-path {at: "git.verse.head", path: sha}
+      covering: !get-path {at: "git.viff.head", path: sha}
 `)
 	within := firingWithin(placed)
 	if len(within) == 0 {
@@ -133,7 +133,7 @@ func TestARuleThatCannotNameWhatItReadsReadsTheWholeVerse(t *testing.T) {
 }
 
 // A HOOK PAID BEFORE THE ENGINE OPENS READS WHAT ITS RULE NAMES, as one paid after does. What
-// the last verse left is settled at start, ahead of anything armed: a claim whose task's record
+// the last viff left is settled at start, ahead of anything armed: a claim whose task's record
 // says done, and its onDone reads a place the rule names.
 func TestAHookPaidBeforeTheEngineOpensReadsWhatItsRuleNames(t *testing.T) {
 	store := &countingStore{Store: entitytest.Store(t)}
@@ -145,17 +145,17 @@ func TestAHookPaidBeforeTheEngineOpensReadsWhatItsRuleNames(t *testing.T) {
   condition:
     subject: {path: "demo.pr.*", value: {stage: open}}
   action:
-    spawn: {agent: {name: verse}, prompt: review}
+    spawn: {agent: {name: viff}, prompt: review}
     onDone:
-      patch: {stage: reviewed, covering: !get-path {at: "git.verse.head", path: sha}}
+      patch: {stage: reviewed, covering: !get-path {at: "git.viff.head", path: sha}}
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.RefAt("git", "verse", "head"), entity.Obj{"sha": "bbb222"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "viff", "head"), entity.Obj{"sha": "bbb222"}.Payload())
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "reviewing"}.Payload())
 	_, id := claimAt(t, eng, store, "review", true, 0)
 	entitytest.Set(t, store, mirror.Ref(id), entity.Obj{"status": string(task.Done)}.Payload())
-	before := store.wholeVerse()
+	before := store.wholeViff()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -164,14 +164,14 @@ func TestAHookPaidBeforeTheEngineOpensReadsWhatItsRuleNames(t *testing.T) {
 	if got := subjectNow(t, store); got["covering"] != "bbb222" {
 		t.Fatalf("subject = %v, want the hook's read written", got)
 	}
-	if whole := store.wholeVerse() - before; whole != 0 {
-		t.Fatalf("%d of the snapshots taken at start read the whole verse", whole)
+	if whole := store.wholeViff() - before; whole != 0 {
+		t.Fatalf("%d of the snapshots taken at start read the whole viff", whole)
 	}
 }
 
 // A HOOK READS WHAT THE RULE THAT SPAWNED ITS TASK READS. A rule replaced while its task runs by
 // one that reads other places does not narrow the old rule's hook away from its own reads:
-// the task's onDone reads git.verse.head whatever the rule now holding the name reads.
+// the task's onDone reads git.viff.head whatever the rule now holding the name reads.
 func TestAHookReadsWhatTheRuleThatSpawnedItReads(t *testing.T) {
 	for name, pending := range map[string]bool{"the replacement armed": false, "the replacement pending": true} {
 		t.Run(name, func(t *testing.T) {
@@ -194,13 +194,13 @@ func reviewReplacedWhileRunning(t *testing.T, pending bool) map[string]any {
   condition:
     subject: {path: "demo.pr.*", value: {stage: open}}
   action:
-    spawn: {agent: {name: verse}, prompt: review}
+    spawn: {agent: {name: viff}, prompt: review}
     onDone:
-      patch: {stage: reviewed, covering: !get-path {at: "git.verse.head", path: sha}}
+      patch: {stage: reviewed, covering: !get-path {at: "git.viff.head", path: sha}}
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.RefAt("git", "verse", "head"), entity.Obj{"sha": "bbb222"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "viff", "head"), entity.Obj{"sha": "bbb222"}.Payload())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.ObserveScoped(ctx)
@@ -252,13 +252,13 @@ func TestASequenceEditedWhileItsElementRunsReadsByTheRuleAsItStands(t *testing.T
     subject: {path: "demo.pr.*", value: {stage: open}}
   action:
     seq:
-    - spawn: {agent: {name: verse}, prompt: review}
+    - spawn: {agent: {name: viff}, prompt: review}
     onDone:
       patch: {stage: finished}
 `)); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
 	}
-	entitytest.Set(t, store, entity.RefAt("git", "verse", "head"), entity.Obj{"sha": "bbb222"}.Payload())
+	entitytest.Set(t, store, entity.RefAt("git", "viff", "head"), entity.Obj{"sha": "bbb222"}.Payload())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.ObserveScoped(ctx)
@@ -273,9 +273,9 @@ func TestASequenceEditedWhileItsElementRunsReadsByTheRuleAsItStands(t *testing.T
     subject: {path: "demo.pr.*", value: {stage: open}}
   action:
     seq:
-    - spawn: {agent: {name: verse}, prompt: review}
+    - spawn: {agent: {name: viff}, prompt: review}
     onDone:
-      patch: {stage: finished, covering: !get-path {at: "git.verse.head", path: sha}}
+      patch: {stage: finished, covering: !get-path {at: "git.viff.head", path: sha}}
 `)); err != nil {
 		t.Fatalf("InstallTrigger: %v", err)
 	}

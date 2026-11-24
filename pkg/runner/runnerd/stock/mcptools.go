@@ -9,15 +9,15 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner/runnerd/calltool"
-	"github.com/signadot/verse/pkg/runner/runnerd/claude"
-	"github.com/signadot/verse/pkg/runner/runnerd/codex"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/mcpclient"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner/runnerd/calltool"
+	"go.viff.dev/viff/pkg/runner/runnerd/claude"
+	"go.viff.dev/viff/pkg/runner/runnerd/codex"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/mcpclient"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // THE MCP SYSTEM'S TOOLS ARE A REMOTE SERVER'S, offered to a task as `mcp-<server>-<tool>`, one for
@@ -27,7 +27,7 @@ import (
 // task's autonomy and again at the runner, which makes the call with the server's credential
 // (delivery.OpMCPCall). The task never reaches a server.
 //
-// THE TOOL READS ITS STEP FROM THE REQUEST IT SENDS, through delivery.StepOf, as the verse tools do:
+// THE TOOL READS ITS STEP FROM THE REQUEST IT SENDS, through delivery.StepOf, as the viff tools do:
 // the arguments are written as the request's body, a JSON object, and read back into the step
 // from those bytes, as the runner reads them when the request arrives, so a row decides one step
 // on both sides. An agent's wire reads every number as a float (`3` arrives as 3.0), so a float
@@ -125,8 +125,8 @@ func listOf(cl *delivery.Client, server string) serverList {
 // every doer's list; one `takes` refuses, of that doer's; each logged. A tool left out is still
 // one the environment admits a call of; the call is decided at the runner, and the list decides
 // nothing.
-func mcpTools(cl *delivery.Client, lists []serverList, takes func(verse.Tool, map[string]any) error, log io.Writer) []verse.Tool {
-	var out []verse.Tool
+func mcpTools(cl *delivery.Client, lists []serverList, takes func(viff.Tool, map[string]any) error, log io.Writer) []viff.Tool {
+	var out []viff.Tool
 	for _, l := range lists {
 		for _, tl := range l.Tools {
 			if _, why := delivery.ReadCall(l.Server, tl.Name, "{}"); why != "" {
@@ -153,7 +153,7 @@ func mcpTools(cl *delivery.Client, lists []serverList, takes func(verse.Tool, ma
 
 // takesTool is what a doer refuses of a tool, given the tool and its schema; nil for one that
 // takes any. An agent refuses a name past what its model's API takes (each doer's TakesTool). A
-// script's calls go through verse-call-tool, which checks a call against the tool's parameters
+// script's calls go through viff-call-tool, which checks a call against the tool's parameters
 // and nothing else (calltool.Check): it refuses a parameter named what the binary reserves for
 // the whole input (calltool.Reserved), which would keep the socket from starting with the tool on
 // it, and a schema the parameters do not carry whole, since a call the schema admits would be
@@ -163,36 +163,36 @@ func mcpTools(cl *delivery.Client, lists []serverList, takes func(verse.Tool, ma
 // lack. A tool taking nothing (`{type: object, additionalProperties: false}`, as a server's
 // list_* tools are) has no properties and is taken: a call with no arguments passes the check,
 // and one with any is refused where the server would refuse it too.
-func takesTool(doer string) func(verse.Tool, map[string]any) error {
+func takesTool(doer string) func(viff.Tool, map[string]any) error {
 	switch doer {
 	case ScriptDoer:
-		return func(t verse.Tool, schema map[string]any) error {
+		return func(t viff.Tool, schema map[string]any) error {
 			if _, has := t.Params[calltool.Reserved]; has {
-				return fmt.Errorf("it has a parameter named %q, which verse-call-tool reserves for the whole input", calltool.Reserved)
+				return fmt.Errorf("it has a parameter named %q, which viff-call-tool reserves for the whole input", calltool.Reserved)
 			}
 			more, bounded := schema["additionalProperties"]
 			if bounded && more != false {
-				return fmt.Errorf("its schema takes arguments beside its properties (`additionalProperties`), which verse-call-tool refuses")
+				return fmt.Errorf("its schema takes arguments beside its properties (`additionalProperties`), which viff-call-tool refuses")
 			}
 			if _, has := schema["properties"]; !has && !bounded {
-				return fmt.Errorf("its schema names no properties and bounds none out, so it takes any object, and verse-call-tool checks a call against a tool's parameters")
+				return fmt.Errorf("its schema names no properties and bounds none out, so it takes any object, and viff-call-tool checks a call against a tool's parameters")
 			}
 			for _, name := range t.Required {
 				if _, has := t.Params[name]; !has {
-					return fmt.Errorf("its schema requires %q, which is none of its properties, so verse-call-tool refuses every call", name)
+					return fmt.Errorf("its schema requires %q, which is none of its properties, so viff-call-tool refuses every call", name)
 				}
 			}
 			return nil
 		}
 	case claude.Agent:
-		return func(t verse.Tool, _ map[string]any) error { return claude.TakesTool(t.Name) }
+		return func(t viff.Tool, _ map[string]any) error { return claude.TakesTool(t.Name) }
 	case codex.Agent:
-		return func(t verse.Tool, _ map[string]any) error { return codex.TakesTool(t.Name) }
+		return func(t viff.Tool, _ map[string]any) error { return codex.TakesTool(t.Name) }
 	}
-	return func(t verse.Tool, _ map[string]any) error { return verse.TakesTool(t.Name) }
+	return func(t viff.Tool, _ map[string]any) error { return viff.TakesTool(t.Name) }
 }
 
-// paramsOf is a tool's parameters as verse.Tool carries them, from its schema: the properties, and
+// paramsOf is a tool's parameters as viff.Tool carries them, from its schema: the properties, and
 // the names required. The third is why they cannot be, "" where they can: a `$ref` anywhere, or a
 // `oneOf`, `anyOf` or `allOf` at the top, which the properties alone would misread.
 func paramsOf(schema map[string]any) (map[string]any, []string, string) {
@@ -242,7 +242,7 @@ func hasRef(v any) bool {
 // mcpTool is one tool of a server as a task is offered it. Its Build and its Do read the step from
 // the request the use is (delivery.StepOf), so what the autonomy decides is what the runner
 // decides; a use that reads to no step is refused by the tool, and reaches the runner never.
-func mcpTool(cl *delivery.Client, server, tool, description string, params map[string]any, required []string) verse.Tool {
+func mcpTool(cl *delivery.Client, server, tool, description string, params map[string]any, required []string) viff.Tool {
 	read := func(in map[string]any) (delivery.Request, task.Step, string) {
 		req, err := mcpRequest(server, tool, in)
 		if err != nil {
@@ -251,7 +251,7 @@ func mcpTool(cl *delivery.Client, server, tool, description string, params map[s
 		st, why := delivery.StepOf(req)
 		return req, st, why
 	}
-	return verse.Tool{
+	return viff.Tool{
 		Name: mcpToolName(server, tool), Description: mcpDescription(server, description),
 		Params: params, Required: required,
 		Step: task.StepMCPCall,

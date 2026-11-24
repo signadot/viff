@@ -30,7 +30,7 @@ import (
 //     with a control response;
 //   - a CONTROL REQUEST Claude makes of this side (`can_use_tool`, before a tool call its
 //     permission mode does not already allow; `mcp_message`, a JSON-RPC message for the MCP
-//     server this side declared), which the driver answers after verse has decided;
+//     server this side declared), which the driver answers after viff has decided;
 //   - a MESSAGE of the session (`system`, `assistant`, `user`, `result`, `rate_limit_event`),
 //     which the driver narrates onto the read plane and reads the turn's end from.
 //
@@ -519,7 +519,7 @@ func (r *rpc) Err() string {
 // Control makes a control request and waits for its answer, or for ctx. params are the
 // request's fields beside its subtype.
 func (r *rpc) Control(ctx context.Context, subtype string, params map[string]any) (json.RawMessage, error) {
-	id := "verse-" + strconv.FormatInt(r.seq.Add(1), 10)
+	id := "viff-" + strconv.FormatInt(r.seq.Add(1), 10)
 	ch := make(chan controlResponse, 1)
 	r.pmu.Lock()
 	r.pending[id] = ch

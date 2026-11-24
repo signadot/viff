@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // fakeInstaller answers installs without a cellar: the version asked or the candidate, the name

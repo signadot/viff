@@ -9,7 +9,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: codex-runner-state
-  labels: {app: verse, tier: runners, runner: codex}
+  labels: {app: viff, tier: runners, runner: codex}
 spec:
   accessModes:
   - ReadWriteOnce

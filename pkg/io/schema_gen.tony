@@ -4,26 +4,26 @@ context:
 define:
   at: .[string]
 signature:
-  name: verse-iod-own
+  name: viff-iod-own
 ---
 context:
 - tony-format/context
 define:
-  owns: .[array(verse-iod-own)]
+  owns: .[array(viff-iod-own)]
   root: .[string]
 signature:
-  name: verse-iod-says
+  name: viff-iod-says
 ---
 context:
 - tony-format/context
 define:
   at: .[string]
   reach: .[string]
-  says: .[nullable(verse-iod-says)]
+  says: .[nullable(viff-iod-says)]
   url: .[string]
   why: .[string]
 signature:
-  name: verse-iod-check
+  name: viff-iod-check
 ---
 context:
 - tony-format/context
@@ -31,33 +31,33 @@ define:
   error: .[string]
   when: .[nullable(string)]
 signature:
-  name: verse-iod-failure
+  name: viff-iod-failure
 ---
 context:
 - tony-format/context
 define:
   as: .[string]
-  lastError: .[nullable(verse-iod-failure)]
+  lastError: .[nullable(viff-iod-failure)]
   places: .[array(string)]
   requesters: .[array(string)]
 signature:
-  name: verse-iod-out
+  name: viff-iod-out
 ---
 context:
 - tony-format/context
 define:
   dial-in: .[string]
   dir: .[string]
-  lastError: .[nullable(verse-iod-failure)]
+  lastError: .[nullable(viff-iod-failure)]
   lastReflect: .[string]
   name: .[string]
-  out: .[nullable(verse-iod-out)]
-  owns: .[array(verse-iod-own)]
+  out: .[nullable(viff-iod-out)]
+  owns: .[array(viff-iod-own)]
   root: .[string]
   scope: .[string]
   url: .[string]
 signature:
-  name: verse-installed-iod
+  name: viff-installed-iod
 ---
 context:
 - tony-format/context
@@ -66,7 +66,7 @@ define:
   error: .[string]
   failed: .[int]
 signature:
-  name: verse-iod-pass
+  name: viff-iod-pass
 ---
 context:
 - tony-format/context
@@ -75,7 +75,7 @@ define:
   failed: .[int]
   lastPass: .[string]
 signature:
-  name: verse-iod-report
+  name: viff-iod-report
 ---
 context:
 - tony-format/context
@@ -83,14 +83,14 @@ define:
   at: .[string]
   dial-in: .[string]
   dir: .[string]
-  lastError: .[nullable(verse-iod-failure)]
+  lastError: .[nullable(viff-iod-failure)]
   lastPass: .[string]
   lastReflect: .[string]
   name: .[string]
-  out: .[nullable(verse-iod-out)]
-  owns: .[array(verse-iod-own)]
+  out: .[nullable(viff-iod-out)]
+  owns: .[array(viff-iod-own)]
   reach: .[string]
-  report: .[nullable(verse-iod-report)]
+  report: .[nullable(viff-iod-report)]
   root: .[string]
   running: .[nullable(bool)]
   scope: .[string]
@@ -99,4 +99,4 @@ define:
   warning: .[string]
   why: .[string]
 signature:
-  name: verse-iod-row
+  name: viff-iod-row

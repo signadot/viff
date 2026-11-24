@@ -15,11 +15,11 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // AddTrigger installs a rule into the charter, refusing a name in use: one rule at a time,
@@ -241,8 +241,8 @@ func (e *Engine) vet(t Trigger, as string, runners Runners) (*cause, error) {
 	// watching policy change. Anybody else's is told so here rather than left to wonder.
 	if entity.PolicyOf(e.store) != nil {
 		for _, st := range t.reads() {
-			if p := st.Path(); len(p) >= 2 && p[0] == entity.VerseRoot && p[1] == entity.PermsSystem {
-				ok, err := entity.Holds(e.store, as, entity.Read, entity.VerseRef(entity.PermsSystem))
+			if p := st.Path(); len(p) >= 2 && p[0] == entity.ViffRoot && p[1] == entity.PermsSystem {
+				ok, err := entity.Holds(e.store, as, entity.Read, entity.ViffRef(entity.PermsSystem))
 				if err != nil {
 					holdFor(cause{causeRead, err.Error()})
 				} else if !ok {
@@ -306,7 +306,7 @@ func (e *Engine) vet(t Trigger, as string, runners Runners) (*cause, error) {
 		}
 	}
 	// A RULE THAT DOES NOTHING IS REFUSED. It installed, reported "installed 1 trigger(s)",
-	// rendered back with `action: {}`, and then watched its subtree for the life of the verse
+	// rendered back with `action: {}`, and then watched its subtree for the life of the viff
 	// without ever writing anything (git-issue b2g9hsnfh12ks5vqg9n0).
 	//
 	// It is the failure every refusal around it exists to prevent — a rule that looks installed
@@ -367,7 +367,7 @@ func (e *Engine) vet(t Trigger, as string, runners Runners) (*cause, error) {
 	// some other way should be told about THAT — and a rule acting outside the level it declared
 	// is another way, and a more specific one.
 	//
-	// VERSE'S OWN HALF FIRST, which no rule but the system's writes (checkReserved): it is the
+	// VIFF'S OWN HALF FIRST, which no rule but the system's writes (checkReserved): it is the
 	// more specific answer, and a rule told only that its derive needs a level would be given
 	// one and told this next.
 	if err := e.checkReserved(t, as); err != nil {
@@ -576,18 +576,18 @@ const ChainSep = "@"
 // AtSep and ScopeSep bound WHICH ENGINE minted an id from the chain it was minted for, in every
 // id a firing mints — its task, its gate question. A rule is (scope,
 // charter address, name), and names are unique only within an engine, while every engine of a
-// verse shares one runtime and one question registry: without the two, baseline's `review` and
+// viff shares one runtime and one question registry: without the two, baseline's `review` and
 // a package's `review` about one subject would spawn under one task id and wait on one question.
 //
 //	review.onDone@demo.pr.1                 baseline's rule
-//	verse-dev.drift:claim@git.verse.head    a package's, at its address
+//	viff-dev.drift:claim@git.viff.head    a package's, at its address
 //	me::review@demo.pr.1                    scope me's
 //
 // Each is absent when empty, so baseline's ids read as they always have. Neither character can
 // stand in a chain (validTriggerName refuses ':' and a descent appends a Go field name), and the
 // scope and the address are rendered as tokens with none of ':', '@' or '~' (ownerToken), so the
 // first "::" bounds the scope, the next ':' the address, and the first '@' the chain: the
-// composition is injective, and the spellings `verse flow --charter` reads share it.
+// composition is injective, and the spellings `viff flow --charter` reads share it.
 const (
 	AtSep    = ":"
 	ScopeSep = "::"
@@ -742,7 +742,7 @@ func checkGates(node *ir.Node) error {
 // answers for them.
 const retiredResolver = "retired: nothing names a resolver to answer a rule's or a run's gates. A gate " +
 	"names its `answerers`, and whoever is asked grants the resolver that answers for them " +
-	"(`verse resolver grant`)"
+	"(`viff resolver grant`)"
 
 // checkAction is CheckFields for an action, recursing where an action nests one: a sequence's
 // elements and the four completion hooks, each of which is a full action.
@@ -818,7 +818,7 @@ func checkFields(node *ir.Node, what string, known map[string]bool, descend func
 // hashed where that is lossy. A derived entity is an ENTITY: it can simply be deeper. So it
 // keeps the subject's segments exactly as they are, which means the address of a derivation
 // carries what it is about faithfully, where the flattened id could only carry a lossy trace of
-// it (the reason the engine also writes `verse.meta.derivedFrom`).
+// it (the reason the engine also writes `@sys.meta.derivedFrom`).
 //
 // THE CHAIN IS EXACTLY ONE SEGMENT, and that is what keeps the composition injective: the
 // boundary between the rule and the subject is a POSITION rather than a character, so nothing
@@ -903,7 +903,7 @@ func gateID(owner, trigger, gate string, subjects []entity.Ref) string {
 	// Dotted, like every other address-shaped name: it is not parsed back as one, but a
 	// question id that reads as an address in a spelling nothing else uses is a second grammar
 	// growing where nobody meant to plant one.
-	return fmt.Sprintf("%s%s.trigger.%s.%s%s%s", owner, entity.VerseRoot,
+	return fmt.Sprintf("%s%s.trigger.%s.%s%s%s", owner, entity.ViffRoot,
 		entity.SafeSeg(trigger), entity.SafeSeg(gate), task.GateSep, entity.SegHash(segs))
 }
 

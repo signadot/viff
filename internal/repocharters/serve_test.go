@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/codec"
 )
 
-// tester is who the tests act as: a user verse knows, as the CLI names one.
+// tester is who the tests act as: a user viff knows, as the CLI names one.
 const tester = "tester@example.com"
 
 // postAs posts body as the principal as, as the CLI does with its config's `user:`.

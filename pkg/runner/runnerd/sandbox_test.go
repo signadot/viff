@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
 )
 
 // An unconfined process has the runner's network, so Unconfined provides an open network and

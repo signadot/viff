@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A fan-out installs, in both layouts. The layout half is not decoration: a tag is a
@@ -33,7 +33,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {agent: {name: verse}, prompt: "review $[sha]"}
+    spawn: {agent: {name: viff}, prompt: "review $[sha]"}
     onDone:
       patch: {reviewed: done}
       derive:
@@ -59,7 +59,7 @@ func TestEachInstallsInEitherLayout(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {agent: {name: verse}, prompt: "review $[sha]"}
+    spawn: {agent: {name: viff}, prompt: "review $[sha]"}
     onDone:
       patch: {reviewed: done}
       derive: [{path: "drift.finding", value: !each {over: .[data.findings], key: .[item.symbol], value: {symbol: .[item.symbol]}}}]
@@ -122,7 +122,7 @@ func TestEachRefusals(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {agent: {name: verse}, prompt: "x"}
+    spawn: {agent: {name: viff}, prompt: "x"}
     onDone:
       patch: {reviewed: done}
       derive: [{path: "drift.finding", value: !each ` + c.derive + `}]
@@ -201,7 +201,7 @@ func TestEachInAHookFacesTheLevelCheck(t *testing.T) {
   condition:
     subject: {path: "drift.head.*", value: {reviewed: pending}}
   action:
-    spawn: {agent: {name: verse}, prompt: "x"}
+    spawn: {agent: {name: viff}, prompt: "x"}
     onDone:
       patch: {reviewed: done}
       derive: [{path: "drift.finding", value: !each {over: .[data.f], key: .[item.k], value: {a: .[item.k]}}}]
@@ -259,7 +259,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 		t.Fatalf("does not install: %v", err)
 	}
 
-	subj := entity.RefAt("git", "commit", "verse/abc")
+	subj := entity.RefAt("git", "commit", "viff/abc")
 	fire := func(t *testing.T, findings string) error {
 		t.Helper()
 		payload, err := codec.ParseNode([]byte(`{reviewed: pending, f: `+findings+`}`), codec.Tony)
@@ -299,7 +299,7 @@ func TestEachDerivesOnePerElement(t *testing.T) {
 			t.Errorf("%s carries %v", e.Ref, obj)
 		}
 		// The ADDRESS carries (rule, subject) — a segment each, verbatim, rather than one id with
-		// them flattened into it. Flattening makes `verse/abc` into `verse_abc`; a segment holds
+		// them flattened into it. Flattening makes `viff/abc` into `viff_abc`; a segment holds
 		// the slash, so the subject reads back as itself.
 		want := append([]string{"drift", "finding"}, deriveSegs("fan", subj)...)
 		if got := e.Ref.Segs(); len(got) != len(want)+1 {
@@ -384,7 +384,7 @@ func TestEachRefusesAnElementWithNoKey(t *testing.T) {
 	if err := eng.addTrigger(trigs[0], "", RunnersChecked); err != nil {
 		t.Fatalf("does not install: %v", err)
 	}
-	subj := entity.RefAt("git", "commit", "verse/abc")
+	subj := entity.RefAt("git", "commit", "viff/abc")
 	payload, err := codec.ParseNode([]byte(`{reviewed: pending, f: [{sym: "entity.a", was: x} {was: y} {sym: "entity.c", was: z}]}`), codec.Tony)
 	if err != nil {
 		t.Fatal(err)
@@ -456,7 +456,7 @@ func TestEachOverATaskAnswer(t *testing.T) {
   condition:
     subject: {path: "git.commit.*", value: {reviewed: pending}}
   action:
-    spawn: {agent: {name: verse}, prompt: "review $[sha]"}
+    spawn: {agent: {name: viff}, prompt: "review $[sha]"}
     onDone:
       patch: {reviewed: done}
       derive:
@@ -491,7 +491,7 @@ func TestEachOverATaskAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subj := entity.RefAt("git", "commit", "verse/abc")
+	subj := entity.RefAt("git", "commit", "viff/abc")
 	hook := trigs[0].Action.OnDone
 	if _, err := hook.applyOne("review.onDone", occasion{ev: entity.Event{Ref: subj, To: answer}}, subj, eng, fromCause); err != nil {
 		t.Fatalf("the hook failed: %v", err)
@@ -504,7 +504,7 @@ func TestEachOverATaskAnswer(t *testing.T) {
 	}
 	for _, e := range got {
 		obj := entity.ToObj(e.Payload)
-		if obj["about"] != "verse/abc" {
+		if obj["about"] != "viff/abc" {
 			t.Errorf("%s lost the subject it is about: %v", e.Ref, obj)
 		}
 		if obj["says"] == nil {
@@ -581,7 +581,7 @@ func TestLedgerReachesThePrompt(t *testing.T) {
 		t.Fatalf("gather does not install: %v", err)
 	}
 
-	subj := entity.RefAt("drift", "head", "verse")
+	subj := entity.RefAt("drift", "head", "viff")
 	head, _ := codec.ParseNode([]byte(`{sha: abc, reviewed: pending}`), codec.Tony)
 	if _, _, err := store.Write(entity.Write{At: subj.At(), Value: head}); err != nil {
 		t.Fatal(err)

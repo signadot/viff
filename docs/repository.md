@@ -36,7 +36,7 @@ the git issues may be partial.  Where they exist, they track
 - state of work (see branches below)
 
 An issue travels with `git issue push`/`pull`, independent of branch rebases, merges etc
-and is reflected into verse like any other issue.
+and is reflected into viff like any other issue.
 
 ## Branches
 
@@ -45,20 +45,20 @@ and is reflected into verse like any other issue.
 `main` is ff-only and in normal operation is used for deployments to shared
 instances.  Intended to reflect group disposition.
 
-### `verse/*`
+### `viff/*`
 
-`verse/*` branches are expected to contain shared work.
+`viff/*` branches are expected to contain shared work.
 
-`verse/*` branches are articulation points for merging to main, as
+`viff/*` branches are articulation points for merging to main, as
 how work lands is generally iterative, eg final docs land after implementation,
 prerequisites that fix defects land before, the branch is rebased on `main` or merges
 `main` to re-sync work.  All of these are articulation points with `main`.
 
-Each `verse/*` branch is encouraged to have a git issue tracking its status: titled with the
+Each `viff/*` branch is encouraged to have a git issue tracking its status: titled with the
 branch name and labelled `branch`.
 
 ```
-git issue create verse/<name>        # once, when the branch is pushed
+git issue create viff/<name>        # once, when the branch is pushed
 git issue label <id> branch
 ```
 
@@ -70,9 +70,9 @@ git issue comment <id> "<status>"    # at each articulation point
 git issue link <id> <commit>
 ```
 
-Show git issues for `verse/*` branches.
+Show git issues for `viff/*` branches.
 ```
-git issue list --label branch        # verse/* branches using this mechanism and their status
+git issue list --label branch        # viff/* branches using this mechanism and their status
 ```
 
 ## Commits

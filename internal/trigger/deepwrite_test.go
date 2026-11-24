@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A trigger reads the ENTITY, not the write that touched it. A when over two fields must
@@ -67,7 +67,7 @@ func TestDeepWriteFiresAWholeEntityTrigger(t *testing.T) {
 }
 
 // The same, on the PRODUCTION path: a per-trigger subtree watch (ObserveScoped), which is
-// what versed runs. The level state has to come from the same place there — the subtree
+// what viffd runs. The level state has to come from the same place there — the subtree
 // document, seeded by the watch's initial State — and a field written before the trigger was
 // installed is part of it.
 //

@@ -43,7 +43,7 @@ the environment gives:
 
 ```tony
 spawn:
-  agent: {name: verse}
+  agent: {name: viff}
   prompt: "Make the failing check on $[subject.ref] pass."
   environment:
     systems:
@@ -53,8 +53,8 @@ spawn:
         from: main
         fetch: {}
         push:
-        - {ref: !glob "refs/heads/verse/auto/*", exists: false}
-        - {ref: !glob "refs/heads/verse/auto/*", own: true}
+        - {ref: !glob "refs/heads/viff/auto/*", exists: false}
+        - {ref: !glob "refs/heads/viff/auto/*", own: true}
   autonomy:
   - {then: allow}
 ```
@@ -63,11 +63,11 @@ Two of a push's fields are the runner's to fill, from the forge: `exists`, wheth
 there before the push, and `own`, whether its tip is a commit this task made (every commit a
 task delivers carries its trailers). They are how a shape keeps a task to its own branches: the
 first shape above gives a branch the task makes, the second one it made, and another task's
-`verse/auto/*` branch is neither, so a push onto it, a rewrite of it or its deletion is outside
+`viff/auto/*` branch is neither, so a push onto it, a rewrite of it or its deletion is outside
 the environment. A push to `main` is too, since no shape names it. A shape with no `exists` or
-`own` gives by the ref alone, so `{ref: !glob "refs/heads/verse/auto/*"}` lets a task push onto every
+`own` gives by the ref alone, so `{ref: !glob "refs/heads/viff/auto/*"}` lets a task push onto every
 task's branch. A task that retires the branches that landed is given
-`{ref: !glob "refs/heads/verse/auto/*", delete: true}` for that reason: the branches it deletes are
+`{ref: !glob "refs/heads/viff/auto/*", delete: true}` for that reason: the branches it deletes are
 other tasks'.
 
 A `git` block that names no verb gives every verb of git, any call: every push, forced or
@@ -85,9 +85,9 @@ case, `from` is the branch the checkout started at, and `ref` is a full ref such
 `refs/heads/main`, however the spawn wrote them. A pattern on a field is a tony one:
 `!glob "refs/heads/*"` is every branch, since a glob's `*` stays within one `/`, and
 `!regexp "^refs/"` is every ref. A script calls the same
-tools with `verse-call-tool`, and the same rows decide them. The trailers a commit must end with
-are in its environment as `VERSE_TRAILERS`, the lines a commit message's last paragraph holds, so
-it commits with `git commit -m <subject> -m "$VERSE_TRAILERS"`. A trailer naming another task or
+tools with `viff-call-tool`, and the same rows decide them. The trailers a commit must end with
+are in its environment as `VIFF_TRAILERS`, the lines a commit message's last paragraph holds, so
+it commits with `git commit -m <subject> -m "$VIFF_TRAILERS"`. A trailer naming another task or
 person is refused at the push.
 
 ## Where the credential lives
@@ -103,7 +103,7 @@ each doer whose tasks may use it. A repository on another forge than the runner'
 
 ```tony
 repos:
-  mirrors: /var/lib/verse-runner/mirrors
+  mirrors: /var/lib/viff-runner/mirrors
 agents:
   claude:
     systems:
@@ -111,12 +111,12 @@ agents:
         ceiling:
         - repo: !regexp "^github\\.com/acme/"
           fetch: {}
-          push: {ref: !regexp "^refs/heads/verse/"}
+          push: {ref: !regexp "^refs/heads/viff/"}
 ```
 
-Verse refuses to install a spawn whose environment gives a push beyond the ceiling, every shape
+Viff refuses to install a spawn whose environment gives a push beyond the ceiling, every shape
 within one of the ceiling's, saying what the ceiling gives. A ceiling lists what it allows, so
 `!regexp "^refs/heads/release/"` is beyond this one, written nowhere. A row wider than the environment installs:
 what is fixed at install is that the task has `git.push` at all, and each push is decided at the
 act, by the row and then by the ceiling, which the runner reads again
-([the verse runner](../reference/runnerd.md#what-it-offers)).
+([the viff runner](../reference/runnerd.md#what-it-offers)).

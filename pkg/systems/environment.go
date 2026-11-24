@@ -12,7 +12,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/exprs"
+	"go.viff.dev/viff/pkg/exprs"
 )
 
 // Environment is what a spawn's run can reach, and the variables its shell is given. It is

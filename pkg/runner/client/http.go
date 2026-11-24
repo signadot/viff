@@ -1,6 +1,6 @@
-// Package client is verse's HTTP client of a runner: an httpRunner drives a runner at a base URL
+// Package client is viff's HTTP client of a runner: an httpRunner drives a runner at a base URL
 // over the Runner API (package runner), so the engine runs a task wherever a runner serves it:
-// beside verse, on another host, on k8s. See docs/task-control.md.
+// beside viff, on another host, on k8s. See docs/task-control.md.
 package client
 
 import (
@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // ControlTimeout bounds every non-streaming call to a runner. A remote that accepts the
@@ -27,7 +27,7 @@ import (
 // Generous rather than tight. It is a backstop against a hung peer, not a latency budget.
 const ControlTimeout = 30 * time.Second
 
-// Launcher is a runner verse can start work on: a task.Runner, and Launch. Launch is here rather
+// Launcher is a runner viff can start work on: a task.Runner, and Launch. Launch is here rather
 // than on task.Runner because the launch is the runner's type (package runner), which task does
 // not import.
 type Launcher interface {
@@ -84,11 +84,11 @@ func (p *httpRunner) Launch(l runner.Launch) task.Handle {
 	}
 	defer resp.Body.Close()
 	// A refusal is not an acceptance. The status used to be discarded here, so a runner
-	// answering 400, 403 or 501 got the same remote handle as one that took the work: versed
+	// answering 400, 403 or 501 got the same remote handle as one that took the work: viffd
 	// mirrored a task:instance for it and the flow waited on a task that was never
 	// started, so the refusal surfaced as a hang. The runner deciding it cannot host this
 	// launch is the DEFAULT way a runner declines — it is the whole reason a runner may refuse
-	// rather than verse having to detect what it is — and that answer is inert unless it is
+	// rather than viff having to detect what it is — and that answer is inert unless it is
 	// read (git-issue 6mnmxj6mh12krz3ae1n0).
 	if err := statusErr(resp); err != nil {
 		return task.FailedHandle(fmt.Sprintf("launch refused by %s: %s", p.base, err))
@@ -106,15 +106,15 @@ func (p *httpRunner) Attach(id string) task.Handle {
 // can reconstruct it.
 func (p *httpRunner) Ref() string { return p.base }
 
-// ListTasks / TaskSnapshot let versed union a remote runner's tasks into the
+// ListTasks / TaskSnapshot let viffd union a remote runner's tasks into the
 // unified `task list`/`get` (implementing task.Lister). Each call
 // is bounded by a short timeout, so an unreachable remote fails fast rather than hanging the
-// list. The verse-facing contract already serves GET /tasks and GET /tasks/{id}, so
+// list. The viff-facing contract already serves GET /tasks and GET /tasks/{id}, so
 // this is a thin client.
 //
 // It returns an error because nil could not carry one. It used to report nil for a runner with
 // no tasks, for one that answered 500, and for one that never answered at all — and the
-// comment here claimed the mirror covered the difference. It does not: versed reads the mirror
+// comment here claimed the mirror covered the difference. It does not: viffd reads the mirror
 // as a scope-membership FILTER over what the runner reported, not as a fallback source, so an
 // unreachable runner's tasks were absent from the list and the response was a clean 200
 // that was simply short. The same shape as the discarded launch status above, on the read plane
@@ -138,7 +138,7 @@ func (p *httpRunner) ListTasks() ([]task.Snapshot, error) {
 	// Not statusErr: that reads a status against ONE task, where 404 means the far side
 	// has never heard of that id. On the collection there is no id to be wrong about, so a
 	// 404 says the same thing 501 does — whatever is at this URL, it does not serve the
-	// verse-facing runner contract.
+	// viff-facing runner contract.
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented {
 		return nil, fmt.Errorf("%w: %s serves no task list", task.ErrUnsupported, p.base)
 	}
@@ -152,7 +152,7 @@ func (p *httpRunner) ListTasks() ([]task.Snapshot, error) {
 	}
 	var out []task.Snapshot
 	if err := decodeResp(resp, &out); err != nil {
-		// A body that does not decode is not an empty verse. Discarding this error is how a
+		// A body that does not decode is not an empty viff. Discarding this error is how a
 		// format drift on either end reads as a runner that has nothing running.
 		return nil, fmt.Errorf("%w: %s answered an undecodable task list: %w",
 			task.ErrUnsupported, p.base, err)
@@ -530,6 +530,6 @@ var (
 	// The handle a mirror keeps a task's lease through.
 	_ task.Accepting = (*remoteHandle)(nil)
 	// Asserted here so a change to Lister is a compile error in this file rather than a
-	// type assertion that quietly starts reporting false in versed.
+	// type assertion that quietly starts reporting false in viffd.
 	_ task.Lister = (*httpRunner)(nil)
 )

@@ -26,7 +26,7 @@ import (
 //
 // The compaction is provoked through go-tony's storage API directly (SwitchDLog +
 // Compact with a cutoff older than every commit). That is the only way to create the
-// condition; the ASSERTION stays on verse's own observable behaviour — what Since returns.
+// condition; the ASSERTION stays on viff's own observable behaviour — what Since returns.
 func TestSinceBelowReplayFloorResyncs(t *testing.T) {
 	store, err := storage.Open(t.TempDir(), nil)
 	if err != nil {
@@ -42,7 +42,7 @@ func TestSinceBelowReplayFloorResyncs(t *testing.T) {
 	// Through docd, as production does — a below-floor replay is a base-routed watch, so
 	// the terminal event has to survive the proxy as well as the client library.
 	docd := startDocd(t, srv.TCPAddr())
-	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "verse-test"})
+	s, err := OpenLogdStore(LogdConfig{Addr: docd.ClientTCPAddr(), ClientID: "viff-test"})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}

@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // A `when` over task:instance SWEEPS its subject: the firing acts on every entity the
@@ -38,7 +38,7 @@ func TestCompletionWhenSweepsItsSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reviewed",
 		Condition: Condition{
-			When:    MatchWhen(Match{"path": pathOf("verse", "task", "instance", "*"), "value": map[string]any{"status": "done"}}),
+			When:    MatchWhen(Match{"path": pathOf("mirror", "task", "instance", "*"), "value": map[string]any{"status": "done"}}),
 			Subject: mm("demo.pr.*"),
 		},
 		Action: Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
@@ -84,12 +84,12 @@ func TestSubjectBindingIsTheResolvedSubject(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "on-complete",
 		Condition: Condition{
-			When: MatchWhen(Match{"path": pathOf("verse", "task", "instance", "*"), "value": map[string]any{"status": "done"}}),
+			When: MatchWhen(Match{"path": pathOf("mirror", "task", "instance", "*"), "value": map[string]any{"status": "done"}}),
 			// A predicate the action advances past, so the rule has an end state.
 			Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "reviewing"}},
 		},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "follow up on $[subject.ref]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "follow up on $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "followed"}.Payload()},
 		},
 	}); err != nil {
@@ -136,7 +136,7 @@ func TestUnresolvableSubjectDoesNotFire(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "needs-flow",
 		Condition: Condition{
-			When:    MatchWhen(mm("verse.task.instance.*")),
+			When:    MatchWhen(mm("mirror.task.instance.*")),
 			Subject: mm("demo.pr.*"),
 		},
 		Gates:  []Gate{{Mode: "ask"}},

@@ -4,11 +4,11 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // A RULE IS NOT WOKEN BY ITS OWN BOOKKEEPING. What the engine records about a rule on a subject,
-// verse.charter.<rule> (a sequence's progress, a failed hook's record), is a fact about the
+// @sys.charter.<rule> (a sequence's progress, a failed hook's record), is a fact about the
 // rule's running, not a change to the subject the rule is about. A commit whose only change to
 // what the rule reads is there does not fire that rule. Another rule may match on it ("when
 // fix's hook is lost, ask a person"), and is woken by it as by any change.
@@ -20,14 +20,14 @@ import (
 // no longer holds), fail again and write again, for as long as the hook fails.
 
 // onlyOwnBookkeeping reports whether every change commit c made to what t reads is under
-// verse.charter.<t> on some entity, so the rule has nothing new to evaluate. now is the rule's
+// @sys.charter.<t> on some entity, so the rule has nothing new to evaluate. now is the rule's
 // snapshot at c.
 //
 // The commit's delta cannot answer this alone: a subject is written whole (entity.Modify), so a
 // delta that records a hook's failure also names every field the subject already had. So the
 // delta only says whether the question is worth asking, and the answer is the rule's reads at
 // the commit before, compared with now, the rule's own bookkeeping left out. A commit that does
-// not reach verse.charter.<t> costs nothing more; one that does costs a read at the commit
+// not reach @sys.charter.<t> costs nothing more; one that does costs a read at the commit
 // before, and being written whole, every write of a subject with t's bookkeeping on it does. A
 // scoped watch's commit carries its delta as the root watch's does (entity's pump), so the cost
 // is the same under either observation. Where that read is refused (history the store no longer holds), the commit is taken
@@ -58,7 +58,7 @@ func (e *Engine) onlyOwnBookkeeping(t Trigger, c entity.Commit, store entity.Sto
 }
 
 // ownBookkeepingPattern is where the rule's bookkeeping stands on its subjects:
-// <subject path>.verse.charter.<rule>. nil where the rule has no subject path to put it under.
+// <subject path>.@sys.charter.<rule>. nil where the rule has no subject path to put it under.
 //
 // Built from the subject's segments as patterns, so each keeps what it is: a `..` is a descent
 // (a subject at any depth beneath it), a `*` or any other operator a field of any name, and a
@@ -88,7 +88,7 @@ func ownBookkeepingPattern(t Trigger) *kpath.KPath {
 			add(&kpath.KPath{Field: &lit})
 		}
 	}
-	for _, name := range []string{VerseRoot, CharterKey, t.Name} {
+	for _, name := range []string{ViffRoot, CharterKey, t.Name} {
 		name := name
 		add(&kpath.KPath{Field: &name})
 	}
@@ -96,10 +96,10 @@ func ownBookkeepingPattern(t Trigger) *kpath.KPath {
 }
 
 // sameBesides reports whether two nodes at path are the same, leaving out every
-// verse.charter.<rule> beneath an entity. An object holding nothing but what is left out is the
+// @sys.charter.<rule> beneath an entity. An object holding nothing but what is left out is the
 // same as no object: removing a rule's record can leave its empty parents behind, or not.
 func sameBesides(a, b *ir.Node, path []string, rule string) bool {
-	if n := len(path); n > 3 && path[n-3] == VerseRoot && path[n-2] == CharterKey && path[n-1] == rule {
+	if n := len(path); n > 3 && path[n-3] == ViffRoot && path[n-2] == CharterKey && path[n-1] == rule {
 		return true
 	}
 	objectOrNone := func(n *ir.Node) bool { return n == nil || (n.Type == ir.ObjectType && n.Tag == "") }

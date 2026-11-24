@@ -151,8 +151,8 @@ const DefaultWatchSlots = 4
 // behind it. They are few — the loaded view's two, over the perms mirror — and their pictures
 // are small; they open ahead of the line, and the line is sized with room for them.
 //
-// OFF is a line with no slots (LogdConfig.WatchSlots below zero; versed reads it from
-// VERSE_WATCH_SLOTS): take and give do nothing, and watches open as they are asked for.
+// OFF is a line with no slots (LogdConfig.WatchSlots below zero; viffd reads it from
+// VIFF_WATCH_SLOTS): take and give do nothing, and watches open as they are asked for.
 type watchGate struct {
 	slots    chan struct{} // nil when off
 	waiting  atomic.Int64  // watches in line

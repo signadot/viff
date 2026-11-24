@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // heard is what a stub server was told about the request.
@@ -230,10 +230,10 @@ func TestNewStampsThisBuildAndThePrincipal(t *testing.T) {
 }
 
 // The path is escaped, so an id carrying a "#" 404s instead of silently truncating to the wrong
-// route; the scope and the wire format ride every request; json, which verse does not render,
+// route; the scope and the wire format ride every request; json, which viff does not render,
 // falls back to tony.
 func TestURLEscapesAndCarriesScopeAndWire(t *testing.T) {
-	c := &client.Client{Addr: "verse:9797", Scope: "dev", Wire: codec.JSON}
+	c := &client.Client{Addr: "viff:9797", Scope: "dev", Wire: codec.JSON}
 	u, err := url.Parse(c.URL("/tasks/run-x#d1/events", url.Values{"since": {"7"}}))
 	if err != nil {
 		t.Fatal(err)

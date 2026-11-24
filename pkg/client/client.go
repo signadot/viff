@@ -1,7 +1,7 @@
-// Package client is how a program outside the verse talks to one: the operator API over HTTP, in
+// Package client is how a program outside the viff talks to one: the operator API over HTTP, in
 // the wire format, stamped with who is asking and which contract it speaks.
 //
-// The `verse` CLI is one such program and so is a connector writing back what it did, a runner or
+// The `viff` CLI is one such program and so is a connector writing back what it did, a runner or
 // a resolver; each builds a Client with the address it was given and the principal it acts as, and
 // every request it makes goes through the same URL building, format negotiation and stamping.
 package client
@@ -18,20 +18,20 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/codec"
 )
 
-// Client is one verse's operator API, seen from outside it.
+// Client is one viff's operator API, seen from outside it.
 type Client struct {
-	// Addr is the verse's host:port, the spelling VERSE_ADDR and `-addr` take.
+	// Addr is the viff's host:port, the spelling VIFF_ADDR and `-addr` take.
 	Addr string
 	// Scope, when set, is folded into every request: a copy-on-write overlay isolated
 	// from baseline.
 	Scope string
 	// Wire is the format request bodies are RENDERED in, and what the format parameter tells the
 	// server to read and answer in. The zero value is tony, the one format that carries a tagged
-	// document through unflattened; a format verse cannot render (json) falls back to it.
+	// document through unflattened; a format viff cannot render (json) falls back to it.
 	Wire codec.Format
 	// Accept is the response format asked for, with tony as the fallback. The zero value is tony.
 	Accept codec.Format
@@ -62,7 +62,7 @@ func (c *Client) request(method, u string, body io.Reader) (*http.Request, error
 	return http.NewRequestWithContext(c.context(), method, u, body)
 }
 
-// New is the Client for a program acting as principal against the verse at addr, stamping this
+// New is the Client for a program acting as principal against the viff at addr, stamping this
 // build's contract version and that principal on every request.
 func New(addr, principal string) *Client {
 	return &Client{
@@ -85,8 +85,8 @@ func NewAs(addr, principal string, bearer BearerFunc) *Client {
 
 // NewRelay is the Client for a verified program acting for a person it identified: it carries the
 // program's bearer, the person, and the person's account in the system the program speaks for,
-// `<provider>:<id>`, and versed admits the request as the person through that account's binding.
-// With no bearer the person and the account are asserted, which a verse that verifies people
+// `<provider>:<id>`, and viffd admits the request as the person through that account's binding.
+// With no bearer the person and the account are asserted, which a viff that verifies people
 // refuses. With no account there is nothing to relay through, so the program asserts the
 // principal and sends no bearer, as a program with none does: a bearer beside a bare name would
 // make the request the program's own.
@@ -232,7 +232,7 @@ func (c *Client) send(method, u string, body []byte) (*http.Response, error) {
 
 // SetFormatHeaders declares what is being sent and what is wanted back. The Accept lists tony as a
 // fallback, so a server that cannot produce the preferred format still answers with something this
-// client reads rather than failing the negotiation. It never names json, the one rendering verse
+// client reads rather than failing the negotiation. It never names json, the one rendering viff
 // refuses.
 func (c *Client) SetFormatHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", codec.MediaType(c.wire()))
@@ -245,7 +245,7 @@ func (c *Client) SetFormatHeaders(req *http.Request) {
 
 // StatusError is the refusal a request came back with, in the words the server used.
 //
-// A verse refusal is a SENTENCE — "stratum X still holds 3 rules, removing it would leave them
+// A viff refusal is a SENTENCE — "stratum X still holds 3 rules, removing it would leave them
 // installed and unchecked" — written into the response body on purpose, and reporting only
 // `400 Bad Request` throws away the whole of what the server said. The status is the fallback, for
 // a server that refused without saying anything.

@@ -15,7 +15,7 @@ import (
 func TestSegsRoundTripsAnIDHoldingColons(t *testing.T) {
 	for _, ref := range []Ref{
 		RefAt("demo", "pr", "1"),
-		RefAt("merge", "proposal", "appeared@git.ref.verse/auto/x"),
+		RefAt("merge", "proposal", "appeared@git.ref.viff/auto/x"),
 		RefAt("github", "pr", "org/repo#42"),
 		RefAt("demo", "pr", "a.b"),
 	} {
@@ -88,7 +88,7 @@ func TestAnAddressKeepsTheSegmentsItWasGiven(t *testing.T) {
 
 // A path fixes some segments and the answer carries the rest; Reached interleaves them. The
 // wildcard case is the one that needs saying out loud — the fixed and carried segments are not
-// a prefix and a suffix, they interleave — and it is what `verse data demo '*' 1` rests on.
+// a prefix and a suffix, they interleave — and it is what `viff data demo '*' 1` rests on.
 func TestReachedInterleavesFixedAndCarriedSegments(t *testing.T) {
 	root := mustParseNode(t, `{demo: {pr: {1: {stage: open}, 2: {stage: merged}}}}`)
 	for _, tc := range []struct {
@@ -122,7 +122,7 @@ func TestReachedInterleavesFixedAndCarriedSegments(t *testing.T) {
 
 // AN ADDRESS ARRIVES AS ITS SEGMENTS, and each one is whole.
 //
-// The shell separates the words, so `verse data demo pr a.b` hands over three strings and the
+// The shell separates the words, so `viff data demo pr a.b` hands over three strings and the
 // third simply contains a dot. Nothing here scans for a delimiter, which is what makes every
 // row below one row: a dot, a colon or a space inside a segment is a character in a name.
 //
@@ -140,7 +140,7 @@ func TestAnAddressArrivesAsItsSegments(t *testing.T) {
 		{[]string{"git", "ref", "x@git.ref.y"}, RefAt("git", "ref", "x@git.ref.y")}, // and a colon
 		{[]string{"a.b.c", "pr", "1"}, RefAt("a.b.c", "pr", "1")},                   // …in the SYSTEM, which the token form could not say
 		{[]string{"demo", "pr", "a b"}, RefAt("demo", "pr", "a b")},                 // and a space
-		{[]string{"verse", "task", "instance", "run-a1"}, RefAt("verse", "task", "instance", "run-a1")},
+		{[]string{"mirror", "task", "instance", "run-a1"}, RefAt("mirror", "task", "instance", "run-a1")},
 	} {
 		p, err := TargetOf(c.segs)
 		if err != nil {
@@ -181,7 +181,7 @@ func TestJoinStepsQuotesOnlyWhatAShellWouldTouch(t *testing.T) {
 		{[]string{"demo", "pr", "1"}, "demo pr 1"},
 		// The whole point: a dot is ordinary inside a step.
 		{[]string{"demo", "pr", "a.b"}, "demo pr a.b"},
-		{[]string{"verse", "task", "instance", "review@demo.pr.1"}, "verse task instance review@demo.pr.1"},
+		{[]string{"mirror", "task", "instance", "review@demo.pr.1"}, "mirror task instance review@demo.pr.1"},
 		// The separator IS the space, so a segment holding one carries quotes — the case that
 		// made the bare steps form ambiguous and moved this listing to kinded paths for a while.
 		{[]string{"demo", "pr", "a b.txt"}, "demo pr 'a b.txt'"},
@@ -207,9 +207,9 @@ func TestJoinStepsQuotesOnlyWhatAShellWouldTouch(t *testing.T) {
 // And what it prints is what a read takes, for every one of those — which is the property the
 // listing exists to have.
 //
-// THE SHELL STRIPS ITS QUOTING before verse sees the words, and the step clauses read what is
+// THE SHELL STRIPS ITS QUOTING before viff sees the words, and the step clauses read what is
 // left, so the round trip is only proved by running both: a real shell (`eval set --`) and
-// `xargs -L1` split the printed line, and KPathOf reads the words the way `verse data` does.
+// `xargs -L1` split the printed line, and KPathOf reads the words the way `viff data` does.
 func TestWhatAListingPrintsIsWhatAReadTakes(t *testing.T) {
 	sh, err := exec.LookPath("sh")
 	if err != nil {
@@ -221,7 +221,7 @@ func TestWhatAListingPrintsIsWhatAReadTakes(t *testing.T) {
 		{"demo", "pr", "a b.txt"},
 		{"git", "ref", "*"},
 		{"dotted.sys", "pr", "1"},
-		{"verse", "task", "instance", "review@demo.pr.1"},
+		{"mirror", "task", "instance", "review@demo.pr.1"},
 		{"demo", "pr", "1", "[0]"},
 		{"demo", "pr", "1", "{0}"},
 		{"demo", "pr", "1", "(walter)"},

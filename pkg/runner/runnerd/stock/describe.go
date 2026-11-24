@@ -4,15 +4,15 @@ import (
 	"slices"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/claude"
-	"github.com/signadot/verse/pkg/runner/runnerd/codex"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/claude"
+	"go.viff.dev/viff/pkg/runner/runnerd/codex"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// AgentName is verse's own agent.
-const AgentName = "verse"
+// AgentName is viff's own agent.
+const AgentName = "viff"
 
 // Describe is what the runner offers under c: one offer for each agent `agents:` names, in
 // agentOrder; and scripts where c has a `script:` section. Every agent holds a conversation: each driver takes words between turns as
@@ -76,7 +76,7 @@ var requires = map[string][]string{
 	claude.Agent: {task.StepCommandsRun, task.StepFilesWrite},
 }
 
-// takes is the settings each agent takes, as the runner applies them: the verse agent its model;
+// takes is the settings each agent takes, as the runner applies them: the viff agent its model;
 // Codex its model and the reasoning effort of its turns, each over Codex's own; Claude its
 // session's model and one of its efforts, each over Claude's own.
 var takes = map[string]map[string]runner.Setting{

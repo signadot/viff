@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // TAKING A NODE TAKES EVERYTHING UNDER IT, since ownership descends — so a grant that reaches an
@@ -15,13 +15,13 @@ import (
 // else's place stands beneath. Ownership from a RECORD is untouched; an owner keeps what they
 // hold, whatever is beneath it.
 
-// alicesPlace is an open verse where alice has taken github.signadot.verse and written in it,
+// alicesPlace is an open viff where alice has taken github.signadot.viff and written in it,
 // which is the shape a source's install leaves.
 func alicesPlace(t *testing.T) (entity.Store, entity.Ref, entity.Ref) {
 	t.Helper()
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
-	place := entity.RefAt("github", "signadot", "verse")
-	pr := entity.RefAt("github", "signadot", "verse", "pr", "1")
+	place := entity.RefAt("github", "signadot", "viff")
+	pr := entity.RefAt("github", "signadot", "viff", "pr", "1")
 	if err := entity.Claim(store, place, "user:alice@example.com"); err != nil {
 		t.Fatalf("alice takes her place: %v", err)
 	}
@@ -34,7 +34,7 @@ func alicesPlace(t *testing.T) (entity.Store, entity.Ref, entity.Ref) {
 	return store, place, pr
 }
 
-// The first squat: `verse perms github`, above the place alice took. The open verse holds
+// The first squat: `viff perms github`, above the place alice took. The open viff holds
 // `owner` out there, so admitting it without asking what stands beneath would make mallory a
 // co-owner of everything alice has written.
 func TestAPlaceAboveSomebodyElsesCannotBeTaken(t *testing.T) {
@@ -109,7 +109,7 @@ func TestAPlaceBesideSomebodyElsesIsStillFree(t *testing.T) {
 	if err := entity.Claim(store, entity.RefAt("github", "signadot", "other"), bob); err != nil {
 		t.Fatalf("bob takes a place beside alice's: %v", err)
 	}
-	// …and the one nobody has touched at all, which is the open verse working as it did.
+	// …and the one nobody has touched at all, which is the open viff working as it did.
 	if _, _, err := entity.As(store, bob).Write(entity.Write{
 		At:    entity.RefAt("spaces", "bob", "notes").At(),
 		Value: entity.Obj{"todo": "milk"}.Payload(), Principal: bob,
@@ -214,7 +214,7 @@ type deafMirror struct {
 }
 
 func (d *deafMirror) Get(ref entity.Ref) (entity.Entity, bool, error) {
-	if d.deaf && ref.Under(entity.VerseRoot, entity.PermsSystem) {
+	if d.deaf && ref.Under(entity.ViffRoot, entity.PermsSystem) {
 		return entity.Entity{}, false, errors.New("timeout: the store did not answer")
 	}
 	return d.Store.Get(ref)

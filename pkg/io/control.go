@@ -3,7 +3,7 @@ package io
 import (
 	"context"
 
-	"github.com/signadot/verse/pkg/client"
+	"go.viff.dev/viff/pkg/client"
 )
 
 // The third direction, and the one with the sharp edge.
@@ -30,7 +30,7 @@ import (
 //     answer recorded as `agent:slack-iod` would be an answer nobody gave.
 //
 // What makes the person's name more than an assertion is the connector's own credential beside
-// it: a verse that verifies people admits the request through the person's account binding, from
+// it: a viff that verifies people admits the request through the person's account binding, from
 // a connector the deployment trusts for that provider, and records which connector it came
 // through. A connector with no credential asserts the person, as a person typing `--as` does.
 type Controller interface {
@@ -41,14 +41,14 @@ type Controller interface {
 	Control(ctx context.Context, as func(principal, account string) *client.Client) error
 }
 
-// As is the client factory a controller is given: one verse, the connector's own bearer, and any
+// As is the client factory a controller is given: one viff, the connector's own bearer, and any
 // person with their account.
 //
 // A FUNCTION RATHER THAN A CLIENT, because the person is the request's and not the program's.
 // Handed a client, a connector would have one identity and would have to choose between acting as
 // itself (wrong) and holding credentials for everybody (worse). Handed this, it acts as whoever
 // the external system says did the thing, one request at a time, and says which account that
-// was. With a bearer the verse verifies the connector and admits the person through the
+// was. With a bearer the viff verifies the connector and admits the person through the
 // account's binding (docs/reference/perms.md, "a person relayed by a trusted io"); without one
 // the person is asserted, as the CLI's `--as` is.
 func As(addr string, bearer client.BearerFunc) func(principal, account string) *client.Client {

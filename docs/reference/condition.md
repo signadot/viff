@@ -5,16 +5,16 @@ This page describes the fields of the [condition](../glossary.md#condition) of a
 the page also says what a [match](../glossary.md#match) can say.
 [The charter reference](../trigger-model.md) is the model that these fields belong to.
 
-A condition reads data in the store. People write it, rules write it, verse writes its own, and
-an [iod](../glossary.md#iod) writes what a system outside verse holds. The condition
+A condition reads data in the store. People write it, rules write it, viff writes its own, and
+an [iod](../glossary.md#iod) writes what a system outside viff holds. The condition
 does not care which.
 
 ## `subject`: what the firing is about, and required
 
 `subject` says what a [firing](../glossary.md#firing) acts on. It is a `Match` at one point in
-time, and never a formula. Verse selects the subject once, from the
+time, and never a formula. Viff selects the subject once, from the
 [store](../glossary.md#store) as it stood at the commit. A subject has no `until` and no
-`deadline`: verse *selects* a subject, and does not *await* it.
+`deadline`: viff *selects* a subject, and does not *await* it.
 
 `subject` is the one field that a condition cannot leave out. The rest of the rule is read
 relative to it. [The subject is required](../design/reference-condition.md#the-subject-is-required) gives the reason.
@@ -56,7 +56,7 @@ for a person does not ask again at every commit.
 For this reason `subject` is bounded, where a `when` formula ranges freely. `subject` names a
 place, and its predicate is over the [payload](../glossary.md#payload) at one address.
 "All open PRs" is `{path: "demo.pr.*", value: {stage: open}}`. The same thing deeper in the tree
-is `{path: "repos.verse.drift.head.*", value: {reviewed: pending}}`.
+is `{path: "repos.viff.drift.head.*", value: {reviewed: pending}}`.
 
 ### The pattern says how deep its subjects are
 
@@ -70,7 +70,7 @@ N segments down. A name and a `*` count the same: each is one segment.
 | `path` | What it selects |
 |---|---|
 | `{path: "demo.pr.*"}` | the nodes that stand under `demo.pr` |
-| `{path: "repos.verse.drift.head.*"}` | the nodes under `repos.verse.drift.head` |
+| `{path: "repos.viff.drift.head.*"}` | the nodes under `repos.viff.drift.head` |
 | `{path: "demo.pr"}` | the node at `demo.pr` itself |
 
 A short path is not a prefix. In a path with no `..` segment, nothing means "at or below".
@@ -82,7 +82,7 @@ that it wanted, does not find them, and writes its patches at that node.
 Check the depth wherever a rule reads what another rule derived. See
 [`action`](action.md#action-what-fires).
 
-A write names the place that it writes. A listing walks: `verse data -paths` lists every
+A write names the place that it writes. A listing walks: `viff data -paths` lists every
 address under the one it was given, and `-depth` bounds how far it goes beneath that address.
 
 A listing walks for this reason. A listing of one level would answer with whatever stands at
@@ -91,9 +91,9 @@ that level, and would lose anything deeper.
 ### The string form is an address, in one grammar
 
 One string grammar names addresses by identity. Both the charter wire and the CLI
-(`verse flow show <addr>`) parse it. The string is a
+(`viff flow show <addr>`) parse it. The string is a
 [kinded path](../glossary.md#kinded-path), with `*` for any one segment. So
-`"subject": "demo.pr.*"` in a charter and `verse flow show 'demo.pr.*'` on the command line
+`"subject": "demo.pr.*"` in a charter and `viff flow show 'demo.pr.*'` on the command line
 mean the same set.
 
 The string is the path that it spells, at every length.
@@ -101,18 +101,18 @@ The string is the path that it spells, at every length.
 | String | What it means |
 |---|---|
 | `"demo.pr"` | names the address `demo.pr` |
-| `"repos.verse.drift.head.*"` | selects five segments deep |
+| `"repos.viff.drift.head.*"` | selects five segments deep |
 
 Anything else in a segment is a name. `hotfix-*` in the string is the segment called
 `hotfix-*`, and not a glob.
 
 The object form says the same path and adds a predicate:
-`{path: "repos.verse.drift.head.*", value: {…}}`. There is no list of segments, and a path holds
+`{path: "repos.viff.drift.head.*", value: {…}}`. There is no list of segments, and a path holds
 no operator. A condition on what a node holds is a predicate on the node, where a reader looks
 for it.
 
 There is no deferred reference form, and nothing in a payload can redirect a subject. Take a rule
-whose cause is a change to `verse.task.instance`, and which acts on PRs. The rule acts on the
+whose cause is a change to `mirror.task.instance`, and which acts on PRs. The rule acts on the
 PRs that its own `subject` selects, every one of them. It does not act on the one PR that the
 completed task names.
 
@@ -128,7 +128,7 @@ the subject that a finished task was about. The store cannot fake this correlati
 | "this task, this subject" | a [hook](../glossary.md#hook) |
 | "when this becomes true, act on that set" | an `on` |
 
-`flow` is a field that verse writes on the record of each task: the field *is* the subject of
+`flow` is a field that viff writes on the record of each task: the field *is* the subject of
 the task. The flow query reads it. A rule whose subject carries the field reads it as
 `subject.value.flow`. The field is distinct from the reserved `subject` binding, which is
 the resolved subject of the firing itself.
@@ -160,10 +160,10 @@ each PR is a [flow](../glossary.md#flow) of its own.
 
 **There is one gate for each member**, and not one gate for the whole set. A firing is about
 one address, so twelve reviewed PRs are twelve questions
-([gates](gates.md#gates-whether-it-proceeds)). An operator gives twelve answers, because `verse question approve` has
+([gates](gates.md#gates-whether-it-proceeds)). An operator gives twelve answers, because `viff question approve` has
 no bulk form.
 
-**The `when` is the condition**: while CI on `main` is green. Verse evaluates the rule again at
+**The `when` is the condition**: while CI on `main` is green. Viff evaluates the rule again at
 every commit that touches either subtree. So the rule also acts on a PR that reaches `reviewed`
 later.
 
@@ -180,11 +180,11 @@ over the store, with the same grammar.
 | [`on`](../glossary.md#on) | C-1 and C | fires on the rising edge, ¬P → P |
 | [`when`](../glossary.md#when) | C | gates |
 
-**`when` is the condition.** With no `on`, verse considers the rule at every commit that
+**`when` is the condition.** With no `on`, viff considers the rule at every commit that
 touches anything the rule reads. `when` says whether to act at that commit. This shape is a
 reconciler: *while* this holds, act on what the subject selects.
 
-**`on` is the cause.** It narrows *when verse considers the rule at all* to the instant at
+**`on` is the cause.** It narrows *when viff considers the rule at all* to the instant at
 which its predicate becomes true. Two properties follow, and an author must know both:
 
 - **An edge does not fire again while it stays true.**
@@ -200,7 +200,7 @@ A match is a predicate over the store. It joins a `path` and a `value`. The `pat
 addresses the match reaches. The `value` is a [predicate](../glossary.md#predicate) over the
 payload that stands at those addresses. A match with no `value` asks only where.
 
-**A match has no `op` key.** Verse refuses a charter that carries `op`, and the refusal
+**A match has no `op` key.** Viff refuses a charter that carries `op`, and the refusal
 explains why. It does not say "unknown key". A match says a create and a delete in this way:
 
 | Change | How a match says it |
@@ -210,7 +210,7 @@ explains why. It does not say "unknown key". A match says a create and a delete 
 
 [A match has no `op` key](../design/reference-condition.md#a-match-has-no-op-key) gives the reason.
 
-A match that is only a path of names and `*` reads back from `verse c`
+A match that is only a path of names and `*` reads back from `viff c`
 in the string form: `demo.pr.*`. It is the same match in a shorter spelling.
 
 **Keep a condition small.** A large condition is hard to read and hard to check. To act "only
@@ -238,7 +238,7 @@ is still in the matching state. See
 
 A match is a tony match, and `tony.Match` evaluates it.
 
-**A path takes no operator.** A path is a kinded path, the same one that `verse data -at`
+**A path takes no operator.** A path is a kinded path, the same one that `viff data -at`
 reads. A segment is a name, `*` or `..`. `**` is no segment and is refused: `..` is every depth,
 `*.*` exactly two. To select a family of names, write a predicate on what the node holds:
 
@@ -274,36 +274,36 @@ what stands under the prefix.
 A path that selects begins with a name for the same reason. A watch opens on the literal
 prefix, and a watch cannot open on a wildcard at the top.
 
-`verse` is a segment like any other. What verse writes about its own running stands under it
-([entities](entities.md)). A rule about those records names `verse` first:
+`viff` is a segment like any other. What viff writes about its own running stands under it
+([entities](entities.md)). A rule about those records names `viff` first:
 
 ```tony
-# a rule about PRs — the ordinary case, and it cannot see verse's own records
+# a rule about PRs — the ordinary case, and it cannot see viff's own records
 subject: {path: "demo.pr.*"}
-# a rule about what verse writes: an ask on the docket, a task's mirror, an installed rule
+# a rule about what viff writes: an ask on the docket, a task's mirror, an installed rule
 subject:
-  path: "verse.ask.*"
+  path: "mirror.ask.*"
   value: {status: pending}
 ```
 
 Nothing is excluded by default to make this hold. A path begins with the place that it is
 about. So `{path: "task.*.*"}`, in a charter about the tasks of the world, reaches `task.*`.
-It never reaches the mirror of a run at `verse.task.instance`.
+It never reaches the mirror of a run at `mirror.task.instance`.
 
 A `..` segment reaches every depth beneath the place where it stands, and the node at that
 place too. Use it for a rule about things that do not all stand at one depth. Derived records
 are such things:
 
 ```tony
-# every finding beneath repos.verse, wherever the rule that derived it put one
+# every finding beneath repos.viff, wherever the rule that derived it put one
 subject:
-  path: "repos.verse..finding"
+  path: "repos.viff..finding"
   value: {stage: open}
-subject: "repos.verse..finding"   # the same, as a kinded path
+subject: "repos.viff..finding"   # the same, as a kinded path
 ```
 
 A subject that descends selects by reading the subtree at its literal prefix and walking it.
-Verse opens its watch with the pattern, and not with a depth. So a write at any depth that the
+Viff opens its watch with the pattern, and not with a depth. So a write at any depth that the
 pattern reaches wakes the rule.
 
 A subject that descends names a set. So it is never "one address named": a rule with a

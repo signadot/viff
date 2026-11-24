@@ -1,0 +1,261 @@
+package viffd
+
+import (
+	"crypto/rsa"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/runnerdtest"
+)
+
+// testIssuerURL is what a test server signs as, until a test makes it an issuer at its own
+// address. Every viff issues, as `viff up` does, since it proves itself to every runner.
+const testIssuerURL = "http://viff.test"
+
+// testIssuerKey is the key every test server signs with: one per package, since making one is
+// slow.
+var testIssuerKey = sync.OnceValue(func() *rsa.PrivateKey {
+	key, err := NewIssuerKey()
+	if err != nil {
+		panic(err)
+	}
+	return key
+})
+
+// localRunners is each test server's local runner, for a test to look at the tasks it holds where
+// they run, or to change what it offers.
+var localRunners sync.Map // *Server → *runnerdtest.Runner
+
+// serverWith is a server over store, with build served as its local runner: a runner like any
+// registered one, offering everything a test asks of it (runnerdtest.Everything), registered as
+// `local` as `viff up` registers its own. No task runs in a viff's process, so a test that runs
+// tasks hands the server a runner this way.
+func serverWith(t testing.TB, build runnerd.Builder, store entity.Store, opts ...Option) *Server {
+	t.Helper()
+	s := NewWithStore(store, opts...)
+	withRunner(t, s, build, runnerdtest.Everything())
+	return s
+}
+
+// withRunner serves build as s's local runner, offering desc, and registers it described.
+func withRunner(t testing.TB, s *Server, build runnerd.Builder, desc runner.Description) *runnerdtest.Runner {
+	t.Helper()
+	r := runnerdtest.Serve(t, build, desc)
+	if err := s.RegisterLocalRunner(r.URL, r.Subject); err != nil {
+		t.Fatalf("registering the local runner: %v", err)
+	}
+	if e, ok := findRunner(s.Store, LocalRunnerName); !ok || !e.Current() {
+		t.Fatalf("the local runner was not described at its registration: %+v", e)
+	}
+	localRunners.Store(s, r)
+	return r
+}
+
+// localOf is s's local runner, served by withRunner.
+func localOf(t testing.TB, s *Server) *runnerdtest.Runner {
+	t.Helper()
+	r, ok := localRunners.Load(s)
+	if !ok {
+		t.Fatal("the server has no local runner served by the test")
+	}
+	return r.(*runnerdtest.Runner)
+}
+
+// describeLocal has s's local runner offer desc, and s read it.
+func describeLocal(t testing.TB, s *Server, desc runner.Description) {
+	t.Helper()
+	r := localOf(t, s)
+	r.Describe(desc)
+	e, _ := findRunner(s.Store, LocalRunnerName)
+	if _, err := s.handshake(e); err != nil {
+		t.Fatalf("describing the local runner again: %v", err)
+	}
+}
+
+// noLocalRunner takes s's local runner out of routing: a viff that hosts nothing.
+func noLocalRunner(t testing.TB, s *Server) {
+	t.Helper()
+	if err := s.RemoveLocalRunner(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testServer is a server over a store of its own — the assembly `up` performs, minus
+// the daemons it would spawn, so an HTTP-surface test gets the real store the product
+// runs on without knowing how to stand one up.
+func testServer(t *testing.T) *Server {
+	t.Helper()
+	s := serverWith(t, runnerdtest.Scripted, entitytest.Store(t))
+	issuing(t, s)
+	// A source installed in a test runs a reflector under the server's context, which for a
+	// server nobody started is Background — so without this it outlives the store it writes to
+	// and goes on polling into a closed session, in whichever test runs next.
+	t.Cleanup(s.stopAllIOs)
+	t.Cleanup(func() { checkAskRecords(t, s.Store) })
+	return s
+}
+
+// owns gives each place an owner record naming who, as the install, spawn or first write that
+// made it would have left: a fixture that stands something up through the engine or the store
+// directly acts as the system, which leaves no record, and a node with none is its nearest
+// owner's — the root's, or viff's — so nobody the test goes on to act as would hold anything
+// there. grants is what the record holds out; nil is the default above it.
+func owns(t *testing.T, srv *Server, who string, grants []entity.Grant, places ...entity.Ref) {
+	t.Helper()
+	for _, at := range places {
+		if err := entity.Establish(srv.Store, at, who, entity.Ref{}, grants); err != nil {
+			t.Fatalf("recording %s as %s's: %v", at, who, err)
+		}
+	}
+}
+
+// testerOwns is owns for the principal an unattributed test request is made as.
+func testerOwns(t *testing.T, srv *Server, places ...entity.Ref) {
+	t.Helper()
+	owns(t, srv, "user:"+tester, nil, places...)
+}
+
+// asTester is the store a fixture seeds the world through when the test goes on to act on it
+// as the tester: what they wrote is theirs.
+func asTester(srv *Server) entity.Store { return entity.As(srv.Store, "user:"+tester) }
+
+// issuing makes s an issuer as every test server is, for a server a test assembles itself.
+func issuing(t *testing.T, s *Server) *Server {
+	t.Helper()
+	if err := s.SetIssuer(testIssuerURL, testIssuerKey(), "config"); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// face is a runner face that proves itself: served behind a runner's door holding a static
+// token, whose hash is the Subject its registration names. Bare is the same handler with no door,
+// for a test that pokes the runner as its own operator would, from beside it; viff is given URL.
+type face struct {
+	*httptest.Server
+	Subject string
+	Token   string
+	Bare    string
+}
+
+// provenFace serves h as a runner of the viff at viffURL, behind the door runnerd puts in
+// front of a runner (Guard): it takes the viff's tokens, read against the issuer the viff
+// publishes, and answers its own static token on the describe. release ends the work on h
+// before the face closes.
+func provenFace(t *testing.T, viffURL string, h http.Handler, release func()) *face {
+	t.Helper()
+	tok := runnerStaticToken(t)
+	sub, err := runner.StaticSubject(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := runnerd.NewGuard(runnerd.Viff{URL: viffURL, Issuer: issuerOf(t, viffURL)}, tokenFile(t, t.TempDir(), "token", tok))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bare := httptest.NewServer(h)
+	t.Cleanup(bare.Close) // after the guarded face's cleanup, which releases the work
+	return &face{Server: faceServing(t, g.Wrap(h), release), Subject: sub, Token: tok, Bare: bare.URL}
+}
+
+// issuerOf is the issuer the viff at viffURL signs as, from its discovery document.
+func issuerOf(t *testing.T, viffURL string) string {
+	t.Helper()
+	resp, err := http.Get(viffURL + issuerDiscoveryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var doc struct {
+		Issuer string `json:"issuer"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil || doc.Issuer == "" {
+		t.Fatalf("the discovery document at %s: %s, %v", viffURL, resp.Status, err)
+	}
+	return doc.Issuer
+}
+
+// reg is the registration of the runner f under name, as `viff runner add -token-file` sends it.
+func (f *face) reg(name string) map[string]any {
+	return map[string]any{"name": name, "url": f.URL, "subject": f.Subject}
+}
+
+// staticRunnerAs registers, unprobed, a runner acting as principal (`runner:<identity>`), proved
+// by a static token, and answers the token: what a request made as that runner presents.
+func staticRunnerAs(t *testing.T, viffURL, principal string) string {
+	t.Helper()
+	tok := runnerStaticToken(t)
+	sub, err := runner.StaticSubject(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := strings.TrimPrefix(principal, "runner:")
+	resp := postTony(t, viffURL+"/runners?probe=false", map[string]any{"name": id, "url": "http://" + id + ".invalid", "identity": id, "subject": sub})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("registering %s: %s: %s", principal, resp.Status, body)
+	}
+	return tok
+}
+
+// sendAs is a request made as who, presenting token where there is one.
+func sendAs(t *testing.T, method, url, who, token, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/tony")
+	if who != "" {
+		req.Header.Set(api.PrincipalHeader, who)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
+// someSubject is a static token's subject no runner holds: a registration's, for a url nothing
+// answers at.
+func someSubject(t *testing.T) string {
+	t.Helper()
+	sub, err := runner.StaticSubject(runnerStaticToken(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sub
+}
+
+// waitEntity waits for the entity at ref to stand as want says.
+func waitEntity(t *testing.T, srv *Server, ref entity.Ref, want func(entity.Payload) bool) entity.Payload {
+	t.Helper()
+	deadline := time.After(20 * time.Second) // generous: the full suite runs beside it
+	for {
+		e, ok, _ := srv.Store.Get(ref)
+		if ok && want(e.Payload) {
+			return e.Payload
+		}
+		select {
+		case <-deadline:
+			var have any
+			if ok {
+				have = entity.ToObj(e.Payload)
+			}
+			t.Fatalf("%s never became what was waited for; have %v", ref, have)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}

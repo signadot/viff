@@ -1,6 +1,6 @@
 package api
 
-import "github.com/signadot/verse/pkg/entity"
+import "go.viff.dev/viff/pkg/entity"
 
 // PutEntity is one conditional write (`POST /entity`) — the store's single write, on the
 // wire. Creating, updating, patching a field and removing one are all this request with
@@ -25,11 +25,11 @@ import "github.com/signadot/verse/pkg/entity"
 // so, by writing null at it.
 //
 // Payload is a tony node, not a map: an entity payload is ANY tony value (see
-// entity.Payload), so `verse data demo count 1 --put 42` has to survive the wire as the
+// entity.Payload), so `viff data demo count 1 --put 42` has to survive the wire as the
 // number it is. A map here would have re-imposed on the wire exactly the object constraint
 // the store just dropped.
 //
-//tony:schemagen=verse-put-entity,notag
+//tony:schemagen=viff-put-entity,notag
 type PutEntity struct {
 	// At is the place written, as a kinded path: `demo.pr.1`, `demo.pr.1.labels.urgent`,
 	// `demo.pr."a.b"`.
@@ -43,11 +43,11 @@ type PutEntity struct {
 	// one step at the store, so there is no window between the check and the write for
 	// something to change underneath. An empty When is an unconditional write.
 	When []Condition `tony:"field=when,omitzero"`
-	// Grants is what the node the write CREATES holds out, in the list `verse perms --grants`
+	// Grants is what the node the write CREATES holds out, in the list `viff perms --grants`
 	// sets on a record — `[{read: [ana@example.com]}]`, and `[]` for nothing — in place of the
 	// default it would copy from the nearest `child-grants` above. The write is then a create:
 	// the node lands with its record in one commit, or not at all, and a node that stands is
-	// refused (409); what it holds out is changed with `verse perms`.
+	// refused (409); what it holds out is changed with `viff perms`.
 	Grants entity.Payload `tony:"field=grants,omitzero"`
 }
 
@@ -57,7 +57,7 @@ type PutEntity struct {
 // means the write's own place — the array element it names, where Sub names one — which is
 // what create ("nothing is there yet") and update ("something is") are about.
 //
-//tony:schemagen=verse-condition,notag
+//tony:schemagen=viff-condition,notag
 type Condition struct {
 	At string `tony:"field=at,omitzero"`
 	// Exists asks only whether anything stands there: false is a create, true is an update.

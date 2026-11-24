@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// The out half: a comment on a Linear issue, kept in step with what the verse asks for.
+// The out half: a comment on a Linear issue, kept in step with what the viff asks for.
 //
 // It is the second sink, and it exists as much to prove the framework is not Slack's as to
 // comment on issues. What it shares with Slack is the whole of io.Out — the pass, the status
@@ -22,7 +22,7 @@ import (
 //	Slack                              Linear
 //	a channel and a message ts         one comment id, and no channel at all
 //	the target is where it is said     the target is WHAT it is about (an issue)
-//	an id verse can spell              an identifier (ENG-42) that must be resolved to a uuid
+//	an id viff can spell              an identifier (ENG-42) that must be resolved to a uuid
 //	a draw that folds in gate records  the text as written
 //
 // Somebody writes an input anywhere under `linear.<team>.out` as `{to, text}` — `to` being the
@@ -64,10 +64,10 @@ func (l *Linear) OutRefs() []entity.Ref {
 const OutPlace = "out"
 
 // Deliver comments on one issue, or updates the comment it already left there.
-func (k *Sink) Deliver(ctx context.Context, in verseio.Input) (entity.Obj, error) {
+func (k *Sink) Deliver(ctx context.Context, in viffio.Input) (entity.Obj, error) {
 	text := strings.TrimSpace(entity.Str(in.Value, "text"))
 	if text == "" {
-		return nil, verseio.Permanent(fmt.Errorf("an input carries {text}, and this one has none"))
+		return nil, viffio.Permanent(fmt.Errorf("an input carries {text}, and this one has none"))
 	}
 	fp := fingerprint(text)
 	id := entity.Str(in.Status, "comment")

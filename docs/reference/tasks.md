@@ -1,6 +1,6 @@
 # Tasks
 
-A [task](../glossary.md#task) is a unit of work that verse governs. An agent, a script or a
+A [task](../glossary.md#task) is a unit of work that viff governs. An agent, a script or a
 remote [worker](../glossary.md#worker) does the work.
 [The tasks page of the tutorial](../tutorial/tasks.md) runs one task. This page is what you need
 to run a task, watch it, steer it and answer its questions.
@@ -18,17 +18,17 @@ environment:
 autonomy:
 - {then: allow}
 EOF
-verse task run -f spawn.tony               # prints a run-… id
-verse task run -f spawn.tony --wait        # …and block for the final output
-verse task run -f spawn.tony --attach      # …and stream it
+viff task run -f spawn.tony               # prints a run-… id
+viff task run -f spawn.tony --wait        # …and block for the final output
+viff task run -f spawn.tony --attach      # …and stream it
 echo '{script: "cd app && go test ./...", environment: {systems: {network: {mode: open}, git: [{repo: acme/app, fetch: {}}]}}}' |
-  verse task run -f -                      # a script, no model, from stdin
-verse task
-verse task get <id>        # snapshot: status, prompt, agent, runner, result, pending gates, autonomy
-verse task say <id> "also say which ones wait on a review"   # an ask to the task: said to <id>: <ask id>
-verse task autonomy <id> '[{match: {system: github, verb: read-pr}, then: ask}, {then: allow}]' --as you@example.com
-verse task autonomy <id> --file autonomy.tony
-verse task cancel <id>
+  viff task run -f -                      # a script, no model, from stdin
+viff task
+viff task get <id>        # snapshot: status, prompt, agent, runner, result, pending gates, autonomy
+viff task say <id> "also say which ones wait on a review"   # an ask to the task: said to <id>: <ask id>
+viff task autonomy <id> '[{match: {system: github, verb: read-pr}, then: ask}, {then: allow}]' --as you@example.com
+viff task autonomy <id> --file autonomy.tony
+viff task cancel <id>
 ```
 
 The spawn checks out acme/app, which the task may only fetch, and gives the two reads of its pull
@@ -38,7 +38,7 @@ unasked.
 `task run` takes a spawn, written as a charter's `spawn:` is: the work (`prompt` or `script`),
 the `agent` a prompt is for, the `environment` the run works in, its `autonomy`, and the rest
 ([the action of a rule](action.md#action-what-fires)). It means only what it says: a spawn that
-names no network has none, and a runner that builds only the host's network, as `verse up`'s
+names no network has none, and a runner that builds only the host's network, as `viff up`'s
 does, refuses it until it writes `network: {mode: open}`. Only how this terminal follows the run
 is a flag: `--attach`, `--wait`, `--converse`, `--name` and `--as`.
 
@@ -49,7 +49,7 @@ is a flag: `--attach`, `--wait`, `--converse`, `--name` and `--as`.
 | `say` | gives the agent new instructions |
 | `autonomy` | replaces the [autonomy](../glossary.md#autonomy), what each step gets, with a whole one. The runner checks each row against the task's environment, which is fixed for the run, and applies it at the next [boundary](../glossary.md#boundary), with no restart. A replacement decides among what the environment gives and adds nothing to it: a row that can match nothing the environment gives is refused. |
 
-`autonomy --as` names who made the change. `say` is made as whoever `verse` acts as. Both
+`autonomy --as` names who made the change. `say` is made as whoever `viff` acts as. Both
 commands work wherever the task runs: its runner gets them.
 
 The `spawn` of a [rule](../glossary.md#rule) runs a task the same way. What a charter may say
@@ -73,7 +73,7 @@ Without a contract, a run is finished when the model stops calling tools. A mode
 describes its next step also stops calling tools, and from outside the two look the same. So a
 run can end in the middle of its work, with a page of notes as its `result`.
 
-With a contract, verse:
+With a contract, viff:
 
 - checks the final message as soon as the model stops;
 - on a mismatch, tells the model what is wrong, so it can answer again;
@@ -85,11 +85,11 @@ an exit status.
 Keep the contract small: let it cover only what a rule will match on. A field such as
 `summary: !irtype string` looks harmless, and it is a trap: a model writes
 `summary: nothing was wrong`, which is not valid tony, and the run fails for a reason that has
-nothing to do with the work. Put the prose outside the governed part instead. Verse reads the
+nothing to do with the work. Put the prose outside the governed part instead. Viff reads the
 answer from a fenced block in the final message, so the rest of the message can be free text
 ([the answer contract](action.md#the-answer-contract)).
 
-A contract is for an agent. A script's output is its result as it is, so verse refuses a spawn
+A contract is for an agent. A script's output is its result as it is, so viff refuses a spawn
 that gives a script a contract.
 
 <a id="the-drivers"></a>
@@ -100,7 +100,7 @@ A task's work is a `prompt`, for an agent, or a `script`, which is its own doer.
 
 | Spawn | What it does |
 |---|---|
-| `prompt: …`, `agent: {name: <name>}` | gives the prompt to the agent of that name, on a runner that offers it (`verse` is verse's own; a runner may offer `claude` or `codex`). The agent decides what to do, one turn at a time. Without `agent`, the prompt is for verse's default agent (`defaultAgent`, `verse` by default). |
+| `prompt: …`, `agent: {name: <name>}` | gives the prompt to the agent of that name, on a runner that offers it (`viff` is viff's own; a runner may offer `claude` or `codex`). The agent decides what to do, one turn at a time. Without `agent`, the prompt is for viff's default agent (`defaultAgent`, `viff` by default). |
 | `script: "…"` | runs the script once, by its `#!` line or with bash. Its output is the result. It takes no `agent`: data reaches it as the environment's `vars`. |
 
 An agent's settings are written beside its name, `agent: {name: codex, model: gpt-5-codex,
@@ -111,7 +111,7 @@ which agent ran and with what, the runner's defaults filled in.
 spawn:
   script: |
     git -C app merge --ff-only "mirror/$BRANCH"
-    verse-call-tool git-push -branch main
+    viff-call-tool git-push -branch main
   environment:
     vars: {BRANCH: $[branch]}
     systems:
@@ -139,12 +139,12 @@ block gives is refused before any row is read ([systems](../systems/README.md#a-
 | `github-issue` | a GitHub repository's issues, of a repository `git` checks out: `create`, `comment` and `close` ([github-issue](../systems/github-issue.md)). |
 | `linear-issue` | Linear's issues: `create` in a `team`, `comment` and `close` on an `issue` ([linear-issue](../systems/linear-issue.md)). |
 | `slack` | Slack's channels: `post`, `reply`, `read` and `react`, each in a `channel` ([slack](../systems/slack.md)). |
-| `verse` | verse itself, acted on as the person the task runs for: `ask-create`, `ask-get`, `ask-list`, `data-get`, `data-put`, `data-rm`, `charter-get`, `charter-check`, `charter-install` and `charter-remove`, the verbs of `verse mcp` ([verse](../systems/verse.md)). |
+| `viff` | viff itself, acted on as the person the task runs for: `ask-create`, `ask-get`, `ask-list`, `data-get`, `data-put`, `data-rm`, `charter-get`, `charter-check`, `charter-install` and `charter-remove`, the verbs of `viff mcp` ([viff](../systems/viff.md)). |
 | `files`, `commands`, `agent`, `question` | what a doer does inside its run. `files: {}` gives every write, `commands: {run: {command: !regexp "^make "}}` the commands it names ([files, commands and agent](../systems/inside.md), [question](../systems/question.md)). |
 
-A script calls the task's tools from its shell with `verse-call-tool`: `git-push`, `git-fetch`,
+A script calls the task's tools from its shell with `viff-call-tool`: `git-push`, `git-fetch`,
 `github-create-pr`, `question-ask`, and the others its environment gives. Each call is an action
-of the task. Verse decides it, and reports it on the event stream, exactly as it does an agent's.
+of the task. Viff decides it, and reports it on the event stream, exactly as it does an agent's.
 So a row written for an agent's push also holds a push that a script makes. A refused call is
 an answer the script reads (a non-zero exit, and the reason on stdout). It does not end the
 run.
@@ -168,8 +168,8 @@ that matches a step decides it.
 
 ```tony
 autonomy:
-- {match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*", exists: false}, then: allow}
-- {match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*", own: true}, then: allow}
+- {match: {system: git, verb: push, ref: !glob "refs/heads/viff/auto/*", exists: false}, then: allow}
+- {match: {system: git, verb: push, ref: !glob "refs/heads/viff/auto/*", own: true}, then: allow}
 - {match: {system: git, verb: push}, then: {ask: {need: 2, answerers: [group:release], within: 4h, default: deny}}}
 - {then: ask}
 ```
@@ -218,7 +218,7 @@ action, once for each firing. The allow stops the same decision from being made 
 that ignored a spawn's `autonomy:` would silently disobey a charter that asks to be asked.
 
 ```sh
-verse question                              # task questions, and engine gates that ASK
+viff question                              # task questions, and engine gates that ASK
 # - gate: autonomy[1]
 #   id: run-f3e31ed0390f~d1
 #   from: {task: run-f3e31ed0390f}
@@ -226,7 +226,7 @@ verse question                              # task questions, and engine gates t
 #   step: files.write
 #   fields: {path: docs/x.md}
 #   tool: write_file
-verse question approve run-f3e31ed0390f~d1 --as you@example.com  # or: task approve run-… run-…~d1
+viff question approve run-f3e31ed0390f~d1 --as you@example.com  # or: task approve run-… run-…~d1
 ```
 
 A question names the row that asked it: the row's `name`, or its place in the list, such as
@@ -236,7 +236,7 @@ a task's own. `environment` names the refusal of a step outside the environment,
 decides. So no row takes one of those four names.
 The `~` between the task and the gate needs no quotes, in a shell or in a URL.
 
-**Verse checks who may answer before it delivers the answer** ([tasks and
+**Viff checks who may answer before it delivers the answer** ([tasks and
 gates](../perms.md#tasks-and-gates)). The worker that works the task may not answer the question
 it raised. A person may answer through a [resolver](../attached-resolvers.md) they granted, and
 the answer is still theirs. A charter gate is listed here too, with its `options`, `ballots` and
@@ -246,8 +246,8 @@ With an identity, `run --attach` and `attach` ask inline instead
 (`⏸ gate "autonomy[1]" (write_file) — approve? [y/n]`). Answer `y` to allow and `n` to deny. Any
 other answer is asked again; it is not read as a no. A denied step comes back to the agent as an
 error, and the agent makes a new plan. Without an identity, `attach` only streams, and prints
-the `verse question` command that answers. It is the same question either way: it stays in
-`verse question`, and anybody who may answer it can, by id, from anywhere.
+the `viff question` command that answers. It is the same question either way: it stays in
+`viff question`, and anybody who may answer it can, by id, from anywhere.
 
 ### A row's question
 
@@ -280,16 +280,16 @@ param is a tony match pattern:
 - **`null` matches any value** the step carries.
 - **`!glob "refs/heads/release/*"` is a glob.** Its `*` stops at a `/`, so `refs/heads/*` is
   every branch.
-- **`!regexp "^refs/heads/verse/"` is a Go regexp.** It is unanchored unless it says `^` or `$`,
+- **`!regexp "^refs/heads/viff/"` is a Go regexp.** It is unanchored unless it says `^` or `$`,
   so `!regexp "git push"` is every command with a push in it.
 - **`!or [a, b]` takes either.** `!and` and `!not` work as they do in tony.
 - **An address is a list of segments,** `[play, secret]` or `play.secret`, each a name, `*` for
   any one, or a pattern over one. A step at an address reaches everything under it, so a row
   that allows matches only a step whose whole reach lies under the pattern, and a row that
-  denies or asks matches one that reaches anything under it ([verse](../systems/verse.md)).
+  denies or asks matches one that reaches anything under it ([viff](../systems/viff.md)).
 
 The verb can be a pattern too: `verb: !or [fetch, push]`. The last row names no step, and is
-what a call of a named verb gets when no row above matched it. Verse refuses an autonomy that ends with a named step, or that puts a row
+what a call of a named verb gets when no row above matched it. Viff refuses an autonomy that ends with a named step, or that puts a row
 with no match before the end.
 
 Each step is a verb of a system, written `<system>.<verb>`. The tool a doer calls for it is
@@ -310,13 +310,13 @@ params are the verb's:
 | `agent.call-sub-agent` | `agent` |
 | `network.tcp-client` | `host`, `port` (under a network of `allow`) |
 
-The issue trackers' verbs (`git-issue`, `github-issue`, `linear-issue`), Slack's and verse's
-are on [their pages](../systems/README.md), one page for each system. Verse keeps each system's verbs
-and params as a document at `verse.systems.<name>` (`verse d verse systems git` reads one).
+The issue trackers' verbs (`git-issue`, `github-issue`, `linear-issue`), Slack's and viff's
+are on [their pages](../systems/README.md), one page for each system. Viff keeps each system's verbs
+and params as a document at `mirror.systems.<name>` (`viff d mirror systems git` reads one).
 A runner's tools are checked against these documents when it starts.
 
 An ask's `need`, `within`, `default`, `answerers` and `labels` mean what `need`, `deadline`,
-`answerers` and `labels` mean on a [charter gate](gates.md#gates-whether-it-proceeds). Verse
+`answerers` and `labels` mean on a [charter gate](gates.md#gates-whether-it-proceeds). Viff
 refuses them the same way when they cannot be posed as written: at the spawn, or at
 `task autonomy`, and never in the middle of a run. A row's question is answered `proceed` or
 `deny`, so `default` is one of the two. It also refuses a param the step does not have,
@@ -328,7 +328,7 @@ uppercase (`ENG`, `ENG-42`), and a Slack `channel` is lowercase with no `#` (`de
 param written `null` is refused rather than dropped: to match any value, leave it out.
 
 **Whom a row asks.** A row that names nobody asks the docket. `answerers: [$principal]` asks
-whom the task acts for, which for a run you start is you. Verse refuses `$principal` for a task
+whom the task acts for, which for a run you start is you. Viff refuses `$principal` for a task
 that acts for nobody: one run as the system, or a rule's task without `as: subject`. A task that
 acts for somebody else asks them with every question that names nobody: a task an ask's row
 starts asks its asker, and a spawn `as: subject` asks the subject's owner. The task's record shows it, as
@@ -355,8 +355,8 @@ autonomy:
 - then: allow
 EOF
 
-verse task run -f tests.tony                                      # run-4e919ce01f99
-verse question
+viff task run -f tests.tony                                      # run-4e919ce01f99
+viff question
 # - gate: shell
 #   id: run-4e919ce01f99~d1
 #   reason: "commands.run command=go test ./..."
@@ -366,8 +366,8 @@ verse question
 #   deadline:
 #     default: deny
 #     within: 10m
-verse question approve run-4e919ce01f99~d1 --as ana@example.com   # the command runs
-verse task get run-4e919ce01f99                                   # status: done
+viff question approve run-4e919ce01f99~d1 --as ana@example.com   # the command runs
+viff task get run-4e919ce01f99                                   # status: done
 ```
 
 The environment gives a checkout of acme/app that the task may only fetch, and `commands`. So
@@ -381,7 +381,7 @@ to the agent, which makes a new plan, as it does after a person's no. So a run t
 watching does not wait for ever ([a deadline settles](gates.md#a-deadline-settles)).
 
 The runner reads the deadline's duration and refuses the step when it passes. What silence
-settles on, and the `labels`, are verse's: verse adds them when it records the question.
+settles on, and the `labels`, are viff's: viff adds them when it records the question.
 
 A resolver's own `deadline` is a different clock. It passes the question up to the next layer,
 and does not settle it. Both times are on the record, and the earlier one fires first.
@@ -392,8 +392,8 @@ A task can ask the person it runs for. The `question-ask` tool poses a question 
 it is answered, and the answer is the tool's result. It is the step `question.ask`, the task's
 where its environment gives `question` (`question: {}`), and a row such as
 `{match: {system: question}, then: allow}` lets it put the question unasked. An agent has it
-as a tool, and a script calls it with `verse-call-tool question-ask`. The question is an ordinary ask: on the docket, in
-`verse question`, in Slack, answerable from any of them, and withdrawn if the task is cancelled.
+as a tool, and a script calls it with `viff-call-tool question-ask`. The question is an ordinary ask: on the docket, in
+`viff question`, in Slack, answerable from any of them, and withdrawn if the task is cancelled.
 
 It waits on whom the task acts for: whoever started it, or the asker it runs for. A task that
 acts for nobody, such as a rule's task without `as: subject`, asks the docket. A call that names
@@ -401,7 +401,7 @@ acts for nobody, such as a rule's task without `as: subject`, asks the docket. A
 how a system charter's script asks anybody at all. Its one option, `reply`, takes words:
 
 ```sh
-verse question run-4708ef20b92d~2 --answer reply --say "the second one" --as you@example.com
+viff question run-4708ef20b92d~2 --answer reply --say "the second one" --as you@example.com
 ```
 
 Attached, you see the question as a prompt:
@@ -424,7 +424,7 @@ silence settles on. When the time passes, the task reads `nobody answered within
 default if there was one, and goes on.
 
 ```sh
-verse-call-tool question-ask -question "ship it?" -options yes -options no -within 30m
+viff-call-tool question-ask -question "ship it?" -options yes -options no -within 30m
 ```
 
 An autonomy row on `question` decides the asking as any autonomy row decides its step: an
@@ -433,21 +433,21 @@ An autonomy row on `question` decides the asking as any autonomy row decides its
 ### An ask for the person
 
 A task that asks as the person it runs for, and goes on, uses the
-[verse system](../systems/verse.md)'s `verse-ask-create`, as they would use `verse ask`. The
+[viff system](../systems/viff.md)'s `viff-ask-create`, as they would use `viff ask`. The
 ask's `from` is `{principal: <them>, task: <this task>}`, and it stands after the task ends. Its
-rows run as them when it settles, and the task reads it back with `verse-ask-get` to see
+rows run as them when it settles, and the task reads it back with `viff-ask-get` to see
 whether it was answered. A spawn in any of its rows is held within the task:
-an environment no wider than the task's, less `verse.charter-install`, an autonomy no looser, the task's runner (`runner:`
+an environment no wider than the task's, less `viff.charter-install`, an autonomy no looser, the task's runner (`runner:`
 names it) and the task's credential where it spends one. An answer in any of its rows is
 refused, at any depth: it would be theirs, on any ask that waits on them. Once raised, the ask is theirs, and they change it as any
 of their own. The task's record carries its launch, `environment` and `virtualKey` (the address
 its spawn named, never the key), so a restart that resumes the task holds a row's spawn within
 it as before.
 
-A task may also install charters as that person, with `verse-charter-install`. A spawn among
+A task may also install charters as that person, with `viff-charter-install`. A spawn among
 their rules is held within the task in the same way, on any runner, and never gives
-`verse.charter-install`: what a task installs cannot install charters
-([the verse system](../systems/verse.md)).
+`viff.charter-install`: what a task installs cannot install charters
+([the viff system](../systems/viff.md)).
 
 ### A conversation
 
@@ -457,10 +457,10 @@ quiet, you get the turn: the same kind of record, `gate: turn`, with the options
 
 - At the terminal, the turn is a bare prompt. A line is your next message, and Ctrl-D ends the
   conversation.
-- From anywhere else, answer with `verse question <id> --answer reply --say "…"` or
+- From anywhere else, answer with `viff question <id> --answer reply --say "…"` or
   `--answer end`. A `task say` while the turn waits is your reply.
 
-Every agent holds a conversation: verse's own, Claude and Codex. The verse agent is told it is
+Every agent holds a conversation: viff's own, Claude and Codex. The viff agent is told it is
 in one, so it says its piece and stops, rather than calling `question-ask`, and `yield` with
 reason `done` is the model ending the conversation. Claude and Codex go quiet at the end of each
 turn, and your reply is their next. The last message is the result.
@@ -493,29 +493,29 @@ and with no `commands` in its environment the agent has no shell to run it in. S
 
 A rule meets the same problem from the other side. Its gates approve *the firing*, not the
 actions that the agent then chooses. The rule says it already decided with `allow` rows on the
-spawn, and asks with rows about the steps it did not decide. Verse takes the charter's word for
+spawn, and asks with rows about the steps it did not decide. Viff takes the charter's word for
 that.
 
 ## The mirror
 
 The [mirror](../glossary.md#mirror-of-tasks) writes every task into the store as
-`verse.task.instance.<id>`. So you watch tasks as you watch any data. A task that completes is
+`mirror.task.instance.<id>`. So you watch tasks as you watch any data. A task that completes is
 data that changes, and a rule reacts to it as it reacts to any data.
 
 ```sh
-verse watch verse task instance '*'
-verse data verse task instance <id>
+viff watch mirror task instance '*'
+viff data mirror task instance <id>
 ```
 
 ```tony
 payload:
   autonomy: [{match: {system: github, verb: read-pr}, then: ask}, {then: allow}]
   autonomyBy: user:you@example.com
-  agent: {name: verse, model: claude-sonnet-5}
+  agent: {name: viff, model: claude-sonnet-5}
   lastAction: github-list-prs
   lastOutput: summarizing
   runner: http://127.0.0.1:9803
-  runnerName: verse.runners.local
+  runnerName: mirror.runners.local
   status: done
 ```
 
@@ -526,44 +526,44 @@ spawn gave the task, in the spawn's words, and `refused` the connections its pro
 
 `observed: false` appears while the mirror cannot reach the runner that holds the task. The
 other fields are then the last thing the mirror heard, not the current state. `lease` is there
-where the spawn named one ([`spawn`](action.md#spawn)), and a task with none has `4m`. A task verse
+where the spawn named one ([`spawn`](action.md#spawn)), and a task with none has `4m`. A task viff
 cannot reach for longer than that ends `failed` with `orphaned: true`.
 
 The record outlives the task. After the task ends, it keeps the result, the last `say`, the
-last tool output and the final `status`. `verse flow show` reads them for history. The mirror is
+last tool output and the final `status`. `viff flow show` reads them for history. The mirror is
 an index, not a transcript: it keeps what an observer needs.
 
 ### One id, many runs
 
-A task id names the *work*, not one run of it. Verse derives the id from the spawning action and
+A task id names the *work*, not one run of it. Viff derives the id from the spawning action and
 the subject. So a rule that fires twice about one subject spawns the same id twice, and the
-second firing changes nothing that the first did not. `verse flow show demo.pr.1` addresses the
+second firing changes nothing that the first did not. `viff flow show demo.pr.1` addresses the
 work by this id.
 
-`verse.task.instance.<id>` is the latest [run](../glossary.md#run). Each run also has a record
+`mirror.task.instance.<id>` is the latest [run](../glossary.md#run). Each run also has a record
 of its own:
 
 ```sh
-verse data verse task run '<id>@<occurrence>'
-verse data verse task run '*' -if '{flow: "demo.pr.1"}'
+viff data mirror task run '<id>@<occurrence>'
+viff data mirror task run '*' -if '{flow: "demo.pr.1"}'
 ```
 
 The `occurrence` is the store revision the run is about. For a firing, it is the commit that
-caused the firing. For a task you started by hand, it is the revision at which verse created the
+caused the firing. For a task you started by hand, it is the revision at which viff created the
 record. Both records carry it.
 
 Read the instance to see what the work is doing now. Read the runs to see what happened the
 other times: a failed run and the successful one after it leave two run records, and the
 instance holds only the newest.
 
-Verse writes a run record at the start of the run and again at its end, so a run that never
+Viff writes a run record at the start of the run and again at its end, so a run that never
 finishes still leaves a record. **Nothing removes run records.** They are small. To remove them,
-use `verse data -rm`, or a charter that marks the old ones [vanishing](../change-events.md).
+use `viff data -rm`, or a charter that marks the old ones [vanishing](../change-events.md).
 
 ## The question record
 
-A gate that stops for an answer is an [ask](../glossary.md#ask), at `verse.ask.<id>`, on the
-docket beside every other ask. The task points at it (`pending: verse.ask.<id>`).
+A gate that stops for an answer is an [ask](../glossary.md#ask), at `mirror.ask.<id>`, on the
+docket beside every other ask. The task points at it (`pending: mirror.ask.<id>`).
 
 ```tony
 payload:
@@ -581,30 +581,30 @@ payload:
 rule can select the questions it cares about without reading prose:
 
 ```sh
-verse data verse ask '*' -if '{status: pending, step: files.write}'
+viff data mirror ask '*' -if '{status: pending, step: files.write}'
 ```
 
-The question record is a record, not a mailbox. Answers go through `verse question`. After an
+The question record is a record, not a mailbox. Answers go through `viff question`. After an
 answer, the record says `status: answered`, with the verdict and who gave it. A settled question
 stays for its keep, like any ask, and is then removed ([asking](../asking.md)). An answer
 through a resolver carries `via` beside `by`: `by` is the party it answered for, and `via` the
 resolver ([resolvers](../attached-resolvers.md#answering)).
 
-Every answer names who gave it: `verse question approve <id> --as you@example.com`. Two people
+Every answer names who gave it: `viff question approve <id> --as you@example.com`. Two people
 may answer at once:
 
-| Case | What verse answers |
+| Case | What viff answers |
 |---|---|
-| two answers at once | exactly one applies. Verse records the other under `stale` and tells its sender (`409`, naming who won). |
+| two answers at once | exactly one applies. Viff records the other under `stale` and tells its sender (`409`, naming who won). |
 | an answer to an id that nobody asked | `404` |
 
 A `404` usually means a typo. A `409` means somebody else answered first.
 
 At a restart, a question that a task raised survives exactly as its task does. A question that a
-firing raised is settled `orphaned`, because what waited on its answer was inside the verse
+firing raised is settled `orphaned`, because what waited on its answer was inside the viff
 process ([task control](../task-control.md)). If its rule still selects the subject, the
 reinstalled charter poses it again under the same id, with the ballots already cast
-([a question outlives the verse that asked it](gates.md#a-question-outlives-the-verse-that-asked-it)).
+([a question outlives the viff that asked it](gates.md#a-question-outlives-the-viff-that-asked-it)).
 If not, it stays orphaned.
 
 **`status: done` means that the task *stopped*, not that the work succeeded.** A hook that moves
@@ -619,12 +619,12 @@ it names none. The verbs, their flags, and how a hold differs from a suspension 
 [control](../control.md). This section says what they do to a task.
 
 ```sh
-verse flow                                     # live tasks and suspensions
-verse flow show demo.pr.2                      # the tree: what ran, what is running, what comes next
-verse flow suspend -task review@demo.pr.2      # hold that run at its next boundary
-verse flow resume  -task review@demo.pr.2
-verse flow say     -subject demo.pr.2 "hurry" # to every live task about it
-verse flow cancel  -task review@demo.pr.2      # end that run (destructive)
+viff flow                                     # live tasks and suspensions
+viff flow show demo.pr.2                      # the tree: what ran, what is running, what comes next
+viff flow suspend -task review@demo.pr.2      # hold that run at its next boundary
+viff flow resume  -task review@demo.pr.2
+viff flow say     -subject demo.pr.2 "hurry" # to every live task about it
+viff flow cancel  -task review@demo.pr.2      # end that run (destructive)
 ```
 
 `say` and `cancel` answer with how many tasks they reached, the selection, and the verb.
@@ -640,22 +640,22 @@ The verbs land at each task's next boundary. So you can hold, redirect or stop a
 runs, and every *other* flow keeps going ([a hold on a run](../control.md#a-hold-on-a-run)).
 
 ```sh
-verse flow suspend -subject demo.pr.2 -why "a person is reviewing it by hand"
-verse flow show demo.pr.2                      # heldBy: [<the suspension>] on the live task
-verse flow resume -task review@demo.pr.2       # refused, 409: a suspension holds it
-verse flow resume -subject demo.pr.2
+viff flow suspend -subject demo.pr.2 -why "a person is reviewing it by hand"
+viff flow show demo.pr.2                      # heldBy: [<the suspension>] on the live task
+viff flow resume -task review@demo.pr.2       # refused, 409: a suspension holds it
+viff flow resume -subject demo.pr.2
 ```
 
 Every verb here needs `control` of each task it reaches ([who may](../control.md#who-may)).
 With `-scope`, a verb reaches only the tasks that the scope started
 ([what a scope owns](scopes.md#what-a-scope-owns)). So
-`verse flow cancel -scope me -task review@demo.pr.2` never stops baseline's review of that pull
+`viff flow cancel -scope me -task review@demo.pr.2` never stops baseline's review of that pull
 request by accident. Drop the flag to address baseline.
 
 ## Where a task runs is a seam
 
-A task runs in the verse process by default. A spawn can name another place with `runner:`, and
-`verse task` shows where each task runs. Every command on this page works wherever the task
+A task runs in the viff process by default. A spawn can name another place with `runner:`, and
+`viff task` shows where each task runs. Every command on this page works wherever the task
 runs. How a runner works is in [runners.md](../runners.md).
 
 ## Why it is this way

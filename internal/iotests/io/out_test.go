@@ -4,18 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/signadot/verse/internal/versed/versedtest"
-	"github.com/signadot/verse/pkg/runner/runnerd/runnerdtest"
+	"go.viff.dev/viff/internal/viffd/viffdtest"
+	"go.viff.dev/viff/pkg/runner/runnerd/runnerdtest"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // The out half's machinery, tested with a sink that is nothing like Slack: the pass, the status
@@ -24,13 +24,13 @@ import (
 // noted is a sink that writes down what it was asked for, and does whatever a test told it to.
 type noted struct {
 	mu       sync.Mutex
-	seen     []verseio.Input
+	seen     []viffio.Input
 	fields   entity.Obj // what Deliver answers
 	err      error      // …or fails with
 	delivers int
 }
 
-func (n *noted) Deliver(_ context.Context, in verseio.Input) (entity.Obj, error) {
+func (n *noted) Deliver(_ context.Context, in viffio.Input) (entity.Obj, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.delivers++
@@ -57,20 +57,20 @@ func (n *noted) count() int {
 type outRig struct {
 	store entity.Store
 	sink  *noted
-	out   *verseio.Out
+	out   *viffio.Out
 	place entity.Ref
 }
 
 func newOutRig(t *testing.T) *outRig {
 	t.Helper()
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	place := entity.RefAt("demo", "out")
 	sink := &noted{}
-	verse := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:demo-iod")
+	viff := client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:demo-iod")
 	return &outRig{store: store, sink: sink, place: place,
-		out: verseio.NewOut(sink, place, verse, nil)}
+		out: viffio.NewOut(sink, place, viff, nil)}
 }
 
 func (r *outRig) pass(t *testing.T) {
@@ -82,7 +82,7 @@ func (r *outRig) pass(t *testing.T) {
 
 func (r *outRig) status(t *testing.T, name string) entity.Obj {
 	t.Helper()
-	e, ok, err := r.store.Get(entity.RefAt("demo", "out", name+verseio.StatusSuffix))
+	e, ok, err := r.store.Get(entity.RefAt("demo", "out", name+viffio.StatusSuffix))
 	if err != nil {
 		t.Fatalf("reading the status: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestAPassAsksTheSinkForEachInputAndRecordsWhatItSays(t *testing.T) {
 func TestAnInputIsFoundAtAnyDepth(t *testing.T) {
 	r := newOutRig(t)
 	r.sink.fields = entity.Obj{"said": "yes"}
-	deep := []string{"gate-ask", "verse", "ask", "review~1", "user:ana@example.com"}
+	deep := []string{"gate-ask", "mirror", "ask", "review~1", "user:ana@example.com"}
 	askDeep(t, r.store, deep, "user:ana@example.com", entity.Obj{"text": "the review is waiting"})
 	r.pass(t)
 
@@ -150,18 +150,18 @@ func TestAnInputIsFoundAtAnyDepth(t *testing.T) {
 	if in.To != "user:ana@example.com" || in.Name != "user:ana@example.com" {
 		t.Errorf("the sink was handed %+v, want whom it is for and what it is called", in)
 	}
-	if want := "demo.out.gate-ask.verse.ask"; !strings.Contains(in.At.String(), want) {
+	if want := "demo.out.gate-ask.viff.ask"; !strings.Contains(in.At.String(), want) {
 		t.Errorf("at %s, want the address it was written at", in.At)
 	}
 	// And its status stands beside it, at that same depth.
 	at := entity.RefAt(append(append([]string{"demo", "out"}, deep[:len(deep)-1]...),
-		deep[len(deep)-1]+verseio.StatusSuffix)...)
+		deep[len(deep)-1]+viffio.StatusSuffix)...)
 	if _, ok, err := r.store.Get(at); err != nil || !ok {
 		t.Errorf("no status at %s: ok %v, %v", at, ok, err)
 	}
 }
 
-// A sink that says nothing needed doing writes nothing, which is what makes a quiet verse quiet:
+// A sink that says nothing needed doing writes nothing, which is what makes a quiet viff quiet:
 // most passes over most inputs are this one.
 func TestASinkThatSaysNothingWritesNothing(t *testing.T) {
 	r := newOutRig(t)
@@ -176,7 +176,7 @@ func TestASinkThatSaysNothingWritesNothing(t *testing.T) {
 func TestAStatusIsNeverAnInput(t *testing.T) {
 	r := newOutRig(t)
 	r.sink.fields = entity.Obj{"said": "yes"}
-	ask(t, r.store, "ana", "hello"+verseio.StatusSuffix, entity.Obj{"ts": "1.1"})
+	ask(t, r.store, "ana", "hello"+viffio.StatusSuffix, entity.Obj{"ts": "1.1"})
 	r.pass(t)
 	if n := r.sink.count(); n != 0 {
 		t.Errorf("delivered %d, want the status left alone", n)
@@ -306,11 +306,11 @@ func TestATargetThatNeverDeliveredMayBeCorrected(t *testing.T) {
 // io acted as (git-issue na9fce9dh12krdydqsn0).
 func TestARefusalIsPermanentUntilTheInputChanges(t *testing.T) {
 	r := newOutRig(t)
-	r.sink.err = verseio.Permanent(errors.New("422: can not approve your own pull request"))
+	r.sink.err = viffio.Permanent(errors.New("422: can not approve your own pull request"))
 	ask(t, r.store, "pr.47", "review", entity.Obj{"event": "approve"})
 	r.pass(t)
 	st := r.status(t, "review")
-	if st["failed"] != verseio.PermanentFailure || st["failedOn"] == nil || !strings.Contains(fmt.Sprint(st["error"]), "422") {
+	if st["failed"] != viffio.PermanentFailure || st["failedOn"] == nil || !strings.Contains(fmt.Sprint(st["error"]), "422") {
 		t.Fatalf("status %v, want the refusal recorded as permanent, with the input it refused", st)
 	}
 	for range 3 {
@@ -364,7 +364,7 @@ type keeping struct {
 	kept []string
 }
 
-func (k *keeping) Keep(_ context.Context, in verseio.Input) {
+func (k *keeping) Keep(_ context.Context, in viffio.Input) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	k.kept = append(k.kept, in.Name)
@@ -374,11 +374,11 @@ func (k *keeping) Keep(_ context.Context, in verseio.Input) {
 // Slack thread's questions — stays current for a message whose last edit was refused.
 func TestAKeeperIsToldOfARefusedInput(t *testing.T) {
 	store := entitytest.Store(t)
-	ts := httptest.NewServer(versedtest.Server(t, runnerdtest.Scripted, store).Handler())
+	ts := httptest.NewServer(viffdtest.Server(t, runnerdtest.Scripted, store).Handler())
 	t.Cleanup(ts.Close)
 	sink := &keeping{}
-	sink.err = verseio.Permanent(errors.New("msg_too_long"))
-	out := verseio.NewOut(sink, entity.RefAt("demo", "out"),
+	sink.err = viffio.Permanent(errors.New("msg_too_long"))
+	out := viffio.NewOut(sink, entity.RefAt("demo", "out"),
 		client.New(strings.TrimPrefix(ts.URL, "http://"), "agent:demo-iod"), nil)
 	ask(t, store, "C111", "note", entity.Obj{"text": "long"})
 	for range 3 {

@@ -9,17 +9,17 @@ import (
 )
 
 // ordinary is what these tests observe at: the nodes `*.*.*` reaches in the world's half and
-// `verse.*.*.*` in verse's own, which is where the fixtures write. A pattern is what an observer
+// `viff.*.*.*` in viff's own, which is where the fixtures write. A pattern is what an observer
 // asks with — there is no depth the stream picks for everybody.
 func ordinary() []*kpath.KPath {
-	return []*kpath.KPath{PrefixPattern(nil, 3), PrefixPattern([]string{VerseRoot}, 4)}
+	return []*kpath.KPath{PrefixPattern(nil, 3), PrefixPattern([]string{ViffRoot}, 4)}
 }
 
 func TestParseAddrRoundTrip(t *testing.T) {
 	cases := []string{
 		`linear.issue."1090"`,
 		`github.pr."signadot/hack#12"`, // the quoting is the grammar's: a '#' is inside the name
-		"verse.task.instance.p1",
+		"mirror.task.instance.p1",
 		"nope", // one segment is an address too — a whole system, which is a real thing to name
 	}
 	for _, s := range cases {
@@ -162,7 +162,7 @@ func TestRevAndSince(t *testing.T) {
 }
 
 // A cursor is about the STORE, not about this process — so a store that opens onto an
-// already-written verse answers for the commits that preceded it.
+// already-written viff answers for the commits that preceded it.
 //
 // This asserted the opposite, and the opposite was a guard rather than a decision: a
 // per-instance low-watermark added when logd under-delivered a compacted range silently, kept

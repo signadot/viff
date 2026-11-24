@@ -1,0 +1,28 @@
+# The tui section of viff's config: ~/.config/viff.tony (or the file VIFF_CONFIG names).
+# Every field is optional; what is left out keeps its default, and a flag given to `viff tui`
+# (--every, --at) overrides the field it names. `viff tui --config` prints what is in force,
+# every key included; `viff tui --commands` lists every command and action.
+tui:
+  # Read the viff every 5s rather than every 2s.
+  every: 5s
+  # Open on the data, at the place this team works in.
+  start: data
+  at: repos.app
+  # Show these sections, in this order; the number keys follow it (1 is data). Runners hidden.
+  sections: [data, questions, tasks, charters]
+  # List 30 finished tasks beside the running ones, not 15.
+  tasks:
+    recent: 30
+  # Names for places in the data: `:go prs` opens repos.app.git.pr.
+  bookmarks:
+    prs: repos.app.git.pr
+    releases: repos.app.rel
+    oncall: acme.issue
+  # Keys, by action: the keys listed replace the action's defaults, and [] leaves it unbound.
+  keys:
+    answer.proceed: [y]          # a stays free
+    answer.deny: [n]
+    move.down: [down, j, ctrl+n]
+    move.up: [up, k, ctrl+p]
+    task.cancel: [ctrl+x]        # harder to press by mistake than x
+    refresh: [r, f5]

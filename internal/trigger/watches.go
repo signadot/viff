@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // A rule's watches are asked of the store by the reconciler as it arms the rule (reconcile.go):

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/systems/systemstest"
 )
 
 // A run emits the loop-level events to a subscriber.

@@ -11,11 +11,11 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/apt"
-	"github.com/signadot/verse/pkg/runner/runnerd/cellar"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/apt"
+	"go.viff.dev/viff/pkg/runner/runnerd/cellar"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // Pkg is the packages the runner installs into its tasks' read-only prefixes (`pkg:`): the
@@ -260,7 +260,7 @@ func pinned(shape systems.Shape) (delivery.Install, bool) {
 // pkgBuilds is what the runner builds of pkg, by its nature: an install from the repositories it
 // trusts, any package of their index under any name, as an offer's `builds` says it. The
 // ceiling, not the index, is the operator's bound. The shape names `pkg`, null, since every shape
-// of install says it; a shape without it fails the description's own check, and verse would
+// of install says it; a shape without it fails the description's own check, and viff would
 // refuse the runner's announcement. It names `as`, null, too: a shape that says nothing of it
 // means no rename, and a runner builds renames.
 func (c Config) pkgBuilds() systems.Ceiling {

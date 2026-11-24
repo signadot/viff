@@ -4,31 +4,31 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// The case the whole rule exists for: two git repos, on two hosts, in one verse. If this needed
+// The case the whole rule exists for: two git repos, on two hosts, in one viff. If this needed
 // --allow-overlap then the flag would be the ordinary path and would mark nothing — which is
 // why "distinct system or distinct kind" was not enough on its own.
 func TestTwoReposAreProvablyDisjoint(t *testing.T) {
-	verse := owns("git.*.verse/*", "git.head.verse")
+	viff := owns("git.*.viff/*", "git.head.viff")
 	kernel := owns("git.*.kernel/*", "git.head.kernel")
 
-	if ok, err := verseio.Disjoint(verse, kernel); err != nil || !ok {
+	if ok, err := viffio.Disjoint(viff, kernel); err != nil || !ok {
 		t.Fatalf("two repos should be provably disjoint: ok=%v err=%v", ok, err)
 	}
 
 	// The near miss, and the reason a repo claims two globs rather than the one that looks
-	// tidier. `verse*` would claim `verse-extras/main`, and these two would refuse to install
+	// tidier. `viff*` would claim `viff-extras/main`, and these two would refuse to install
 	// alongside each other for an overlap that is not real.
-	extras := owns("git.*.verse-extras/*", "git.head.verse-extras")
-	if ok, err := verseio.Disjoint(verse, extras); err != nil || !ok {
-		t.Fatalf("verse and verse-extras should be disjoint: ok=%v err=%v", ok, err)
+	extras := owns("git.*.viff-extras/*", "git.head.viff-extras")
+	if ok, err := viffio.Disjoint(viff, extras); err != nil || !ok {
+		t.Fatalf("viff and viff-extras should be disjoint: ok=%v err=%v", ok, err)
 	}
-	if ok, _ := verseio.Disjoint(owns("git.*.verse*"), extras); ok {
-		t.Fatal("`verse*` really does claim verse-extras/*; it must not read as disjoint")
+	if ok, _ := viffio.Disjoint(owns("git.*.viff*"), extras); ok {
+		t.Fatal("`viff*` really does claim viff-extras/*; it must not read as disjoint")
 	}
 }
 
@@ -55,11 +55,11 @@ func TestClaimDisjoint(t *testing.T) {
 		{"everything, against another system", "git.*.*", "linear.issue.x", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			a, err := verseio.ParseClaim(tc.a)
+			a, err := viffio.ParseClaim(tc.a)
 			if err != nil {
 				t.Fatalf("parse %q: %v", tc.a, err)
 			}
-			b, err := verseio.ParseClaim(tc.b)
+			b, err := viffio.ParseClaim(tc.b)
 			if err != nil {
 				t.Fatalf("parse %q: %v", tc.b, err)
 			}
@@ -116,8 +116,8 @@ func TestSharingIsSingleWritershipAtADeeperAddress(t *testing.T) {
 // EVERY CLAIM IS THE SAME KIND OF THING, at every depth: the ones the connectors ship parse
 // and render back unchanged, which is what lets a refusal quote the operator's own words.
 func TestEveryDeclaredClaimRoundTrips(t *testing.T) {
-	g := verseio.NewGit()
-	g.AddRepo("verse", t.TempDir())
+	g := viffio.NewGit()
+	g.AddRepo("viff", t.TempDir())
 	declared := g.Owns() // git's own, built by the code that ships
 	declared = append(declared, owns(
 		"slack.Acme",                                // slack.Owns
@@ -135,25 +135,25 @@ func TestEveryDeclaredClaimRoundTrips(t *testing.T) {
 	}
 	// And ClaimAt spells one with a wildcard in it, which a Ref cannot: a ref renders `*` as
 	// the quoted NAME, and a claim carrying that is refused rather than read as a wildcard.
-	if got, want := verseio.ClaimAt("linear", "project", "*", "owners", "ENG"),
+	if got, want := viffio.ClaimAt("linear", "project", "*", "owners", "ENG"),
 		"linear.project.*.owners.ENG"; got != want {
 		t.Fatalf("ClaimAt spelled %q, want %q", got, want)
 	}
-	if _, err := verseio.ParseClaim(`linear.project."*".owners.ENG`); err == nil {
+	if _, err := viffio.ParseClaim(`linear.project."*".owners.ENG`); err == nil {
 		t.Fatal("a quoted `*` parsed as a claim — it is a name, and one nothing is called")
 	}
 }
 
 // Ownership is a union, so one overlapping pair is an overlap however disjoint the rest are.
 func TestDisjointIsEveryPair(t *testing.T) {
-	a := owns("git.*.verse/*", "git.head.verse")
-	b := owns("git.*.kernel/*", "git.head.verse") // the second entry collides
-	if ok, err := verseio.Disjoint(a, b); err != nil || ok {
+	a := owns("git.*.viff/*", "git.head.viff")
+	b := owns("git.*.kernel/*", "git.head.viff") // the second entry collides
+	if ok, err := viffio.Disjoint(a, b); err != nil || ok {
 		t.Fatalf("one overlapping pair is an overlap: ok=%v err=%v", ok, err)
 	}
 	// And a registration claiming nothing is disjoint from everything, which is the honest
 	// reading of an empty list rather than a special case.
-	if ok, err := verseio.Disjoint(nil, a); err != nil || !ok {
+	if ok, err := viffio.Disjoint(nil, a); err != nil || !ok {
 		t.Fatalf("an empty claim should be disjoint: ok=%v err=%v", ok, err)
 	}
 }
@@ -162,15 +162,15 @@ func TestDisjointIsEveryPair(t *testing.T) {
 // narrower than it looks is a single-writer guarantee resting on a typo.
 func TestParseClaimRefusals(t *testing.T) {
 	for _, s := range []string{
-		"",                   // no levels at all
-		"git.ref.",           // an empty level
-		"gi*t.ref.x",         // a `*` that is not trailing
-		"git.ref.a*b",        // ditto, in the middle of a name
-		"git.ref.*/main",     // ditto, at the front
-		"git.ref.a/*/b",      // ditto, inside an id
-		"verse.trigger.rule", // verse's own half is nobody's to claim
+		"",                    // no levels at all
+		"git.ref.",            // an empty level
+		"gi*t.ref.x",          // a `*` that is not trailing
+		"git.ref.a*b",         // ditto, in the middle of a name
+		"git.ref.*/main",      // ditto, at the front
+		"git.ref.a/*/b",       // ditto, inside an id
+		"mirror.trigger.rule", // viff's own half is nobody's to claim
 	} {
-		if c, err := verseio.ParseClaim(s); err == nil {
+		if c, err := viffio.ParseClaim(s); err == nil {
 			t.Fatalf("%q should be refused, parsed as %s", s, c)
 		}
 	}
@@ -178,10 +178,10 @@ func TestParseClaimRefusals(t *testing.T) {
 	// last three are what the three fixed dimensions could not say at all: a claim shorter than
 	// an entity, one deeper, and a glob above the last level.
 	for _, s := range []string{
-		"git.*.verse/*", "git.head.verse", "*.*.*",
-		"git", "verse-dev.drift.head.abc", "git.re*.x",
+		"git.*.viff/*", "git.head.viff", "*.*.*",
+		"git", "viff-dev.drift.head.abc", "git.re*.x",
 	} {
-		c, err := verseio.ParseClaim(s)
+		c, err := viffio.ParseClaim(s)
 		if err != nil {
 			t.Fatalf("parse %q: %v", s, err)
 		}
@@ -191,8 +191,8 @@ func TestParseClaimRefusals(t *testing.T) {
 	}
 	// A colon is an ordinary character in a level, since nothing in the address grammar reads
 	// one — and the trailing `*` is the pattern's rather than the name's.
-	c, err := verseio.ParseClaim("git.ref.a:b/*")
-	if err != nil || len(c.Segs) != 3 || c.Segs[2] != (verseio.Seg{Name: "a:b/", Prefix: true}) {
+	c, err := viffio.ParseClaim("git.ref.a:b/*")
+	if err != nil || len(c.Segs) != 3 || c.Segs[2] != (viffio.Seg{Name: "a:b/", Prefix: true}) {
 		t.Fatalf("a level may contain colons: %+v %v", c, err)
 	}
 }
@@ -210,20 +210,20 @@ func TestAClaimIsOverATree(t *testing.T) {
 		want bool // disjoint?
 	}{
 		{"a subtree holds what is under it", "git", "git.ref.x", false},
-		{"…however deep", "verse-dev.drift", "verse-dev.drift.head.abc", false},
+		{"…however deep", "viff-dev.drift", "viff-dev.drift.head.abc", false},
 		{"two subtrees that part at the first level", "git", "github", true},
-		{"…and at a later one", "verse-dev.drift", "verse-dev.merge", true},
+		{"…and at a later one", "viff-dev.drift", "viff-dev.merge", true},
 		{"a glob above the last level", "git.re*.x", "git.ref.x", false},
 		{"…that does not reach", "git.re*.x", "git.head.x", true},
 		{"a wildcard level reaches everything at it", "git.*.x", "git.anything.x", false},
-		{"two depths under one system, disjoint below", "verse-dev.drift.head", "verse-dev.drift.finding", true},
+		{"two depths under one system, disjoint below", "viff-dev.drift.head", "viff-dev.drift.finding", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			a, err := verseio.ParseClaim(tc.a)
+			a, err := viffio.ParseClaim(tc.a)
 			if err != nil {
 				t.Fatalf("parse %q: %v", tc.a, err)
 			}
-			b, err := verseio.ParseClaim(tc.b)
+			b, err := viffio.ParseClaim(tc.b)
 			if err != nil {
 				t.Fatalf("parse %q: %v", tc.b, err)
 			}
@@ -243,24 +243,24 @@ func TestAClaimIsOverATree(t *testing.T) {
 // it may tombstone. Claimed is the point-wise face of Disjoint, and this is the depth question
 // asked of it directly.
 func TestASubtreeClaimCoversWhatIsUnderIt(t *testing.T) {
-	claims, err := verseio.ParseOwns([]verseio.Own{{At: "verse-dev.drift"}})
+	claims, err := viffio.ParseOwns([]viffio.Own{{At: "viff-dev.drift"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, ref := range []entity.Ref{
-		entity.RefAt("verse-dev", "drift", "head", "abc"),
-		entity.RefAt("verse-dev", "drift", "finding", "1"),
-		entity.RefAt("verse-dev", "drift"),
+		entity.RefAt("viff-dev", "drift", "head", "abc"),
+		entity.RefAt("viff-dev", "drift", "finding", "1"),
+		entity.RefAt("viff-dev", "drift"),
 	} {
-		if places := verseio.Claimed(claims, ref); len(places) != 1 {
+		if places := viffio.Claimed(claims, ref); len(places) != 1 {
 			t.Errorf("%s is under the claim; Claimed = %v", ref, places)
 		}
 	}
 	for _, ref := range []entity.Ref{
-		entity.RefAt("verse-dev", "merge", "train", "x"),
+		entity.RefAt("viff-dev", "merge", "train", "x"),
 		entity.RefAt("git", "ref", "main"),
 	} {
-		if places := verseio.Claimed(claims, ref); len(places) != 0 {
+		if places := viffio.Claimed(claims, ref); len(places) != 0 {
 			t.Errorf("%s is outside the claim; Claimed = %v", ref, places)
 		}
 	}
@@ -270,16 +270,16 @@ func TestASubtreeClaimCoversWhatIsUnderIt(t *testing.T) {
 // answers, and an ancestor of a claim holds things the source never owned.
 func TestAClaimDoesNotCoverWhatIsAboveIt(t *testing.T) {
 	claims := owns("slack.*.acme/*")
-	parsed, err := verseio.ParseOwns(claims)
+	parsed, err := viffio.ParseOwns(claims)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, ref := range []entity.Ref{entity.RefAt("slack", "foo"), entity.RefAt("slack")} {
-		if places := verseio.Claimed(parsed, ref); len(places) != 0 {
+		if places := viffio.Claimed(parsed, ref); len(places) != 0 {
 			t.Errorf("%s is above the claim, and Claimed = %v", ref, places)
 		}
 	}
-	if places := verseio.Claimed(parsed, entity.RefAt("slack", "chan", "acme/general")); len(places) != 1 {
+	if places := viffio.Claimed(parsed, entity.RefAt("slack", "chan", "acme/general")); len(places) != 1 {
 		t.Errorf("slack.chan.acme/general is the claim's own, and Claimed = %v", places)
 	}
 }
@@ -288,16 +288,16 @@ func TestAClaimDoesNotCoverWhatIsAboveIt(t *testing.T) {
 // install proves something about a slice nobody touches. This is the one place the two halves
 // meet, so it is asserted rather than assumed.
 func TestGitOwnsCoversWhatItReflects(t *testing.T) {
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("A", t.TempDir())
-	claims, err := verseio.ParseOwns(g.Owns())
+	claims, err := viffio.ParseOwns(g.Owns())
 	if err != nil {
 		t.Fatalf("git declares a claim that does not parse: %v", err)
 	}
 	for _, ref := range []string{"git.A.ref.main", "git.A.head", "git.A.commit.abc123"} {
 		// The place claimed is the ENTITY, since git claims no path — which is what makes a
 		// --forget on it exactly the removal it has always been.
-		places := verseio.Claimed(claims, mustRef(t, ref))
+		places := viffio.Claimed(claims, mustRef(t, ref))
 		if len(places) != 1 || places[0].Ref != mustRef(t, ref) {
 			t.Fatalf("%s is reflected; Claimed = %v, want the whole entity", ref, places)
 		}
@@ -305,17 +305,17 @@ func TestGitOwnsCoversWhatItReflects(t *testing.T) {
 	// And it does not claim a neighbour's — which is what bounds a --forget removal to the
 	// slice this registration was proved to own.
 	for _, ref := range []string{"git.B.ref.main", "git.B.head", "git.A-extras.head"} {
-		if places := verseio.Claimed(claims, mustRef(t, ref)); len(places) != 0 {
+		if places := viffio.Claimed(claims, mustRef(t, ref)); len(places) != 0 {
 			t.Fatalf("%s belongs to another repo but is claimed at %v", ref, places)
 		}
 	}
 }
 
 // owns spells a declaration list from its terse refs, which is what every claim in the tree is.
-func owns(refs ...string) []verseio.Own {
-	out := make([]verseio.Own, 0, len(refs))
+func owns(refs ...string) []viffio.Own {
+	out := make([]viffio.Own, 0, len(refs))
 	for _, r := range refs {
-		out = append(out, verseio.Own{At: r})
+		out = append(out, viffio.Own{At: r})
 	}
 	return out
 }
@@ -336,11 +336,11 @@ func mustRef(t *testing.T, s string) entity.Ref {
 // Checked here, across the connectors, because the property is one sentence per source and the
 // way it breaks is one of them forgetting.
 func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	if err := g.SetRoot("mirror"); err != nil {
 		t.Fatal(err)
 	}
-	g.AddRepo("verse", t.TempDir())
+	g.AddRepo("viff", t.TempDir())
 	if g.Root() != "mirror" {
 		t.Fatalf("git System() = %q", g.Root())
 	}
@@ -350,47 +350,47 @@ func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 		}
 	}
 	// The hook a git source installs hints in its own system, or the hint reaches nothing.
-	if got := g.RepoRef("verse").String(); got != "mirror.verse" {
+	if got := g.RepoRef("viff").String(); got != "mirror.viff" {
 		t.Fatalf("git RepoRef = %q", got)
 	}
 	// And two systems are provably disjoint with nothing else said.
-	plain := verseio.NewGit()
-	plain.AddRepo("verse", t.TempDir())
-	ok, err := verseio.Disjoint(g.Owns(), plain.Owns())
+	plain := viffio.NewGit()
+	plain.AddRepo("viff", t.TempDir())
+	ok, err := viffio.Disjoint(g.Owns(), plain.Owns())
 	if err != nil || !ok {
 		t.Fatalf("two systems over the same repo were not disjoint: ok=%v err=%v", ok, err)
 	}
 	// The punctuation the address is built from is refused, as it is at install.
 	for _, bad := range []string{"a:b", "a/b"} {
-		if err := verseio.NewGit().SetRoot(bad); err == nil {
+		if err := viffio.NewGit().SetRoot(bad); err == nil {
 			t.Fatalf("system %q should be refused", bad)
 		}
 	}
 }
 
 // A claim carries no root, so `task.*.*` — and the wildcard `*:*:*`, which
-// a source may register when nothing else is installed — asks about `verse.task.instance.x` as
+// a source may register when nothing else is installed — asks about `mirror.task.instance.x` as
 // readily as about the world's `task.instance.x`. It must own neither: the caller that deletes
-// (`verse iod remove --forget`) writes straight to the store, below the refusal that guards
-// the HTTP face, so this was the one client-reachable path to a tombstone over verse's charter.
-func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
-	for _, spell := range []string{"*.*.*", "task.*.*", "trigger.rule.*", "sources.git.verse"} {
-		claims, err := verseio.ParseOwns([]verseio.Own{{At: spell}})
+// (`viff iod remove --forget`) writes straight to the store, below the refusal that guards
+// the HTTP face, so this was the one client-reachable path to a tombstone over viff's charter.
+func TestNoClaimReachesViffsOwnHalf(t *testing.T) {
+	for _, spell := range []string{"*.*.*", "task.*.*", "trigger.rule.*", "sources.git.viff"} {
+		claims, err := viffio.ParseOwns([]viffio.Own{{At: spell}})
 		if err != nil {
 			t.Fatalf("%s: %v", spell, err)
 		}
 		for _, ref := range []entity.Ref{
-			entity.VerseRef("task", "instance", "run-1"),
-			entity.VerseRef("trigger", "rule", "review"),
-			entity.VerseRef("iods", "git", "verse"),
+			entity.ViffRef("task", "instance", "run-1"),
+			entity.ViffRef("trigger", "rule", "review"),
+			entity.ViffRef("iods", "git", "viff"),
 		} {
-			if got := verseio.Claimed(claims, ref); len(got) > 0 {
-				t.Errorf("owns %q claims %s → %v, want nothing in verse's half", spell, ref, got)
+			if got := viffio.Claimed(claims, ref); len(got) > 0 {
+				t.Errorf("owns %q claims %s → %v, want nothing in viff's half", spell, ref, got)
 			}
 		}
 		// And the world's half is unchanged: the same claim still owns what it is for.
 		if spell == "task.*.*" {
-			if got := verseio.Claimed(claims, entity.RefAt("task", "instance", "run-1")); len(got) != 1 {
+			if got := viffio.Claimed(claims, entity.RefAt("task", "instance", "run-1")); len(got) != 1 {
 				t.Errorf("owns %q lost its own slice: %v", spell, got)
 			}
 		}
@@ -398,9 +398,9 @@ func TestNoClaimReachesVersesOwnHalf(t *testing.T) {
 }
 
 // mustClaim parses a claim, which is the only way to get one.
-func mustClaim(t *testing.T, s string) verseio.Claim {
+func mustClaim(t *testing.T, s string) viffio.Claim {
 	t.Helper()
-	c, err := verseio.ParseClaim(s)
+	c, err := viffio.ParseClaim(s)
 	if err != nil {
 		t.Fatalf("ParseClaim(%q): %v", s, err)
 	}
@@ -408,11 +408,11 @@ func mustClaim(t *testing.T, s string) verseio.Claim {
 }
 
 // A claim's node is its levels up to the first glob, and a registration's nodes drop any that
-// lie beneath another: an owner record at `git` already owns `git.verse`.
+// lie beneath another: an owner record at `git` already owns `git.viff`.
 func TestAClaimsNodeIsItsLiteralLevels(t *testing.T) {
-	claim := func(s string) verseio.Claim {
+	claim := func(s string) viffio.Claim {
 		t.Helper()
-		c, err := verseio.ParseClaim(s)
+		c, err := viffio.ParseClaim(s)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -422,8 +422,8 @@ func TestAClaimsNodeIsItsLiteralLevels(t *testing.T) {
 		claim, node string
 		ok          bool
 	}{
-		{"git.verse", "git.verse", true},
-		{"github.signadot.verse", "github.signadot.verse", true},
+		{"git.viff", "git.viff", true},
+		{"github.signadot.viff", "github.signadot.viff", true},
 		{"linear.issue.ENG-*", "linear.issue", true},
 		{"git.*.head", "git", true},
 		{"*.*.*", "", false},
@@ -433,12 +433,12 @@ func TestAClaimsNodeIsItsLiteralLevels(t *testing.T) {
 			t.Errorf("%s: node %q %v, want %q %v", c.claim, n.String(), ok, c.node, c.ok)
 		}
 	}
-	nodes := verseio.Nodes([]verseio.Claim{claim("git.verse"), claim("git.*.head"), claim("git-issue.verse")})
+	nodes := viffio.Nodes([]viffio.Claim{claim("git.viff"), claim("git.*.head"), claim("git-issue.viff")})
 	var got []string
 	for _, n := range nodes {
 		got = append(got, n.String())
 	}
-	if strings.Join(got, " ") != "git git-issue.verse" {
-		t.Errorf("nodes = %v, want [git git-issue.verse]", got)
+	if strings.Join(got, " ") != "git git-issue.viff" {
+		t.Errorf("nodes = %v, want [git git-issue.viff]", got)
 	}
 }

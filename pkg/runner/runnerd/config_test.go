@@ -43,8 +43,8 @@ func TestLoadRefusesWhatItWouldNotApply(t *testing.T) {
 		{"models: {modle: m1}\n", `no setting "models.modle"`},
 		{"concurrency: 4\n", `no setting "concurrency"`},
 		{"hold: 3m\n", `no setting "hold"`},
-		{"verse: {url: \"http://verse:9797\", audiance: x}\n", `no setting "verse.audiance"`},
-		{"verse: {issuer: \"https://verse.example\"}\n", "verse: `url`"},
+		{"viff: {url: \"http://viff:9797\", audiance: x}\n", `no setting "viff.audiance"`},
+		{"viff: {issuer: \"https://viff.example\"}\n", "viff: `url`"},
 	} {
 		var own ownConfig
 		_, err := Load(writeConfig(t, tc.body), &own)

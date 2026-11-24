@@ -1,6 +1,6 @@
 # Tutorial
 
-Verse has four parts: data, questions, tasks and charters. This tutorial has one page for each,
+Viff has four parts: data, questions, tasks and charters. This tutorial has one page for each,
 and a second page of charters. The pages go from the simplest part to the one that uses the
 other three.
 
@@ -8,13 +8,13 @@ Each part is data to the next. A question is data, and so is a task. A charter i
 data, and the rules ask questions and start tasks. Once you know the four, you can write
 charters for your own work.
 
-A real deployment adds more data, agents and runners. [Iods](../io.md) connect verse to a
+A real deployment adds more data, agents and runners. [Iods](../io.md) connect viff to a
 repository, a forge or a chat workspace. An iod writes what the system holds into the store, and
 carries what a rule writes back out to the system: a comment, a tag, a message.
 [Runners](../runners.md) do the work of tasks. An operator installs iods and runners for you.
 The charters are yours.
 
-Every command in the tutorial runs on a verse on your own machine. It stands in for the shared verse
+Every command in the tutorial runs on a viff on your own machine. It stands in for the shared viff
 a team runs: there, the people an ask names are your colleagues, they answer from their own machines
 or from Slack, and what you start they can see and steer. Here you are everyone, and `--as` lets you
 answer as them. Each page sets up the data it reads. The few runs that go to an agent need a model
@@ -26,16 +26,16 @@ summary.
 You need Go 1.27.1 or later, and this repository checked out.
 
 ```sh
-go build -o verse ./cmd/verse
-export PATH="$PWD:$PATH"          # so that `verse` is this build, in every terminal you use
-export VERSE_ADDR=localhost:9797  # where clients reach it (this is the default)
-verse up                          # engine + task runtime + store, in one process
+go build -o viff ./cmd/viff
+export PATH="$PWD:$PATH"          # so that `viff` is this build, in every terminal you use
+export VIFF_ADDR=localhost:9797  # where clients reach it (this is the default)
+viff up                          # engine + task runtime + store, in one process
 ```
 
-Leave `verse up` running. Every other subcommand is a client. Open a second terminal at the
-root of the checkout, with the same `PATH` and `VERSE_ADDR`.
+Leave `viff up` running. Every other subcommand is a client. Open a second terminal at the
+root of the checkout, with the same `PATH` and `VIFF_ADDR`.
 
-On a verse on your own machine, the CLI acts as `user:<login>@localhost`, and that user owns
+On a viff on your own machine, the CLI acts as `user:<login>@localhost`, and that user owns
 what you write. [The permissions walk](../perms-guide.md#before-the-first-step-who-you-are) shows
 how to name yourself.
 
@@ -47,7 +47,7 @@ Then start with [data](data.md).
 
 ## [Data](data.md)
 
-[Data](../glossary.md#data): what verse knows about the world, each document at an address.
+[Data](../glossary.md#data): what viff knows about the world, each document at an address.
 You read it, write it and watch it change.
 
 ## [Questions](questions.md)

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // A FILTER KEEPS WHAT MATCHES AND WRITES WHAT IT TRIMS TO, an array by its elements and anything

@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // derefEnv is the environment the expression tests evaluate against.
@@ -26,7 +26,7 @@ func derefEnv() launch.Binding {
 		"ratio":  1.5,
 		"ok":     true,
 		"nul":    nil,
-		"verse":  entity.Obj{"review": entity.Obj{"done": true, "step": 2}},
+		"viff":   entity.Obj{"review": entity.Obj{"done": true, "step": 2}},
 		"list":   []any{"a", "b"},
 		"obj":    entity.Obj{"k": "v"},
 	}.Payload(), subjectRecord(entity.RefAt("demo", "pr", "1"), nil, 0), fromSubject)
@@ -56,10 +56,10 @@ func TestWholeValueKeepsType(t *testing.T) {
 		{".[nul]", ir.NullType},
 		{".[obj]", ir.ObjectType},
 		{".[list]", ir.ArrayType},
-		{".[verse.review.done]", ir.BoolType},
-		{".[verse.review.step]", ir.NumberType},
+		{".[viff.review.done]", ir.BoolType},
+		{".[viff.review.step]", ir.NumberType},
 		{".[list[1]]", ir.StringType},
-		{`.[verse.review.missing ?? "none"]`, ir.StringType},
+		{`.[viff.review.missing ?? "none"]`, ir.StringType},
 		{`.[status == "done" ? count : nul]`, ir.NumberType},
 	} {
 		got, err := valueOf(tc.in, env)
@@ -89,7 +89,7 @@ func TestTextInterpolates(t *testing.T) {
 		{"got $[result]", "got SHIPIT"},
 		{"$[status]/$[result]", "done/SHIPIT"},
 		{"n=$[count] r=$[ratio] ok=$[ok]", "n=3 r=1.5 ok=true"},
-		{"step $[verse.review.step] of 3", "step 2 of 3"},
+		{"step $[viff.review.step] of 3", "step 2 of 3"},
 		{"about $[subject.ref]", `about demo.pr."1"`},
 		// A written null is `null` in text, as it is in a spawn's strings.
 		{"x=$[nul]", "x=null"},
@@ -112,7 +112,7 @@ func TestTextInterpolates(t *testing.T) {
 // spells the two cases apart.
 func TestAbsentErrorsNullResolves(t *testing.T) {
 	env := derefEnv()
-	for _, s := range []string{".[nope]", ".[verse.review.missing]", "saw $[nope]", ".[nul.x]"} {
+	for _, s := range []string{".[nope]", ".[viff.review.missing]", "saw $[nope]", ".[nul.x]"} {
 		if _, err := valueOf(s, env); err == nil {
 			t.Errorf("%s: an absent path should error, not silently vanish", s)
 		}
@@ -153,7 +153,7 @@ func TestExpandPatchPreservesTagsAndNesting(t *testing.T) {
 	patch := entity.Obj{
 		"stage":   ".[status]",
 		"verdict": ".[result]",
-		"nested":  entity.Obj{"deep": ".[verse.review.step]"},
+		"nested":  entity.Obj{"deep": ".[viff.review.step]"},
 		"tmp":     nil,
 		"gone":    ".[status]",
 	}.Payload()
@@ -388,7 +388,7 @@ func TestReferencesOnASubjectOnlyTriggerReadTheEvent(t *testing.T) {
 }
 
 // A composite payload field reaches a spawn's prompt as TONY, and parses back to what it came
-// from: a format the rest of verse writes, which a person and a parser can both read.
+// from: a format the rest of viff writes, which a person and a parser can both read.
 //
 // The test round-trips rather than comparing text, because the promise is "a document a parser
 // can read", not any particular layout. An expression reads a document as Go values, so its

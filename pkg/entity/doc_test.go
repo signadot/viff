@@ -9,7 +9,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // fixture is the awkward corners of the id space, together, so every test below is asked about
@@ -243,7 +243,7 @@ func TestADescentReachesEveryDepth(t *testing.T) {
 		}
 	}
 	// A filter is asked of every node the descent reaches, and what it keeps nests where it
-	// stands — which is what `verse data '..' -if X` answers.
+	// stands — which is what `viff data '..' -if X` answers.
 	open := func(n *ir.Node) (*ir.Node, bool, error) { return n, Str(n, "stage") == "open", nil }
 	out, reached, err := Reach(docOf(fixture()), at(t, "demo.."), open)
 	if err != nil || !reached {
@@ -269,7 +269,7 @@ func TestADescentReachesEveryDepth(t *testing.T) {
 	}
 }
 
-// `(key)` reaches into an array by identity, which no verse address could do before: a
+// `(key)` reaches into an array by identity, which no viff address could do before: a
 // proposal's votes are addressable one voter at a time.
 func TestAKeyedArrayIsAddressable(t *testing.T) {
 	votes := ir.FromSlice([]*ir.Node{
@@ -298,7 +298,7 @@ func TestAKeyedArrayIsAddressable(t *testing.T) {
 //
 // AN ELEMENT IS NAMED BY POSITION, which is the one spelling now: identity is the store's
 // (!logd-key), a `!key` tag is refused on the way in (TestAKeyTagIsRefusedOnAWrite), and the
-// verse surface for the store's keying is not designed yet. 6a04ga4nh12krh87ndn0 is the watch's
+// viff surface for the store's keying is not designed yet. 6a04ga4nh12krh87ndn0 is the watch's
 // silence at these addresses, which is a separate question.
 func TestPathsReachIntoArrays(t *testing.T) {
 	votes := ir.FromSlice([]*ir.Node{
@@ -440,11 +440,11 @@ func flatten(t *testing.T, n *ir.Node) string {
 // It used to land: `!key` is a merge operator, so an ordinary write executes it and keeps the
 // merged array untagged, and a payload written as data (Raw) kept the annotation — which is how
 // an array came to be positional in the store while its value claimed a name for each element.
-// Two keyings for one array, and only verse could read the second.
+// Two keyings for one array, and only viff could read the second.
 //
 // logd keys an array in the SCHEMA (!logd-key), which is what makes an element addressable by
 // identity, refuses a position on a keyed array, and rewrites the elements when the keying
-// changes. Surfacing that in verse is not designed yet; until it is, an array is positional and
+// changes. Surfacing that in viff is not designed yet; until it is, an array is positional and
 // its elements are addressed by position, which is what every path in a listing now spells.
 func TestAKeyTagIsRefusedOnAWrite(t *testing.T) {
 	s := openStore(t)

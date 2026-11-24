@@ -10,16 +10,16 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// A RECORD is a ref of verse's own in a repository, `refs/verse/<name>`: a chain of commits, each
+// A RECORD is a ref of viff's own in a repository, `refs/viff/<name>`: a chain of commits, each
 // holding a tree as its whole tree, the one before as its parent, and the commit the tree was
-// taken from as its `From:` trailer. It is what verse keeps in a repository about the repository,
+// taken from as its `From:` trailer. It is what viff keeps in a repository about the repository,
 // as git-issue keeps issues in refs of its own: no branch, so nothing checks it out, builds it, or
-// opens a pull request onto it, and `git log refs/verse/<name>` is its history.
+// opens a pull request onto it, and `git log refs/viff/<name>` is its history.
 //
-// THE TREE IS ITS IDENTITY. The repo-charters reconciler keeps `refs/verse/live` as what runs: the
+// THE TREE IS ITS IDENTITY. The repo-charters reconciler keeps `refs/viff/live` as what runs: the
 // charters tree an answer said yes to. A commit of main carries the tree beside everything else
 // in the repository, and is not what runs; the record's commit holds the tree alone.
 //
@@ -43,13 +43,13 @@ import (
 const recordTarget = "record"
 
 // recordRefs is the namespace records live in.
-const recordRefs = "refs/verse/"
+const recordRefs = "refs/viff/"
 
 // recordAuthor is who an entry is by: the io, writing as itself, with no address.
-var recordAuthor = []string{"-c", "user.name=verse", "-c", "user.email=verse@verse.invalid"}
+var recordAuthor = []string{"-c", "user.name=viff", "-c", "user.email=viff@viff.invalid"}
 
 // recordName refuses for good a name that cannot be a record's: one git does not take as a ref
-// under refs/verse/ (`git check-ref-format`, which is git's own rule, so a name it refuses is
+// under refs/viff/ (`git check-ref-format`, which is git's own rule, so a name it refuses is
 // never pushed or written and failed there, to be tried again every pass), and a full refname,
 // which would nest. A git that does not answer is an error that may pass.
 func recordName(ctx context.Context, name string) error {

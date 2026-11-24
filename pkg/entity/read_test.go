@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 func refs(ents []entity.Entity) map[string]bool {
@@ -18,10 +18,10 @@ func refs(ents []entity.Entity) map[string]bool {
 	return out
 }
 
-// Under the open verse's default what anybody creates is readable by everyone — the root's
+// Under the open viff's default what anybody creates is readable by everyone — the root's
 // default, `read: ["*"]`, is copied onto the record at creation — and the mirror is the
 // system's alone.
-func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
+func TestTheOpenViffReadsEverythingButTheMirror(t *testing.T) {
 	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
 	alice, bob := entity.As(system, "user:alice@example.com"), entity.As(system, "user:bob@example.com")
@@ -30,7 +30,7 @@ func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok, err := bob.Get(pr); err != nil || !ok {
-		t.Fatalf("bob reads alice's pr in the open verse: ok=%v err=%v", ok, err)
+		t.Fatalf("bob reads alice's pr in the open viff: ok=%v err=%v", ok, err)
 	}
 	if _, _, err := bob.Get(entity.PermsRef(pr)); !errors.Is(err, entity.ErrForbidden) {
 		t.Fatalf("bob reads the mirror: %v", err)
@@ -40,10 +40,10 @@ func TestTheOpenVerseReadsEverythingButTheMirror(t *testing.T) {
 	if _, ok, err := system.Get(entity.PermsRef(entity.RefAt("demo"))); err != nil || !ok {
 		t.Fatalf("the system reads the mirror: ok=%v err=%v", ok, err)
 	}
-	// And a listing across verse's half leaves the mirror out for bob.
-	all := refs(entity.Below(bob, nil, 3, entity.VerseRoot))
+	// And a listing across viff's half leaves the mirror out for bob.
+	all := refs(entity.Below(bob, nil, 3, entity.ViffRoot))
 	if all[entity.PermsRef(pr).String()] {
-		t.Fatal("bob's listing of verse's half holds a perms record")
+		t.Fatal("bob's listing of viff's half holds a perms record")
 	}
 }
 
@@ -277,7 +277,7 @@ func TestARecordBeneathARowIsLeftOutEveryWay(t *testing.T) {
 
 // A READ OF A PATH ANSWERS WHAT READS OF EACH NODE IN IT WOULD. Beneath a node the reader may
 // not read, a node held out to them is still theirs, and comes back where it stands; what is
-// neither theirs nor held out is not there, and neither is verse's own half, which nothing here
+// neither theirs nor held out is not there, and neither is viff's own half, which nothing here
 // holds out.
 func TestAReadAnswersEachNodeAsItsOwnReadWould(t *testing.T) {
 	inner := entitytest.OpenStore(t)
@@ -310,8 +310,8 @@ func TestAReadAnswersEachNodeAsItsOwnReadWould(t *testing.T) {
 			t.Fatalf("bob's read at %v: ok=%v err=%v", at, ok, err)
 		}
 		if at == nil {
-			if entity.Get(node, entity.VerseRoot) != nil {
-				t.Fatalf("bob's read of the root holds verse's own half: %v", node)
+			if entity.Get(node, entity.ViffRoot) != nil {
+				t.Fatalf("bob's read of the root holds viff's own half: %v", node)
 			}
 			node = entity.Get(node, "demo")
 		}
@@ -327,7 +327,7 @@ func TestAReadAnswersEachNodeAsItsOwnReadWould(t *testing.T) {
 	if node, _, err := alice.ReadAt([]string{"demo", "pr"}); err != nil || entity.Get(entity.Get(node, "1"), "stage") == nil || entity.Get(node, "2") != nil {
 		t.Fatalf("alice's read of demo.pr = %v err=%v, want hers whole and not bob's", node, err)
 	}
-	if node, _, err := system.ReadAt(nil); err != nil || entity.Get(node, entity.VerseRoot) == nil {
+	if node, _, err := system.ReadAt(nil); err != nil || entity.Get(node, entity.ViffRoot) == nil {
 		t.Fatalf("the system's read of the root = %v err=%v, want all of it", node, err)
 	}
 }

@@ -1,4 +1,4 @@
-module github.com/signadot/verse
+module go.viff.dev/viff
 
 go 1.27.1
 

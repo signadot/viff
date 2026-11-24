@@ -1,12 +1,12 @@
 // Package repocharters is the reconciler of a repository's charters: a system-level charter
-// verse ships, rendered for one repository and installed by a deployment, which keeps what runs
-// in verse equal to the last state of the repository's charters directory on its main branch
+// viff ships, rendered for one repository and installed by a deployment, which keeps what runs
+// in viff equal to the last state of the repository's charters directory on its main branch
 // that the team said yes to (git-issue dzxn44gw; the design is j5vbwvja and its parts).
 //
-// IT IS NOT PART OF THE ENGINE. Nothing in versed knows this charter: it is a charter like any
+// IT IS NOT PART OF THE ENGINE. Nothing in viffd knows this charter: it is a charter like any
 // other, written against the rule grammar, the git io's reflection and out half, and the github
-// io's out half, and it reaches a verse the way the deployment's other system charters do, as a
-// text versed installs at start as the system (versed.Server.SystemCharters). This package holds
+// io's out half, and it reaches a viff the way the deployment's other system charters do, as a
+// text viffd installs at start as the system (viffd.Server.SystemCharters). This package holds
 // the charter's text as a template, renders it for a repository, and is where its test lives.
 // The reference example (docs/reference/examples/repo-charters/repo-charters.tony) is a
 // rendering of it, checked by the test to be the same.
@@ -21,8 +21,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 //go:embed charter.tony.tmpl
@@ -50,16 +50,16 @@ const gitIO = "agent:git-iod"
 
 // Params name the one repository a rendering is for.
 type Params struct {
-	// Repo is the git io's id for the repository, which it reflects as `git.<Repo>`: `verse`.
+	// Repo is the git io's id for the repository, which it reflects as `git.<Repo>`: `viff`.
 	Repo string
 	// GitHub is the repository as GitHub names it, `org/name`, which the github io reflects as
 	// `github.<org>.<name>` and reads inputs for under `github.<org>.<name>.out`.
 	GitHub string
 	// Branch is the branch the repository's charters follow, the one a change is proposed onto
-	// and whose charters are added to the record verse/live: `main`, or `master`. Empty is `main`.
+	// and whose charters are added to the record viff/live: `main`, or `master`. Empty is `main`.
 	Branch string
-	// InstallAt is the address the repository's charters install at, as `verse c -a` spells
-	// one: `repos.verse`. The git io installs there as itself, so it has to own the address or
+	// InstallAt is the address the repository's charters install at, as `viff c -a` spells
+	// one: `repos.viff`. The git io installs there as itself, so it has to own the address or
 	// hold `child-owner` above it.
 	InstallAt string
 	// Tree is the name the git io reflects the charters directory's tree under (`-tree
@@ -76,11 +76,11 @@ type Params struct {
 // charter's strings and paths would read as something else (a quote, a `$`, a `*`, a space).
 var branchName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._/-]*$`)
 
-// Example is the laptop instance the reference example is rendered from: the verse repository,
-// reflected by a git io beside a clone, its charters installed at `repos.verse`.
-var Example = Params{Repo: "verse", GitHub: "signadot/verse", InstallAt: "repos.verse", Tree: "charters"}
+// Example is the laptop instance the reference example is rendered from: the viff repository,
+// reflected by a git io beside a clone, its charters installed at `repos.viff`.
+var Example = Params{Repo: "viff", GitHub: "signadot/viff", InstallAt: "repos.viff", Tree: "charters"}
 
-// Render is the charter for one repository, as a verse installs it.
+// Render is the charter for one repository, as a viff installs it.
 func Render(p Params) ([]byte, error) {
 	if p.Repo == "" || strings.ContainsAny(p.Repo, ".* \t\n\"") {
 		return nil, fmt.Errorf("repo-charters: Repo %q is not one plain segment", p.Repo)
@@ -128,7 +128,7 @@ func Render(p Params) ([]byte, error) {
 	}{
 		Repo: p.Repo, GitHub: p.GitHub, GitHubOrg: org, GitHubName: name, InstallAt: entity.JoinSegs(segs),
 		Tree: tree, Branch: branch, BranchSeg: strings.ReplaceAll(entity.JoinSegs([]string{branch}), `"`, `\"`), Answerers: quoted, AnswererFlags: answererFlags(append(quoted, `"`+gitIO+`"`)),
-		Proceed: answeredProceed, Deny: answeredDeny, Obsolete: answeredObsolete, EmptyTree: verseio.EmptyTree,
+		Proceed: answeredProceed, Deny: answeredDeny, Obsolete: answeredObsolete, EmptyTree: viffio.EmptyTree,
 	}
 	tmpl, err := template.New("repo-charters").Parse(charterTemplate)
 	if err != nil {

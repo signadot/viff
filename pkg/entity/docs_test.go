@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// Every name the docs show being typed is in the grammar: a `-as`, a `VERSE_USER`, a `-to`, a
+// Every name the docs show being typed is in the grammar: a `-as`, a `VIFF_USER`, a `-to`, a
 // grantee list on a grant, a default or a gate, a group's members.
 // The examples are what people copy, and a spelling the grammar refuses teaches a refusal.
 //
@@ -25,14 +25,14 @@ func TestTheDocsSpellNamesInTheGrammar(t *testing.T) {
 	}
 	principals := []*regexp.Regexp{
 		regexp.MustCompile(`(?:^|[\s(])--?as[ =]("[^"]*"|'[^']*'|[^\s)]+)`),
-		regexp.MustCompile(`VERSE_USER=("[^"]*"|'[^']*'|\S+)`),
+		regexp.MustCompile(`VIFF_USER=("[^"]*"|'[^']*'|\S+)`),
 		regexp.MustCompile(`driver:\s*person,\s*who:\s*([^\s,}]+)`),
 	}
 	grantees := []*regexp.Regexp{
 		regexp.MustCompile(`\b(?:read|read-write|owner|control|answerers)\s*:\s*\[([^\]\n]*)\]`),
 		regexp.MustCompile(`(?:^|[\s(])--?to[ =]([^\s)]+)`),
 		regexp.MustCompile(`driver:\s*group,\s*group:\s*([^\s,}]+)`),
-		regexp.MustCompile(`verse group add \S+ ([^#\n]+)`),
+		regexp.MustCompile(`viff group add \S+ ([^#\n]+)`),
 	}
 	checked := 0
 	for _, path := range docs {

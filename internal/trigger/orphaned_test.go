@@ -4,14 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// AN ORPHANED TASK IS A FAILED ONE THAT SAYS SO. A task that ended because verse and its runner
+// AN ORPHANED TASK IS A FAILED ONE THAT SAYS SO. A task that ended because viff and its runner
 // lost each other reaches `onFailed` as any failure does, and the hook reads `.[orphaned]` to
 // tell which kind it was: true for that end, and false, not absent, for a task that failed for
 // a reason of its own.
@@ -25,7 +25,7 @@ func TestOnFailedReadsWhetherTheTaskWasOrphaned(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 			OnFailed: &Action{Patch: entity.Obj{"stage": "failed", "lost": ".[orphaned]", "why": ".[err]"}.Payload()},
 		},
 	}); err != nil {

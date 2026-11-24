@@ -6,10 +6,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // flowTask is one LIVE task: its id (for reap, by its record's ref), the subject it is
@@ -66,7 +66,7 @@ func (e *Engine) Spawn(id string, spec launch.Spec) task.Handle {
 }
 
 // engineActor is the name the engine acts under on a task's handle: who paused, resumed or
-// cancelled it, for the record. The engine is verse's own, so it is the system's.
+// cancelled it, for the record. The engine is viff's own, so it is the system's.
 const engineActor = "system:trigger"
 
 // track registers a live task. Its record ends it: reap retires it and runs its completion hook
@@ -167,8 +167,8 @@ func (e *Engine) reapEnded(fp flowTask) {
 }
 
 // Adopt registers an already-running task (id + governing handle) under a flow — the
-// resume path on restart, when a remote-hosted task outlived verse. It re-tracks it
-// exactly as Spawn does a fresh one, so the resumed task is steerable (`verse flow` say,
+// resume path on restart, when a remote-hosted task outlived viff. It re-tracks it
+// exactly as Spawn does a fresh one, so the resumed task is steerable (`viff flow` say,
 // cancel, suspend) and reaped from the flow when it ends — not merely observed. subject
 // "" is a no-op.
 func (e *Engine) Adopt(subject, id string, h task.Handle) {
@@ -264,7 +264,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	}
 	defer e.hookDone()
 	subject, serr := entity.ParseAddr(fp.subject)
-	// WHAT COMMIT THIS READS AT: the head, the verse as it is when the task ends.
+	// WHAT COMMIT THIS READS AT: the head, the viff as it is when the task ends.
 	//
 	// A hook is woken by a task finishing rather than by a write, so it has no cause of its
 	// own — and for a while that was taken to mean it had no revision to read at either, which
@@ -274,7 +274,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// rule was one statement about one moment. That moment is history, and the store keeps
 	// history for its compaction cutoff only: a task that ran past it lost its hook to a read
 	// the store rightly refused (entity.ErrReplayTooOld), and a capture of that moment on the
-	// task's record (signadot/verse#76) narrowed the loss without removing it, at a copy of
+	// task's record (signadot/viff#76) narrowed the loss without removing it, at a copy of
 	// the rule's places on every write of every hooked task (git-issue 8mzvx61xha9xres1xdn0).
 	//
 	// The head is always there to read: no cutoff reaches it and no restart loses it, since
@@ -285,7 +285,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// writing over it in between (applyOne). What makes the hook survive a restart is as it
 	// was: the chain on the record names the action, which is looked up when the task ends.
 	//
-	// Head, as every read the engine makes of the verse as it stands (selectsNow, a lift's
+	// Head, as every read the engine makes of the viff as it stands (selectsNow, a lift's
 	// reArm): what this process has been told of, which the task's own terminal write is, with
 	// no round trip. A write another process made that the watch has not delivered yet is one the
 	// next commit brings, as for any firing.
@@ -387,7 +387,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 //
 // A hook is where an unverifiable claim turns into a state transition, so its failure is the
 // one an operator most needs to see — and a trace line is invisible to everything that reads
-// the verse.
+// the viff.
 //
 // AND ONTO THE SUBJECT, in the rule's own bookkeeping (recordHookTrouble), because the subject is
 // where somebody looks when it does not advance, and a failure only the task's record shows left
@@ -399,7 +399,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 // `hook` into it.
 //
 // `hook` is one reserved name on an entity the engine and the mirror already co-own, the way
-// `verse` is one reserved root on a subject. status is the mirror's field and is left alone.
+// `viff` is one reserved root on a subject. status is the mirror's field and is left alone.
 func (e *Engine) recordHookFailure(ref, subj entity.Ref, chain string, occurrence int64, err error) {
 	e.recordHookTrouble(subj, chain, ref.Name(), occurrence, err)
 	e.recordTaskHookFailure(ref, chain, err)
@@ -420,14 +420,14 @@ func (e *Engine) recordTaskHookFailure(ref entity.Ref, chain string, err error) 
 	})
 }
 
-// hookTrouble is the field under verse.charter.<trigger> on a subject that says the rule's
+// hookTrouble is the field under @sys.charter.<trigger> on a subject that says the rule's
 // completion hook failed about it.
 const hookTrouble = "hook"
 
 // recordHookTrouble writes a completion hook's failure onto the SUBJECT, under the rule's own
 // bookkeeping:
 //
-//	verse:
+//	viff:
 //	  charter:
 //	    fix:
 //	      hook: {chain: fix.onDone, task: fix@…, occurrence: 4480, err: "…"}
@@ -445,7 +445,7 @@ const hookTrouble = "hook"
 // suspension, and begins no causal chain. task is "" where no task's completion ran the hook.
 func (e *Engine) recordHookTrouble(subj entity.Ref, chain, taskID string, occurrence int64, err error) {
 	rec := entity.Obj{"chain": chain, "task": taskID, "occurrence": occurrence, "err": err.Error()}
-	patch := entity.Obj{VerseRoot: entity.Obj{CharterKey: entity.Obj{
+	patch := entity.Obj{ViffRoot: entity.Obj{CharterKey: entity.Obj{
 		mirror.TriggerOf(chain): entity.Obj{hookTrouble: rec}}}}.Payload()
 	if werr := e.patchEntity(chain, 0, subj, subj, patch); werr != nil {
 		e.logger.Warn("a completion hook's failure could not be recorded on its subject",
@@ -462,13 +462,13 @@ func (e *Engine) clearHookFailure(subj entity.Ref, chain string) {
 	if err != nil || !ok {
 		return
 	}
-	if entity.Get(entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), trig), hookTrouble) == nil {
+	if entity.Get(entity.Get(entity.Get(entity.Get(ent.Payload, ViffRoot), CharterKey), trig), hookTrouble) == nil {
 		return
 	}
 	// A REMOVAL AT ITS PATH, rather than a `!delete` patched into the subject: a patch is written
 	// back whole through Modify, which drops a field only at the top of the payload, so a removal
 	// three levels down would merge away to nothing. As the rule, like the write it undoes.
-	at := subj.At(VerseRoot, CharterKey, trig, hookTrouble)
+	at := subj.At(ViffRoot, CharterKey, trig, hookTrouble)
 	if _, _, werr := e.caused(chain, 0).Write(entity.Write{At: at}); werr != nil {
 		e.logger.Warn("a completion hook's old failure could not be cleared from its subject",
 			"chain", chain, "subject", subj.String(), "err", werr.Error())

@@ -12,7 +12,7 @@ import (
 // given there, its shapes within the other's.
 func TestAnEnvironmentWithinAnother(t *testing.T) {
 	outer := Environment{Systems: Systems{
-		"git":     {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]Shape{"fetch": {{}}, "push": {{"ref": ir.FromString("^refs/heads/verse/").WithTag("!regexp")}}}}},
+		"git":     {{Attributes: map[string]string{"repo": "github.com/signadot/viff", "from": "main"}, Verbs: map[string][]Shape{"fetch": {{}}, "push": {{"ref": ir.FromString("^refs/heads/viff/").WithTag("!regexp")}}}}},
 		"network": {{Attributes: map[string]string{"mode": "open"}}},
 	}}
 	for name, c := range map[string]struct {
@@ -24,7 +24,7 @@ func TestAnEnvironmentWithinAnother(t *testing.T) {
 			"network": {{Attributes: map[string]string{"mode": "open"}}},
 		}}, ""},
 		"a narrower push": {Environment{Systems: Systems{
-			"git": {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]Shape{"push": {{"ref": ir.FromString("refs/heads/verse/auto/*").WithTag("!glob")}}}}},
+			"git": {{Attributes: map[string]string{"repo": "github.com/signadot/viff", "from": "main"}, Verbs: map[string][]Shape{"push": {{"ref": ir.FromString("refs/heads/viff/auto/*").WithTag("!glob")}}}}},
 		}}, ""},
 		"a system the outer does not reach": {Environment{Systems: Systems{
 			"commands": {{Verbs: map[string][]Shape{"run": {{}}}}},
@@ -36,7 +36,7 @@ func TestAnEnvironmentWithinAnother(t *testing.T) {
 			"network": {{Attributes: map[string]string{"mode": "open"}, Verbs: map[string][]Shape{"connect": {{}}}}},
 		}}, "gives no `connect`"},
 		"a wider push": {Environment{Systems: Systems{
-			"git": {{Attributes: map[string]string{"repo": "github.com/signadot/verse", "from": "main"}, Verbs: map[string][]Shape{"push": {{"ref": ir.FromString("^refs/heads/").WithTag("!regexp")}}}}},
+			"git": {{Attributes: map[string]string{"repo": "github.com/signadot/viff", "from": "main"}, Verbs: map[string][]Shape{"push": {{"ref": ir.FromString("^refs/heads/").WithTag("!regexp")}}}}},
 		}}, "within no shape"},
 	} {
 		err := c.inner.Within(outer)
@@ -54,17 +54,17 @@ func TestAnEnvironmentWithinAnother(t *testing.T) {
 // AN ENVIRONMENT LESS A VERB gives every other verb its blocks gave, a block that named none
 // included, and a system whose blocks gave only that verb is not reached at all.
 func TestAnEnvironmentLessAVerb(t *testing.T) {
-	all := Environment{Systems: Systems{"verse": {{}}, "network": {{Attributes: map[string]string{"mode": "open"}}}}}
-	less := all.Without("verse", "charter-install")
-	if len(all.Systems["verse"][0].Verbs) != 0 {
+	all := Environment{Systems: Systems{"viff": {{}}, "network": {{Attributes: map[string]string{"mode": "open"}}}}}
+	less := all.Without("viff", "charter-install")
+	if len(all.Systems["viff"][0].Verbs) != 0 {
 		t.Fatal("Without changed the environment it was given")
 	}
-	if err := (Environment{Systems: Systems{"verse": {{Verbs: map[string][]Shape{"data-get": {{}}, "charter-remove": {{}}}}}}}).Within(less); err != nil {
+	if err := (Environment{Systems: Systems{"viff": {{Verbs: map[string][]Shape{"data-get": {{}}, "charter-remove": {{}}}}}}}).Within(less); err != nil {
 		t.Errorf("the other verbs: %v", err)
 	}
 	for name, inner := range map[string]Environment{
-		"every verb":     {Systems: Systems{"verse": {{}}}},
-		"the verb alone": {Systems: Systems{"verse": {{Verbs: map[string][]Shape{"charter-install": {{}}}}}}},
+		"every verb":     {Systems: Systems{"viff": {{}}}},
+		"the verb alone": {Systems: Systems{"viff": {{Verbs: map[string][]Shape{"charter-install": {{}}}}}}},
 	} {
 		if err := inner.Within(less); err == nil || !strings.Contains(err.Error(), "charter-install") {
 			t.Errorf("%s: %v, want refused for charter-install", name, err)
@@ -77,8 +77,8 @@ func TestAnEnvironmentLessAVerb(t *testing.T) {
 	if got := all.Without("network", "tcp-client").Systems["network"]; len(got) != 1 || got[0].Attributes["mode"] != "open" {
 		t.Errorf("less a verb it does not give, the network is %v", got)
 	}
-	only := Environment{Systems: Systems{"verse": {{Verbs: map[string][]Shape{"charter-install": {{}}}}}}}
-	if _, ok := only.Without("verse", "charter-install").Systems["verse"]; ok {
+	only := Environment{Systems: Systems{"viff": {{Verbs: map[string][]Shape{"charter-install": {{}}}}}}}
+	if _, ok := only.Without("viff", "charter-install").Systems["viff"]; ok {
 		t.Error("a system that gave only the verb is still reached")
 	}
 }

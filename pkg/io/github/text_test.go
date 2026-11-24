@@ -3,9 +3,9 @@ package github
 import (
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // EVERY BODY SHAPE HAS TO SURVIVE THE WIRE, and this is the test that would have caught what
@@ -13,7 +13,7 @@ import (
 //
 // A multi-line string renders as a tony block scalar, and a block scalar whose content has a
 // line ending in whitespace — or a trailing blank line — emits the next sibling key at column
-// zero. The document is imbalanced, verse refuses the whole reflection as undecodable, and the
+// zero. The document is imbalanced, viff refuses the whole reflection as undecodable, and the
 // way that presents is the bad way: every pass fails, the slice freezes at what it last held,
 // `lastPass` keeps advancing because passes are running, and the source looks alive while
 // reflecting nothing.
@@ -48,7 +48,7 @@ func TestEveryBodyShapeSurvivesTheWire(t *testing.T) {
 		"", "\n", "\n\n\n", "   \n", "a\n \n b\n",
 	} {
 		want := text(body)
-		rn := verseio.Reflection{}
+		rn := viffio.Reflection{}
 		rn.Add(entity.RefAt("github", "x", "y", "comment", "1", "2"),
 			entity.Obj{"author": "ana", "body": want, "id": 2, "on": 1})
 		_ = want
@@ -67,7 +67,7 @@ func TestEveryBodyShapeSurvivesTheWire(t *testing.T) {
 			t.Errorf("%q did not survive the wire: %v\n%s", body, err, wire)
 			continue
 		}
-		var back verseio.Reflection
+		var back viffio.Reflection
 		if err := codec.FromNode(parsed, &back); err != nil {
 			t.Errorf("%q decode: %v", body, err)
 			continue

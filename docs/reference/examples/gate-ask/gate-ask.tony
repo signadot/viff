@@ -11,11 +11,11 @@
 # with its own idea of who is waiting; written here, an answer that moves `waitingOn` moves the
 # messages on the next firing, and a reader can see the rule that sends them.
 #
-# INSTALLED AS THE SYSTEM (deploy's `systemCharter`, VERSE_SYSTEM_CHARTER). A rule acts as its
+# INSTALLED AS THE SYSTEM (deploy's `systemCharter`, VIFF_SYSTEM_CHARTER). A rule acts as its
 # installer, and a person's ask is read only by whom it asks and who may read what it is about
 # (docs/asking.md): installed by anybody else, the rule would not see the asks put to people.
 
-# The docket's own stratum is the system's, `asks` (internal/versed/system.tony), which every verse has; the
+# The docket's own stratum is the system's, `asks` (internal/viffd/system.tony), which every viff has; the
 # messages go strictly above it.
 strata:
 - name: gate-asked
@@ -40,7 +40,7 @@ rules:
     # And NOT ONE FOR A CHANNEL: an ask carrying a `slack` label is put to a channel, once, by
     # gate-ask-channel, and messages nobody in particular.
     subject:
-      path: "verse.ask.*"
+      path: "mirror.ask.*"
       value: !and
       - {status: pending, to: {grantees: null}, from: {rule: null}}
       - !not {labels: {slack: null}}
@@ -67,7 +67,7 @@ rules:
   stratum: asks
   condition:
     subject:
-      path: "verse.ask.*"
+      path: "mirror.ask.*"
       value: !and
       - {status: pending, to: {grantees: null}, from: {task: null}}
       - !not {labels: {slack: null}}
@@ -87,7 +87,7 @@ rules:
   stratum: asks
   condition:
     subject:
-      path: "verse.ask.*"
+      path: "mirror.ask.*"
       value: !and
       - {status: pending, to: {grantees: null}, from: {principal: null}}
       - !not {serves: null}
@@ -107,7 +107,7 @@ rules:
   stratum: asks
   condition:
     subject:
-      path: "verse.ask.*"
+      path: "mirror.ask.*"
       value: {status: pending, to: {grantees: null}, from: {principal: null}, serves: null}
   action:
     derive:
@@ -122,7 +122,7 @@ rules:
 # A GATE'S QUESTION FOR A CHANNEL: one message in the channel its `slack` label names, and a reply
 # in that message's thread answers it as whoever typed it, held to whom it waits on. A gate puts
 # its question to a channel by naming `answerers: ["user:*"]` and the label (merge.tony's
-# merge-to-main): anyone whose Slack account is a verse user may answer, and nobody is DM'd.
+# merge-to-main): anyone whose Slack account is a viff user may answer, and nobody is DM'd.
 #
 # A RULE'S OR A TASK'S: the iod draws a channel's message reading the question as itself, and a
 # gate's question is read as its subject is, where a person's ask is read only by its asker and
@@ -131,7 +131,7 @@ rules:
   stratum: asks
   condition:
     subject:
-      path: "verse.ask.*"
+      path: "mirror.ask.*"
       value: {status: pending, from: {rule: null}, labels: {slack: null}}
   action:
     derive:
@@ -146,7 +146,7 @@ rules:
   stratum: asks
   condition:
     subject:
-      path: "verse.ask.*"
+      path: "mirror.ask.*"
       value: {status: pending, from: {task: null}, labels: {slack: null}}
   action:
     derive:

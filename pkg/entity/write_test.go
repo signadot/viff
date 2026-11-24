@@ -294,14 +294,14 @@ func TestAbsentReadsAreNotFailures(t *testing.T) {
 	// hold an entity. logd calls that path_conflict rather than not_found (go-tony v0.0.187),
 	// and it is still nothing standing there — the distinction is about what is in the store,
 	// not about whether the read succeeded. Both classifications read as absent; if this one
-	// ever reads as a FAILURE, `verse data demo pr 1 sub` answers 502 and says the store is
+	// ever reads as a FAILURE, `viff data demo pr 1 sub` answers 502 and says the store is
 	// unreachable.
 	mustWrite(t, s, Write{At: RefAt("demo", "scalar", "1").At(), Value: Raw(mustParseNode(t, `5`))})
 
 	for _, ref := range []Ref{
 		RefAt("demo", "pr", "2"),               // the id has never been written
 		RefAt("demo", "issue", "1"),            // nor the kind
-		VerseRef("motion", "channel", "x"),     // nor the system
+		ViffRef("motion", "channel", "x"),      // nor the system
 		RefAt("demo", "scalar", "1", "sub"),    // and here an ancestor is a number
 		RefAt("demo", "scalar", "1", "s", "u"), // two below it, so nothing resolves at all
 	} {
@@ -489,10 +489,10 @@ func TestPathOfRoundTripsEverySegment(t *testing.T) {
 		{"demo", "pr", "a.b", "labels"},
 		{"a.b.c", "pr", "1"},
 		{"a b", "pr", "1"},
-		{"verse", "task", "instance", "run-1"},
+		{"mirror", "task", "instance", "run-1"},
 		{"demo"},
 		{"demo", "pr"},
-		{"verse", "task"},
+		{"mirror", "task"},
 		{"git", "ref"},
 	} {
 		got, err := TargetOf(segs)
@@ -582,10 +582,10 @@ func TestTheAddressIsAsDeepAsItIs(t *testing.T) {
 		{"demo", "pr", "1"},
 		{"demo", "pr", "1", "stage"},
 		{"demo", "pr", "1", "labels", "urgent"},
-		// Verse's own half is one segment deeper, and the same rule reads it.
-		{"verse", "task"},
-		{"verse", "task", "instance", "run-1"},
-		{"verse", "task", "instance", "run-1", "stage"},
+		// Viff's own half is one segment deeper, and the same rule reads it.
+		{"mirror", "task"},
+		{"mirror", "task", "instance", "run-1"},
+		{"mirror", "task", "instance", "run-1", "stage"},
 	} {
 		at, err := TargetOf(segs)
 		if err != nil {

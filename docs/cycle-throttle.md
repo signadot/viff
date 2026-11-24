@@ -35,7 +35,7 @@ writes. A commit that is not in the map has another cause, and it starts a fresh
 - this engine before a restart.
 
 A chain that crosses engines is a different question, with a different answer. Between charter
-packages, verse excludes the loop instead of bounding it. A package declares what it reads, and
+packages, viff excludes the loop instead of bounding it. A package declares what it reads, and
 the graph over packages must be acyclic at install
 ([the charter reference](reference/charter.md#a-charter-can-be-installed-at-an-address)). What
 is left here is a chain within one engine. The depth cap is for that chain.
@@ -73,15 +73,15 @@ The trip is at **depth > cap**, not `>=`. An ordinary rule that converges needs 
 A rule whose write leaves its subject still selected fires a second time. The second firing
 writes the same value, produces no commit, and ends there. A vacuous `on` settles this way.
 Depth counts *commits*, so this rule never reaches depth 2. A runaway commits on every lap. With
-a trip at `>=`, verse would refuse the healthy second firing and report it as a runaway. The cost
+a trip at `>=`, viff would refuse the healthy second firing and report it as a runaway. The cost
 of `>` is that a real cycle runs one step further. That step is one no-op write.
 
-Verse reads the cap at the check, not at install. The charter changes: a rule that is added or
+Viff reads the cap at the check, not at install. The charter changes: a rule that is added or
 removed changes how long a chain can legitimately be.
 
 ### A chain is per subject
 
-The chain of a firing is keyed to its [subject](glossary.md#subject). Verse enforces this. It
+The chain of a firing is keyed to its [subject](glossary.md#subject). Viff enforces this. It
 does not assume it.
 
 A firing inherits the depth of the commit that woke it only when that commit **changed the
@@ -140,12 +140,12 @@ and without the need for a ticker to exist first.
 
 ## What a trip does
 
-**A trip paces the firing. It does not refuse it.** Verse holds a tripped firing for
+**A trip paces the firing. It does not refuse it.** Viff holds a tripped firing for
 `tripDuration`, and then the firing proceeds. `tripDuration` is set in config, and its default
 is 1s. A runaway settles at a slow, steady rate. It does not stop. A value of `0` refuses the
 firing instead, which is a harder stop.
 
-A trip costs latency, and the state transition still happens. When verse is wrong about a trip,
+A trip costs latency, and the state transition still happens. When viff is wrong about a trip,
 this is the less harmful error.
 
 A held firing **aborts if its chain breaks during the wait**. A write to its subject during the
@@ -167,7 +167,7 @@ INFO cycle: rules kept firing each other past the point where one must have repe
 Both rules appear twice. That is the finding: one of them ran a second time about the same
 subject.
 
-Verse reports the cycle once per chain, keyed on the root of the chain. The same pair of rules
+Viff reports the cycle once per chain, keyed on the root of the chain. The same pair of rules
 looping from a different origin gets a new report. The `complete` field says whether the walk
 reached the beginning of the chain, or ran out of retained history.
 
@@ -177,7 +177,7 @@ The report is at **INFO, not WARN**. A tripped cycle is not always a fault:
 - A loop through the world is the shape a person would draw to explain the system.
 - A charter may loop on purpose, for as long as it likes, once the loop is paced.
 
-The report says which rules loop. The reader decides whether that is a problem. Verse keeps WARN
+The report says which rules loop. The reader decides whether that is a problem. Viff keeps WARN
 for what an operator has to act on. Examples are a write that did not land, and a rule that is
 held for a stratum that never arrives.
 
@@ -189,12 +189,12 @@ warn about a cycle that might happen, so the report is more useful.
 The map has these properties:
 
 - It is per engine.
-- It is in memory, and verse discards it on restart.
-- It is bounded. Once it grows past a few thousand entries, verse drops the oldest half.
+- It is in memory, and viff discards it on restart.
+- It is bounded. Once it grows past a few thousand entries, viff drops the oldest half.
 
 A lost entry makes a commit read as external, and an external commit starts a fresh chain. So a
-lost entry makes verse throttle less, never more. The decision does not degrade, because each
-entry carries its own depth. Verse does not compute the depth by walking. Only the walk of the
+lost entry makes viff throttle less, never more. The decision does not degrade, because each
+entry carries its own depth. Viff does not compute the depth by walking. Only the walk of the
 report can come up short, and the report says so.
 
 - **A restart is a fresh cause.** A restart loses the map and resets every chain. That is the
@@ -222,6 +222,6 @@ report can come up short, and the report says so.
   delta. So a commit has exactly one cause. logd has transactions. A write of several paths in
   one atomic step would let one commit carry several chains. The reader would then need a rule
   to merge them. The obvious rule is the maximum, which errs toward throttling.
-- **The depth is not observable.** By construction, it is internal to the engine. A verse that
+- **The depth is not observable.** By construction, it is internal to the engine. A viff that
   could answer "which chains are deep right now" would show a runaway as it develops, before it
   trips. Everything else about a firing is already a fact in the store.

@@ -1,5 +1,5 @@
 // Package charter is the shape of a charter's records: where a rule, a stratum and a
-// package's declaration stand in the verse, what each record holds, and the records as they
+// package's declaration stand in the viff, what each record holds, and the records as they
 // change (Follow). The engine (package trigger) is derived from them: an install is a write
 // here, a removal a delete, and what the engine runs is what it reads back.
 //
@@ -11,7 +11,7 @@
 // It is one record per rule rather than one charter document, because that is what the
 // operations already are: installing writes one record, removing deletes one, and neither
 // needs to read the others (no read-modify-write, so two installs cannot lose each other). It
-// also makes a rule addressable — `verse data trigger:rule:review` — and a charter change an
+// also makes a rule addressable — `viff data trigger:rule:review` — and a charter change an
 // ordinary observable fact.
 package charter
 
@@ -21,8 +21,8 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/mirror"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/mirror"
 )
 
 // System and the kinds name where the records live: trigger:rule:<id> for a rule,
@@ -36,23 +36,23 @@ const (
 	PackageKind = "package"
 )
 
-// Prefix is the place every charter record stands below — verse's own half of the tree, then
-// the system — and Depth the length of a record's path: verse, the system, the kind, the id.
+// Prefix is the place every charter record stands below — viff's own half of the tree, then
+// the system — and Depth the length of a record's path: viff, the system, the kind, the id.
 // What a watch over the whole charter is opened on (Follow).
-var Prefix = []string{entity.VerseRoot, System}
+var Prefix = []string{entity.ViffRoot, System}
 
 const Depth = 4
 
 // IsRule, IsStratum and IsPackage are the namespace's own questions, asked by anything that
 // lists the charter: whether an address is a rule's, a stratum's or a package declaration's.
-func IsRule(r entity.Ref) bool    { return r.ChildOf(entity.VerseRoot, System, RuleKind) }
-func IsStratum(r entity.Ref) bool { return r.ChildOf(entity.VerseRoot, System, StratumKind) }
-func IsPackage(r entity.Ref) bool { return r.ChildOf(entity.VerseRoot, System, PackageKind) }
+func IsRule(r entity.Ref) bool    { return r.ChildOf(entity.ViffRoot, System, RuleKind) }
+func IsStratum(r entity.Ref) bool { return r.ChildOf(entity.ViffRoot, System, StratumKind) }
+func IsPackage(r entity.Ref) bool { return r.ChildOf(entity.ViffRoot, System, PackageKind) }
 
 // RuleRef names the record holding one rule of the charter installed at an address, and
 // StratumRef one stratum; at is "" for baseline.
 //
-// A PACKAGE'S RECORDS ARE ADDRESSED BY PACKAGE — `verse:trigger:rule:drift:head-moved` — and
+// A PACKAGE'S RECORDS ARE ADDRESSED BY PACKAGE — `viff:trigger:rule:drift:head-moved` — and
 // baseline's keep the bare name. Without that the id is the rule's name alone, so two packages
 // with a rule (or a stratum) of the same name write one record: the second install silently
 // replaces the first's, both engines keep running from memory, and the restart is where one
@@ -60,12 +60,12 @@ func IsPackage(r entity.Ref) bool { return r.ChildOf(entity.VerseRoot, System, P
 // what a package is FOR, so the address is what has to carry the package.
 //
 // The package goes FIRST, so a listing sorted by address groups a package's rules together —
-// which is the order somebody reading `verse data verse.trigger.rule` wants. The id may hold
+// which is the order somebody reading `viff data mirror.trigger.rule` wants. The id may hold
 // colons (ParseRef splits the first two and the rest is the id), so nothing else has to change.
-func RuleRef(at, name string) entity.Ref { return entity.VerseRef(System, RuleKind, ID(at, name)) }
+func RuleRef(at, name string) entity.Ref { return entity.ViffRef(System, RuleKind, ID(at, name)) }
 
 func StratumRef(at, name string) entity.Ref {
-	return entity.VerseRef(System, StratumKind, ID(at, name))
+	return entity.ViffRef(System, StratumKind, ID(at, name))
 }
 
 // PackageRef names the record holding one package's declaration: what it reads and where it
@@ -73,7 +73,7 @@ func StratumRef(at, name string) entity.Ref {
 // declaration is a property of the PACKAGE and not of any rule in it: two installs into one
 // address would otherwise each carry their own answer, and the reads graph would depend on
 // which rule you read. The id is the address, so a package has exactly one.
-func PackageRef(at string) entity.Ref { return entity.VerseRef(System, PackageKind, at) }
+func PackageRef(at string) entity.Ref { return entity.ViffRef(System, PackageKind, at) }
 
 // ID is the id a rule's or a stratum's record takes: the name for baseline, `<address>:<name>`
 // for a package. One function, so a rule and a stratum cannot drift on the spelling, and the
@@ -99,7 +99,7 @@ func Name(id string) string {
 // the store rather than stored by it: not a rule that reads back wrong, one that cannot be
 // read back at all. `!raw` is the escape: the subtree is stored verbatim, tags intact,
 // interpreting nothing at any depth. Structure rather than text because the record is then
-// the rule itself: `verse data get trigger:rule:review` shows a document a person can read
+// the rule itself: `viff data get trigger:rule:review` shows a document a person can read
 // field by field, and a charter change is an observable fact about a shape rather than a
 // string. Raw also REPLACES, so re-installing a rule cannot leave a field of the version
 // before it standing in the version after.
@@ -108,8 +108,8 @@ func Name(id string) string {
 // baseline layered underneath, so a listing in a scope returns both, and only the record can
 // say which is which. AtField is the ADDRESS the charter was installed at — the subtree its
 // rules may write in — absent for baseline, which may write anywhere: the same idea one axis
-// over. A scope says whose COPY of the verse a rule acts in; an address says which part of
-// the verse it acts on.
+// over. A scope says whose COPY of the viff a rule acts in; an address says which part of
+// the viff it acts on.
 //
 // TaskField is the task whose tools installed a rule, absent for one a person or the system
 // installed, and TaskEnvironmentField what that task could hand on when it did, the systems

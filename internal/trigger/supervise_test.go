@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // The automatic-supervisor charter of docs/auto-supervisor.md, driven through every route it
@@ -169,7 +169,7 @@ func supervisorSpawner(store entity.Store, answer string) Spawner {
 }
 
 // recorder is a Resolver that records the questions put to it and approves them — a stand-in
-// for the person at `verse gate`. Which questions were asked is the assertion: an automatic
+// for the person at `viff gate`. Which questions were asked is the assertion: an automatic
 // supervisor is only worth having if the gate it does not raise is genuinely not raised.
 type recorder struct {
 	mu    sync.Mutex
@@ -218,7 +218,7 @@ func docCharter(t *testing.T, path, named string) []Trigger {
 	return nil
 }
 
-// The doc's own claim about credentials: with no llm creds, `verse up` builds an llm spawn as
+// The doc's own claim about credentials: with no llm creds, `viff up` builds an llm spawn as
 // a task that fails immediately, so this charter routes EVERY change to a person. That is
 // the fail-safe direction the doc points at, and it holds only because a failed spawn still
 // runs onFailed — which is what this pins.

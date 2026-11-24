@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // THE CONFIGURATION SAYS HOW CLAUDE RUNS, or the agent is not offered: a `claude:` section

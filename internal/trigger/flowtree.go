@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // The flow TREE is what a subject's work looks like as a shape rather than a list: the
@@ -41,10 +41,10 @@ import (
 // document — so no shared symbol is needed. Being a response type means it must be
 // DESCRIBED, not relocated.
 //
-//tony:schemagen=verse-flow-node,notag
+//tony:schemagen=viff-flow-node,notag
 type FlowNode struct {
 	// Chain is the action's kpath inside its trigger — "review", "review.onDone". Empty for
-	// a task with no trigger behind it (`verse task run`, or an adopted task whose
+	// a task with no trigger behind it (`viff task run`, or an adopted task whose
 	// chain was never published).
 	Chain string `tony:"field=chain,omitzero"`
 	// Kind is what KIND of position this is: "root" for the trigger's own spawn, the hook's
@@ -97,7 +97,7 @@ const (
 
 // FlowTree is one subject's flow: every root that acted on it, with its branches.
 //
-//tony:schemagen=verse-flow-tree,notag
+//tony:schemagen=viff-flow-tree,notag
 type FlowTree struct {
 	Subject string `tony:"field=subject"`
 	// Active is whether a task about the subject is live in some engine now.
@@ -150,7 +150,7 @@ func FlowTreesAcross(engines []*Engine, m Match, active *bool) []FlowTree {
 	// mirror.RunKind). Including them would double every node that has run more than once.
 	for _, ent := range entity.Below(first.store, func(r entity.Ref) bool {
 		return mirror.IsTask(r)
-	}, 1, entity.VerseRoot, mirror.System, mirror.InstanceKind) {
+	}, 1, entity.ViffRoot, mirror.System, mirror.InstanceKind) {
 		subj := entity.Str(ent.Payload, "flow")
 		if subj == "" {
 			continue // a task about nothing is in no flow
@@ -535,7 +535,7 @@ type seqProgress struct {
 	has  bool
 }
 
-// seqProgressFor reads verse.<trigger> off the subject.
+// seqProgressFor reads viff.<trigger> off the subject.
 func (e *Engine) seqProgressFor(subject, trigger string) seqProgress {
 	ref, err := entity.ParseAddr(subject)
 	if err != nil {
@@ -550,7 +550,7 @@ func (e *Engine) seqProgressFor(subject, trigger string) seqProgress {
 	if !ok {
 		return seqProgress{}
 	}
-	p := entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), trigger)
+	p := entity.Get(entity.Get(entity.Get(ent.Payload, ViffRoot), CharterKey), trigger)
 	if p == nil {
 		return seqProgress{}
 	}

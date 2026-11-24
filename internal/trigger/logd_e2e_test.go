@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 
 	logdserver "github.com/signadot/tony-format/go-tony/system/logd/server"
 	"github.com/signadot/tony-format/go-tony/system/logd/storage"
@@ -34,7 +34,7 @@ func startLogdAddr(t *testing.T) string {
 // non-dense commit revisions (the reason the cursor is treated as opaque-monotonic
 // and reconciled via Since), plus the watch → event → dispatch path end to end.
 func TestEmergentChainOverLogd(t *testing.T) {
-	store, err := entity.OpenLogdStore(entity.LogdConfig{Addr: startLogdAddr(t), ClientID: "verse-e2e"})
+	store, err := entity.OpenLogdStore(entity.LogdConfig{Addr: startLogdAddr(t), ClientID: "viff-e2e"})
 	if err != nil {
 		t.Fatalf("open logd store: %v", err)
 	}

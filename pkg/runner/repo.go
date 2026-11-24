@@ -6,13 +6,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // Repo is one repository a run checks out: a `git` block of its environment, as the runner reads
 // it (Launch.Repos). What may leave it is the block's push shapes and the autonomy's.
 //
-//tony:schemagen=verse-runner-repo,notag
+//tony:schemagen=viff-runner-repo,notag
 type Repo struct {
 	// Repo is `owner/name`, a repo on github.com, or `host/owner/name` on the forge at host.
 	Repo string `tony:"field=repo"`
@@ -23,7 +23,7 @@ type Repo struct {
 // Tracker is a repository's own issue tracker a run works with: a `git-issue` block of its
 // environment, naming a repository it checks out, in whose checkout the tracker is.
 //
-//tony:schemagen=verse-runner-tracker,notag
+//tony:schemagen=viff-runner-tracker,notag
 type Tracker struct {
 	Repo string `tony:"field=repo"`
 }

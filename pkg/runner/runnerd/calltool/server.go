@@ -11,7 +11,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // Server is the task process's end: the tools on offer, and what performing a call means here.

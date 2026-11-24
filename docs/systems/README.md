@@ -1,9 +1,9 @@
 # Systems
 
-A system is something outside verse that verse reads or acts on: a repository, its issue
-tracker, a forge, Linear, Slack. The [verse system](verse.md) is verse itself, acted on by a task
-as the person it runs for would. Verse meets each system in two places
-([basic concepts](../concepts.md#what-verse-is-made-of)):
+A system is something outside viff that viff reads or acts on: a repository, its issue
+tracker, a forge, Linear, Slack. The [viff system](viff.md) is viff itself, acted on by a task
+as the person it runs for would. Viff meets each system in two places
+([basic concepts](../concepts.md#what-viff-is-made-of)):
 
 - An [iod](../glossary.md#iod) connects the system to the store. It writes what the system
   holds into the store, where a charter reads it. It also carries what a charter writes back
@@ -11,18 +11,18 @@ as the person it runs for would. Verse meets each system in two places
 - A runner performs the system's verbs for a task. The task calls a verb, and the runner makes
   the call with its own credential.
 
-Verse keeps one document for each system, at `verse.systems.<name>`. The document names the
+Viff keeps one document for each system, at `mirror.systems.<name>`. The document names the
 system's verbs and the params of each verb:
 
 ```sh
-verse d verse systems git-issue
+viff d mirror systems git-issue
 ```
 
 A verb is written three ways, one for each reader:
 
 | Spelling | Example | Who reads it |
 |---|---|---|
-| the tool, `<system>-<verb>` | `git-issue-push` | the task that calls it: an agent, or a script with `verse-call-tool` |
+| the tool, `<system>-<verb>` | `git-issue-push` | the task that calls it: an agent, or a script with `viff-call-tool` |
 | the step, `<system>.<verb>` | `git-issue.push` | the task's environment, which gives it, and its [autonomy](../glossary.md#autonomy), whose rows match it by its params |
 | the row, `{system, verb, <params>}` | `{system: git-issue, verb: push, repo: github.com/acme/app}` | the author of a spawn, and the operator who writes the runner's [ceiling](../glossary.md#ceiling) |
 
@@ -33,7 +33,7 @@ called, which row decided it, and what happened.
 
 A spawn's `environment.systems` gives a task what it may do, one block per system (or per
 repository, for the systems that name one). A block names the verbs it gives, each with its
-shapes: `git: {repo: acme/app, fetch: {}, push: {ref: !regexp "^refs/heads/verse/"}}`.
+shapes: `git: {repo: acme/app, fetch: {}, push: {ref: !regexp "^refs/heads/viff/"}}`.
 
 **A block that names no verb gives every verb of its system, any call**: `files: {}`,
 `question: {}`, `git-issue: {repo: acme/app}`. Once one verb is written, only the verbs written
@@ -55,14 +55,14 @@ of any branch; a charter that ships writes its git push shapes instead.
 | [`secret`](secret.md) | `exec` | none: one command the runner runs with a secret of its store, which the task never holds |
 | [`mcp`](mcp.md) | `call` | none: the tools of a remote MCP server the operator names, called by the runner with the server's credential |
 | [`pkg`](pkg.md) | `install` | none: a package the runner installs into the task's read-only prefix, from the signed repositories the operator trusts |
-| [`verse`](verse.md) | `ask-create`, `ask-get`, `ask-list`, `data-get`, `data-put`, `data-rm`, `charter-get`, `charter-check`, `charter-install`, `charter-remove` | none: verse itself, reached through the runner's own token |
+| [`viff`](viff.md) | `ask-create`, `ask-get`, `ask-list`, `data-get`, `data-put`, `data-rm`, `charter-get`, `charter-check`, `charter-install`, `charter-remove` | none: viff itself, reached through the runner's own token |
 | [`question`](question.md) | `ask` | none: a question goes to the docket ([asking](../asking.md)) |
 | [`files`, `commands`, `agent`](inside.md) | `write`; `run`; `call-sub-agent` | none: these are what an agent does inside its run |
 | [`network`](inside.md#the-network) | `tcp-client` | none: the connections a run opens through its runner's proxy |
 
 The runner performs the verbs of `git`, `git-issue`, `github`, `github-issue`, `linear-issue`,
-`slack`, `secret`, `mcp` and `verse`. It uses its own credential, and stays within the ceiling its
-configuration puts over each system ([the verse runner](../reference/runnerd.md#configuration)).
+`slack`, `secret`, `mcp` and `viff`. It uses its own credential, and stays within the ceiling its
+configuration puts over each system ([the viff runner](../reference/runnerd.md#configuration)).
 
 ## What a task lacks
 
@@ -76,4 +76,4 @@ the task never reaches the server. In each the task only asks; the same environm
 ceiling grammar decides; and the trust is the runner's, never the task's — the [secret
 store](../reference/runnerd.md#the-secret-store) under `secret` and `mcp`, and for `pkg` the
 signed index of the repositories the operator names, so that system holds no credential at all.
-None has an iod: these are what a task does, decided as it is done, not something verse watches.
+None has an iod: these are what a task does, decided as it is done, not something viff watches.

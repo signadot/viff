@@ -41,7 +41,7 @@ so the block names no repository. The autonomy decides each call by the team or 
 
 ```tony
 spawn:
-  agent: {name: verse}
+  agent: {name: viff}
   environment: {systems: {network: {mode: open}, linear-issue: {create: {team: ENG}, comment: {}, close: {}}}}
   prompt: "Read $[subject.ref] and file the follow-ups it names in ENG."
   autonomy:
@@ -57,7 +57,7 @@ spawn:
 | `linear-issue-close` | closes an issue, by its identifier: the issue moves to its team's completed state | `linear-issue.close`, with `issue` |
 
 Every verb is a step. In a row or a shape, `team` is the team's key and `issue` is the
-identifier, as a person types them. A script calls the same tools with `verse-call-tool`, and the
+identifier, as a person types them. A script calls the same tools with `viff-call-tool`, and the
 same environment and rows decide them.
 
 ## Where the credential lives

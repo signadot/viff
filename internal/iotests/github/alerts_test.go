@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/github"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/github"
 )
 
 // alertAsks is how many Dependabot alert requests a repository has had.
@@ -21,7 +21,7 @@ func (f *fakeGitHub) alertAsks(repo string) int {
 }
 
 // coversAnAlert is whether any cover of a reflection reaches an alert of acme/app, open or settled.
-func coversAnAlert(rn verseio.Reflection) bool {
+func coversAnAlert(rn viffio.Reflection) bool {
 	for _, state := range []string{"open", "fixed"} {
 		e := entity.Entity{Ref: entity.RefAt("github", "acme", "app", "alert", "5"),
 			Payload: entity.Obj{"repo": "acme/app", "number": 5, "state": state}.Payload()}
@@ -46,7 +46,7 @@ func TestAlertsAreTwoCoversAndTheSettledWindowAgesOut(t *testing.T) {
 	r.alert(3, "dismissed", "2026-01-03T00:00:00Z")
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Alerts: true, Settled: 2})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	pass := func() {
 		t.Helper()
 		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
@@ -127,7 +127,7 @@ func TestAnAlertMovesOpenToFixedInPlace(t *testing.T) {
 	a := r.alert(7, "open", "2026-01-01T00:00:00Z")
 	store := entitytest.Store(t)
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Alerts: true})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestOpenAlertsAreReadByCursorAndRefusedOverMaxOpen(t *testing.T) {
 		r.alert(n, "open", "2026-01-01T00:00:00Z")
 	}
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Alerts: true})
-	count := func(rn verseio.Reflection) int {
+	count := func(rn viffio.Reflection) int {
 		n := 0
 		for ref := range payloads(rn) {
 			if strings.Contains(ref, ".alert.") {
@@ -260,7 +260,7 @@ func TestARefusedAlertReadLeavesWhatStands(t *testing.T) {
 	var logged []string
 	src := newSource(t, f, github.Config{Repos: []string{"acme/app"}, Alerts: true,
 		Log: func(format string, args ...any) { logged = append(logged, fmt.Sprintf(format, args...)) }})
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}

@@ -122,7 +122,7 @@ sandbox and the packages both are, so on a Mac the runner that performs it runs 
 
 The runner names the manager and the repositories under `pkg:`, and a doer's `pkg` ceiling
 bounds what its tasks may install, with `base` the packages every task of the doer starts with
-([the verse runner](../reference/runnerd.md#configuration)):
+([the viff runner](../reference/runnerd.md#configuration)):
 
 ```tony
 pkg:

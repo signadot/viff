@@ -1,23 +1,23 @@
 # Platform docs
 
-These pages are for somebody who runs a verse, extends it, or changes it. They are read in the
-repository, and the site does not publish them. Somebody who uses verse (writes charters, runs
+These pages are for somebody who runs a viff, extends it, or changes it. They are read in the
+repository, and the site does not publish them. Somebody who uses viff (writes charters, runs
 tasks, answers gates) starts at [the docs index](README.md).
 
-## Run a verse
+## Run a viff
 
-- [What a deployment is](platform/deployment.md): the store, versed, the runners and the iods,
+- [What a deployment is](platform/deployment.md): the store, viffd, the runners and the iods,
   and the knob or setting each kind of deployment, Kubernetes or local, fills them in with.
-- [Starting a verse](reference/up.md): `verse up`, its flags, and the config file.
+- [Starting a viff](reference/up.md): `viff up`, its flags, and the config file.
 - [Platform commands](platform/commands.md): `up`, `down`, `runner`, `io` and `resolver`,
   and the smoke test.
-- [A verse on your machine, with Claude](platform/local-verse.md): the store, versed and a runner
+- [A viff on your machine, with Claude](platform/local-viff.md): the store, viffd and a runner
   offering claude, as pitchfork daemons, with Claude Code reaching it over MCP; Linux and macOS.
 - [Runners](runners.md): where work runs, and what removing a runner does to the work on it.
   The surface is [reference/runners.md](reference/runners.md).
-- [Where a task runs, walked](platform/runners-walk.md): a remote verse, and a runner you
+- [Where a task runs, walked](platform/runners-walk.md): a remote viff, and a runner you
   install, one command each.
-- [Kubernetes deploy](../deploy/README.md): build the image and run verse on a cluster.
+- [Kubernetes deploy](../deploy/README.md): build the image and run viff on a cluster.
 - [Permissions on the platform](platform/perms.md): the `system:` parts, the root and the
   config, the seed, and how installed things get their records.
 
@@ -30,16 +30,16 @@ tasks, answers gates) starts at [the docs index](README.md).
 - [Attached resolvers](attached-resolvers.md): a service that answers gates. The surface is
   [reference/resolvers.md](reference/resolvers.md).
 - [Iods](io.md): connectors: reflecting git, Slack and Linear in, and acting back out. The
-  surface is [reference/io.md](reference/io.md), and the iods verse ships are in
+  surface is [reference/io.md](reference/io.md), and the iods viff ships are in
   [reference/iod.md](reference/iod.md).
 - [Examples](reference/examples/README.md): a runner, a coding runner and an iod to
   copy and change.
 
-## How verse is built
+## How viff is built
 
 These pages say why a part is shaped the way it is.
 
-- [Architecture](platform/architecture.md): the parts of verse, the task seam, the data and
+- [Architecture](platform/architecture.md): the parts of viff, the task seam, the data and
   failure model, the extension points and the deployment.
 - [Change events](change-events.md): why `Op` is `set`/`delete`, and what the entity grain
   costs.
@@ -48,7 +48,7 @@ These pages say why a part is shaped the way it is.
 - [External tasks](external-tasks.md): how the task seam was chosen.
 - [Deployment and steering](deployment-and-steering.md): why control is not a store write.
 - [Platform glossary](platform/glossary.md): the terms of running, extending and changing
-  verse.
+  viff.
 - [Control on the platform](platform/control.md): the routes of a hold, and what a
   suspension does to rules.
 - [Scopes on the platform](platform/scopes.md): docd, logd and the engine of a

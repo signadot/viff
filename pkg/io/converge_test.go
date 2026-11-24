@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // fakeSource answers with whatever the test hands it. It exists because most of what converge
@@ -19,12 +19,12 @@ import (
 // it did not carry, has to be expressible without a repo behind it.
 type fakeSource struct {
 	root   string
-	answer func() verseio.Reflection
+	answer func() viffio.Reflection
 }
 
 func (f *fakeSource) Root() string { return f.root }
 
-func (f *fakeSource) Reflect(context.Context, entity.Ref) (verseio.Reflection, error) {
+func (f *fakeSource) Reflect(context.Context, entity.Ref) (viffio.Reflection, error) {
 	return f.answer(), nil
 }
 
@@ -33,7 +33,7 @@ func (f *fakeSource) Reflect(context.Context, entity.Ref) (verseio.Reflection, e
 // It exists because the store underneath absorbs a patch that changes nothing — rewriting an
 // identical payload moves no revision and emits no event — so asserting on events alone would
 // pass whether or not converge skipped anything, and would be measuring logd's idempotence
-// rather than verse's law. That absorption is also not something to build on: it is the
+// rather than viff's law. That absorption is also not something to build on: it is the
 // substrate's behaviour, not this contract's, and the cost converge is avoiding (a read and a
 // write per entity, per pass, over the whole slice) is paid either way.
 //
@@ -61,7 +61,7 @@ func newStore(t *testing.T) *countingStore {
 	return &countingStore{Store: entitytest.Store(t)}
 }
 
-// quiet runs fn and reports whether it left the verse alone: no write issued, no revision
+// quiet runs fn and reports whether it left the viff alone: no write issued, no revision
 // moved, and nothing on the change stream. All three, because they are three different claims
 // — what converge decided, what the store did with it, and what a trigger would have felt.
 func quiet(t *testing.T, store *countingStore, fn func()) bool {
@@ -102,14 +102,14 @@ func TestReflectorQuietRepoIsSilent(t *testing.T) {
 	gitRun(t, dir, "branch", "shiny")
 
 	store := newStore(t)
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("A", dir)
-	rf := verseio.NewReflector(g, store, 0)
+	rf := viffio.NewReflector(g, store, 0)
 
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("first reconcile: %v", err)
 	}
-	if _, ok, _ := store.Get(entity.RefAt(verseio.GitRoot, "A", "ref", "shiny")); !ok {
+	if _, ok, _ := store.Get(entity.RefAt(viffio.GitRoot, "A", "ref", "shiny")); !ok {
 		t.Fatal("first reconcile should have reflected A/shiny")
 	}
 	if !quiet(t, store, func() {
@@ -130,10 +130,10 @@ func TestConvergeTombstonesOnlyWhatItCovers(t *testing.T) {
 	entitytest.Set(t, store, entity.RefAt("x", "a", "1"), entity.Obj{"n": 1}.Payload())
 	entitytest.Set(t, store, entity.RefAt("x", "b", "1"), entity.Obj{"n": 1}.Payload())
 
-	src := &fakeSource{root: "x", answer: func() verseio.Reflection {
-		return verseio.Reflection{Covers: []entity.Pattern{verseio.Cover("x", "a", "*")}}
+	src := &fakeSource{root: "x", answer: func() viffio.Reflection {
+		return viffio.Reflection{Covers: []entity.Pattern{viffio.Cover("x", "a", "*")}}
 	}}
-	if err := verseio.NewReflector(src, store, 0).Reconcile(ctx, entity.Ref{}); err != nil {
+	if err := viffio.NewReflector(src, store, 0).Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 	if _, ok, _ := store.Get(entity.RefAt("x", "a", "1")); ok {
@@ -152,14 +152,14 @@ func TestConvergeKeepsWhatNoCoverClaims(t *testing.T) {
 	store := newStore(t)
 
 	carry := true
-	src := &fakeSource{root: "x", answer: func() verseio.Reflection {
-		rn := verseio.Reflection{Covers: []entity.Pattern{verseio.Cover("x", "a", "*")}}
+	src := &fakeSource{root: "x", answer: func() viffio.Reflection {
+		rn := viffio.Reflection{Covers: []entity.Pattern{viffio.Cover("x", "a", "*")}}
 		if carry {
 			rn.Add(entity.RefAt("x", "b", "1"), entity.Obj{"n": 1})
 		}
 		return rn
 	}}
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("first reconcile: %v", err)
 	}
@@ -184,12 +184,12 @@ func TestConvergeReplacesRatherThanMerges(t *testing.T) {
 	store := newStore(t)
 
 	payload := entity.Obj{"p": 1, "q": 2}
-	src := &fakeSource{root: "x", answer: func() verseio.Reflection {
-		rn := verseio.Reflection{Covers: []entity.Pattern{verseio.Cover("x", "a", "*")}}
+	src := &fakeSource{root: "x", answer: func() viffio.Reflection {
+		rn := viffio.Reflection{Covers: []entity.Pattern{viffio.Cover("x", "a", "*")}}
 		rn.Add(entity.RefAt("x", "a", "1"), payload)
 		return rn
 	}}
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("first reconcile: %v", err)
 	}
@@ -223,10 +223,10 @@ func TestConvergeRefusesACoverWithNoPath(t *testing.T) {
 	store := newStore(t)
 	entitytest.Set(t, store, entity.RefAt("x", "a", "1"), entity.Obj{"n": 1}.Payload())
 
-	src := &fakeSource{root: "x", answer: func() verseio.Reflection {
-		return verseio.Reflection{Covers: []entity.Pattern{{Predicate: entity.Obj{"n": 1}.Payload()}}}
+	src := &fakeSource{root: "x", answer: func() viffio.Reflection {
+		return viffio.Reflection{Covers: []entity.Pattern{{Predicate: entity.Obj{"n": 1}.Payload()}}}
 	}}
-	if err := verseio.NewReflector(src, store, 0).Reconcile(ctx, entity.Ref{}); err == nil {
+	if err := viffio.NewReflector(src, store, 0).Reconcile(ctx, entity.Ref{}); err == nil {
 		t.Fatal("a cover with no path should be refused")
 	}
 	if _, ok, _ := store.Get(entity.RefAt("x", "a", "1")); !ok {
@@ -241,18 +241,18 @@ func TestConvergeRefusesACoverWithNoPath(t *testing.T) {
 func TestReflectionCheckRefusals(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		rn   verseio.Reflection
+		rn   viffio.Reflection
 	}{
-		{"cover in another place", verseio.Reflection{
-			Covers: []entity.Pattern{verseio.Cover("y", "a", "*")},
+		{"cover in another place", viffio.Reflection{
+			Covers: []entity.Pattern{viffio.Cover("y", "a", "*")},
 		}},
-		{"cover carrying an op", verseio.Reflection{
-			Covers: []entity.Pattern{withOp(verseio.Cover("x", "a", "*"), entity.Set)},
+		{"cover carrying an op", viffio.Reflection{
+			Covers: []entity.Pattern{withOp(viffio.Cover("x", "a", "*"), entity.Set)},
 		}},
-		{"entity in another place", verseio.Reflection{
+		{"entity in another place", viffio.Reflection{
 			Entities: []entity.Entity{{Ref: entity.RefAt("y", "a", "1")}},
 		}},
-		{"entity at the source's whole place", verseio.Reflection{
+		{"entity at the source's whole place", viffio.Reflection{
 			Entities: []entity.Entity{{Ref: entity.RefAt("x")}},
 		}},
 	} {
@@ -262,15 +262,15 @@ func TestReflectionCheckRefusals(t *testing.T) {
 			}
 		})
 	}
-	ok := verseio.Reflection{Covers: []entity.Pattern{verseio.Cover("x", "a", "*")}}
+	ok := viffio.Reflection{Covers: []entity.Pattern{viffio.Cover("x", "a", "*")}}
 	ok.Add(entity.RefAt("x", "a", "1"), entity.Obj{"n": 1})
 	if err := ok.Check("x"); err != nil {
 		t.Fatalf("a well-formed reflection should pass: %v", err)
 	}
 	// And a cover DEEPER than the entities beside it is well-formed: a source owning one place
 	// inside a shared node covers that place, at whatever depth it is.
-	deep := verseio.Reflection{Covers: []entity.Pattern{
-		verseio.Cover("x", "project", "*", "owners", "ENG")}}
+	deep := viffio.Reflection{Covers: []entity.Pattern{
+		viffio.Cover("x", "project", "*", "owners", "ENG")}}
 	if err := deep.Check("x"); err != nil {
 		t.Fatalf("a cover over a place inside a shared node was refused: %v", err)
 	}
@@ -288,12 +288,12 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 	ctx := context.Background()
 	counting := newStore(t)
 
-	var answer verseio.Reflection
-	src := &fakeSource{root: "demo", answer: func() verseio.Reflection { return answer }}
+	var answer viffio.Reflection
+	src := &fakeSource{root: "demo", answer: func() viffio.Reflection { return answer }}
 	mine := entity.Obj{"repo": "r"}.Payload()
-	build := func(stage string, n int) verseio.Reflection {
-		rn := verseio.Reflection{Covers: []entity.Pattern{
-			withPredicate(verseio.Cover("demo", "thing", "*"), mine),
+	build := func(stage string, n int) viffio.Reflection {
+		rn := viffio.Reflection{Covers: []entity.Pattern{
+			withPredicate(viffio.Cover("demo", "thing", "*"), mine),
 		}}
 		for i := range n {
 			rn.Add(entity.RefAt("demo", "thing", fmt.Sprint(i)),
@@ -301,7 +301,7 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 		}
 		return rn
 	}
-	rf := verseio.NewReflector(src, counting, 0)
+	rf := viffio.NewReflector(src, counting, 0)
 
 	// A first pass: every entity is a create.
 	answer = build("open", 20)
@@ -344,7 +344,7 @@ func TestConvergeDoesNotReReadWhatItJustListed(t *testing.T) {
 // because the damage is unbounded rather than wrong-once: were both sources writing the project
 // itself, each would spell a null over the other's half, the other would restore it, and every
 // pass after that would commit — forever, at the resync interval, with no error anywhere and
-// both sources reporting success. Nothing in verse would catch it; the install-time
+// both sources reporting success. Nothing in viff would catch it; the install-time
 // disjointness proof is the only protection there is, and this is what makes that proof mean
 // something.
 //
@@ -356,21 +356,21 @@ func TestTwoSourcesShareAThingWithoutRewritingEachOther(t *testing.T) {
 
 	// Each source answers with the node it owns INSIDE the project, and a cover over that node
 	// at every project. Neither has heard of the other, and neither names the project itself.
-	owner := func(team, name string) *verseio.Reflector {
-		src := &fakeSource{root: "x", answer: func() verseio.Reflection {
-			rn := verseio.Reflection{Covers: []entity.Pattern{
-				verseio.Cover("x", "project", "*", "owners", team),
+	owner := func(team, name string) *viffio.Reflector {
+		src := &fakeSource{root: "x", answer: func() viffio.Reflection {
+			rn := viffio.Reflection{Covers: []entity.Pattern{
+				viffio.Cover("x", "project", "*", "owners", team),
 			}}
 			rn.Add(shared.At("owners", team).Ref, entity.Obj{"name": name})
 			return rn
 		}}
-		return verseio.NewReflector(src, store, 0)
+		return viffio.NewReflector(src, store, 0)
 	}
 	eng, ops := owner("ENG", "Migration"), owner("OPS", "Migration")
 
-	wrote := func(rf *verseio.Reflector) int {
+	wrote := func(rf *viffio.Reflector) int {
 		n := 0
-		rf.OnPass(func(p verseio.Pass) {
+		rf.OnPass(func(p viffio.Pass) {
 			if p.Err != nil {
 				t.Fatalf("pass failed: %v", p.Err)
 			}
@@ -414,21 +414,21 @@ func TestTheLastOwnerOutTakesTheSharedNode(t *testing.T) {
 
 	// A source that reflects its own node only while `has` says so; when it stops, its cover
 	// still claims that node, which is what makes the absence a tombstone rather than a silence.
-	owner := func(team string, has *bool) *verseio.Reflector {
-		src := &fakeSource{root: "x", answer: func() verseio.Reflection {
-			rn := verseio.Reflection{Covers: []entity.Pattern{
-				verseio.Cover("x", "project", "*", "owners", team),
+	owner := func(team string, has *bool) *viffio.Reflector {
+		src := &fakeSource{root: "x", answer: func() viffio.Reflection {
+			rn := viffio.Reflection{Covers: []entity.Pattern{
+				viffio.Cover("x", "project", "*", "owners", team),
 			}}
 			if *has {
 				rn.Add(shared.At("owners", team).Ref, entity.Obj{"n": 1})
 			}
 			return rn
 		}}
-		return verseio.NewReflector(src, store, 0)
+		return viffio.NewReflector(src, store, 0)
 	}
 	engHas, opsHas := true, true
 	eng, ops := owner("ENG", &engHas), owner("OPS", &opsHas)
-	pass := func(rf *verseio.Reflector) {
+	pass := func(rf *viffio.Reflector) {
 		if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 			t.Fatal(err)
 		}
@@ -482,14 +482,14 @@ func TestAnOwnersNodeIsReplacedNotMerged(t *testing.T) {
 	}}.Payload())
 
 	fields := map[string]any{"name": "Migration", "lead": "ana"}
-	src := &fakeSource{root: "x", answer: func() verseio.Reflection {
-		rn := verseio.Reflection{Covers: []entity.Pattern{
-			verseio.Cover("x", "project", "*", "owners", "ENG"),
+	src := &fakeSource{root: "x", answer: func() viffio.Reflection {
+		rn := viffio.Reflection{Covers: []entity.Pattern{
+			viffio.Cover("x", "project", "*", "owners", "ENG"),
 		}}
 		rn.Add(shared.At("owners", "ENG").Ref, entity.Obj(fields))
 		return rn
 	}}
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +512,7 @@ func TestAnOwnersNodeIsReplacedNotMerged(t *testing.T) {
 	}
 	// And the pass that changes nothing writes nothing — the same node, compared where it is.
 	n := -1
-	rf.OnPass(func(p verseio.Pass) { n = p.Wrote })
+	rf.OnPass(func(p viffio.Pass) { n = p.Wrote })
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -544,10 +544,10 @@ func TestAPassReadsThePlacesItsAnswerIsAbout(t *testing.T) {
 		entitytest.Set(t, store.Store, entity.RefAt("x", "B", "commit", fmt.Sprint(i)), entity.Obj{"sha": i}.Payload())
 	}
 	refs := []string{"main", "dev"}
-	src := &fakeSource{root: "x", answer: func() verseio.Reflection {
-		rn := verseio.Reflection{Covers: []entity.Pattern{
-			verseio.Cover("x", "A", "ref", "*"),
-			verseio.Cover("x", "A", "head"),
+	src := &fakeSource{root: "x", answer: func() viffio.Reflection {
+		rn := viffio.Reflection{Covers: []entity.Pattern{
+			viffio.Cover("x", "A", "ref", "*"),
+			viffio.Cover("x", "A", "head"),
 		}}
 		for _, name := range refs {
 			rn.Add(entity.RefAt("x", "A", "ref", name), entity.Obj{"sha": name})
@@ -556,9 +556,9 @@ func TestAPassReadsThePlacesItsAnswerIsAbout(t *testing.T) {
 		rn.Add(entity.RefAt("x", "A", "commit", "c1"), entity.Obj{"sha": "c1"})
 		return rn
 	}}
-	rf := verseio.NewReflector(src, store, 0)
+	rf := viffio.NewReflector(src, store, 0)
 	wrote := -1
-	rf.OnPass(func(p verseio.Pass) { wrote = p.Wrote })
+	rf.OnPass(func(p viffio.Pass) { wrote = p.Wrote })
 	if err := rf.Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatal(err)
 	}
@@ -579,10 +579,10 @@ func TestAPassReadsThePlacesItsAnswerIsAbout(t *testing.T) {
 
 	// A ref that goes is tombstoned; the commit, which no cover holds, stays.
 	refs = []string{"main"}
-	src.answer = func() verseio.Reflection {
-		rn := verseio.Reflection{Covers: []entity.Pattern{
-			verseio.Cover("x", "A", "ref", "*"),
-			verseio.Cover("x", "A", "head"),
+	src.answer = func() viffio.Reflection {
+		rn := viffio.Reflection{Covers: []entity.Pattern{
+			viffio.Cover("x", "A", "ref", "*"),
+			viffio.Cover("x", "A", "head"),
 		}}
 		rn.Add(entity.RefAt("x", "A", "ref", "main"), entity.Obj{"sha": "main"})
 		rn.Add(entity.RefAt("x", "A", "head"), entity.Obj{"ref": "main"})
@@ -615,19 +615,19 @@ func (u unreadableStore) ListAtErr([]string, int, func(entity.Ref) bool) ([]enti
 // sweep did to a repository's issues while docd was timing out its reads.
 func TestAPassWhoseReadFailsWritesNothing(t *testing.T) {
 	store := newStore(t)
-	src := &fakeSource{root: "x", answer: func() verseio.Reflection {
-		rn := verseio.Reflection{Covers: []entity.Pattern{verseio.Cover("x", "A", "issue", "*")}}
+	src := &fakeSource{root: "x", answer: func() viffio.Reflection {
+		rn := viffio.Reflection{Covers: []entity.Pattern{viffio.Cover("x", "A", "issue", "*")}}
 		for _, id := range []string{"1", "2", "3"} {
 			rn.Add(entity.RefAt("x", "A", "issue", id), entity.Obj{"title": id})
 		}
 		return rn
 	}}
-	if err := verseio.NewReflector(src, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
+	if err := viffio.NewReflector(src, store, 0).Reconcile(context.Background(), entity.Ref{}); err != nil {
 		t.Fatalf("first pass: %v", err)
 	}
 
 	writes := store.writes
-	err := verseio.NewReflector(src, unreadableStore{store}, 0).Reconcile(context.Background(), entity.Ref{})
+	err := viffio.NewReflector(src, unreadableStore{store}, 0).Reconcile(context.Background(), entity.Ref{})
 	if err == nil || !strings.Contains(err.Error(), "deadline") {
 		t.Errorf("a pass that could not read what stands reported %v, want the read's failure", err)
 	}
@@ -639,20 +639,20 @@ func TestAPassWhoseReadFailsWritesNothing(t *testing.T) {
 // A cover names its source's place in its first segment, literally. A `*` there is refused for
 // the reason an empty path is: it claims every place it is compared against.
 func TestAPathCoverNamesItsSystem(t *testing.T) {
-	wild := verseio.Cover("*", "A", "ref", "*")
+	wild := viffio.Cover("*", "A", "ref", "*")
 	for _, c := range []struct {
 		cover entity.Pattern
 		want  string
 	}{
 		{wild, "literal place"},
-		{verseio.Cover("y", "A", "ref", "*"), `this source owns "x"`},
+		{viffio.Cover("y", "A", "ref", "*"), `this source owns "x"`},
 	} {
-		err := verseio.Reflection{Covers: []entity.Pattern{c.cover}}.Check("x")
+		err := viffio.Reflection{Covers: []entity.Pattern{c.cover}}.Check("x")
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Fatalf("Check(%v) = %v, want a refusal naming %q", c.cover.Path, err, c.want)
 		}
 	}
-	if err := (verseio.Reflection{Covers: []entity.Pattern{verseio.Cover("x", "A", "ref", "*")}}).Check("x"); err != nil {
+	if err := (viffio.Reflection{Covers: []entity.Pattern{viffio.Cover("x", "A", "ref", "*")}}).Check("x"); err != nil {
 		t.Fatalf("a cover at this source's own place was refused: %v", err)
 	}
 }

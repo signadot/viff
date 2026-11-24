@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/systems/systemstest"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // workEnv is an environment giving the shell and file writes, the steps these tests' drivers
@@ -261,7 +261,7 @@ func (a *answering) Next(ctx context.Context, _ task.StepResult) (task.ToolUse, 
 func (a *answering) Result() string { return "the answer" }
 
 // THE ANSWER IS ON THE SNAPSHOT BEFORE THE RUN RETURNS. The terminal frame leaves from inside
-// Run, and a reader it brings (versed's mirror) asks for the snapshot at once; a snapshot that
+// Run, and a reader it brings (viffd's mirror) asks for the snapshot at once; a snapshot that
 // learns the answer only when Run returns answers that reader with nothing, and the record ends
 // with no result.
 func TestTheAnswerIsOnTheSnapshotBeforeTheRunReturns(t *testing.T) {

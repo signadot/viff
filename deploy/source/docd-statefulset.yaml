@@ -3,7 +3,7 @@ kind: StatefulSet
 metadata:
   name: docd
   labels:
-    app: verse
+    app: viff
     tier: docd
 spec:
   # The governing Service must be headless, so it is the one carrying the suffix; `docd` is
@@ -13,19 +13,19 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: verse
+      app: viff
       tier: docd
   template:
     metadata:
       labels:
-        app: verse
+        app: viff
         tier: docd
     spec:
       containers:
       - name: docd
-        image: signadot/verse:latest
+        image: signadot/viff:latest
         # The stateful tier: logd+docd on the /data volume. `o sys up` runs just the
-        # daemons (no engine). versed attaches over the client face.
+        # daemons (no engine). viffd attaches over the client face.
         # o wants space-separated, single-dash flags (not --flag=value).
         #
         # NO SNAPSHOT POLICY IS NAMED HERE, and that is now deliberate rather than
@@ -57,7 +57,7 @@ spec:
         - -docd-addr
         - :7071
         # docd's mount face. `o sys up` serves it, so it is given a port of its own rather
-        # than left to collide; verse never dials it, and no Service fronts it.
+        # than left to collide; viff never dials it, and no Service fronts it.
         - -docd-mount-addr
         - :7072
         ports:

@@ -13,7 +13,7 @@ import (
 // matching an observed change (MatchEvent, the trigger "when") and listing the stored nodes that
 // satisfy it (Select, a formula's fact-read).
 //
-//tony:schemagen=verse-pattern,notag
+//tony:schemagen=viff-pattern,notag
 type Pattern struct {
 	// Path is the address the pattern reaches, one segment at a time, from the top of the tree.
 	//
@@ -22,8 +22,8 @@ type Pattern struct {
 	// would have to drop the tag, which is worse than refusing it — a pattern that reads as a glob
 	// and matches literally is a rule that silently selects nothing.
 	//
-	// It is on the wire, and a source's Covers is why: a git source covers `git.verse.ref.*` and
-	// `git.verse.head`, one place per repository at two depths. A charter writes it as
+	// It is on the wire, and a source's Covers is why: a git source covers `git.viff.ref.*` and
+	// `git.viff.head`, one place per repository at two depths. A charter writes it as
 	// `trigger.Match`'s `path:`, which compiles to it.
 	Path []*ir.Node `tony:"field=path,omitzero"`
 	// Op filters on the kind of change: "set" (created-or-updated) or "delete".
@@ -48,7 +48,7 @@ type Pattern struct {
 	// It is sugar, not reach: `At: ["labels"], Predicate: {urgent: true}` says what
 	// `Predicate: {labels: {urgent: true}}` says. What it buys is the ability to point the
 	// predicate at a place WITHOUT restating the shape above it — which matters most where
-	// the predicate is typed rather than written down (`verse watch --if-at labels --if
+	// the predicate is typed rather than written down (`viff watch --if-at labels --if
 	// '{urgent: true}'`), and where the subtree is not an object at all, so the predicate for
 	// it is a bare scalar match (`At: ["stage"], Predicate: !glob "op*"`).
 	//
@@ -89,7 +89,7 @@ func (p Pattern) MatchEntity(e Entity) bool {
 //
 // Select does NOT use it, and the difference is deliberate rather than an oversight: there,
 // an empty System selects nothing, because a trigger's match always names one and a match
-// that lost its system must not quietly become a whole-verse sweep. Here an empty dimension
+// that lost its system must not quietly become a whole-viff sweep. Here an empty dimension
 // is an operator declining to filter, which is the opposite intent.
 func (p Pattern) MatchRef(ref Ref) bool { return p.pathCovers(ref) }
 
@@ -146,7 +146,7 @@ func patternReaches(path []*ir.Node, segs []string) bool {
 //
 // A charter is user input, and a predicate in one is evaluated on the engine's watch goroutine
 // at every commit that lands under its rule — so a panic in a match is a panic in the daemon,
-// reached by a line somebody typed. Nothing else in verse lets a written rule do that: an
+// reached by a line somebody typed. Nothing else in viff lets a written rule do that: an
 // unparseable one is refused at install, a malformed operator is a non-match, a read that
 // cannot resolve fails its firing. This is the same promise for the case where the failure is a
 // panic rather than an error.
@@ -178,12 +178,12 @@ func SafeMatch(value, pattern *ir.Node) (ok bool, err error) {
 // path segment as expressive as a payload predicate and stops this growing a second grammar.
 //
 // ONE CONVENTION sits above that: a BARE `*` is any segment, because that is what every other
-// address spelling in verse means by it. It is the untagged case only — inside an operator a
+// address spelling in viff means by it. It is the untagged case only — inside an operator a
 // `*` is an ordinary character, which is how an id that IS an asterisk is named: `!glob "[*]"`,
-// `!glob "\\*"` or `!or ["*"]` all say it, in the grammar rather than in an escape of verse's
+// `!glob "\\*"` or `!or ["*"]` all say it, in the grammar rather than in an escape of viff's
 // own. (`!raw` is the STORE's escape and belongs to it; a charter never writes one.)
 //
-// An untagged scalar is compared as its TEXT, so `!verse-path [demo pr 1]` matches the id `1` —
+// An untagged scalar is compared as its TEXT, so `!viff-path [demo pr 1]` matches the id `1` —
 // an address segment is a name, whatever it was written as.
 func SegMatches(want *ir.Node, seg string) bool {
 	if want == nil {
@@ -300,7 +300,7 @@ func (p Pattern) Select(r Reader) []Ref {
 // selectUnder is Select's listing for a pattern that reaches across depths: the subtree at its
 // literal prefix, read once, walked for every node the pattern reaches.
 //
-// One read rather than one per depth, and it is the same read `verse data demo '..'` makes —
+// One read rather than one per depth, and it is the same read `viff data demo '..'` makes —
 // which is the point of a descent being a pattern rather than a loop somebody writes.
 func (p Pattern) selectUnder(r Reader) []Entity {
 	prefix := p.literalPrefix()
@@ -368,7 +368,7 @@ func fieldAt(payload Payload, field []string) Payload {
 //
 // They exist because the address dimensions do not mean the same thing on both faces. A rule's
 // pattern selects: an unnamed root is the world's half, deliberately, so a charter cannot reach
-// into verse's own by omission. A read's pattern filters what a path already chose, and a path
+// into viff's own by omission. A read's pattern filters what a path already chose, and a path
 // that named both halves means both — so asking the pattern about the address again would
 // answer a question the reader did not ask.
 func (p Pattern) MatchesPayload(n Payload) bool { return p.matchPayload(n) }

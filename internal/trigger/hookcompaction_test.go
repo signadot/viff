@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // longRunning is a driver that works until it is let go, then finishes with its answer: a task that
@@ -34,7 +34,7 @@ func (d longRunning) Result() string { return d.r }
 
 // heldEngine is an engine over a store whose history the test can compact, spawning the rule's
 // own task (chain `fix`, or the first element of its sequence) as a held one that answers answer,
-// and anything else — a hook's own task — as one done at once. Each is mirrored the way versed's
+// and anything else — a hook's own task — as one done at once. Each is mirrored the way viffd's
 // spawner does it. Every spec it is handed is sent on specs.
 func heldEngine(t *testing.T, release <-chan struct{}, answer string) (*Engine, *entity.LogdStore, func(), chan launch.Spec) {
 	t.Helper()
@@ -211,7 +211,7 @@ func TestASequenceStepPastTheCutoffReadsTheSubject(t *testing.T) {
 	deadline := time.After(5 * time.Second)
 	for {
 		e, _, _ := store.Get(prRef("1"))
-		facts := entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), "fix")
+		facts := entity.Get(entity.Get(entity.Get(e.Payload, ViffRoot), CharterKey), "fix")
 		if d := entity.Get(facts, seqDone); d != nil && d.Bool {
 			break
 		}
@@ -434,7 +434,7 @@ func TestANestedHookTaskEndingDoesNotTakeTheRulesRefusal(t *testing.T) {
 	deadline := time.After(5 * time.Second)
 	for {
 		e, _, _ := store.Get(prRef("1"))
-		rec := entity.Get(entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), "fix"), hookTrouble)
+		rec := entity.Get(entity.Get(entity.Get(entity.Get(e.Payload, ViffRoot), CharterKey), "fix"), hookTrouble)
 		if entity.Str(rec, "chain") == "fix.onDone.onDone" {
 			break
 		}
@@ -490,7 +490,7 @@ func TestAFailedHookIsOnItsSubjectUntilTheNextCleanOne(t *testing.T) {
 
 	trouble := func() entity.Payload {
 		e, _, _ := store.Get(prRef("1"))
-		return entity.Get(entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), "fix"), hookTrouble)
+		return entity.Get(entity.Get(entity.Get(entity.Get(e.Payload, ViffRoot), CharterKey), "fix"), hookTrouble)
 	}
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	deadline := time.After(5 * time.Second)
@@ -575,7 +575,7 @@ func TestASequenceStepThatFailsOffACompletionEndsAndSaysWhy(t *testing.T) {
 
 	facts := func() entity.Payload {
 		e, _, _ := store.Get(prRef("1"))
-		return entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), "fix")
+		return entity.Get(entity.Get(entity.Get(e.Payload, ViffRoot), CharterKey), "fix")
 	}
 	deadline := time.After(5 * time.Second)
 	for entity.Str(facts(), seqEnded) == "" {
@@ -626,7 +626,7 @@ func TestASequenceStepThatFailsOffACompletionEndsAndSaysWhy(t *testing.T) {
 
 // A RULE'S OWN RECORD OF A FAILED HOOK DOES NOT FIRE IT AGAIN. The rule spawns with no patch beside
 // it and its onDone advances the subject, so nothing latches it: the subject still matches when
-// the hook fails. The failure is written on the subject under verse.charter.fix, and that commit,
+// the hook fails. The failure is written on the subject under @sys.charter.fix, and that commit,
 // whose only change is the rule's own bookkeeping, woke the rule, which spawned again, whose hook
 // failed again, without end. One task.
 func TestAFailedHooksRecordDoesNotRefireItsRule(t *testing.T) {
@@ -681,7 +681,7 @@ func failedHookDoesNotRefire(t *testing.T, path string, at entity.Ref) {
 	deadline := time.After(5 * time.Second)
 	for {
 		e, _, _ := store.Get(at)
-		if entity.Get(entity.Get(entity.Get(entity.Get(e.Payload, VerseRoot), CharterKey), "fix"), hookTrouble) != nil {
+		if entity.Get(entity.Get(entity.Get(entity.Get(e.Payload, ViffRoot), CharterKey), "fix"), hookTrouble) != nil {
 			break
 		}
 		select {
@@ -699,8 +699,8 @@ func failedHookDoesNotRefire(t *testing.T, path string, at entity.Ref) {
 }
 
 // TestOnlyABookkeepingWriteAsksTheCommitBefore is the check's stated cost under scoped observation,
-// which is how versed observes: a commit of a subtree watch that writes a subject's own fields
-// does not reach the rule's verse.charter.<rule>, so the rule does not read the commit before for
+// which is how viffd observes: a commit of a subtree watch that writes a subject's own fields
+// does not reach the rule's @sys.charter.<rule>, so the rule does not read the commit before for
 // it. One that writes the rule's record there does, and so does every write of the subject while
 // the record stands (review round 3: a watch's commit carried no
 // delta, Touches answered from its entity-depth events, and every subject commit paid the read).
@@ -743,12 +743,12 @@ func TestOnlyABookkeepingWriteAsksTheCommitBefore(t *testing.T) {
 				t.Errorf("a write of the subject's stage (rev %d) reaches the rule's own bookkeeping", c.Rev)
 			}
 			entitytest.Set(t, store, tc.at, entity.Obj{"stage": "open",
-				VerseRoot: entity.Obj{CharterKey: entity.Obj{"fix": entity.Obj{hookTrouble: entity.Obj{"err": "lost"}}}}}.Payload())
+				ViffRoot: entity.Obj{CharterKey: entity.Obj{"fix": entity.Obj{hookTrouble: entity.Obj{"err": "lost"}}}}}.Payload())
 			if c := next(); c.Net() || !c.Touches(kp) {
 				t.Errorf("a write of the rule's own record (rev %d, net %v) does not reach its bookkeeping", c.Rev, c.Net())
 			}
 			entitytest.Set(t, store, tc.at, entity.Obj{"stage": "closed",
-				VerseRoot: entity.Obj{CharterKey: entity.Obj{"fix": entity.Obj{hookTrouble: entity.Obj{"err": "lost"}}}}}.Payload())
+				ViffRoot: entity.Obj{CharterKey: entity.Obj{"fix": entity.Obj{hookTrouble: entity.Obj{"err": "lost"}}}}}.Payload())
 			// The cost as stated: a subject is written whole, so while the record stands every write
 			// of the subject names it, and pays the read at the commit before.
 			if c := next(); !c.Touches(kp) {

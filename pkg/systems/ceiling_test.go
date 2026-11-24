@@ -27,9 +27,9 @@ const gitCeiling = `
 - repo: !or [!regexp "^github\\.com/signadot/", github.com/acme/app]
   fetch: {}
   push:
-  - {ref: !regexp "^refs/heads/verse/"}
+  - {ref: !regexp "^refs/heads/viff/"}
   - {ref: !glob "refs/heads/release/*", force: false}
-- repo: github.com/verse/verse
+- repo: github.com/viff/viff
   fetch: {}
   push: {ref: refs/heads/main}
 `
@@ -41,11 +41,11 @@ func TestACeilingReadsAndIsChecked(t *testing.T) {
 	if err := c.Check("git"); err != nil {
 		t.Fatal(err)
 	}
-	if len(c) != 2 || len(c[0].Attributes["repo"].Values) != 2 || c[1].Attributes["repo"].String != "github.com/verse/verse" {
+	if len(c) != 2 || len(c[0].Attributes["repo"].Values) != 2 || c[1].Attributes["repo"].String != "github.com/viff/viff" {
 		t.Fatalf("read as %+v", c)
 	}
 	back := encode.MustString(c.Node())
-	if !strings.Contains(back, "repo: github.com/verse/verse") || !strings.Contains(back, "!or") {
+	if !strings.Contains(back, "repo: github.com/viff/viff") || !strings.Contains(back, "!or") {
 		t.Errorf("written back as:\n%s", back)
 	}
 	for text, want := range map[string]string{
@@ -86,10 +86,10 @@ func TestABlockIsWithinTheCeiling(t *testing.T) {
 	}
 	for text, want := range map[string]string{
 		`{repo: signadot/app, fetch: {}}`:                                           "",
-		`{repo: signadot/app, push: {ref: !glob "refs/heads/verse/auto/*"}}`:        "",
+		`{repo: signadot/app, push: {ref: !glob "refs/heads/viff/auto/*"}}`:         "",
 		`{repo: signadot/app, push: {ref: "refs/heads/release/1.0", force: false}}`: "",
 		`{repo: github.com/acme/app, fetch: {}}`:                                    "",
-		`{repo: verse/verse, push: {ref: refs/heads/main}}`:                         "",
+		`{repo: viff/viff, push: {ref: refs/heads/main}}`:                           "",
 		`{repo: $[subject.value.repo], fetch: {}}`:                                  "is beyond",
 		`{repo: "$a/../..", fetch: {}}`:                                             "is beyond",
 		`{repo: "github.com/signadot/$[subject.value.name]", fetch: {}}`:            "",
@@ -119,7 +119,7 @@ func TestABlockIsWithinTheCeiling(t *testing.T) {
 	}
 	// The refusal names the block the environment's is for, not the one for another repository.
 	if err := c.Contains("git", block(`{repo: signadot/app, push: {ref: refs/heads/main}}`)); err == nil ||
-		!strings.HasPrefix(err.Error(), "[0]: ") || strings.Contains(err.Error(), "verse/verse") {
+		!strings.HasPrefix(err.Error(), "[0]: ") || strings.Contains(err.Error(), "viff/viff") {
 		t.Errorf("the nearest block alone: %v", err)
 	}
 	// An attribute a block bounds, with no default, is beyond it where the environment's is unsaid.
@@ -153,14 +153,14 @@ func TestAStepBeyondTheCeilingIsRefused(t *testing.T) {
 	push := func(repo, ref, force string) *ir.Node {
 		return FieldsDoc("git.push", map[string]string{"repo": repo, "ref": ref, "force": force, "delete": "false", "exists": "true", "own": "true"})
 	}
-	if _, out := c.Refuses("git.push", push("github.com/signadot/app", "refs/heads/verse/x", "true")); out {
+	if _, out := c.Refuses("git.push", push("github.com/signadot/app", "refs/heads/viff/x", "true")); out {
 		t.Error("a push within")
 	}
-	if _, out := c.Refuses("git.push", push("github.com/verse/verse", "refs/heads/main", "false")); out {
+	if _, out := c.Refuses("git.push", push("github.com/viff/viff", "refs/heads/main", "false")); out {
 		t.Error("main, where its block gives it")
 	}
 	why, out := c.Refuses("git.push", push("github.com/signadot/app", "refs/heads/main", "false"))
-	if !out || !strings.Contains(why, `it gives {ref: !regexp ^refs/heads/verse/}`) {
+	if !out || !strings.Contains(why, `it gives {ref: !regexp ^refs/heads/viff/}`) {
 		t.Errorf("main, where no block gives it: %q %v", why, out)
 	}
 	if why, out := c.Refuses("git.fetch", FieldsDoc("git.fetch", map[string]string{"repo": "github.com/other/app"})); !out || !strings.Contains(why, "gives no `fetch`") {
@@ -188,7 +188,7 @@ func TestTheEmptyCeilingBlockAllowsTheWholeSystem(t *testing.T) {
 	if _, out := c.Refuses("git-issue.close", FieldsDoc("git-issue.close", map[string]string{"repo": "github.com/acme/app", "issue": "1"})); out {
 		t.Error("the empty ceiling block refused a verb")
 	}
-	scoped := readCeiling(t, `{repo: !glob "github.com/acme/*", fetch: {}, push: {ref: !regexp "^refs/heads/verse/"}}`)
+	scoped := readCeiling(t, `{repo: !glob "github.com/acme/*", fetch: {}, push: {ref: !regexp "^refs/heads/viff/"}}`)
 	g, _ := readEnv(t, `systems: {git: {repo: acme/app}}`)
 	if err := scoped.Contains("git", g.Systems["git"][0]); err == nil || !strings.Contains(err.Error(), "push {} is within no shape") {
 		t.Errorf("an empty git block under a ceiling scoping push: %v", err)

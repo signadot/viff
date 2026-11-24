@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 func doc(t *testing.T, src string) entity.Payload {
@@ -47,7 +47,7 @@ func TestAWriteDescendsOnlyThroughAValueThatStands(t *testing.T) {
 		// would refuse creation under another name.
 		{"null", `{p: null}`, true},
 		// ABSENT LANDS: a write does not refuse to build a path nothing stands on. It cannot —
-		// an address is a path of any depth, so a package deriving `verse-dev.drift.head.abc`
+		// an address is a path of any depth, so a package deriving `viff-dev.drift.head.abc`
 		// is this very write, and refusing it refuses the package.
 		{"absent", `{other: x}`, true},
 	} {
@@ -125,7 +125,7 @@ func TestCreateNoLongerClobbersTheContainer(t *testing.T) {
 }
 
 // A WRITE AT AN ADDRESS IS UNTOUCHED: creating what is not there is what a put at an address
-// means, and only descending PAST one asks the question. The first entity of a kind, on a verse
+// means, and only descending PAST one asks the question. The first entity of a kind, on a viff
 // where neither the system nor the kind stands, is the case that would break if it did.
 func TestAWriteAtAnAddressStillCreates(t *testing.T) {
 	st := entitytest.OpenStore(t)
@@ -147,7 +147,7 @@ func TestAWriteAtAnAddressStillCreates(t *testing.T) {
 }
 
 // THE `--at` SPELLING GOES THROUGH THE SAME GUARD. It arrives as a Ref of the whole depth with
-// no Field at all (versed.addressAt), where the steps arrive as a Ref plus Field — so the
+// no Field at all (viffd.addressAt), where the steps arrive as a Ref plus Field — so the
 // question is asked on the address, which is what both of them are.
 func TestTheAtSpellingIsGuardedToo(t *testing.T) {
 	st := entitytest.OpenStore(t)

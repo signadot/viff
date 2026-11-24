@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/git-issue/issuelib"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // copyRef makes a SECOND ref at the same commit — a push that added without deleting, which
@@ -36,7 +36,7 @@ func trimSHA(b []byte) string {
 //
 // `git issue` moves a ref to change status, so the repository somebody types in has exactly one
 // ref per issue and the namespace IS the status. `git issue push` writes the new ref and does
-// not delete the old, so a mirror holds both — on the verse tracker, 12 of 17 closed issues.
+// not delete the old, so a mirror holds both — on the viff tracker, 12 of 17 closed issues.
 // Read naively that is one issue reflected twice, and nine closed issues were reading
 // `status: open` on staging with nothing in the code deciding which won.
 //
@@ -114,7 +114,7 @@ func setStatus(t *testing.T, dir, xidr, status string) {
 // mirror is carrying for it.
 func statusOf(t *testing.T, dir, xidr string) string {
 	t.Helper()
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	gi.AddRepo("A", dir)
 	rn, err := gi.Reflect(context.Background(), entity.Ref{})
 	if err != nil {
@@ -122,7 +122,7 @@ func statusOf(t *testing.T, dir, xidr string) string {
 	}
 	var found []entity.Obj
 	for _, e := range rn.Entities {
-		if e.Ref == entity.RefAt(verseio.GitIssueRoot, "A", "issue", xidr) {
+		if e.Ref == entity.RefAt(viffio.GitIssueRoot, "A", "issue", xidr) {
 			found = append(found, entity.ToObj(e.Payload))
 		}
 	}

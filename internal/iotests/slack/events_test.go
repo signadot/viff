@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/io/slack"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/io/slack"
 )
 
 const secret = "shhh"

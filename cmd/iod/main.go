@@ -1,22 +1,22 @@
-// Command iod serves verse's reflection contract for the systems verse ships a connector
+// Command iod serves viff's reflection contract for the systems viff ships a connector
 // for: a git repository (or a mirror of a remote one), the issues `git issue` keeps inside
 // one, a Slack workspace, a Linear team, a set of GitHub repositories.
 //
-//	iod git       -addr :9801 -repo verse=/src/verse
-//	iod git       -addr :9801 -mirror https://github.com/signadot/verse.git -state /repos
-//	iod git-issue -addr :9801 -repo verse=/src/verse
+//	iod git       -addr :9801 -repo viff=/src/viff
+//	iod git       -addr :9801 -mirror https://github.com/signadot/viff.git -state /repos
+//	iod git-issue -addr :9801 -repo viff=/src/viff
 //	iod slack     -addr :9801            # SLACK_BOT_TOKEN in the environment
 //	iod linear    -addr :9801 -team ENG  # LINEAR_API_KEY in the environment
-//	iod github    -addr :9801 -repo signadot/verse   # GITHUB_TOKEN in the environment
+//	iod github    -addr :9801 -repo signadot/viff   # GITHUB_TOKEN in the environment
 //
-// Then install it, from anywhere that can reach verse:
+// Then install it, from anywhere that can reach viff:
 //
-//	verse iod add build-host http://localhost:9801 -root git
-//	verse iod
+//	viff iod add build-host http://localhost:9801 -root git
+//	viff iod
 //
-// WHY THIS IS A SECOND BINARY, and not three subcommands of `verse`: a source is a program
-// somebody deploys, and the whole argument for the seam is that verse does not have to be
-// built with one. Folding Slack and Linear into the engine would make verse the connector
+// WHY THIS IS A SECOND BINARY, and not three subcommands of `viff`: a source is a program
+// somebody deploys, and the whole argument for the seam is that viff does not have to be
+// built with one. Folding Slack and Linear into the engine would make viff the connector
 // monolith — every API's wire format, every credential's failure mode, in the binary that runs
 // everybody's triggers. They ride in the same IMAGE, which is a bag of binaries and costs
 // nothing; they do not ride in the same process.
@@ -38,11 +38,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/internal/adminface"
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
-	verseiod "github.com/signadot/verse/pkg/io/iod"
+	"go.viff.dev/viff/internal/adminface"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
+	viffiod "go.viff.dev/viff/pkg/io/iod"
 )
 
 func main() {
@@ -76,7 +76,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `iod serves one external system as a verse Source.
+	fmt.Fprint(os.Stderr, `iod serves one external system as a viff Source.
 
   iod git       [flags]   a git repository, or a mirror of a remote one
   iod git-issue [flags]   the issues `+"`git issue`"+` keeps inside one
@@ -98,11 +98,11 @@ type common struct {
 	root        string
 
 	// The out half's three, shared because every connector that acts needs the same three and
-	// none of them is its own: which verse to read what is asked of it, who to be while doing
+	// none of them is its own: which viff to read what is asked of it, who to be while doing
 	// it, and how often to look.
-	verseAddr string
-	as        string
-	every     time.Duration
+	viffAddr string
+	as       string
+	every    time.Duration
 	// tokenFile is where this iod's own credential is: the token its runtime gave it, read on
 	// every request since a kubelet rotates the file. Empty, the iod is whoever -as says.
 	tokenFile string
@@ -113,7 +113,7 @@ func (c *common) bind(fs *flag.FlagSet) {
 		"address to serve the reflection contract on")
 	fs.DurationVar(&c.minInterval, "min-interval", 0,
 		"answer from the last reflection when asked again inside this window — the source's "+
-			"own rate limit, since verse's resync interval is a constant and an API budget is not")
+			"own rate limit, since viff's resync interval is a constant and an API budget is not")
 	fs.StringVar(&c.root, "root", "",
 		"the slice this source writes, defaulting to the connector's own name. More than one "+
 			"source gets deployed and the partition between them is drawn by whoever runs them; "+
@@ -123,18 +123,18 @@ func (c *common) bind(fs *flag.FlagSet) {
 			"that is not confused with the first")
 	fs.StringVar(&c.adminAddr, "admin-addr", envOr("SOURCED_ADMIN_ADDR", ""),
 		"admin/pprof listen address, or off to disable (default: the -addr port + 1)")
-	fs.StringVar(&c.hintURL, "hint-url", os.Getenv("VERSE_HINT_URL"),
-		"verse's hint route for THIS registration (http://verse:9797/iods/<name>/hint); "+
+	fs.StringVar(&c.hintURL, "hint-url", os.Getenv("VIFF_HINT_URL"),
+		"viff's hint route for THIS registration (http://viff:9797/iods/<name>/hint); "+
 			"without it, deliveries are received and dropped and only the resync net converges")
-	fs.StringVar(&c.verseAddr, "verse-addr", os.Getenv("VERSE_ADDR"),
-		"the verse the out half reads and writes, host:port (default: the host of -hint-url)")
+	fs.StringVar(&c.viffAddr, "viff-addr", os.Getenv("VIFF_ADDR"),
+		"the viff the out half reads and writes, host:port (default: the host of -hint-url)")
 	fs.StringVar(&c.as, "as", "", "the principal the out half reads and writes as "+
-		"(default: agent:<root>-iod, as `verse iod add` grants)")
+		"(default: agent:<root>-iod, as `viff iod add` grants)")
 	fs.DurationVar(&c.every, "out-every", 5*time.Second,
 		"how often the out half reads what is asked of it")
-	fs.StringVar(&c.tokenFile, "token-file", os.Getenv("VERSE_TOKEN_FILE"),
-		"the file holding this iod's own credential toward verse: on Kubernetes the pod's "+
-			"projected service-account token (auth.iod in verse's config). Read on every request, "+
+	fs.StringVar(&c.tokenFile, "token-file", os.Getenv("VIFF_TOKEN_FILE"),
+		"the file holding this iod's own credential toward viff: on Kubernetes the pod's "+
+			"projected service-account token (auth.iod in viff's config). Read on every request, "+
 			"since the kubelet rotates it. Without it the iod is whoever -as says")
 }
 
@@ -154,11 +154,11 @@ func (c *common) bearer() client.BearerFunc {
 	}
 }
 
-// verse is where the out half reads and writes: what -verse-addr says, or the host the hint url
-// already names, so a deployment says where verse is once.
-func (c *common) verse() string {
-	if c.verseAddr != "" {
-		return c.verseAddr
+// viff is where the out half reads and writes: what -viff-addr says, or the host the hint url
+// already names, so a deployment says where viff is once.
+func (c *common) viff() string {
+	if c.viffAddr != "" {
+		return c.viffAddr
 	}
 	if c.hintURL != "" {
 		if u, err := url.Parse(c.hintURL); err == nil {
@@ -169,7 +169,7 @@ func (c *common) verse() string {
 }
 
 // principal is who the out half acts as: what -as says, or the iod of its root — the connector's
-// own name, or -root's where it is given — since that is the principal `verse iod add` writes the
+// own name, or -root's where it is given — since that is the principal `viff iod add` writes the
 // out half's grants for (`agent:slack-iod`, `agent:<root>-iod`).
 func (c *common) principal(root string) string {
 	if c.as != "" {
@@ -178,8 +178,8 @@ func (c *common) principal(root string) string {
 	return "agent:" + root + "-iod"
 }
 
-// registration is the name verse installed this iod under, read off the hint url, which is the one
-// place a deployment already spells it (`http://verse:9797/iods/<name>/hint`). Empty when there is
+// registration is the name viff installed this iod under, read off the hint url, which is the one
+// place a deployment already spells it (`http://viff:9797/iods/<name>/hint`). Empty when there is
 // no hint url, and then a pass is done and not reported — which is the honest outcome, since
 // nothing here can invent the name the registration was given.
 func (c *common) registration() string {
@@ -202,17 +202,17 @@ func (c *common) registration() string {
 // THE ROOT IS THE SOURCE'S, not the -root flag's: the source's Root, which is -root where it is
 // given and the connector's own name where it is not. The flag alone is usually empty, and
 // `agent:-iod` is a principal the install writes no grants for.
-func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, places []entity.Ref, verse *client.Client) ([]*verseio.Out, error) {
-	addr := c.verse()
+func (c *common) outHalf(ctx context.Context, root string, sink viffio.Sink, places []entity.Ref, viff *client.Client) ([]*viffio.Out, error) {
+	addr := c.viff()
 	if addr == "" {
-		return nil, fmt.Errorf("-out needs the verse it reads and writes: -verse-addr, VERSE_ADDR or -hint-url")
+		return nil, fmt.Errorf("-out needs the viff it reads and writes: -viff-addr, VIFF_ADDR or -hint-url")
 	}
-	if verse == nil {
-		verse = c.outClient(root)
+	if viff == nil {
+		viff = c.outClient(root)
 	}
-	outs := make([]*verseio.Out, 0, len(places))
+	outs := make([]*viffio.Out, 0, len(places))
 	for _, place := range places {
-		o := verseio.NewOut(sink, place, verse, log.Printf).Reporting(c.registration())
+		o := viffio.NewOut(sink, place, viff, log.Printf).Reporting(c.registration())
 		go o.Run(ctx, c.every)
 		outs = append(outs, o)
 		log.Printf("%s out: doing what is asked under %s, as %s, reading %s every %s",
@@ -221,11 +221,11 @@ func (c *common) outHalf(ctx context.Context, root string, sink verseio.Sink, pl
 	return outs, nil
 }
 
-// outClient is the client the out half reads and writes the verse with, as this iod: its bearer
-// where it has one (-token-file), its name otherwise. One per process; a sink that reads the verse
+// outClient is the client the out half reads and writes the viff with, as this iod: its bearer
+// where it has one (-token-file), its name otherwise. One per process; a sink that reads the viff
 // itself is handed the same one.
 func (c *common) outClient(root string) *client.Client {
-	return client.NewAs(c.verse(), c.principal(root), c.bearer())
+	return client.NewAs(c.viff(), c.principal(root), c.bearer())
 }
 
 // serve mounts the contract and whatever delivery routes this source owns, and runs.
@@ -234,8 +234,8 @@ func (c *common) outClient(root string) *client.Client {
 // what it does not serve, which is the answer a client reads as "whatever is at this url, it
 // does not serve this contract" — so mounting it as the fallback keeps that true for
 // everything except the routes named here.
-func (c *common) serve(root string, src verseio.Source, routes map[string]http.Handler) error {
-	// The admin face, for the same reason versed has one: a source that has stopped
+func (c *common) serve(root string, src viffio.Source, routes map[string]http.Handler) error {
+	// The admin face, for the same reason viffd has one: a source that has stopped
 	// answering is a source whose goroutines are the whole question, and `kubectl logs` on a
 	// wedged reflection says nothing at all. Started before the contract is mounted.
 	adm, err := adminface.Start(adminface.Spec{
@@ -247,16 +247,16 @@ func (c *common) serve(root string, src verseio.Source, routes map[string]http.H
 	defer adm.Close()
 	adm.SetAddrs(adminface.Addr{Name: "source", Addr: c.addr})
 
-	src = verseio.Throttle(src, c.minInterval)
+	src = viffio.Throttle(src, c.minInterval)
 	mux := http.NewServeMux()
-	mux.Handle("/", verseiod.New(src).Handler())
+	mux.Handle("/", viffiod.New(src).Handler())
 	for pattern, h := range routes {
 		mux.Handle(pattern, h)
 	}
-	log.Printf("%s iod on %s — install it with: verse iod add <name> %s -root %s",
+	log.Printf("%s iod on %s — install it with: viff iod add <name> %s -root %s",
 		root, c.addr, dialable(c.addr), root)
 	if c.hintURL == "" && len(routes) > 0 {
-		log.Printf("no -hint-url: deliveries will be verified and dropped, and only verse's " +
+		log.Printf("no -hint-url: deliveries will be verified and dropped, and only viff's " +
 			"periodic resync will converge")
 	}
 	return http.ListenAndServe(c.addr, mux)
@@ -264,7 +264,7 @@ func (c *common) serve(root string, src verseio.Source, routes map[string]http.H
 
 // dialable turns a listen address into the url to install, which is a guess wherever the
 // address does not name a host — `:9801` is every interface, and only the operator knows which
-// of them verse can reach. Said as `<host>` rather than as `localhost`, because a line that
+// of them viff can reach. Said as `<host>` rather than as `localhost`, because a line that
 // prints a url which happens not to work is worse than one that says what it does not know.
 func dialable(addr string) string {
 	if strings.HasPrefix(addr, ":") {
@@ -274,11 +274,11 @@ func dialable(addr string) string {
 }
 
 // hinter is what a delivery endpoint calls once it has decided which refs went stale.
-func (c *common) hinter() verseio.Hinter {
+func (c *common) hinter() viffio.Hinter {
 	if c.hintURL == "" {
 		return func(context.Context, ...entity.Ref) {}
 	}
-	return verseio.Hints(c.hintURL, log.Printf)
+	return viffio.Hints(c.hintURL, log.Printf)
 }
 
 // secret reads a credential from the environment and nowhere else.
@@ -286,7 +286,7 @@ func (c *common) hinter() verseio.Hinter {
 // NOT A FLAG, and this is the one place that matters: a flag is in the pod spec, in `ps`, and
 // in whatever shell history deployed it, while an env var comes from a Secret the cluster
 // already knows how to hold. The three sources here differ in exactly one thing — whether they
-// need one of these — and that difference is why two of them cannot live inside verse.
+// need one of these — and that difference is why two of them cannot live inside viff.
 func secret(name string) string { return os.Getenv(name) }
 
 func envOr(name, def string) string {

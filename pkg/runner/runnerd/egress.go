@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // The egress proxy: what makes an allow network a thing a runner can build rather than a

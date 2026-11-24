@@ -4,15 +4,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // THE REAP WATCHES WHERE TASK RECORDS ARE WRITTEN. A scoped engine retires a task when its
 // record reaches a terminal status, seen on its own watch of the mirror. The record is the only
-// way a task is retired, and a watch opened anywhere but under `verse` never sees it.
+// way a task is retired, and a watch opened anywhere but under `viff` never sees it.
 func TestAScopedEngineReapsFromTheTaskRecord(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})

@@ -13,10 +13,10 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/signadot/tony-format/git-issue/issuelib"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // openIssues is a workspace on one repository, svc, checked out from a fresh origin, and the

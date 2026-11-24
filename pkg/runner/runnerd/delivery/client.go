@@ -9,7 +9,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // Client is a task process's end of the channel: it asks, and the runner, which holds the

@@ -1,5 +1,5 @@
 # docd's client face: where store clients read and write entities, scoped (copy-on-write)
-# writes included. The address versed is pointed at, and the one to be deliberate about in a
+# writes included. The address viffd is pointed at, and the one to be deliberate about in a
 # tailnet ACL — it is the whole store, read/write.
 #
 # Two Services over one pod, this face plus the StatefulSet's governing one, rather than one
@@ -10,11 +10,11 @@ kind: Service
 metadata:
   name: docd
   labels:
-    app: verse
+    app: viff
     tier: docd
 spec:
   selector:
-    app: verse
+    app: viff
     tier: docd
   ports:
   - name: client

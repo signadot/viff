@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# level-ping-pong.sh — install docs/examples/level-ping-pong.yaml on an isolated verse and
+# level-ping-pong.sh — install docs/examples/level-ping-pong.yaml on an isolated viff and
 # watch it loop.
 #
 # What it shows, and why it is worth watching rather than reading:
@@ -12,7 +12,7 @@
 #   * The derive commits ONCE. Its content is literal, so every later firing writes the same
 #     bytes to the same address, which the store ends as a no-op.
 #
-# Hermetic, like smoke.sh: it builds throwaway `verse` + `o` binaries, runs its own server on
+# Hermetic, like smoke.sh: it builds throwaway `viff` + `o` binaries, runs its own server on
 # a free port with a private data dir, and reaps both on exit. It never touches a dev server.
 #
 #   test/level-ping-pong.sh           # watch for 15s
@@ -45,9 +45,9 @@ free_port() {
 }
 ADDR="127.0.0.1:$(free_port)"
 
-step "build (verse + pinned o)"
+step "build (viff + pinned o)"
 tmp=$(mktemp -d)
-BIN="$tmp/verse"
+BIN="$tmp/viff"
 SRV=""
 cleanup() {
 	[ -n "$SRV" ] && kill "$SRV" 2>/dev/null || true
@@ -55,9 +55,9 @@ cleanup() {
 	rm -rf "$tmp"
 }
 trap cleanup EXIT INT TERM
-go build -o "$BIN" ./cmd/verse || die "go build ./cmd/verse failed"
+go build -o "$BIN" ./cmd/viff || die "go build ./cmd/viff failed"
 go build -o "$tmp/o" github.com/signadot/tony-format/go-tony/cmd/o || die "go build o failed"
-ok "built verse + o"
+ok "built viff + o"
 v() { "$BIN" --addr "$ADDR" "$@"; }
 
 step "up on $ADDR"

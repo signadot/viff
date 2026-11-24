@@ -18,25 +18,25 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/systems/systemstest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // pushing is a launch's policy that gives the task git and lets every call of it go.
 var pushing = task.Autonomy{{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAllow}}, {Then: task.Then{Mode: task.ThenAllow}}}
 
-// gitLaunch is a launch of the verse agent that checks out repo, with a fetch and a push to any
+// gitLaunch is a launch of the viff agent that checks out repo, with a fetch and a push to any
 // branch of it, under policy.
 func gitLaunch(id string, repo runner.Repo, policy task.Autonomy) *runner.Launch {
 	attrs := map[string]string{"repo": repo.Repo}
 	if repo.From != "" {
 		attrs["from"] = repo.From
 	}
-	return &runner.Launch{ID: id, Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Autonomy: policy,
+	return &runner.Launch{ID: id, Prompt: "p", Agent: &runner.Agent{Name: "viff"}, Autonomy: policy,
 		Environment: systems.Environment{Systems: systems.Systems{"git": {{Attributes: attrs,
 			Verbs: map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": systems.Regexp("^refs/heads/")}}}}}}}}
 }
@@ -102,7 +102,7 @@ func TestSettleWaitsForThePushInFlight(t *testing.T) {
 		t.Fatal(err)
 	}
 	ch.Child().Close()
-	req, _ := codec.Marshal(&Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "verse/x"}}, codec.Tony)
+	req, _ := codec.Marshal(&Request{Op: "push", Fields: map[string]string{"repo": "svc", "branch": "viff/x"}}, codec.Tony)
 	if err := writeFrame(far, req); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestSettleWaitsForThePushInFlight(t *testing.T) {
 	// The push landed, and nothing is held: the work left, and salvage saw that it had.
 	if r, err := git.PlainOpen(origin); err != nil {
 		t.Fatal(err)
-	} else if _, err := r.Reference("refs/heads/verse/x", true); err != nil {
+	} else if _, err := r.Reference("refs/heads/viff/x", true); err != nil {
 		t.Fatalf("the push in flight did not land: %v", err)
 	}
 	staged, err := m.Staged(origin)
@@ -142,53 +142,53 @@ func TestSettleWaitsForThePushInFlight(t *testing.T) {
 // dropped and answered. The next act on the channel is carried as if none of them had been.
 func TestAFrameTooLargeLeavesTheChannelInStep(t *testing.T) {
 	big := strings.Repeat("x", maxFrame+1)
-	verse := func(_ context.Context, taskID, method, path string, body []byte) (int, string, error) {
+	viff := func(_ context.Context, taskID, method, path string, body []byte) (int, string, error) {
 		if strings.Contains(path, "at=big") {
 			return 200, big, nil
 		}
 		return 200, "{stage: open}", nil
 	}
-	s := &Server{Log: io.Discard, Services: Services{Verse: verse}, Ceilings: map[string]systems.Ceiling{"verse": systems.Open()}}
+	s := &Server{Log: io.Discard, Services: Services{Viff: viff}, Ceilings: map[string]systems.Ceiling{"viff": systems.Open()}}
 	near, far := net.Pipe()
 	t.Cleanup(func() { near.Close() })
 	// A channel out of step blocks rather than errs, so the test's end has a deadline: out of
 	// step is then a failure, not a hang.
 	near.SetDeadline(time.Now().Add(20 * time.Second))
-	go s.Serve(Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: within(nil, "verse")}, far)
+	go s.Serve(Task{ID: "t7", Workspace: &workspace.Workspace{}, Launch: within(nil, "viff")}, far)
 	cl := NewClient(near)
 	inStep := func(after string) {
 		t.Helper()
-		if rep, err := cl.Ask(Request{Op: OpVerseDataGet, Fields: map[string]string{"query": "at=small"}}); err != nil || rep.Out != "{stage: open}" {
+		if rep, err := cl.Ask(Request{Op: OpViffDataGet, Fields: map[string]string{"query": "at=small"}}); err != nil || rep.Out != "{stage: open}" {
 			t.Fatalf("after %s, the next read = %+v, %v", after, rep, err)
 		}
 	}
 
-	if rep, err := cl.Ask(Request{Op: OpVerseDataGet, Fields: map[string]string{"query": "at=big"}}); err != nil || rep.OK || !strings.Contains(rep.Error, "the answer is") {
+	if rep, err := cl.Ask(Request{Op: OpViffDataGet, Fields: map[string]string{"query": "at=big"}}); err != nil || rep.OK || !strings.Contains(rep.Error, "the answer is") {
 		t.Errorf("an answer over the cap = %+v, %v, want not OK, and an error saying so", rep, err)
 	}
 	inStep("an answer over the cap")
-	if _, err := cl.Ask(Request{Op: OpVerseDataPut, Body: big}); err == nil || !strings.Contains(err.Error(), "send less") {
+	if _, err := cl.Ask(Request{Op: OpViffDataPut, Body: big}); err == nil || !strings.Contains(err.Error(), "send less") {
 		t.Errorf("a request over the cap = %v, want it refused before it is sent", err)
 	}
 	inStep("a request refused before it was sent")
 
 	// One sent anyway is not the client's, so it is sent and its answer read on a channel with
 	// no client: the answer names no request, since the runner read none.
-	raw, err := codec.Marshal(Request{Op: OpVerseDataPut, Body: big}, codec.Tony)
+	raw, err := codec.Marshal(Request{Op: OpViffDataPut, Body: big}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}
 	near2, far2 := net.Pipe()
 	t.Cleanup(func() { near2.Close() })
 	near2.SetDeadline(time.Now().Add(20 * time.Second))
-	go s.Serve(Task{ID: "t8", Workspace: &workspace.Workspace{}, Launch: within(nil, "verse")}, far2)
+	go s.Serve(Task{ID: "t8", Workspace: &workspace.Workspace{}, Launch: within(nil, "viff")}, far2)
 	br := bufio.NewReader(near2)
 	go func() { _ = writeFrame(near2, raw) }()
 	got, err := readFrame(br)
 	if err != nil || !strings.Contains(string(got), "the request is") {
 		t.Errorf("a request over the cap sent anyway = %q, %v, want it answered as one", got, err)
 	}
-	small, err := codec.Marshal(Request{ID: 7, Op: OpVerseDataGet, Fields: map[string]string{"query": "at=small"}}, codec.Tony)
+	small, err := codec.Marshal(Request{ID: 7, Op: OpViffDataGet, Fields: map[string]string{"query": "at=small"}}, codec.Tony)
 	if err != nil {
 		t.Fatal(err)
 	}

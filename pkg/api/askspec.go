@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// AskSpec is a new ask as a person says it: the words `verse ask`'s flags, verse_ask_create and
-// the verse system's verse-ask-create take, its `on` already read. One grammar for all three, so a
+// AskSpec is a new ask as a person says it: the words `viff ask`'s flags, viff_ask_create and
+// the viff system's viff-ask-create take, its `on` already read. One grammar for all three, so a
 // task asks as its owner would.
 type AskSpec struct {
 	Name, Question, To, Due, OnSilence, About, Keep, Label string
@@ -41,14 +41,14 @@ func NewAsk(s AskSpec, now time.Time) (Ask, error) {
 	return body, nil
 }
 
-// AskRaised is what raising an ask answers, by `verse ask <name> -q`, verse_ask_create and the
-// verse system's verse-ask-create alike: the id verse gave it, and its question.
+// AskRaised is what raising an ask answers, by `viff ask <name> -q`, viff_ask_create and the
+// viff system's viff-ask-create alike: the id viff gave it, and its question.
 func AskRaised(id, question string) string {
 	return fmt.Sprintf("raised question %s: %s", id, question)
 }
 
 // AskQuery is the GET /asks query that keeps only the caller's own asks arg names, by the id or
-// the name it was asked under: how `verse ask <name|id>`, verse_ask_get and verse-ask-get find
+// the name it was asked under: how `viff ask <name|id>`, viff_ask_get and viff-ask-get find
 // one ask without being answered every ask.
 func AskQuery(arg string) url.Values { return url.Values{"ask": {arg}} }
 

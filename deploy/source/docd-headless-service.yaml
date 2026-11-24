@@ -11,12 +11,12 @@ kind: Service
 metadata:
   name: docd-headless
   labels:
-    app: verse
+    app: viff
     tier: docd
 spec:
   clusterIP: None
   selector:
-    app: verse
+    app: viff
     tier: docd
   ports:
   - name: client

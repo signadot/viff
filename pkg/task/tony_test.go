@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // The wire types must survive a round trip through every dialect. The JSON path is the
-// oracle: it is what verse serves today, so a tony round trip that disagrees with it is a
+// oracle: it is what viff serves today, so a tony round trip that disagrees with it is a
 // regression, not a new spelling.
 func TestTonyRoundTrip(t *testing.T) {
 	cases := []struct {
@@ -37,7 +37,7 @@ func TestTonyRoundTrip(t *testing.T) {
 		}, func() any { return &Event{} }},
 
 		{"autonomy", Autonomy{
-			{Name: "release", Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"repo": ir.FromString("signadot/verse"), "ref": systems.Glob("refs/heads/release/*")}},
+			{Name: "release", Match: &Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"repo": ir.FromString("signadot/viff"), "ref": systems.Glob("refs/heads/release/*")}},
 				Then: Then{Mode: ThenAsk, Ask: &Ask{Need: 2, Within: "24h", Answerers: []string{"group:release"}, Default: "deny", Labels: map[string]string{"team": "release"}}}},
 			{Match: &Match{Verb: "push"}, Then: Then{Mode: ThenDeny}},
 			{Then: Then{Mode: ThenAsk}},

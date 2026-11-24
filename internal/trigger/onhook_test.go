@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // failing is a driver whose first decision errors — the task reaches terminal "failed".
@@ -36,7 +36,7 @@ func startHookTask(store entity.Store, id string, spec launch.Spec) *task.Task {
 	} else {
 		p = task.NewTask(id, sup, immediate{}, noExec{})
 	}
-	// Occurrence rides along exactly as the production spawner sends it (versed's spawnerFor):
+	// Occurrence rides along exactly as the production spawner sends it (viffd's spawnerFor):
 	// it is the commit that caused the firing, and a completion hook reads at it. A harness
 	// that dropped it would let the record fall back to the revision its own write landed at,
 	// which is a different number and would make the hook tests pass for the wrong reason.
@@ -75,7 +75,7 @@ func waitField(t *testing.T, store entity.Store, ref entity.Ref, key string, wan
 }
 
 // A spawn's onDone fires when its task completes — advancing the subject in ONE trigger,
-// with no separate completion trigger. Runs under ObserveScoped (versed's mode) with the
+// with no separate completion trigger. Runs under ObserveScoped (viffd's mode) with the
 // immediate (fast) driver, so the task has ended before anything waits on it.
 func TestOnDoneFiresUnderScoped(t *testing.T) {
 	store := entitytest.Store(t)
@@ -92,7 +92,7 @@ func TestOnDoneFiresUnderScoped(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:  entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -125,13 +125,13 @@ func TestOnDoneChains(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{
 				Patch: entity.Obj{"stage": "reviewed"}.Payload(),
-				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "merge $[subject.ref]"},
+				Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "merge $[subject.ref]"},
 				OnDone: &Action{
 					Patch: entity.Obj{"stage": "merged"}.Payload(),
-					Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "approve $[subject.ref]"},
+					Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "approve $[subject.ref]"},
 					OnDone: &Action{
 						Patch: entity.Obj{"stage": "approved"}.Payload(),
 					},
@@ -183,7 +183,7 @@ func TestOnFailed(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:    entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review and fail $[subject.ref]"},
+			Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review and fail $[subject.ref]"},
 			OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
 		},
@@ -212,9 +212,9 @@ func TestOnHookPerTask(t *testing.T) {
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	subj := prRef("1").String()
-	eng.spawnHooked("pa", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: subj, Prompt: "a"},
+	eng.spawnHooked("pa", launch.Spec{Agent: &runner.Agent{Name: "viff"}, Subject: subj, Prompt: "a"},
 		&Action{OnDone: &Action{Patch: entity.Obj{"a": "1"}.Payload()}}, "pa")
-	eng.spawnHooked("pb", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: subj, Prompt: "b"},
+	eng.spawnHooked("pb", launch.Spec{Agent: &runner.Agent{Name: "viff"}, Subject: subj, Prompt: "b"},
 		&Action{OnDone: &Action{Patch: entity.Obj{"b": "1"}.Payload()}}, "pb")
 
 	waitField(t, store, prRef("1"), "a", "1")
@@ -238,7 +238,7 @@ func TestOnHookValidation(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "b", Condition: cond,
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "t"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "t"},
 			OnDone: &Action{OnFailed: &Action{Patch: entity.Obj{"x": "1"}.Payload()}}, // nested hook, no nested spawn
 		},
 	}); err == nil {
@@ -247,7 +247,7 @@ func TestOnHookValidation(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "c", Condition: cond,
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "t"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "t"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "done"}.Payload()},
 		},
 	}); err != nil {
@@ -258,7 +258,7 @@ func TestOnHookValidation(t *testing.T) {
 // The onX hooks round-trip through the tony codec under their canonical field names.
 func TestOnHookTonyRoundTrip(t *testing.T) {
 	a := Action{
-		Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+		Spawn:    &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 		OnDone:   &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		OnFailed: &Action{Patch: entity.Obj{"stage": "rejected"}.Payload()},
 	}
@@ -319,7 +319,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 		Name:      "review",
 		Condition: Condition{Subject: prSubject("never")}, // installed for its shape, not to fire
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -375,9 +375,9 @@ func TestOnHookDoesNotCrossSubjects(t *testing.T) {
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 	entitytest.Set(t, store, prRef("2"), entity.Obj{"stage": "open"}.Payload())
 
-	eng.spawnHooked("pa", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: prRef("1").String(), Prompt: "a"},
+	eng.spawnHooked("pa", launch.Spec{Agent: &runner.Agent{Name: "viff"}, Subject: prRef("1").String(), Prompt: "a"},
 		&Action{OnDone: &Action{Patch: entity.Obj{"from": "a"}.Payload()}}, "pa")
-	eng.spawnHooked("pb", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: prRef("2").String(), Prompt: "b"},
+	eng.spawnHooked("pb", launch.Spec{Agent: &runner.Agent{Name: "viff"}, Subject: prRef("2").String(), Prompt: "b"},
 		&Action{OnDone: &Action{Patch: entity.Obj{"from": "b"}.Payload()}}, "pb")
 
 	waitField(t, store, prRef("1"), "from", "a")
@@ -429,7 +429,7 @@ func TestHookReadsTheSubjectAsItIs(t *testing.T) {
     subject: {path: "demo.pr.*", value: {stage: open}}
   action:
     patch: {stage: reviewing}
-    spawn: {agent: {name: verse}, prompt: "review $[subject.ref]"}
+    spawn: {agent: {name: viff}, prompt: "review $[subject.ref]"}
     onDone:
       patch:
         stage: reviewed
@@ -473,8 +473,8 @@ func TestSeqCarrierHookReadsTheSubject(t *testing.T) {
   action:
     patch: {stage: deploying}
     seq:
-    - spawn: {agent: {name: verse}, prompt: "canary $[subject.ref]"}
-    - spawn: {agent: {name: verse}, prompt: "rollout $[subject.ref]"}
+    - spawn: {agent: {name: viff}, prompt: "canary $[subject.ref]"}
+    - spawn: {agent: {name: viff}, prompt: "rollout $[subject.ref]"}
     onDone:
       patch:
         stage:   deployed

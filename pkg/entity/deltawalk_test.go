@@ -49,7 +49,7 @@ func TestAComposedDeleteIsStillARemoval(t *testing.T) {
 	}
 }
 
-// A REMOVAL TAKES WHAT STOOD BENEATH IT: `verse data --rm a b` commits `a: b: !delete null`, and
+// A REMOVAL TAKES WHAT STOOD BENEATH IT: `viff data --rm a b` commits `a: b: !delete null`, and
 // a pattern reaching the nodes under `a.b` reports each of them gone. The pattern decides where
 // a change is reported, so the same commit is one removal at `a.b` and two beneath it.
 func TestARemovalIsReportedWhereverThePatternReaches(t *testing.T) {
@@ -131,7 +131,7 @@ func TestTouchesAnswersAboveBeneathAndElsewhere(t *testing.T) {
 		{`demo: 5`, `demo.pr.*`, true},                              // replaced above
 		{`demo: issue: "1": {}`, `demo.pr.*`, false},                // a sibling
 		{`other: pr: "1": {}`, `demo.pr.*`, false},                  // somewhere else
-		{`verse: task: instance: x: {}`, `task.instance.*`, false},  // the other half
+		{`viff: task: instance: x: {}`, `task.instance.*`, false},   // the other half
 	} {
 		got := Commit{}.WithDelta(doc(t, c.delta)).Touches(at(t, c.path))
 		if got != c.want {

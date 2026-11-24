@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // builds is a network System building the modes given.
@@ -20,17 +20,17 @@ func TestDescriptionRoundTrips(t *testing.T) {
 	src := `version: 2
 offers:
 - agent:
-    name: verse
+    name: viff
     settings:
       model: {values: ["claude-*"], default: true}
       temperature: {form: number}
-    annotations: {verse.portkey/virtual-key: string}
+    annotations: {viff.portkey/virtual-key: string}
   converse: true
   systems:
     network: {builds: {mode: !or [none, open, allow]}, ceiling: {mode: !or [none, allow], tcp-client: {host: !glob "*.github.com"}}}
     files: {ceiling: {write: {}}}
     commands: {ceiling: {run: [{command: !regexp "^make "}, {command: "go test ./..."}]}}
-    git: {ceiling: [{repo: !or [acme/app, !glob "github.com/acme/lib*"], fetch: {}}, {repo: acme/docs, push: {ref: !regexp "^refs/heads/verse/"}}]}
+    git: {ceiling: [{repo: !or [acme/app, !glob "github.com/acme/lib*"], fetch: {}}, {repo: acme/docs, push: {ref: !regexp "^refs/heads/viff/"}}]}
 - script: true
   systems:
     network: {builds: {mode: open}}
@@ -42,12 +42,12 @@ offers:
 	want := Description{Version: 2, Offers: []Offer{
 		{
 			Agent: &AgentOffer{
-				Name: "verse",
+				Name: "viff",
 				Settings: map[string]Setting{
 					"model":       {Values: []string{"claude-*"}, Default: true},
 					"temperature": {Form: FormNumber},
 				},
-				Annotations: map[string]string{"verse.portkey/virtual-key": "string"},
+				Annotations: map[string]string{"viff.portkey/virtual-key": "string"},
 			},
 			Converse: true,
 			Systems: map[string]System{
@@ -62,7 +62,7 @@ offers:
 					Verbs: map[string][]systems.Shape{"run": {{"command": systems.Regexp("^make ")}, {"command": ir.FromString("go test ./...")}}}}}},
 				"git": {Ceiling: systems.Ceiling{
 					{Attributes: map[string]*ir.Node{"repo": ir.FromSlice([]*ir.Node{ir.FromString("acme/app"), systems.Glob("github.com/acme/lib*")}).WithTag("!or")}, Verbs: map[string][]systems.Shape{"fetch": {{}}}},
-					{Attributes: map[string]*ir.Node{"repo": systems.OneOf("acme/docs")}, Verbs: map[string][]systems.Shape{"push": {{"ref": systems.Regexp("^refs/heads/verse/")}}}},
+					{Attributes: map[string]*ir.Node{"repo": systems.OneOf("acme/docs")}, Verbs: map[string][]systems.Shape{"push": {{"ref": systems.Regexp("^refs/heads/viff/")}}}},
 				}},
 			},
 		},
@@ -103,12 +103,12 @@ func wire(t *testing.T, d Description) string {
 // spelled, and its annotations nested; and it is written back so.
 func TestAnAgentIsWrittenFlat(t *testing.T) {
 	var a Agent
-	if err := codec.Unmarshal([]byte(`{name: codex, model: gpt-5-codex, effort: high, temperature: 0.2, stream: true, annotations: {verse.portkey/virtual-key: vk}}`), &a, codec.Tony); err != nil {
+	if err := codec.Unmarshal([]byte(`{name: codex, model: gpt-5-codex, effort: high, temperature: 0.2, stream: true, annotations: {viff.portkey/virtual-key: vk}}`), &a, codec.Tony); err != nil {
 		t.Fatal(err)
 	}
 	want := Agent{Name: "codex",
 		Settings:    map[string]string{"model": "gpt-5-codex", "effort": "high", "temperature": "0.2", "stream": "true"},
-		Annotations: map[string]string{"verse.portkey/virtual-key": "vk"}}
+		Annotations: map[string]string{"viff.portkey/virtual-key": "vk"}}
 	if !reflect.DeepEqual(a, want) {
 		t.Fatalf("read %+v, want %+v", a, want)
 	}
@@ -135,10 +135,10 @@ func TestAnAgentIsWrittenFlat(t *testing.T) {
 }
 
 // A DESCRIPTION IS OF THIS VERSION, OFFERS SOMETHING, EACH DOER ONCE, AND SAYS WHAT EACH OFFER
-// BUILDS OF THE NETWORK, or verse does not register the runner (or read one it kept).
+// BUILDS OF THE NETWORK, or viff does not register the runner (or read one it kept).
 func TestADescriptionIsChecked(t *testing.T) {
-	verse := func(settings map[string]Setting) Offer {
-		return Offer{Agent: &AgentOffer{Name: "verse", Settings: settings}, Systems: map[string]System{"network": builds(NetworkOpen)}}
+	viff := func(settings map[string]Setting) Offer {
+		return Offer{Agent: &AgentOffer{Name: "viff", Settings: settings}, Systems: map[string]System{"network": builds(NetworkOpen)}}
 	}
 	script := Offer{Script: true, Systems: map[string]System{"network": builds(NetworkNone, NetworkAllow)}}
 	for _, c := range []struct {
@@ -146,20 +146,20 @@ func TestADescriptionIsChecked(t *testing.T) {
 		d    Description
 		says string // "" = registered
 	}{
-		{"every offer builds its network", Description{Version: DescriptionVersion, Offers: []Offer{verse(nil), script}}, ""},
-		{"an older version", Description{Version: 1, Offers: []Offer{verse(nil)}}, "version 1, not 2"},
-		{"none", Description{Offers: []Offer{verse(nil)}}, "version 0"},
+		{"every offer builds its network", Description{Version: DescriptionVersion, Offers: []Offer{viff(nil), script}}, ""},
+		{"an older version", Description{Version: 1, Offers: []Offer{viff(nil)}}, "version 1, not 2"},
+		{"none", Description{Offers: []Offer{viff(nil)}}, "version 0"},
 		{"no offers", Description{Version: DescriptionVersion}, "it offers nothing"},
-		{"an offer builds no network", Description{Version: DescriptionVersion, Offers: []Offer{verse(nil), {Script: true}}}, "offer script: the network's `builds`"},
+		{"an offer builds no network", Description{Version: DescriptionVersion, Offers: []Offer{viff(nil), {Script: true}}}, "offer script: the network's `builds`"},
 		{"a mode no network has", Description{Version: DescriptionVersion, Offers: []Offer{{Script: true, Systems: map[string]System{"network": builds("wide")}}}}, "builds"},
 		{"neither agent nor script", Description{Version: DescriptionVersion, Offers: []Offer{{Systems: map[string]System{"network": builds(NetworkOpen)}}}}, "one of the two"},
 		{"an agent with no name", Description{Version: DescriptionVersion, Offers: []Offer{{Agent: &AgentOffer{}, Systems: map[string]System{"network": builds(NetworkOpen)}}}}, "names its agent"},
-		{"a setting called name", Description{Version: DescriptionVersion, Offers: []Offer{verse(map[string]Setting{"name": {}})}}, "may not be called name"},
-		{"a setting called annotations", Description{Version: DescriptionVersion, Offers: []Offer{verse(map[string]Setting{"annotations": {}})}}, "may not be called annotations"},
-		{"a form no setting has", Description{Version: DescriptionVersion, Offers: []Offer{verse(map[string]Setting{"x": {Form: "list"}})}}, "not string, number or bool"},
+		{"a setting called name", Description{Version: DescriptionVersion, Offers: []Offer{viff(map[string]Setting{"name": {}})}}, "may not be called name"},
+		{"a setting called annotations", Description{Version: DescriptionVersion, Offers: []Offer{viff(map[string]Setting{"annotations": {}})}}, "may not be called annotations"},
+		{"a form no setting has", Description{Version: DescriptionVersion, Offers: []Offer{viff(map[string]Setting{"x": {Form: "list"}})}}, "not string, number or bool"},
 		// A launch names its doer, so a doer offered twice could not be told apart.
-		{"an agent offered twice", Description{Version: DescriptionVersion, Offers: []Offer{verse(nil), verse(nil)}}, "it offers verse twice"},
-		{"scripts offered twice", Description{Version: DescriptionVersion, Offers: []Offer{script, verse(nil), script}}, "it offers script twice"},
+		{"an agent offered twice", Description{Version: DescriptionVersion, Offers: []Offer{viff(nil), viff(nil)}}, "it offers viff twice"},
+		{"scripts offered twice", Description{Version: DescriptionVersion, Offers: []Offer{script, viff(nil), script}}, "it offers script twice"},
 	} {
 		err := c.d.Check()
 		switch {

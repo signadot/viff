@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // Find is the tool named name, if the list has it.

@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // reviewing is a rule that latches a pull request and starts a task about it, with a hook for
@@ -21,7 +21,7 @@ func reviewing() Trigger {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch:       entity.Obj{"stage": "reviewing"}.Payload(),
-			Spawn:       &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review"},
+			Spawn:       &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review"},
 			OnDone:      &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 			OnFailed:    &Action{Patch: entity.Obj{"stage": "broke"}.Payload()},
 			OnCancelled: &Action{Patch: entity.Obj{"stage": "dropped"}.Payload()},
@@ -113,7 +113,7 @@ func TestAStoppedEngineDropsItsParkedLaunches(t *testing.T) {
 	if n := eng.Parked(); n != 0 {
 		t.Fatalf("%d launches parked in a stopped engine", n)
 	}
-	if recs, err := store.(entity.Scratch).ScratchRead(entity.VerseRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
+	if recs, err := store.(entity.Scratch).ScratchRead(entity.ViffRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
 		t.Fatalf("a stopped engine's parked launch is still recorded: %v (err %v)", recs, err)
 	}
 	tbl.Lift(s.ID())
@@ -180,7 +180,7 @@ func TestAClosedEnginesHookThatWouldLaunchIsRefusedWhole(t *testing.T) {
 	rule := reviewing()
 	rule.Action.OnCancelled = &Action{
 		Patch: entity.Obj{"stage": "again"}.Payload(),
-		Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review again"},
+		Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review again"},
 	}
 	store := entitytest.Store(t)
 	eng, _, sp, _ := deploying(t, store, rule, func(sp *spawned) Spawner { return sp.spawn })
@@ -201,7 +201,7 @@ func TestAClosedEnginesHookThatWouldLaunchIsRefusedWhole(t *testing.T) {
 	}
 	// And nothing is said of it as a failure: the subject outlives the charter.
 	subj, _, _ := store.Get(prRef("1"))
-	if said := entity.Get(entity.Get(entity.Get(entity.Get(subj.Payload, VerseRoot), CharterKey), "review"), hookTrouble); said != nil {
+	if said := entity.Get(entity.Get(entity.Get(entity.Get(subj.Payload, ViffRoot), CharterKey), "review"), hookTrouble); said != nil {
 		t.Fatalf("a hook refused by the closing was recorded on its subject as a failure: %v", said)
 	}
 	if rec, _, _ := store.Get(mirror.Ref(id)); entity.Get(rec.Payload, "hook") != nil {
@@ -240,7 +240,7 @@ func TestClosingDropsAParkedLaunchAndEndsItsRun(t *testing.T) {
 	if f := charterFacts(t, store); f[seqEnded] != string(task.Cancelled) || claimStands(t, store, runID) {
 		t.Fatalf("the run whose launch was dropped: facts %v, claim stands %v", f, claimStands(t, store, runID))
 	}
-	if recs, err := store.(entity.Scratch).ScratchRead(entity.VerseRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
+	if recs, err := store.(entity.Scratch).ScratchRead(entity.ViffRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
 		t.Fatalf("the dropped launch is still recorded: %v (err %v)", recs, err)
 	}
 	tbl.Lift(s.ID())
@@ -281,7 +281,7 @@ func TestClosingEndsAFiringWaitingOnItsGate(t *testing.T) {
 // until the hook has returned.
 func TestAnEngineIsBusyWhileAnEndIsBeingTaken(t *testing.T) {
 	rule := reviewing()
-	rule.Action.OnDone = &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "follow up"}}
+	rule.Action.OnDone = &Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "follow up"}}
 	store := entitytest.Store(t)
 	starting, start := make(chan struct{}), make(chan struct{})
 	var eng *Engine

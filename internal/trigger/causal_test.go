@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A chain begins at an external write and gains a hop per firing.
@@ -131,13 +131,13 @@ func TestUncausedFiringStartsAFreshChain(t *testing.T) {
 	}
 }
 
-// A CHANGE IN VERSE'S OWN HALF IS FOUND IN THE COMMIT THAT CARRIED IT, whichever stream delivered
+// A CHANGE IN VIFF'S OWN HALF IS FOUND IN THE COMMIT THAT CARRIED IT, whichever stream delivered
 // it. A subtree watch — what a scoped engine observes — delivers commits with no delta, and
-// changedIn must still see a subject under `verse` in one; otherwise every firing about such a
+// changedIn must still see a subject under `viff` in one; otherwise every firing about such a
 // subject has no parent, begins a fresh chain, and the throttle has no loop to see.
-func TestChangedInFindsAVerseHalfSubjectWithoutADelta(t *testing.T) {
+func TestChangedInFindsAViffHalfSubjectWithoutADelta(t *testing.T) {
 	s := entitytest.Store(t)
-	ref := entity.VerseRef("task", "instance", "run-1")
+	ref := entity.ViffRef("task", "instance", "run-1")
 	segs := ref.Segs()
 	ch, unsub, err := s.WatchSubtree(len(segs), segs[:len(segs)-1]...)
 	if err != nil {
@@ -218,7 +218,7 @@ func findCause(e *Engine, chain string) (link, bool) {
 	return link{}, false
 }
 
-// waitForStage blocks until the entity reaches a stage, so a test asserts on a settled verse
+// waitForStage blocks until the entity reaches a stage, so a test asserts on a settled viff
 // rather than on whichever hop happened to have landed.
 func waitForStage(t *testing.T, s entity.Store, ref entity.Ref, want string) {
 	t.Helper()

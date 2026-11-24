@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/git-issue/issuelib"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 func gitRun(t *testing.T, dir string, args ...string) {
@@ -66,18 +66,18 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 	gitRun(t, dirA, "branch", "feature")
 	gitRun(t, dirB, "branch", "dev")
 
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("A", dirA)
 	g.AddRepo("B", dirB)
 	// Driven through the Reflector, which is where converge lives: the source answers with a
-	// Reflection and verse writes it, so the test exercises the path Run and a hint take.
-	rf := verseio.NewReflector(g, store, 0)
+	// Reflection and viff writes it, so the test exercises the path Run and a hint take.
+	rf := viffio.NewReflector(g, store, 0)
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 
 	get := func(segs ...string) entity.Obj {
-		ref := entity.RefAt(append([]string{verseio.GitRoot}, segs...)...)
+		ref := entity.RefAt(append([]string{viffio.GitRoot}, segs...)...)
 		e, ok, _ := store.Get(ref)
 		if !ok {
 			t.Fatalf("missing %s", ref)
@@ -105,7 +105,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 		t.Fatalf("git.A.commit.%s = %+v", shaA, c)
 	}
 	// a commit is repo-scoped, not a global sha key.
-	if _, ok, _ := store.Get(entity.RefAt(verseio.GitRoot, "commit", shaA)); ok {
+	if _, ok, _ := store.Get(entity.RefAt(viffio.GitRoot, "commit", shaA)); ok {
 		t.Fatal("a commit should stand under its repository, git.<repo>.commit.<sha>, not by bare sha")
 	}
 
@@ -114,7 +114,7 @@ func TestGitReconcileMultiRepo(t *testing.T) {
 	if err := rf.Reconcile(ctx, g.RepoRef("A")); err != nil {
 		t.Fatalf("targeted reconcile: %v", err)
 	}
-	if _, ok, _ := store.Get(entity.RefAt(verseio.GitRoot, "A", "ref", "feature")); ok {
+	if _, ok, _ := store.Get(entity.RefAt(viffio.GitRoot, "A", "ref", "feature")); ok {
 		t.Fatal("A/feature should have tombstoned after branch delete")
 	}
 	get("B", "ref", "dev") // B's slice untouched by A's targeted reconcile
@@ -147,7 +147,7 @@ func TestGitMirrorClonesAtStartupAndFetchesOnEveryPass(t *testing.T) {
 	// The clone is AddMirror's, into a directory that does not exist yet — which is what a
 	// fresh pod's volume looks like.
 	into := filepath.Join(t.TempDir(), "mirrors", "origin")
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	id, err := g.AddMirror(ctx, "", origin, into)
 	if err != nil {
 		t.Fatalf("AddMirror: %v", err)
@@ -156,12 +156,12 @@ func TestGitMirrorClonesAtStartupAndFetchesOnEveryPass(t *testing.T) {
 		t.Fatalf("id %q, want the remote's base name %q", id, filepath.Base(origin))
 	}
 
-	rf := verseio.NewReflector(g, store, 0)
+	rf := viffio.NewReflector(g, store, 0)
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 	get := func(segs ...string) entity.Obj {
-		ref := entity.RefAt(append([]string{verseio.GitRoot}, segs...)...)
+		ref := entity.RefAt(append([]string{viffio.GitRoot}, segs...)...)
 		e, ok, _ := store.Get(ref)
 		if !ok {
 			t.Fatalf("missing %s", ref)
@@ -199,7 +199,7 @@ func TestGitMirrorFailsLoudlyWhenTheRemoteIsNotThere(t *testing.T) {
 		t.Skip("git not installed")
 	}
 	missing := filepath.Join(t.TempDir(), "not-a-repo")
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	_, err := g.AddMirror(context.Background(), "x", missing, filepath.Join(t.TempDir(), "m"))
 	if err == nil {
 		t.Fatal("cloning a remote that does not exist succeeded")
@@ -232,7 +232,7 @@ func TestGitReflectsBranchesAndTagsAndNothingElse(t *testing.T) {
 	gitRun(t, dir, "update-ref", "refs/pull/7/merge", sha)
 	gitRun(t, dir, "update-ref", issuelib.OpenPrefix+"k0d4y1m6", sha)
 
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	g.AddRepo("r", dir)
 	rn, err := g.Reflect(context.Background(), entity.Ref{})
 	if err != nil {

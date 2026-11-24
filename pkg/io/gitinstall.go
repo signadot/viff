@@ -14,15 +14,15 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/client"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/client"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // The install input of the git io's out half: a tree of charters in the repository, installed
-// into the verse at an address, by this io, from its own copy of the repository.
+// into the viff at an address, by this io, from its own copy of the repository.
 //
-//	to:   install.repos.verse     # everything after the first dot is the address, as `verse c`
+//	to:   install.repos.viff     # everything after the first dot is the address, as `viff c`
 //	                              # spells one
 //	tree: 4b825dc6…               # the tree object of the charters directory, as the reflection
 //	                              # reports it (`tree.<name>` on a ref)
@@ -30,7 +30,7 @@ import (
 //	from: 9d1e0a7b…               # optional: the commit the tree came from, carried onto it too
 //
 // This archives the tree out of the repository, reads every charter file in it, and asks the
-// verse to install them as `verse c -a <address> -d <dir> --prune` would: one request, every
+// viff to install them as `viff c -a <address> -d <dir> --prune` would: one request, every
 // charter in it or none, and what the directory leaves out under the address removed. The status
 // answers `tree`, `sha`, `from`, `at`, and `charters`, how many were installed. A tree already
 // installed for the same commit costs nothing.
@@ -39,8 +39,8 @@ import (
 // decides, and the install has to happen where a copy of the repository is: on a deployment that
 // is this io's pod, which holds the mirror, and nowhere a task runs. The io installs as itself,
 // so it has to own the address, or hold `child-owner` above it; what the install refuses, the
-// verse says, and a refusal (a 4xx) is recorded for good until the input changes, since the same
-// tree asked again would be refused again. A verse that cannot be reached is tried again.
+// viff says, and a refusal (a 4xx) is recorded for good until the input changes, since the same
+// tree asked again would be refused again. A viff that cannot be reached is tried again.
 //
 // WHAT IT DOES NOT DO: it does not read the charters, judge them, or choose the tree. The
 // reconciler has decided by the time it writes the input; this carries the decision out.
@@ -50,8 +50,8 @@ const installTarget = "install"
 
 // install carries one install input out, and answers the status fields.
 func (k *GitSink) install(ctx context.Context, rp repo, in Input, address string) (entity.Obj, error) {
-	if k.Verse == nil {
-		return nil, Permanent(fmt.Errorf("this io reads no verse, so it installs nothing: it runs with no address to install into"))
+	if k.Viff == nil {
+		return nil, Permanent(fmt.Errorf("this io reads no viff, so it installs nothing: it runs with no address to install into"))
 	}
 	segs, err := entity.PathSegs(address)
 	if err != nil || len(segs) == 0 {
@@ -89,7 +89,7 @@ func (k *GitSink) install(ctx context.Context, rp repo, in Input, address string
 		return asked, Permanent(fmt.Errorf("tree %s: %w", tree, readErr))
 	}
 	q := url.Values{"prune": {at}}
-	resp, err := k.Verse.PostNodes("/charter", q, docs)
+	resp, err := k.Viff.PostNodes("/charter", q, docs)
 	if err != nil {
 		return asked, fmt.Errorf("installing tree %s at %s: %w", tree, at, err)
 	}
@@ -109,7 +109,7 @@ func (k *GitSink) install(ctx context.Context, rp repo, in Input, address string
 // gone when it answers. err is a failure to read the tree at all, which may pass; readErr is the
 // tree's own fault, a file that is not a charter, which asking again will not mend.
 func treeCharters(ctx context.Context, repoDir, tree string) (docs []*ir.Node, readErr, err error) {
-	dir, err := os.MkdirTemp("", "verse-tree-")
+	dir, err := os.MkdirTemp("", "viff-tree-")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -170,7 +170,7 @@ func archiveTree(ctx context.Context, repoDir, tree, dir string) error {
 	}
 }
 
-// charterDocs reads every charter file under dir, one document each, as `verse c -a -d` does: a
+// charterDocs reads every charter file under dir, one document each, as `viff c -a -d` does: a
 // file whose name is a charter format's is a charter, and anything else is left alone.
 func charterDocs(dir string) ([]*ir.Node, error) {
 	var docs []*ir.Node

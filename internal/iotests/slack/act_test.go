@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/slack"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/slack"
 )
 
 // A CHANNEL IS NAMED BY ITS NAME: lowercase, without the `#`, and only what Slack's names can be.
@@ -45,7 +45,7 @@ func TestAPostLandsInTheChannelNamed(t *testing.T) {
 		t.Errorf("a reply: %v, the thread holds %q", err, f.saidTo("thread", p.TS))
 	}
 	for _, other := range []string{"general", "C0193"} {
-		if _, err := slack.Post(ctx, "test-token", base, nil, other, "", "x"); err == nil || !verseio.IsPermanent(err) || !strings.Contains(err.Error(), "no channel named") {
+		if _, err := slack.Post(ctx, "test-token", base, nil, other, "", "x"); err == nil || !viffio.IsPermanent(err) || !strings.Contains(err.Error(), "no channel named") {
 			t.Errorf("a post to %s: %v, want a refusal naming the channel", other, err)
 		}
 	}

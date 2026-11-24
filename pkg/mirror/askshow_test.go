@@ -3,7 +3,7 @@ package mirror
 import (
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // AN ASK SHOWS WHAT BECAME OF IT: `pending` only while it waits, its answer once it has one, and,

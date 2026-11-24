@@ -20,7 +20,7 @@ import (
 )
 
 // Document describes one system: what a block of it in a spawn's environment holds, and its
-// verbs. It is what verse keeps at `verse.systems.<name>`, and the vocabulary a spawn's
+// verbs. It is what viff keeps at `mirror.systems.<name>`, and the vocabulary a spawn's
 // environment, a runner's ceiling and an autonomy row are written in and checked against.
 //
 // It describes steps, never tools. A tool and a verb are one to one by name (`git-push`,
@@ -28,7 +28,7 @@ import (
 // block's attributes, and fields the runner works out itself (git push's `exists` and `own`).
 // What a tool takes is the runner's.
 //
-//tony:schemagen=verse-system,notag
+//tony:schemagen=viff-system,notag
 type Document struct {
 	// Name is the system's, as a tool, a step and a row spell it: `git`, `linear-issue`.
 	Name string `tony:"field=name"`
@@ -44,7 +44,7 @@ type Document struct {
 
 // Attribute is one field of a block, written by the spawn's author: `repo`, `from`.
 //
-//tony:schemagen=verse-system-attribute,notag
+//tony:schemagen=viff-system-attribute,notag
 type Attribute struct {
 	Name        string `tony:"field=name"`
 	Description string `tony:"field=description"`
@@ -65,7 +65,7 @@ type Attribute struct {
 // Verb is one act on a system: `push`, `create`. Its fields, with its block's attributes, are
 // what its step carries, which an environment's shapes and a row's match name as patterns.
 //
-//tony:schemagen=verse-system-verb,notag
+//tony:schemagen=viff-system-verb,notag
 type Verb struct {
 	Name        string  `tony:"field=name"`
 	Description string  `tony:"field=description"`
@@ -75,7 +75,7 @@ type Verb struct {
 // Field is one field of a verb's step: `ref`, `path`. The runner sets it when it builds the
 // step, from the call or from what it works out itself.
 //
-//tony:schemagen=verse-system-field,notag
+//tony:schemagen=viff-system-field,notag
 type Field struct {
 	Name        string `tony:"field=name"`
 	Description string `tony:"field=description"`

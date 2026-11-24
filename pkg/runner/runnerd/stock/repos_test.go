@@ -24,18 +24,18 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse/modeltest"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff/modeltest"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// serveRepos serves the verse runner with its repos fetched from forge.
+// serveRepos serves the viff runner with its repos fetched from forge.
 func serveRepos(t *testing.T, forge string, sec Secrets) client.Launcher {
 	t.Helper()
 	return serveReposAt(t, forge, sec, t.TempDir())
@@ -50,7 +50,7 @@ func serveReposAt(t *testing.T, forge string, sec Secrets, mirrors string) clien
 // opened is c with each system each doer holds and its section writes no ceiling for under an
 // open one (systems.Open), its `git` ceiling within its forge: what a test that is not about
 // ceilings configures, a ceiling written nowhere being closed. A c offering nothing is scripts
-// and the verse agent (every), as a test runner's default.
+// and the viff agent (every), as a test runner's default.
 func opened(c Config) Config {
 	if len(c.Agents) == 0 && c.Script == nil {
 		c = every(c, nil)
@@ -88,7 +88,7 @@ func openedFor(c Config, doer string, sys map[string]System) map[string]System {
 	return held
 }
 
-// every is c running scripts and the verse agent, each under the ceilings sys, as far as each is
+// every is c running scripts and the viff agent, each under the ceilings sys, as far as each is
 // stopped on them: a test's runner whose doers share their ceilings, as every runner's did before
 // each doer had its own.
 func every(c Config, sys map[string]System) Config {
@@ -109,16 +109,16 @@ func forDoer(doer string, sys map[string]System) map[string]System {
 	return out
 }
 
-// serveConfigured serves the verse runner configured by c, with the secrets and tokens given:
+// serveConfigured serves the viff runner configured by c, with the secrets and tokens given:
 // each system it holds and writes no ceiling for under an open one (opened).
 func serveConfigured(t *testing.T, c Config, sec Secrets, tokens Tokens) client.Launcher {
 	t.Helper()
 	return serveRaising(t, c, sec, tokens, nil)
 }
 
-// serveRaising is serveConfigured for a runner that carries its tasks' requests to a verse with
-// toVerse.
-func serveRaising(t *testing.T, c Config, sec Secrets, tokens Tokens, toVerse delivery.Verse) client.Launcher {
+// serveRaising is serveConfigured for a runner that carries its tasks' requests to a viff with
+// toViff.
+func serveRaising(t *testing.T, c Config, sec Secrets, tokens Tokens, toViff delivery.Viff) client.Launcher {
 	t.Helper()
 	work, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -129,7 +129,7 @@ func serveRaising(t *testing.T, c Config, sec Secrets, tokens Tokens, toVerse de
 		t.Fatal(err)
 	}
 	h, err := Standalone(opened(c), sec, tokens, runnerd.Unconfined{},
-		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, toVerse, io.Discard)
+		[]string{os.Args[0], "-test.run=^$", taskArg}, work, control, toViff, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestALaunchsReposAreCheckedOutForIt(t *testing.T) {
 	}
 	// And it holds none of the descriptors its process was handed: no socket (the channel, the
 	// control listener), nothing at fd 3, 4 or 5.
-	if got, want := strings.Fields(snap.Result), []string{"svc", "verse/auto/t1", "mirror", "seed", "0"}; strings.Join(got, " ") != strings.Join(want, " ") {
+	if got, want := strings.Fields(snap.Result), []string{"svc", "viff/auto/t1", "mirror", "seed", "0"}; strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("the task saw %q, want %q", got, want)
 	}
 }
@@ -171,7 +171,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 		case 0:
 			brief = r.Prompt()
 			return modeltest.Use("run_bash", map[string]any{"command": "cd svc && echo work > f && git add f && " +
-				"git commit -qm 'work' -m 'Verse-Task: t1'"})
+				"git commit -qm 'work' -m 'Viff-Task: t1'"})
 		case 1:
 			return modeltest.Use("git-push", map[string]any{})
 		default:
@@ -179,7 +179,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 		}
 	})
 	rt := serveRepos(t, forge, Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL})
-	rt.Launch(runner.Launch{ID: "t1", Prompt: "do the work", Autonomy: append(task.Autonomy{{Name: "push", Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/verse/auto/*")}}, Then: task.Then{Mode: task.ThenAsk}}},
+	rt.Launch(runner.Launch{ID: "t1", Prompt: "do the work", Autonomy: append(task.Autonomy{{Name: "push", Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/viff/auto/*")}}, Then: task.Then{Mode: task.ThenAsk}}},
 		allowing("git", "commands", "files")...),
 		Agent: &runner.Agent{Name: AgentName}, Environment: giving(envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, nil), "commands", "files")})
 
@@ -190,7 +190,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 		}
 	}
 	// The runner's two facts are on the question too: the branch is not at the forge yet.
-	want := map[string]string{"repo": "github.com/acme/svc", "from": "main", "ref": "refs/heads/verse/auto/t1", "delete": "false", "force": "false",
+	want := map[string]string{"repo": "github.com/acme/svc", "from": "main", "ref": "refs/heads/viff/auto/t1", "delete": "false", "force": "false",
 		"exists": "false", "own": "false"}
 	if q.Step != task.StepGitPush || q.Gate != "push" || !q.Fields.DeepEqual(systems.FieldsDoc(q.Step, want)) {
 		t.Fatalf("the question was %+v, want the push gate on %v", q, want)
@@ -202,10 +202,10 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	snap := ended(t, rt, "t1")
-	if snap.Status != task.Done || !strings.Contains(snap.Result, "pushed svc -> refs/heads/verse/auto/t1") {
+	if snap.Status != task.Done || !strings.Contains(snap.Result, "pushed svc -> refs/heads/viff/auto/t1") {
 		t.Fatalf("task: %+v", snap)
 	}
-	if !strings.Contains(brief, "svc/ — github.com/acme/svc at main") || !strings.Contains(brief, "Verse-Task: t1") ||
+	if !strings.Contains(brief, "svc/ — github.com/acme/svc at main") || !strings.Contains(brief, "Viff-Task: t1") ||
 		!strings.HasSuffix(brief, "do the work") {
 		t.Errorf("the agent was briefed:\n%s", brief)
 	}
@@ -213,7 +213,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := origin.Reference("refs/heads/verse/auto/t1", true); err != nil {
+	if _, err := origin.Reference("refs/heads/viff/auto/t1", true); err != nil {
 		t.Fatalf("the branch is not at the forge: %v", err)
 	}
 }
@@ -224,7 +224,7 @@ func TestAnAgentsPushIsGatedAndTheRunnerMakesIt(t *testing.T) {
 // which identity that is. So too a rule's task acting for that person: it commits as the person,
 // and the trailer still names the pair, rule and all.
 func TestAnAgentCommitsAsItsCheckoutAndIsBriefedSo(t *testing.T) {
-	forAna := entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request")
+	forAna := entity.Pair("user:ana@example.com", "via:mirror.trigger.rule.run-request")
 	for _, principal := range []string{"user:ana@example.com", forAna} {
 		t.Run(principal, func(t *testing.T) {
 			forge := t.TempDir()
@@ -249,7 +249,7 @@ func TestAnAgentCommitsAsItsCheckoutAndIsBriefedSo(t *testing.T) {
 				Provenance: runner.Provenance{Principal: principal}}
 			rt.Launch(launch)
 			snap := ended(t, rt, "t1")
-			if snap.Status != task.Done || !strings.Contains(snap.Result, "pushed svc -> refs/heads/verse/auto/t1") {
+			if snap.Status != task.Done || !strings.Contains(snap.Result, "pushed svc -> refs/heads/viff/auto/t1") {
 				t.Fatalf("task: %+v", snap)
 			}
 			id := workspace.IdentityFor(&launch)
@@ -260,7 +260,7 @@ func TestAnAgentCommitsAsItsCheckoutAndIsBriefedSo(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tip, err := origin.Reference("refs/heads/verse/auto/t1", true)
+			tip, err := origin.Reference("refs/heads/viff/auto/t1", true)
 			if err != nil {
 				t.Fatalf("the branch is not at the forge: %v", err)
 			}
@@ -272,10 +272,10 @@ func TestAnAgentCommitsAsItsCheckoutAndIsBriefedSo(t *testing.T) {
 				t.Errorf("the forge's tip is authored %s <%s>, committed %s <%s>; want %v", c.Author.Name, c.Author.Email, c.Committer.Name, c.Committer.Email, id)
 			}
 			if principal == forAna {
-				if want := "ana+verse-" + AgentName + "-runner@example.com"; id.Email != want {
+				if want := "ana+viff-" + AgentName + "-runner@example.com"; id.Email != want {
 					t.Errorf("a rule's task for ana commits as %v, want the address %s", id, want)
 				}
-				if want := "Verse-Principal: " + forAna; !strings.HasSuffix(strings.TrimSpace(c.Message), want) {
+				if want := "Viff-Principal: " + forAna; !strings.HasSuffix(strings.TrimSpace(c.Message), want) {
 					t.Errorf("the forge's tip says %q, want it to end %q", c.Message, want)
 				}
 			}

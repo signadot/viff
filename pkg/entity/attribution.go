@@ -16,7 +16,7 @@ import (
 
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 
-// PermsSystem is the kind under verse's root that holds the perms mirror: one record per node
+// PermsSystem is the kind under viff's root that holds the perms mirror: one record per node
 // whose owner is on record, keyed by the node's own address.
 const PermsSystem = "perms"
 
@@ -26,20 +26,20 @@ const OwnerField = "owner"
 // PermsKind is the kind of a perms record: one per NODE whose owner is on record.
 const PermsKind = "node"
 
-// PermsRootKind is where the ROOT's record stands: `verse.perms.root`, beside the mirror rather
+// PermsRootKind is where the ROOT's record stands: `mirror.perms.root`, beside the mirror rather
 // than in it. The root's address is the empty path, which as a key would be no key at all — the
-// record's fields would land on `verse.perms.node` itself, where every other record stands
+// record's fields would land on `mirror.perms.node` itself, where every other record stands
 // under them, so a listing of the mirror would answer `owner` and `grants` as though they were
 // records of nodes by those names. One address, spelled once here, rather than a skip rule
 // every reader of the mirror has to know.
 const PermsRootKind = "root"
 
-// PermsRef is the perms record about a node: `verse.perms.node.<address>`, the address spelled
+// PermsRef is the perms record about a node: `mirror.perms.node.<address>`, the address spelled
 // as one segment. Flat rather than nested under the node's own segments, so a field named
 // `owner` in the mirror can never be mistaken for a child node called owner, and so that the
 // owner of any node is a walk up its address prefixes rather than a walk down a second tree.
-// Four segments, because that is how deep an entity in verse's half stands: a listing under
-// `verse` walks to that depth, and a record one shorter reads as an entity per field.
+// Four segments, because that is how deep an entity in viff's half stands: a listing under
+// `viff` walks to that depth, and a record one shorter reads as an entity per field.
 //
 // THE ROOT IS THE ONE EXCEPTION, and it is here so that it is nowhere else: its record is
 // PermsRootKind, since the empty path is a key that is not one.
@@ -51,18 +51,18 @@ func permsRecordAt(key string) Ref {
 	if key == "" {
 		return permsRoot
 	}
-	return VerseRef(PermsSystem, PermsKind, key)
+	return ViffRef(PermsSystem, PermsKind, key)
 }
 
-// permsRoot is the root's record, `verse.perms.root` — a node of its own beside the mirror, so
+// permsRoot is the root's record, `mirror.perms.root` — a node of its own beside the mirror, so
 // every reader of the mirror asks for it apart from the rest.
-var permsRoot = VerseRef(PermsSystem, PermsRootKind)
+var permsRoot = ViffRef(PermsSystem, PermsRootKind)
 
 // mirrorKey is the node whose record a mirror address holds, and whether it holds one at all: a
 // child's name, or the empty path at the mirror's own node.
 func mirrorKey(ref Ref) (string, bool) {
 	switch {
-	case ref.ChildOf(VerseRoot, PermsSystem, PermsKind):
+	case ref.ChildOf(ViffRoot, PermsSystem, PermsKind):
 		return ref.Name(), true
 	case ref == permsRoot:
 		return "", true
@@ -79,7 +79,7 @@ var ErrForbidden = errors.New("refused")
 
 // ErrStands is a write carrying grants (Write.Grants) refused because the node it names stands
 // already, or its place is taken by a record: grants are given where a node is created, and
-// what a node that stands holds out is changed with `verse perms`. Like a refused condition it
+// what a node that stands holds out is changed with `viff perms`. Like a refused condition it
 // is the world's answer, and like a refusal it says why.
 var ErrStands = errors.New("the node stands")
 
@@ -154,7 +154,7 @@ type Attribution struct {
 	placesAt *placeTrie
 	// rootChildGrants is what a node created with no default above it holds out — the root's
 	// default (ChildGrantsField), the one default that is not data since the root has no record.
-	// The open verse's is `read: ["*"]`: whatever anybody creates is readable by everyone
+	// The open viff's is `read: ["*"]`: whatever anybody creates is readable by everyone
 	// until a default beneath says otherwise. A record written before defaults existed carries
 	// no grants field and is read as holding out this.
 	rootChildGrants Levels
@@ -171,7 +171,7 @@ type Attribution struct {
 	unparsed int
 	said     map[string]bool
 	// parent is baseline's attribution for a scope's, nil for baseline's own: what a scope
-	// refuses, could not read or hid is counted there too, so /status reads the verse.
+	// refuses, could not read or hid is counted there too, so /status reads the viff.
 	parent *Attribution
 	// children is one attribution per scope opened through this one, by name, for as long as
 	// the scope stands (DropScope).
@@ -306,7 +306,7 @@ const UnderField = "under"
 // already attributed is re-derived rather than wrapped twice, sharing what the first knows.
 //
 // The empty principal is a view that stamps nothing and records no owner — a READ that named
-// nobody, which holds what is held out to everyone. versed lets no request write through one.
+// nobody, which holds what is held out to everyone. viffd lets no request write through one.
 func As(s Store, principal string) Store {
 	if a, ok := s.(*attributed); ok {
 		return &attributed{Store: a.Store, attr: a.attr, principal: principal}
@@ -332,7 +332,7 @@ func PolicyOf(s Store) *Attribution {
 }
 
 // SetRootChildGrants sets what a node created with no default above it holds out. nil or empty
-// is nothing: a verse where what anybody creates is theirs and their grantees' alone.
+// is nothing: a viff where what anybody creates is theirs and their grantees' alone.
 func (a *Attribution) SetRootChildGrants(l Levels) {
 	a.mu.Lock()
 	children := make([]*Attribution, 0, len(a.children))
@@ -400,7 +400,7 @@ type attributed struct {
 // so those are the only two writes that touch the mirror.
 //
 // THE CHECK IS HERE AND NOWHERE ELSE. A request's store, a firing's causal store and a
-// source's reflector are all views derived from this one, so every write verse makes on
+// source's reflector are all views derived from this one, so every write viff makes on
 // anybody's behalf passes through it — the compare-and-swap ones through Modify included —
 // and a write path that does not is a write nothing checks.
 func (a *attributed) Write(w Write) (bool, int64, error) {
@@ -440,7 +440,7 @@ func (a *attributed) Write(w Write) (bool, int64, error) {
 }
 
 // grantsOnCreate refuses grants on a write that creates no node to carry them, and grants no
-// owner could give: they are checked as `verse perms --grants` checks what an owner sets on
+// owner could give: they are checked as `viff perms --grants` checks what an owner sets on
 // their own node's record (checkGrants), and a record is per node, so a delete, an array
 // element and a node whose own record stands beneath it (the root, the mirror) carry none.
 func grantsOnCreate(w Write, ref Ref) error {
@@ -449,7 +449,7 @@ func grantsOnCreate(w Write, ref Ref) error {
 		return fmt.Errorf("%w: a delete of %s creates nothing to hold them out", ErrBadGrants, ref)
 	case w.At.Access != "":
 		return fmt.Errorf("%w: %s%s is an element of an array, and grants are held out by a node", ErrBadGrants, ref, w.At.Access)
-	case ref.Under(VerseRoot, PermsSystem) || PermsRef(ref).Under(ref.Segs()...):
+	case ref.Under(ViffRoot, PermsSystem) || PermsRef(ref).Under(ref.Segs()...):
 		return fmt.Errorf("%w: %s holds the perms records, and is created with none of its own", ErrBadGrants, ref)
 	}
 	if err := checkGrants(w.Grants); err != nil {
@@ -515,9 +515,9 @@ func (a *attributed) write(w Write, ref Ref, need Level, act string, creating bo
 	// WHERE THE RECORD WILL GO, asked BEFORE the write, because afterwards everything the write
 	// made exists and nothing can say which of it is new. A write of `probe.thing.1` into an
 	// empty place brings `probe`, `probe.thing` and the row into being, and all three are the
-	// writer's: the tree is the state space this verse reacts to, so the structure somebody adds
+	// writer's: the tree is the state space this viff reacts to, so the structure somebody adds
 	// is their contribution and not scaffolding around it. Recording only the row left the
-	// containers inheriting from above, which reads the same in an open verse and stops the
+	// containers inheriting from above, which reads the same in an open viff and stops the
 	// writer dead the day the top is narrowed — they keep the rows they own and cannot make
 	// another beside them.
 	var made []Ref
@@ -579,7 +579,7 @@ func (a *attributed) write(w Write, ref Ref, need Level, act string, creating bo
 		}
 		return committed, rev, nil
 	}
-	if ref.Under(VerseRoot, PermsSystem) {
+	if ref.Under(ViffRoot, PermsSystem) {
 		// The mirror keeps no records about itself, and what this process cached about the
 		// node the record is about is stale the moment the record moves.
 		if key, ok := mirrorKey(ref); ok {
@@ -587,7 +587,7 @@ func (a *attributed) write(w Write, ref Ref, need Level, act string, creating bo
 		}
 		return committed, rev, nil
 	}
-	if ref.Under(VerseRoot, PrincipalSystem, GroupKind) {
+	if ref.Under(ViffRoot, PrincipalSystem, GroupKind) {
 		a.attr.dropGroups()
 	}
 	if wholeDelete {
@@ -739,13 +739,13 @@ func (a *attributed) notCreated(w Write, ref Ref, need Level, act string, asked 
 	}
 	if stands {
 		return false, 0, fmt.Errorf("%w: %s stands, and grants are given where a node is created; "+
-			"what it holds out is changed with `verse perms`", ErrStands, ref)
+			"what it holds out is changed with `viff perms`", ErrStands, ref)
 	}
 	if _, taken, err := a.Store.Get(PermsRef(ref)); err != nil {
 		return false, 0, err
 	} else if taken {
 		return false, 0, fmt.Errorf("%w: %s is taken — a record stands for it — and what it holds "+
-			"out is set with `verse perms`", ErrStands, ref)
+			"out is set with `viff perms`", ErrStands, ref)
 	}
 	if aboveStood && asked < maxCreatingAsks {
 		return a.write(w, ref, need, act, true, asked+1)
@@ -875,7 +875,7 @@ func AnswerGrantsOf(s Store, principal string) ([]Ref, error) {
 	if !ok {
 		return nil, fmt.Errorf("%s is not an attributed store", principal)
 	}
-	ents, err := BelowErr(As(a, SystemPerms), nil, 1, VerseRoot, PermsSystem, PermsKind)
+	ents, err := BelowErr(As(a, SystemPerms), nil, 1, ViffRoot, PermsSystem, PermsKind)
 	if err != nil {
 		return nil, err
 	}
@@ -931,7 +931,7 @@ func AnswerersMeeting(s Store, ref Ref) ([]string, error) {
 			break
 		}
 	}
-	ents, err := BelowErr(As(a, SystemPerms), nil, 1, VerseRoot, PermsSystem, PermsKind)
+	ents, err := BelowErr(As(a, SystemPerms), nil, 1, ViffRoot, PermsSystem, PermsKind)
 	if err != nil {
 		return nil, err
 	}
@@ -1020,7 +1020,7 @@ func MayCreate(s Store, principal string, ref Ref) (bool, error) {
 }
 
 // CheckInto is the check a listing or a watch makes at a path: may principal read INTO ref —
-// the node itself, or what a grant at it holds out beneath it. A kind-rooted node of verse's
+// the node itself, or what a grant at it holds out beneath it. A kind-rooted node of viff's
 // half is the system's and holds out `owner` beneath itself to everyone, and a listing there
 // is answered with what stands beneath, though the node itself is nobody's to write; a place
 // somebody took and holds nothing out on is refused whole. The error is ErrForbidden, counted
@@ -1073,10 +1073,10 @@ func CheckInto(s Store, principal string, ref Ref) error {
 //     record itself do reach it, since they hang there; the grants above do not.
 //
 // The walk ends at the ROOT, which is a node with a record like any other: what an untaken
-// place permits is that record's grants — `owner` beneath the root to everyone in an open verse,
+// place permits is that record's grants — `owner` beneath the root to everyone in an open viff,
 // to an admin group in a shaped one — rather than a line here nobody could read or narrow. Where
 // even that record is missing, nobody holds anything and the system still holds everything,
-// since it owns the root: a verse whose seed failed refuses rather than standing wide open.
+// since it owns the root: a viff whose seed failed refuses rather than standing wide open.
 func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 	return a.accessFor(principal, ref, false)
 }
@@ -1157,7 +1157,7 @@ func (a *attributed) accessFor(principal string, ref Ref, creating bool) (access
 						// somebody else's place stands beneath. Taking a node takes everything
 						// under it — ownership descends — so a grant that reaches an untaken
 						// node would otherwise hand the taker every place already made beneath
-						// it: `github`, taken above somebody's `github.signadot.verse`.
+						// it: `github`, taken above somebody's `github.signadot.viff`.
 						// Ownership from a RECORD is untouched above:
 						// an owner who holds a place keeps it, grantees and all.
 						by, f, err := a.fenced(ref, who)
@@ -1203,7 +1203,7 @@ func (a *attributed) accessFor(principal string, ref Ref, creating bool) (access
 //
 // What keeps a rule's author from acting as anybody whose records the rule selects is at
 // install, not here: a rule that spawns `as: subject` may select only records in a place its
-// installer owns (versed, charterTx.rule), so an asker's record there is written into a place
+// installer owns (viffd, charterTx.rule), so an asker's record there is written into a place
 // the charter was installed to serve.
 //
 // A SYSTEM ASKER IS NO PARTY. Taken as the system, the task would skip the checks beneath the
@@ -1224,9 +1224,9 @@ func (a *attributed) pairAccess(asker, bound string, ref Ref, creating bool) (ac
 // for what they may not, an error for a mirror that did not answer.
 //
 // LEAVING SOMETHING OUT OF A LISTING IS NOT A REFUSAL. The listing is answered, with what the
-// reader may see in it, and counting every record withheld from every `verse data` as a
+// reader may see in it, and counting every record withheld from every `viff data` as a
 // refused request would bury the count that matters — a request turned away — under the
-// mirror's own records, which no listing of verse's half may show a person. What is withheld
+// mirror's own records, which no listing of viff's half may show a person. What is withheld
 // is counted apart (Hidden).
 func (a *attributed) keep(ref Ref) (bool, error) {
 	if IsSystem(a.principal) {
@@ -1358,7 +1358,7 @@ func (a *attributed) recordsBeneath(rows []Ref) (map[string][][]string, error) {
 	}
 	a.attr.mu.Unlock()
 	if !loaded {
-		mirror := []string{VerseRoot, PermsSystem, PermsKind}
+		mirror := []string{ViffRoot, PermsSystem, PermsKind}
 		recs, err := ListAtErr(a.Store, mirror, len(mirror)+1, nil)
 		if err != nil {
 			return nil, err
@@ -1801,7 +1801,7 @@ func (a *attributed) readable(node *ir.Node, at []string) (*ir.Node, bool, error
 }
 
 // placeTrie is the paths where what a reader may read can differ from the node above: every
-// perms record, every path a grant names, and the reserved root, whose own record fences verse's
+// perms record, every path a grant names, and the reserved root, whose own record fences viff's
 // half off from the root's grants. Beneath a node with nothing in the trie below it, every node
 // reads as that node does — ownership descends and a grant covers what is beneath its path — so
 // only the trie's paths are asked.
@@ -1839,7 +1839,7 @@ func (t *placeTrie) at(segs []string) *placeTrie {
 // places reads the trie from the loaded mirror, or by listing the mirror once.
 func (a *attributed) places() (*placeTrie, error) {
 	t := &placeTrie{}
-	t.add([]string{VerseRoot}, false)
+	t.add([]string{ViffRoot}, false)
 	add := func(key string, rec *permsRecord) {
 		if rec == nil {
 			return
@@ -1872,7 +1872,7 @@ func (a *attributed) places() (*placeTrie, error) {
 	if loaded {
 		return t, nil
 	}
-	mirror := []string{VerseRoot, PermsSystem, PermsKind}
+	mirror := []string{ViffRoot, PermsSystem, PermsKind}
 	recs, err := ListAtErr(a.Store, mirror, len(mirror)+1, nil)
 	if err != nil {
 		return nil, err
@@ -2540,7 +2540,7 @@ func grantsOf(at []string, below bool, levels Levels) []Grant {
 	return out
 }
 
-// GrantsOf is grantsOf for a caller holding levels somebody typed (`verse perms --grant`).
+// GrantsOf is grantsOf for a caller holding levels somebody typed (`viff perms --grant`).
 func GrantsOf(at []string, below bool, levels Levels) []Grant { return grantsOf(at, below, levels) }
 
 // defaultAbove is the default in force for a node created at ref: the nearest record above it
@@ -2646,7 +2646,7 @@ func (a *attributed) recordAt(key string, fresh bool) (*permsRecord, error) {
 		// is visible on the record itself. A grantee the grammar does not read is narrower: it is
 		// kept, and admits nobody when the check meets it (named). A RECORD WRITTEN BEFORE
 		// DEFAULTS EXISTED carries an owner and no grants field at all, and is read as holding out
-		// what the root's default says: the open verse's, which is what it held out when written.
+		// what the root's default says: the open viff's, which is what it held out when written.
 		rec = parseRecord(key, e.Payload, a.attr.RootChildGrants())
 	}
 	a.attr.mu.Lock()
@@ -2712,7 +2712,7 @@ func (a *attributed) forget(ref Ref) {
 		// file — so the listing asks for one level below it and not for a depth from the root.
 		for _, rec := range Below(a.Store, func(r Ref) bool {
 			return strings.HasPrefix(r.Name(), prefix)
-		}, 1, VerseRoot, PermsSystem, PermsKind) {
+		}, 1, ViffRoot, PermsSystem, PermsKind) {
 			beneath = append(beneath, rec.Ref.Name())
 		}
 	}
@@ -2723,7 +2723,7 @@ func (a *attributed) forget(ref Ref) {
 }
 
 // Track loads the whole perms mirror into the view's cache and keeps it there: a watch on
-// `verse.perms` applies every record written — by this process or another — as it lands, so a
+// `mirror.perms` applies every record written — by this process or another — as it lands, so a
 // check makes no round trip at all. A key not in the loaded mirror is absent, and no read is
 // made to learn it.
 //
@@ -2746,7 +2746,7 @@ func Track(ctx context.Context, s Store) error {
 	}
 	// Every failure is the store not answering, and is marked so: a mirror that could not be
 	// loaded is not a mirror that is empty, and the caller asks again until it loads.
-	mirror := []string{VerseRoot, PermsSystem, PermsKind}
+	mirror := []string{ViffRoot, PermsSystem, PermsKind}
 	// The watch wants the depth of the records themselves, which is the mirror's own length and
 	// the one level its records stand below it.
 	ch, unsub, progress, err := watchAsking(a.Store, len(mirror)+1, mirror...)
@@ -2867,7 +2867,7 @@ func parseRecord(key string, payload Payload, root Levels) *permsRecord {
 // where it has none. An owner on record is always a principal that resolved already, so one
 // record is the whole walk.
 //
-// ITS OWN RECORD, and not the nearest above. Above an acting place is verse's half, which is the
+// ITS OWN RECORD, and not the nearest above. Above an acting place is viff's half, which is the
 // system's, so "the owner above" is a way to act as the system by having no record: an install
 // that named nobody, or one by somebody holding less than `owner` where they installed. What the
 // system installs says so on a record (trigger.Engine.takeForTheSystem, the schedule's claim),
@@ -2913,8 +2913,8 @@ func (a *attributed) resolve(principal string) (string, error) {
 	return rec.owner, nil
 }
 
-// AddGrant appends a grant to the perms record of ref, as the system. The mirror is versed's
-// to write, and a grant is an owner's act that versed carries out for them — a spawn assigning
+// AddGrant appends a grant to the perms record of ref, as the system. The mirror is viffd's
+// to write, and a grant is an owner's act that viffd carries out for them — a spawn assigning
 // a task to a runner creates the runner's grant on it — so it bypasses the check the way an
 // owner record does, and what this process cached about the node is dropped with it.
 //
@@ -3011,7 +3011,7 @@ func SetGrants(s Store, ref Ref, gs []Grant) error {
 func CheckChildGrants(levels Levels) error {
 	if _, ok := levels[Answer]; ok {
 		return fmt.Errorf("child-grants: %q names nobody it answers for: it is granted by whom it "+
-			"answers for (verse resolver grant), not handed down", Answer)
+			"answers for (viff resolver grant), not handed down", Answer)
 	}
 	return nil
 }
@@ -3110,10 +3110,10 @@ func Claim(s Store, ref Ref, principal string) error {
 	if rec != nil {
 		return nil
 	}
-	// IN VERSE'S HALF A PLACE IS TAKEN ONLY WHERE SOMETHING STANDS. What stands there is made by
+	// IN VIFF'S HALF A PLACE IS TAKEN ONLY WHERE SOMETHING STANDS. What stands there is made by
 	// the verb that owns it — an install, a spawn, the system's own charter — and the generic
 	// write does not reach it, so a record for a node nothing stands at is a reservation: of a
-	// name the system has not used yet (`verse.schedule.date`, a rule the next release adds, a
+	// name the system has not used yet (`mirror.schedule.date`, a rule the next release adds, a
 	// task id a rule will mint), or of a kind nobody has installed into, and whatever is made
 	// there afterwards is the reserver's. The world's half is where a place is taken ahead of
 	// what goes in it, and is untouched.
@@ -3124,7 +3124,7 @@ func Claim(s Store, ref Ref, principal string) error {
 		}
 		if !stands {
 			a.attr.noteRefusal(OwnerLevel)
-			return fmt.Errorf("%w: nothing stands at %s, and in verse's half a place is taken only "+
+			return fmt.Errorf("%w: nothing stands at %s, and in viff's half a place is taken only "+
 				"where something does: what stands there is made by the verb that owns it "+
 				"(charter -a, resolver add, runner add, iod add, task run), and is its maker's",
 				ErrForbidden, ref)
@@ -3258,7 +3258,7 @@ func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error 
 // THE RECORD DOES TWO THINGS, and the second is why it is written at all. It says whose the node
 // is — which a node with no record says too, by the nearest record above, and that is the
 // system's here either way. And it STOPS THE GRANTS ABOVE: a grant does not reach through an
-// owner record, and the rows of verse's half hold `child-owner` out to everyone beneath them at
+// owner record, and the rows of viff's half hold `child-owner` out to everyone beneath them at
 // any depth, so that anybody may make a task or a schedule there. With no record at what the
 // system made, that line reaches INSIDE it: a new child beneath a system-spawned task, or a
 // field added to a derived calendar fact, is a creation like any other, admitted and recorded
@@ -3266,7 +3266,7 @@ func Establish(s Store, ref Ref, owner string, under Ref, grants []Grant) error 
 // stop it being written into through children that do not stand yet.
 //
 // SAID BY WHOEVER MAKES THE NODE, rather than concluded by every system write. A write by the
-// system records no owner, since the system owns the root; and in verse's half the node above
+// system records no owner, since the system owns the root; and in viff's half the node above
 // is often a seed row that holds `owner` beneath it out to everyone, so that anybody may make a
 // task or a schedule there — a grant that, with no record to stop at, reaches what the system
 // made too: a task a system rule spawned was anybody's to take, and its gate's with it. But it
@@ -3678,7 +3678,7 @@ func SetUnder(s Store, ref, under Ref) error {
 }
 
 // Note lists a principal under the kind its name carries, the first time:
-// `verse.principal.<kind>.<id>`, written as the system under an absence precondition. It is the
+// `mirror.principal.<kind>.<id>`, written as the system under an absence precondition. It is the
 // record of who has been met; a grant to the kind reads the name, not this.
 func Note(s Store, principal string) error {
 	g, err := ParsePrincipal(principal)
@@ -3686,7 +3686,7 @@ func Note(s Store, principal string) error {
 		return err
 	}
 	if g.Kind == ViaKind || g.Kind == SystemKind {
-		return fmt.Errorf("%s: versed makes that name, and meets nobody by it", principal)
+		return fmt.Errorf("%s: viffd makes that name, and meets nobody by it", principal)
 	}
 	_, _, err = s.Write(Write{
 		At:        PrincipalRef(g.Kind, g.ID).At(),
@@ -3697,9 +3697,9 @@ func Note(s Store, principal string) error {
 	return err
 }
 
-// PrincipalSystem is the system under verse's root that lists the principals this verse has
-// met, by the kind their name carries: `verse.principal.user.<email>` for a person, written the
-// first time they present themselves over the api, `verse.principal.runner.<identity>` for a
+// PrincipalSystem is the system under viff's root that lists the principals this viff has
+// met, by the kind their name carries: `mirror.principal.user.<email>` for a person, written the
+// first time they present themselves over the api, `mirror.principal.runner.<identity>` for a
 // worker at its claim. A group's record stands beside them, under GroupKind.
 const PrincipalSystem = "principal"
 
@@ -3711,14 +3711,14 @@ func GroupRef(name string) Ref { return PrincipalRef(GroupKind, name) }
 
 // IsGroup reports whether an address is a group's.
 func IsGroup(ref Ref) bool {
-	return ref.ChildOf(VerseRoot, PrincipalSystem, GroupKind) && ref.Name() != ""
+	return ref.ChildOf(ViffRoot, PrincipalSystem, GroupKind) && ref.Name() != ""
 }
 
 // UserRef addresses the record of one user having acted here.
 func UserRef(principal string) Ref { return PrincipalRef(UserKind, principal) }
 
 // PrincipalRef addresses the record of one principal of a kind having acted here.
-func PrincipalRef(kind, principal string) Ref { return VerseRef(PrincipalSystem, kind, principal) }
+func PrincipalRef(kind, principal string) Ref { return ViffRef(PrincipalSystem, kind, principal) }
 
 // The optional read-side methods a store may have pass through, or a wrapped store would look
 // like one that cannot say a read failed, and a restore over an unreadable store would read as
@@ -3816,7 +3816,7 @@ func (a *attributed) Close() error {
 
 // takenTrie is where somebody's places stand, by path: what the fence asks about. Only records
 // naming a NON-SYSTEM owner are in it, since the system owns the root and co-owns everything
-// beneath it — a system-owned place is not somebody else's, and `verse` itself is one.
+// beneath it — a system-owned place is not somebody else's, and `viff` itself is one.
 type takenTrie struct {
 	children map[string]*takenTrie
 	// mark is the owner of the place standing AT this node, empty where none does. beneath
@@ -3942,7 +3942,7 @@ func (a *attributed) taken() (*takenTrie, error) {
 			add(key, rec)
 		}
 	} else {
-		mirror := []string{VerseRoot, PermsSystem, PermsKind}
+		mirror := []string{ViffRoot, PermsSystem, PermsKind}
 		ents, err := ListAtErr(a.Store, mirror, len(mirror)+1, nil)
 		if err != nil {
 			return nil, err
@@ -3984,7 +3984,7 @@ func (a *Attribution) dropTaken() {
 // The walk goes UP from the node being written and stops at the first ancestor that fails any
 // of three questions, each of which is a way of not being this write's to own:
 //
-//   - IT IS TAKEN. A record stands there, which `verse perms` writes without an entity.
+//   - IT IS TAKEN. A record stands there, which `viff perms` writes without an entity.
 //   - THE WRITER DOES NOT HOLD `owner` THERE. Holding it at the row says nothing about the node
 //     above: a grant of what is BENEATH `sandbox` is not a grant of `sandbox`, and recording the
 //     first writer beneath it as its owner handed them a space they were only invited into —
@@ -3997,10 +3997,10 @@ func (a *attributed) created(ref Ref, principal, who string) ([]Ref, error) {
 	if len(segs) < 2 {
 		return nil, nil // the node itself is the top; record lands where it always would
 	}
-	// NOT IN VERSE'S HALF, where the structure is the system's rather than anybody's
-	// contribution: the kinds under `verse` are seeded, the rows beneath them are held out by
+	// NOT IN VIFF'S HALF, where the structure is the system's rather than anybody's
+	// contribution: the kinds under `viff` are seeded, the rows beneath them are held out by
 	// the seed, and a task's record belongs at the task. Spawning the first one would otherwise
-	// make its requester the owner of `verse.task` — and of every task anybody ran after.
+	// make its requester the owner of `mirror.task` — and of every task anybody ran after.
 	if ref.Reserved() {
 		return nil, nil
 	}

@@ -1,0 +1,77 @@
+# The charter every viff stands on, installed at start as the system (installSystemCharter):
+# the standard schedules, the clock derived from the minutely tick and the calendar from the
+# hourly one.
+#
+# A schedule ticks for the viff: `every` is its period and `from` its phase, defaulting to a
+# Monday at midnight in the daemon's zone (TZ), so minutely ticks on the minute, hourly on the
+# hour, daily at midnight and weekly on Monday. A rule about a schedule reads its ticks as its
+# subject and needs no latch: `subject: {path: "mirror.schedule.hourly.tick.*"}`.
+#
+# The calendar is one entity per fact under mirror.schedule: `time` to the minute from the
+# minutely tick, and everything that changes by the day from the hourly one, so a rule reading
+# `date` wakes once a day and one whose `on` names `time` rises once a day:
+#
+#   on: {path: "mirror.schedule.time", value: {time: "09:05"}}
+#
+# The strata are what a derive needs -- a level for the subject and a strictly higher one for
+# what it writes -- and sit far up the ordering so a charter of your own has the room below.
+
+schedules:
+- name: minutely
+  every: 1m
+- name: hourly
+  every: 1h
+- name: daily
+  every: 24h
+- name: weekly
+  every: 168h
+
+strata:
+- name: ticks
+  level: 100000
+  match:
+  - "mirror.schedule.minutely.tick"
+  - "mirror.schedule.hourly.tick"
+- name: calendar
+  level: 100010
+  match:
+  - "mirror.schedule.date"
+  - "mirror.schedule.time"
+  - "mirror.schedule.year"
+  - "mirror.schedule.month"
+  - "mirror.schedule.day"
+  - "mirror.schedule.weekday"
+  - "mirror.schedule.timezone"
+# The docket: every ask, whoever raised it. A person's ask is posed by the verb that writes it
+# (`viff ask`), a rule's by its gate and a task's by its question, so no rule here poses one; the
+# stratum is for charters that react to asks, as a deployment's Slack charter does.
+- name: asks
+  level: 100020
+  match:
+  - "mirror.ask"
+
+rules:
+# The clock: `time` to the minute, from the minutely tick. Two commits a minute, the tick and
+# this derive, and nothing else in the viff reads either place unless a charter asks to.
+- name: clock
+  stratum: ticks
+  condition:
+    subject: {path: "mirror.schedule.minutely.tick.*"}
+  action:
+    derive:
+    - {path: "mirror.schedule", id: time,     value: {time: .[subject.value.time]}}
+
+# The calendar: everything that changes by the day, from the hourly tick, so `date` commits
+# once a day and a rule reading it wakes once a day.
+- name: calendar
+  stratum: ticks
+  condition:
+    subject: {path: "mirror.schedule.hourly.tick.*"}
+  action:
+    derive:
+    - {path: "mirror.schedule", id: date,     value: {date: .[subject.value.date]}}
+    - {path: "mirror.schedule", id: year,     value: {year: .[subject.value.year]}}
+    - {path: "mirror.schedule", id: month,    value: {month: .[subject.value.month]}}
+    - {path: "mirror.schedule", id: day,      value: {day: .[subject.value.day]}}
+    - {path: "mirror.schedule", id: weekday,  value: {weekday: .[subject.value.weekday]}}
+    - {path: "mirror.schedule", id: timezone, value: {timezone: .[subject.value.timezone]}}

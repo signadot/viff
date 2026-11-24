@@ -5,7 +5,7 @@
 # write that would close a loop ACROSS levels; recursion inside a level is exactly what a
 # level ordering permits, and what the cycle throttle is for. See docs/strata.md.
 #
-#   test/level-ping-pong.sh          # brings up an isolated verse and watches it
+#   test/level-ping-pong.sh          # brings up an isolated viff and watches it
 #
 # The shape:
 #
@@ -80,7 +80,7 @@ rules:
         # level.
         #
         # Under a key of your choosing, so a spawn at the level above reads it by that name
-        # (`task: "approve $[what]"`). The engine also records it at verse.meta.derivedFrom.
+        # (`task: "approve $[what]"`). The engine also records it at @sys.meta.derivedFrom.
         what: .[subject.ref]
         stage: .[subject.value.stage]
 

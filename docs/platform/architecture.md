@@ -1,17 +1,17 @@
 # Architecture
 
-This page describes the parts of verse, how they fit together, and how verse handles data and failure.
+This page describes the parts of viff, how they fit together, and how viff handles data and failure.
 
 ## Components
 
-`verse up` runs these in one process. Each is a package behind an interface, so each can
+`viff up` runs these in one process. Each is a package behind an interface, so each can
 become a service of its own without a change to its callers.
 
 ```mermaid
 flowchart TB
-  cli["cmd/verse (CLI)"]
+  cli["cmd/viff (CLI)"]
 
-  subgraph versed["versed.Server"]
+  subgraph viffd["viffd.Server"]
     direction LR
     obs["observation plane<br/>watch · get · list"]
     ctl["control plane<br/>question approve · flow steer · task control"]
@@ -28,7 +28,7 @@ flowchart TB
 
   rt["task runtime (task, pkg/runner/runnerd)<br/>Task · Supervisor · Autonomy · Event stream · gate registry"]
 
-  cli -->|"HTTP"| versed
+  cli -->|"HTTP"| viffd
   obs --> store
   ctl --> trig
   ctl --> run
@@ -54,32 +54,32 @@ resolves gates through a shared registry, and fires actions. Each rule watches o
 subtree its match names. No watch covers the whole store. A spawn goes through the engine's
 `Spawner`, which hosts the task through task control and mirrors it back into the store.
 
-**`task`** is the task runtime. A `Task` runs a *driver*: the verse agent's loop, a script, or
+**`task`** is the task runtime. A `Task` runs a *driver*: the viff agent's loop, a script, or
 one you write. A `Supervisor` governs it: a step outside the task's `Environment` is refused,
 and the rows of its `Autonomy` decide the rest, the last deciding a step that no other matches. The task emits a stream of events. The stream has a cursor, keeps a
 bounded number of events, and can be resumed. The task posts its gate decisions to a registry.
 
 **`pkg/runner/runnerd`** hosts a runner's tasks. `runnerd` serves it over HTTP, with each task in a
-process of its own under bwrap, and `verse up` starts one beside itself as its local runner; a
-test serves one over HTTP (`pkg/runner/runnerd/runnerdtest`). **`pkg/runner/runnerd/verse`**, **`codex`** and **`claude`** are the agents: verse's own, and
-two foreign CLIs gated inside the run. **`pkg/runner/runnerd/stock`** is the runner verse ships,
+process of its own under bwrap, and `viff up` starts one beside itself as its local runner; a
+test serves one over HTTP (`pkg/runner/runnerd/runnerdtest`). **`pkg/runner/runnerd/viff`**, **`codex`** and **`claude`** are the agents: viff's own, and
+two foreign CLIs gated inside the run. **`pkg/runner/runnerd/stock`** is the runner viff ships,
 running the agents its configuration names and scripts.
 
-**`mirror`** writes a task's state onto its entity, `verse.task.instance.<id>`. It writes the
+**`mirror`** writes a task's state onto its entity, `mirror.task.instance.<id>`. It writes the
 status, a preview of what the task said, the last tool output, the final `result`, the
 `cursor` to resume from, and the `runner`. It writes one way only.
 It is an index, and it does not keep the transcript.
 
 An id names the work, not the run. A rule that fires again uses the same id, and the instance
-holds the latest run. Each run also writes `verse.task.run.<id>@<occurrence>`
+holds the latest run. Each run also writes `mirror.task.run.<id>@<occurrence>`
 ([tasks](../reference/tasks.md)). Ask the instance what the work is doing now. Ask the runs what
 happened before.
 
-**`versed`** assembles the parts and serves HTTP. It owns *scopes*: each scope has engines of
+**`viffd`** assembles the parts and serves HTTP. It owns *scopes*: each scope has engines of
 its own, over a copy-on-write view of the store. At
 start it reconciles the tasks a previous run left: it resumes some and orphans the others.
 
-**`runner`** is how a task runs outside the verse process. It is described below.
+**`runner`** is how a task runs outside the viff process. It is described below.
 
 **`iod`** reflects external state into the store: Git, GitHub and the others, each writing the
 place it owns. See [iods](../io.md).
@@ -93,7 +93,7 @@ events under load, because it is only a signal to look. Correctness comes from t
 `since=<rev>`. So a reader that waits a long time costs a cursor, and not a buffer.
 
 A write that may conflict states its precondition, and the store checks it with the write.
-For this reason the engine, a restarted verse, and a second reader all reach the same state
+For this reason the engine, a restarted viff, and a second reader all reach the same state
 without coordinating.
 
 ### Observation and control are separate planes
@@ -119,10 +119,10 @@ Three implementations stand behind the seam.
 
 | Implementation | What it is |
 |---|---|
-| local | the `runnerd` daemon embedded in the verse process, reached by a Go call |
-| remote | `client.HTTP(baseURL)`. It drives another verse or host over HTTP: `GET /tasks`, `GET /tasks/{id}/events?since=N`, and control POSTs. |
+| local | the `runnerd` daemon embedded in the viff process, reached by a Go call |
+| remote | `client.HTTP(baseURL)`. It drives another viff or host over HTTP: `GET /tasks`, `GET /tasks/{id}/events?since=N`, and control POSTs. |
 
-The seam is the same for both. So `verse task get/attach/cancel/say/approve` works for a
+The seam is the same for both. So `viff task get/attach/cancel/say/approve` works for a
 local and a remote task. See [task control](../task-control.md).
 
 ## Data and failure model
@@ -133,14 +133,14 @@ local and a remote task. See [task control](../task-control.md).
 |---|---|
 | `demo.pr."1"` | a node |
 | `demo.pr."1".labels.urgent` | a node inside that node |
-| `verse-dev.drift.head.abc` | a node that a package derived |
+| `viff-dev.drift.head.abc` | a node that a package derived |
 | `demo.pr` | the node that holds the pull requests |
 | `demo.pr.*` | the pull requests |
 
-The segment `verse` at the front of verse's own records is a segment like any other.
+The segment `viff` at the front of viff's own records is a segment like any other.
 [Entities](../reference/entities.md#addressing) gives the grammar, in both of its spellings.
 
-A revision of the store always grows, and the numbers have gaps. Verse treats a revision as an
+A revision of the store always grows, and the numbers have gaps. Viff treats a revision as an
 opaque cursor. The event stream of a task has a cursor of its own, for resuming. Nothing
 assumes that the numbers are dense, and every reader catches up with `since`.
 
@@ -151,21 +151,21 @@ private scope. The scope is isolated from baseline and from other developers, an
 
 A scope holds a copy of the world. It does not hold a copy of the program: the rules, tasks,
 gates and flows are referenced. So a scope steers, answers and removes what it created, and
-verse refuses the rest. A grant made in a scope governs that scope alone
+viff refuses the rest. A grant made in a scope governs that scope alone
 ([what a scope owns](../reference/scopes.md#what-a-scope-owns)).
 
-**The charter is durable.** An installed rule is an entity, `verse.trigger.rule.<name>`, and
-it carries the definition it was installed from. At a restart verse installs the stored rules
-before anything observes. Restoring replays, as installing does, so verse acts on a change
+**The charter is durable.** An installed rule is an entity, `mirror.trigger.rule.<name>`, and
+it carries the definition it was installed from. At a restart viff installs the stored rules
+before anything observes. Restoring replays, as installing does, so viff acts on a change
 that arrived while it was down. See
 [the charter](../reference/charter.md#the-charter-is-durable).
 
-**Resume, not orphan.** At a restart, `versed.reconcileTasks` looks at each task that had not
+**Resume, not orphan.** At a restart, `viffd.reconcileTasks` looks at each task that had not
 ended.
 
-- If the work outlasted verse, for example on a remote runner, verse attaches to it again. It
-  replays the events, so it learns of an end that the task reached while verse was down.
-- If the runtime was in the verse process, it ended with the previous run. Verse marks the
+- If the work outlasted viff, for example on a remote runner, viff attaches to it again. It
+  replays the events, so it learns of an end that the task reached while viff was down.
+- If the runtime was in the viff process, it ended with the previous run. Viff marks the
   task orphaned.
 
 The open questions of a task follow the task. A resumed task keeps its questions on the
@@ -181,8 +181,8 @@ later report changes nothing.
 
 | Point | What you supply |
 |---|---|
-| Driver | how a task decides what to do next: the verse agent, a script, or your own `Next` |
-| Task control | where and how a task runs: a Kubernetes Job, a lambda, another verse |
+| Driver | how a task decides what to do next: the viff agent, a script, or your own `Next` |
+| Task control | where and how a task runs: a Kubernetes Job, a lambda, another viff |
 | Store | logd and docd, or anything that implements the `Store` interface |
 | Iod | a program that reflects an external system into a place it owns in the store. You deploy it and install it ([iods](../io.md)). |
 
@@ -191,10 +191,10 @@ writes facts that something reacts to ([iods](../io.md#a-source-is-not-a-docd-co
 
 ## Deployment
 
-`verse up` runs the engine, the task runtime and the HTTP server in one process. It starts
+`viff up` runs the engine, the task runtime and the HTTP server in one process. It starts
 logd and docd as child processes, or it attaches to a docd that is already running.
 
-The store, the engine (`versed`) and the task runtime (`task`) can be separate services behind
+The store, the engine (`viffd`) and the task runtime (`task`) can be separate services behind
 the same interfaces. Task control already lets a task run on another machine.
 
 [Seams](../seams.md) says which seams can be a network connection, and which side opens each

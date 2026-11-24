@@ -32,7 +32,7 @@ checks out. A block that names no verb gives all of them.
 
 ```tony
 spawn:
-  agent: {name: verse}
+  agent: {name: viff}
   prompt: "File an issue for each TODO in the README, naming the TODO in its body."
   environment:
     systems:
@@ -56,7 +56,7 @@ Only a push leaves the task. So the autonomy above lets the agent file, comment,
 freely, and asks before the issues reach `github.com/acme/app`; the `git` block gives no push, so
 the task has no `git-push` at all. In a row or a shape, `repo` is the repository as
 `host/owner/name`, however the spawn named it. A script calls the same tools with
-`verse-call-tool`, and the same environment and rows decide them.
+`viff-call-tool`, and the same environment and rows decide them.
 
 ## Where the credential lives
 
@@ -77,5 +77,5 @@ agents:
         ceiling: {repo: !regexp "^github\\.com/acme/", create: {}, comment: {}, close: {}, pull: {}, push: {}}
 ```
 
-Verse refuses to install a spawn whose environment gives a tracker of another repository. The
-refusal says what the ceiling gives ([the verse runner](../reference/runnerd.md#what-it-offers)).
+Viff refuses to install a spawn whose environment gives a tracker of another repository. The
+refusal says what the ceiling gives ([the viff runner](../reference/runnerd.md#what-it-offers)).

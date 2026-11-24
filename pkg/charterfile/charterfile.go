@@ -1,10 +1,10 @@
-// Package charterfile is how a charter is read back and handed in, by `verse charter`, verse
-// mcp's verse_charter and verse_charter_check, and the verse system's verse-charter-get and
-// verse-charter-check alike: one way to read GET /charter's tree as the files that install it,
+// Package charterfile is how a charter is read back and handed in, by `viff charter`, viff
+// mcp's viff_charter and viff_charter_check, and the viff system's viff-charter-get and
+// viff-charter-check alike: one way to read GET /charter's tree as the files that install it,
 // to list what is installed, and to read a text of charters, so a task reads the charters as its
 // owner would.
 //
-// WHAT `verse c` PRINTS IS WHAT `verse c -a` INSTALLS, one charter at a time. A FILE IS ONE
+// WHAT `viff c` PRINTS IS WHAT `viff c -a` INSTALLS, one charter at a time. A FILE IS ONE
 // CHARTER: a fielded document whose keys are `at`, `reads`, `sends`, `ttl`, `rules`, `schedules`
 // and `strata` — the node the server's tree holds for one address, less what a file cannot
 // install. `writes:` is the address plus `.*`. `children:` is what a directory is for. The marks a
@@ -22,9 +22,9 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/schedule"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/schedule"
 )
 
 // IsNode reports whether a document is a node of the charter tree — a place or a charter — rather
@@ -375,7 +375,7 @@ func Steps(at string) string {
 }
 
 // markKeys are the fields a listing adds to a rule that are not the rule: what the engine knows
-// about it (internal/versed/suspend.go).
+// about it (internal/viffd/suspend.go).
 var markKeys = map[string]bool{"held": true, "suspended": true, "trouble": true, "task": true}
 
 // unmarked is a rule without the listing's marks, and the marks as notes naming the charter's
@@ -427,8 +427,8 @@ func unmarked(rule *ir.Node, at string, kpaths bool) (*ir.Node, []string) {
 	return rule, notes
 }
 
-// scheduleDecl is a schedule as the charter declares it, from the row `verse schedule` lists: its
-// name, period and phase. When it last ticked, and by whose install, is `verse schedule`'s.
+// scheduleDecl is a schedule as the charter declares it, from the row `viff schedule` lists: its
+// name, period and phase. When it last ticked, and by whose install, is `viff schedule`'s.
 //
 // The row's `id` is the record's, which carries a package's address (`drift:hourly`); the name the
 // file declares is its tail, and the `at:` beside it puts the address back.

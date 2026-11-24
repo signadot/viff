@@ -3,8 +3,8 @@ package entity_test
 import (
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // `answer` is held by being named, and by nothing else: owning a node confers none of it, and a
@@ -20,7 +20,7 @@ func TestAnAnswerGrantIsHeldOnlyByBeingNamed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Two resolvers, both alice's; one is granted.
-	r1, r2 := entity.VerseRef("resolvers", "r1"), entity.VerseRef("resolvers", "r2")
+	r1, r2 := entity.ViffRef("resolvers", "r1"), entity.ViffRef("resolvers", "r2")
 	for _, r := range []entity.Ref{r1, r2} {
 		if err := entity.Establish(system, r, "user:alice@example.com", entity.Ref{}, []entity.Grant{}); err != nil {
 			t.Fatal(err)
@@ -83,7 +83,7 @@ func TestAnAnsweringGranteeAdmitsWhoAnswersThere(t *testing.T) {
 	inner := entitytest.OpenStore(t)
 	system := entity.As(inner, entity.SystemDefault)
 	entity.PolicyOf(system).SetRootChildGrants(nil)
-	r1, r2 := entity.VerseRef("resolvers", "r1"), entity.VerseRef("resolvers", "r2")
+	r1, r2 := entity.ViffRef("resolvers", "r1"), entity.ViffRef("resolvers", "r2")
 	for _, r := range []entity.Ref{r1, r2} {
 		if err := entity.Establish(system, r, "user:carol@example.com", entity.Ref{}, []entity.Grant{}); err != nil {
 			t.Fatal(err)

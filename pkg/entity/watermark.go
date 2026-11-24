@@ -20,7 +20,7 @@ import (
 // The loaded view (Track) knows how far it has got: the revision each of its two watches has
 // applied through, the records' and the root's (nodesAt, rootAt), and the lower of the two is
 // the view's watermark. A watch delivers only the commits that change its path, so what it
-// delivers cannot carry the watermark past a commit that changed nothing there — on a verse
+// delivers cannot carry the watermark past a commit that changed nothing there — on a viff
 // whose perms stand still, past nothing a read is ever served at. So a read served at R above
 // the watermark ASKS THE WATCHES: a progress request each (WatchSubtreeProgress), which the
 // store acknowledges with its head and answers in the watch's own stream, after every commit up
@@ -429,7 +429,7 @@ func mirrorGet(s Store, ref Ref) (Entity, bool, int64, error) {
 // servedMirror is the perms subtree — the records and the root's — in one read, and a commit its
 // answer is at least as new as.
 func servedMirror(s Store) (*ir.Node, bool, int64, error) {
-	at := []string{VerseRoot, PermsSystem}
+	at := []string{ViffRoot, PermsSystem}
 	before := knownBefore(s)
 	if h, ok := s.(interface {
 		ReadAtCommit([]string) (*ir.Node, bool, int64, error)

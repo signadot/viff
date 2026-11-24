@@ -4,17 +4,17 @@ Two acts stop work without ending it. They differ in how long they last and in h
 reach.
 
 **A hold on a run** stops one task, at its next boundary. It lasts until somebody resumes the
-task, or until verse restarts.
+task, or until viff restarts.
 
 **A suspension** stops all the work about a charter and a subject: firings, tasks, questions,
 and what a hook would start. It lasts until somebody lifts it, and it survives a restart.
 
-Both acts are verbs of `verse flow`, and both take the same flags. A *flow* is a query over the
+Both acts are verbs of `viff flow`, and both take the same flags. A *flow* is a query over the
 work in progress. A *suspension* is a query over the work to come, and it names the same things
-that a live task carries. So `verse flow` with some flags lists what an act with the same flags
+that a live task carries. So `viff flow` with some flags lists what an act with the same flags
 reaches.
 
-Cancelling ends the work. It is a verb of `verse flow` too.
+Cancelling ends the work. It is a verb of `viff flow` too.
 
 ## The flags
 
@@ -38,7 +38,7 @@ out of the match would lift the suspension.
 ### An act names something
 
 An act that names nothing is refused. Otherwise, somebody who typed a bare verb to see its usage
-would suspend the whole verse.
+would suspend the whole viff.
 
 | Verb | What it takes |
 |---|---|
@@ -54,18 +54,18 @@ that rule about every subject, and `-subject demo.pr.2` is that subject for ever
 Only the listing covers everything when no flag narrows it, because the listing is a read.
 
 ```sh
-verse flow                                           # every live task and every suspension
-verse flow -charter repos.verse.drift                # its live tasks, and its suspension about everything
-verse flow suspend -task review@demo.pr.2            # hold one run at its next boundary
-verse flow resume  -task review@demo.pr.2
-verse flow say     -subject 'demo.pr.*' "hurry"      # to every live task about a PR
-verse flow cancel  -task review@demo.pr.2            # end one run (destructive)
+viff flow                                           # every live task and every suspension
+viff flow -charter repos.viff.drift                # its live tasks, and its suspension about everything
+viff flow suspend -task review@demo.pr.2            # hold one run at its next boundary
+viff flow resume  -task review@demo.pr.2
+viff flow say     -subject 'demo.pr.*' "hurry"      # to every live task about a PR
+viff flow cancel  -task review@demo.pr.2            # end one run (destructive)
 
-verse flow suspend -charter repos.verse.drift -why "…"                        # a charter, about everything
-verse flow suspend -subject github.signadot.verse.pr.'"42"' -why "…"           # a subject, for every charter
-verse flow suspend -charter repos.verse.drift:claim -subject git.verse.head -why "…"
-verse flow suspend -charter repos.verse -r -why "…"                            # every package under repos.verse
-verse flow resume  -charter repos.verse.drift                                  # the same flags lift it
+viff flow suspend -charter repos.viff.drift -why "…"                        # a charter, about everything
+viff flow suspend -subject github.signadot.viff.pr.'"42"' -why "…"           # a subject, for every charter
+viff flow suspend -charter repos.viff.drift:claim -subject git.viff.head -why "…"
+viff flow suspend -charter repos.viff -r -why "…"                            # every package under repos.viff
+viff flow resume  -charter repos.viff.drift                                  # the same flags lift it
 ```
 
 ### `-args`: the listing as flags
@@ -77,8 +77,8 @@ The row of a task is `-task <id>`. The row of a suspension is `-charter … -sub
 picks one kind:
 
 ```sh
-verse flow -args | grep -v '^-task ' | xargs -L1 verse flow resume               # lift every suspension
-verse flow -subject demo.pr.2 -args | grep '^-task ' | xargs -L1 verse flow cancel     # end every run about PR 2
+viff flow -args | grep -v '^-task ' | xargs -L1 viff flow resume               # lift every suspension
+viff flow -subject demo.pr.2 -args | grep '^-task ' | xargs -L1 viff flow cancel     # end every run about PR 2
 ```
 
 ### The rows of the listing
@@ -90,7 +90,7 @@ The listing has rows of two kinds.
 | a live task | `{kind: task, task, charter, subject, heldBy}` |
 | a suspension | `{kind: suspension, id, charter, subject, held, holding, covers}` |
 
-The `charter` of a task is the rule that spawned it, such as `repos.verse.drift:claim` or
+The `charter` of a task is the rule that spawned it, such as `repos.viff.drift:claim` or
 `:review`. A task run by hand has none.
 
 A suspension says four things:
@@ -116,12 +116,12 @@ For example, `-subject demo.pr.2` lists `*:*@demo.pr."2"` and not `:review@*`. A
 `-subject 'demo.pr.*'` lists the suspension spelled that way, not the suspension of each PR.
 
 To see everything that holds the work of a subject, however it is spelled, use
-`verse flow show <subject>`. It works for a subject with no work yet, too.
+`viff flow show <subject>`. It works for a subject with no work yet, too.
 
 ## A hold on a run
 
-`verse flow suspend -task <id>` holds one run at its next boundary. Use it to look at a run
-before it goes on. `verse flow resume -task <id>` lets the run continue from there.
+`viff flow suspend -task <id>` holds one run at its next boundary. Use it to look at a run
+before it goes on. `viff flow resume -task <id>` lets the run continue from there.
 
 The hold is the operator's: the task's `heldBy` says `operator`, on its record and in
 `flow show`.
@@ -139,7 +139,7 @@ answer.
 
 **It does not last.** The hold holds that run and nothing else. The rule that spawned the run
 goes on firing, and may fire about the same subject again when the run has ended. A restart of
-verse does not keep the hold.
+viff does not keep the hold.
 
 **Three acts that are not a hold.**
 
@@ -200,7 +200,7 @@ rules, rule by rule.
 A task knows which holds it is under: its `heldBy` lists `operator` and the suspensions that
 paused it. So the two kinds of hold do not undo each other.
 
-- `verse flow resume -task` is refused with `409` for a run that a suspension holds. The
+- `viff flow resume -task` is refused with `409` for a run that a suspension holds. The
   refusal names the suspension. Resuming the run would run work that is covered.
 - A lift resumes only what nothing else holds. So an operator's hold outlasts a suspension,
   whichever came first.
@@ -255,12 +255,12 @@ scope may not name the charter of a package, because a package belongs to baseli
 
 | Command | What it shows |
 |---|---|
-| `verse flow` | live tasks with `heldBy`, and suspensions with their holders, their reasons, what they hold, and whether they cover anything |
-| `verse status` | counts of what is live and what is held, and of what has gone wrong |
-| `verse charter` | a rule that is suspended about every subject, and a rule in trouble |
-| `verse flow show <subject>` | what holds the work of one subject, as a tree |
+| `viff flow` | live tasks with `heldBy`, and suspensions with their holders, their reasons, what they hold, and whether they cover anything |
+| `viff status` | counts of what is live and what is held, and of what has gone wrong |
+| `viff charter` | a rule that is suspended about every subject, and a rule in trouble |
+| `viff flow show <subject>` | what holds the work of one subject, as a tree |
 
-**`verse status`** has three counts.
+**`viff status`** has three counts.
 
 | Field | What it counts |
 |---|---|
@@ -268,7 +268,7 @@ scope may not name the charter of a package, because a package belongs to baseli
 | `suspensions: {count, tasks, subjects, questions, launches}` | how many suspensions are in force, and what they hold: tasks, their subjects, questions withdrawn, launches parked. Each is counted once. The field is absent when nothing is suspended. |
 | `firings: {failed, unread}` | what has gone wrong at the firings of the rules ([when a rule does nothing](trigger-model.md#when-a-rule-does-nothing)) |
 
-**`verse flow show <subject>`** puts what holds the work of the subject at the top of the
+**`viff flow show <subject>`** puts what holds the work of the subject at the top of the
 tree. That is what would hold an installed rule whose subject could select it, and what holds
 its live tasks. The tree marks `heldBy` on a live task, and `suspended` on each position whose
 work is held.

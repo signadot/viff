@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // gitOut is what a git command prints in dir, trimmed.
@@ -26,7 +26,7 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 }
 
 // reflectedRecords is the records a reflection carries, by name.
-func reflectedRecords(t *testing.T, g *verseio.Git) map[string]entity.Payload {
+func reflectedRecords(t *testing.T, g *viffio.Git) map[string]entity.Payload {
 	t.Helper()
 	rn, err := g.Reflect(context.Background(), entity.Ref{})
 	if err != nil {
@@ -50,23 +50,23 @@ func TestARecordHoldsATreeAndChainsItsEntries(t *testing.T) {
 	}
 	dir := t.TempDir()
 	initRepo(t, dir)
-	if err := os.MkdirAll(filepath.Join(dir, ".verse", "charters"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".viff", "charters"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	one := commit(t, dir, ".verse/charters/hello.tony", helloCharter, "hello")
-	treeA := treeSha(t, dir, "main", ".verse/charters")
+	one := commit(t, dir, ".viff/charters/hello.tony", helloCharter, "hello")
+	treeA := treeSha(t, dir, "main", ".viff/charters")
 	two := commit(t, dir, "README", "elsewhere", "elsewhere")
-	three := commit(t, dir, ".verse/charters/other.tony", otherCharter, "other")
-	treeB := treeSha(t, dir, "main", ".verse/charters")
-	g := verseio.NewGit()
+	three := commit(t, dir, ".viff/charters/other.tony", otherCharter, "other")
+	treeB := treeSha(t, dir, "main", ".viff/charters")
+	g := viffio.NewGit()
 	g.AddRepo("r", dir)
 	r := newGitOutRig(t, g, "r")
 
 	r.ask(t, "live", entity.Obj{"to": "record.live", "tree": treeA, "from": one[:10]})
 	r.pass(t)
-	first := refSha(t, dir, "refs/verse/live")
+	first := refSha(t, dir, "refs/viff/live")
 	if first == "" || refSha(t, dir, first+"^{tree}") != treeA {
-		t.Fatalf("refs/verse/live = %q, holding %q; want an entry holding %s", first, refSha(t, dir, first+"^{tree}"), treeA)
+		t.Fatalf("refs/viff/live = %q, holding %q; want an entry holding %s", first, refSha(t, dir, first+"^{tree}"), treeA)
 	}
 	if got := gitOut(t, dir, "log", "-1", "--format=%(trailers:key=From,valueonly)", first); got != one {
 		t.Errorf("the entry's From: = %q, want %s", got, one)
@@ -75,21 +75,21 @@ func TestARecordHoldsATreeAndChainsItsEntries(t *testing.T) {
 		t.Error("the first entry has a parent")
 	}
 	st := r.status(t, "live")
-	if st["ref"] != "refs/verse/live" || st["sha"] != first || st["tree"] != treeA || st["was"] != nil || st["error"] != nil {
+	if st["ref"] != "refs/viff/live" || st["sha"] != first || st["tree"] != treeA || st["was"] != nil || st["error"] != nil {
 		t.Fatalf("status = %v", st)
 	}
 	// The same tree from another commit: in step, nothing appended.
 	r.ask(t, "live", entity.Obj{"to": "record.live", "tree": treeA, "from": two})
 	r.pass(t)
-	if got := refSha(t, dir, "refs/verse/live"); got != first {
+	if got := refSha(t, dir, "refs/viff/live"); got != first {
 		t.Fatalf("the same tree from another commit appended %s", got)
 	}
 	// Another tree: an entry on top of the first.
 	r.ask(t, "live", entity.Obj{"to": "record.live", "tree": treeB, "from": three})
 	r.pass(t)
-	second := refSha(t, dir, "refs/verse/live")
+	second := refSha(t, dir, "refs/viff/live")
 	if second == first || refSha(t, dir, second+"^") != first || refSha(t, dir, second+"^{tree}") != treeB {
-		t.Fatalf("after another tree, refs/verse/live = %s, parent %s", second, refSha(t, dir, second+"^"))
+		t.Fatalf("after another tree, refs/viff/live = %s, parent %s", second, refSha(t, dir, second+"^"))
 	}
 	if st := r.status(t, "live"); st["was"] != first || st["sha"] != second {
 		t.Errorf("status after an append = %v", st)
@@ -97,7 +97,7 @@ func TestARecordHoldsATreeAndChainsItsEntries(t *testing.T) {
 	// Create only: a record that stands is kept.
 	r.ask(t, "made", entity.Obj{"to": "record.live", "tree": treeA, "create": true})
 	r.pass(t)
-	if got := refSha(t, dir, "refs/verse/live"); got != second {
+	if got := refSha(t, dir, "refs/viff/live"); got != second {
 		t.Errorf("create: true appended to a record that stood: %s", got)
 	}
 	if st := r.status(t, "made"); st["kept"] != true || st["sha"] != second {
@@ -107,7 +107,7 @@ func TestARecordHoldsATreeAndChainsItsEntries(t *testing.T) {
 	// An entry somebody else wrote, with no From: trailer, is reflected all the same, its `from`
 	// said empty: a record is a ref anybody who can push may write.
 	byHand := gitOut(t, dir, "commit-tree", treeA, "-m", "by hand")
-	gitOut(t, dir, "update-ref", "refs/verse/hand", byHand)
+	gitOut(t, dir, "update-ref", "refs/viff/hand", byHand)
 
 	recs := reflectedRecords(t, g)
 	if p := recs["live"]; entity.Str(p, "sha") != second || entity.Str(p, "tree") != treeB || entity.Str(p, "from") != three {
@@ -133,11 +133,11 @@ func TestARecordHoldsATreeAndChainsItsEntries(t *testing.T) {
 	}
 	r.pass(t)
 	for name := range refused {
-		if st := r.status(t, name); st["failed"] != verseio.PermanentFailure {
+		if st := r.status(t, name); st["failed"] != viffio.PermanentFailure {
 			t.Errorf("%s: status %v, want a permanent refusal", name, st)
 		}
 	}
-	if refSha(t, dir, "refs/verse/x") != "" {
+	if refSha(t, dir, "refs/viff/x") != "" {
 		t.Error("a refused input wrote a record")
 	}
 }
@@ -150,20 +150,20 @@ func TestARecordIsCheckedAgainstWhatRuns(t *testing.T) {
 	}
 	dir := t.TempDir()
 	initRepo(t, dir)
-	if err := os.MkdirAll(filepath.Join(dir, ".verse", "charters"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".viff", "charters"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	one := commit(t, dir, ".verse/charters/hello.tony", helloCharter, "hello")
-	treeA := treeSha(t, dir, "main", ".verse/charters")
-	two := commit(t, dir, ".verse/charters/other.tony", otherCharter, "other")
-	treeB := treeSha(t, dir, "main", ".verse/charters")
-	g := verseio.NewGit()
+	one := commit(t, dir, ".viff/charters/hello.tony", helloCharter, "hello")
+	treeA := treeSha(t, dir, "main", ".viff/charters")
+	two := commit(t, dir, ".viff/charters/other.tony", otherCharter, "other")
+	treeB := treeSha(t, dir, "main", ".viff/charters")
+	g := viffio.NewGit()
 	g.AddRepo("r", dir)
 	r := newGitOutRig(t, g, "r")
 	r.ask(t, "install", entity.Obj{"to": "install.repos.r", "tree": treeA, "sha": one})
 	r.ask(t, "rec", entity.Obj{"to": "record.live", "tree": treeA, "from": one})
 	r.pass(t)
-	entry := refSha(t, dir, "refs/verse/live")
+	entry := refSha(t, dir, "refs/viff/live")
 
 	check := func(round string) entity.Obj {
 		t.Helper()
@@ -192,7 +192,7 @@ func TestARecordIsCheckedAgainstWhatRuns(t *testing.T) {
 	if st := r.status(t, "gone"); st["verdict"] != "missing" || st["error"] != nil {
 		t.Fatalf("a record the repository does not have: status %v", st)
 	}
-	if st := r.status(t, "both"); st["failed"] != verseio.PermanentFailure {
+	if st := r.status(t, "both"); st["failed"] != viffio.PermanentFailure {
 		t.Fatalf("a check naming a record and a ref: status %v", st)
 	}
 }
@@ -205,41 +205,41 @@ func TestARecordIsPushedFromAMirror(t *testing.T) {
 	}
 	work := t.TempDir()
 	initRepo(t, work)
-	if err := os.MkdirAll(filepath.Join(work, ".verse", "charters"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(work, ".viff", "charters"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	one := commit(t, work, ".verse/charters/hello.tony", helloCharter, "hello")
-	treeA := treeSha(t, work, "main", ".verse/charters")
-	commit(t, work, ".verse/charters/other.tony", otherCharter, "other")
-	treeB := treeSha(t, work, "main", ".verse/charters")
+	one := commit(t, work, ".viff/charters/hello.tony", helloCharter, "hello")
+	treeA := treeSha(t, work, "main", ".viff/charters")
+	commit(t, work, ".viff/charters/other.tony", otherCharter, "other")
+	treeB := treeSha(t, work, "main", ".viff/charters")
 	remote := filepath.Join(t.TempDir(), "remote.git")
 	gitRun(t, work, "clone", "--bare", work, remote)
 
-	g := verseio.NewGit()
+	g := viffio.NewGit()
 	if _, err := g.AddMirror(context.Background(), "m", remote, filepath.Join(t.TempDir(), "m")); err != nil {
 		t.Fatal(err)
 	}
 	r := newGitOutRig(t, g, "m")
 	r.ask(t, "live", entity.Obj{"to": "record.live", "tree": treeA, "from": one})
 	r.pass(t)
-	entry := refSha(t, remote, "refs/verse/live")
+	entry := refSha(t, remote, "refs/viff/live")
 	if entry == "" || refSha(t, remote, entry+"^{tree}") != treeA {
-		t.Fatalf("the remote's refs/verse/live = %q", entry)
+		t.Fatalf("the remote's refs/viff/live = %q", entry)
 	}
 	if p := reflectedRecords(t, g)["live"]; entity.Str(p, "sha") != entry {
 		t.Errorf("the reflected record after the push = %v", entity.ToObj(p))
 	}
 
 	// Somebody wrote the record on the remote meanwhile: the lease refuses the overwrite.
-	gitRun(t, work, "fetch", remote, "refs/verse/live:refs/verse/live")
+	gitRun(t, work, "fetch", remote, "refs/viff/live:refs/viff/live")
 	other := gitOut(t, work, "commit-tree", treeB, "-p", entry, "-m", "by hand")
-	gitRun(t, work, "push", remote, other+":refs/verse/live")
+	gitRun(t, work, "push", remote, other+":refs/viff/live")
 	r.ask(t, "live", entity.Obj{"to": "record.live", "tree": treeB, "from": one})
 	r.pass(t)
-	if got := refSha(t, remote, "refs/verse/live"); got != other {
+	if got := refSha(t, remote, "refs/viff/live"); got != other {
 		t.Errorf("a stale lease overwrote the remote: %q, want %s", got, other)
 	}
-	if st := r.status(t, "live"); st["error"] == nil || st["failed"] == verseio.PermanentFailure {
+	if st := r.status(t, "live"); st["error"] == nil || st["failed"] == viffio.PermanentFailure {
 		t.Errorf("status after a refused lease = %v, want a retryable error", st)
 	}
 }

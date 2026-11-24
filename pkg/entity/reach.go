@@ -8,7 +8,7 @@ package entity
 // Around that one per-segment question the walk is the same for every kind of pattern — it is the
 // walk kpath's MatchesPrefix and Matches make over their own segments — so the walk is written
 // once and the segment's question is passed in. kpath has no segment for an operator or a prefix,
-// which is why the walk is verse's rather than a call into kpath.
+// which is why the walk is viff's rather than a call into kpath.
 
 // Under reports whether path is at or under what pattern reaches: the pattern is no longer than
 // the path, and at every position the pattern's segment admits the path's. An empty pattern is

@@ -3,7 +3,7 @@ package stock
 import (
 	"testing"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // THE RUNNER'S CODE HONOURS EVERY VERB THE DOCUMENTS DESCRIBE: each tool and each step it has

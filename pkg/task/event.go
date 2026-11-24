@@ -6,7 +6,7 @@ import "github.com/signadot/tony-format/go-tony/ir"
 // plane, streamed over SSE. The loop emits loop-level events; a driver's own narration is a
 // separate concern (wired at the edge, not here).
 //
-//tony:schemagen=verse-task-event,notag
+//tony:schemagen=viff-task-event,notag
 type Event struct {
 	Kind   string `tony:"field=kind"`
 	Task   string `tony:"field=task"`
@@ -40,7 +40,7 @@ type Event struct {
 	Answerers []string `tony:"field=answerers,omitzero"`
 	Text      string   `tony:"field=text,omitzero"` // reason / detail / result
 	Err       string   `tony:"field=err,omitzero"`
-	// Orphaned, on a terminal status: the task ended because verse and its runner lost each
+	// Orphaned, on a terminal status: the task ended because viff and its runner lost each
 	// other, and not for a reason of its own. Its status is failed.
 	Orphaned bool `tony:"field=orphaned,omitzero"`
 	Dropped  int  `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed

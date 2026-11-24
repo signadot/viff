@@ -6,16 +6,16 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/exprs"
-	"github.com/signadot/verse/pkg/launch"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/exprs"
+	"go.viff.dev/viff/pkg/launch"
 )
 
 // A CONDITION may read another entity, and this is what makes that mean something.
 //
 // `!get-path` and `!list-paths` already reach an entity the firing is not about — but only from
 // an ACTION, which is where a value gets copied. A condition could NAME another entity (`when`
-// and `on` are matches over the whole verse) and could not compare against one: a match tests a
+// and `on` are matches over the whole viff) and could not compare against one: a match tests a
 // field against a literal or an operator, so "this field differs from that entity's field" was
 // unsayable. The predicate that wants it is not exotic. It is the ordinary shape of one thing
 // being stale with respect to another:
@@ -25,14 +25,14 @@ import (
 //	    system: merge
 //	    kind:   proposal
 //	    value: !let
-//	      let: [{tip: !get-path {at: "git.verse.head", path: sha}}]
+//	      let: [{tip: !get-path {at: "git.viff.head", path: sha}}]
 //	      in:  {state: open, base: !not .[tip]}
 //
 // — every open proposal cut from a commit that is no longer the tip of main, which is exactly
 // "which of these branches are stale" with no git, no ancestry walk and no task
 // (git-issue 8wt1ta8r).
 //
-// `!let` is tony's, `!get-path` is verse's, and neither is new. What is new is that the read is
+// `!let` is tony's, `!get-path` is viff's, and neither is new. What is new is that the read is
 // answered before the predicate is matched, so the binding holds a value from the store rather
 // than a constant somebody had to know when they wrote the rule.
 //

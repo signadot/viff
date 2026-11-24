@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // THE BRIEF NAMES EXACTLY THE TOOLS THE TASK WAS LEFT WITH, by system, in the documents' order,
@@ -14,7 +14,7 @@ import (
 // verb's (an MCP server's tool) is offered and named by its step, and dropped where it is not
 // given.
 func TestTheBriefNamesTheToolsOffered(t *testing.T) {
-	all := []verse.Tool{
+	all := []viff.Tool{
 		{Name: "slack-post"}, {Name: "git-push"}, {Name: "github-issue-create"}, {Name: "git-fetch"},
 		{Name: "github-issue-close"}, {Name: "read_file"}, // a runtime tool, no system's
 		{Name: "mcp-linear-get_issue", Step: "mcp.call"}, {Name: "mcp-search-query", Step: "mcp.call"},
@@ -46,7 +46,7 @@ func TestTheBriefNamesTheToolsOffered(t *testing.T) {
 	if got := toolsBrief(offered(all, systems.Environment{}), systems.Environment{}); got != "" {
 		t.Errorf("a task with no performed tools got a brief: %q", got)
 	}
-	if got := toolsBrief([]verse.Tool{{Name: "read_file"}}, systems.Environment{}); got != "" {
+	if got := toolsBrief([]viff.Tool{{Name: "read_file"}}, systems.Environment{}); got != "" {
 		t.Errorf("a runtime tool alone got a brief: %q", got)
 	}
 }
@@ -57,7 +57,7 @@ func TestTheBriefNamesTheToolsOffered(t *testing.T) {
 // to hand. The sentence is left out where the task has no `secret` tool, and where no block names
 // a secret.
 func TestTheBriefNamesTheSecretsGiven(t *testing.T) {
-	tools := []verse.Tool{{Name: "secret-exec"}}
+	tools := []viff.Tool{{Name: "secret-exec"}}
 	one := systems.Environment{Systems: systems.Systems{
 		"secret": {{Attributes: map[string]string{"name": "signadot-prod-api-key", "as": "SIGNADOT_API_KEY"},
 			Verbs: map[string][]systems.Shape{"exec": {{}}}}},
@@ -88,7 +88,7 @@ func TestTheBriefNamesTheSecretsGiven(t *testing.T) {
 	}
 
 	// No `secret` tool: no sentence, even where the environment has a block.
-	got = toolsBrief([]verse.Tool{{Name: "git-push"}}, systems.Environment{Systems: systems.Systems{
+	got = toolsBrief([]viff.Tool{{Name: "git-push"}}, systems.Environment{Systems: systems.Systems{
 		"git":    {{Attributes: map[string]string{"repo": "acme/app"}, Verbs: map[string][]systems.Shape{"push": {{}}}}},
 		"secret": {{Attributes: map[string]string{"name": "npm-token", "as": "NPM_TOKEN"}}},
 	}})

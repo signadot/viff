@@ -1,22 +1,22 @@
-// Package adminface wires a verse daemon's out-of-band face: the gops agent, and go-tony's
+// Package adminface wires a viff daemon's out-of-band face: the gops agent, and go-tony's
 // admin listener — net/http/pprof, goroutine stacks, and a short index of what this process is
 // and where it listens — on a listener that is off the data path.
 //
 // IT EXISTS BECAUSE THE STACKS WORTH READING are the ones a working process would never have
 // produced. When staging sat at 0/1 for half an hour with reads timing out, the question was
-// what versed's goroutines were blocked on, and there was no way to ask it: the API face was
+// what viffd's goroutines were blocked on, and there was no way to ask it: the API face was
 // answering the probe by wedging on the store, and gops binds an ephemeral port recorded in a
 // per-pid file under the invoking user's config dir — fine on a laptop, unusable in a
 // container nobody execs into as that user. go-tony's daemons have had this face since
-// v0.0.120 (system/admin) and verse's had none of it.
+// v0.0.120 (system/admin) and viff's had none of it.
 //
-// THE DEFAULT ADDRESS IS DERIVED from the daemon's own, one port up: a verse serving on :9797
+// THE DEFAULT ADDRESS IS DERIVED from the daemon's own, one port up: a viff serving on :9797
 // has its admin face on :9798, a sourced on :9801 on :9802. `o` gives each of its daemons a
-// fixed default instead, and verse cannot copy that: `verse up` runs several times on one
+// fixed default instead, and viff cannot copy that: `viff up` runs several times on one
 // laptop — a smoke run beside a dev server, two worktrees — and each run already carries a
-// distinct listen address, so deriving from it is what keeps two verses off one port. The
-// failure is not hypothetical; a fixed default is exactly why the `o` that verse spawns is
-// handed an ephemeral --admin-addr (cmd/verse/docd.go).
+// distinct listen address, so deriving from it is what keeps two viffs off one port. The
+// failure is not hypothetical; a fixed default is exactly why the `o` that viff spawns is
+// handed an ephemeral --admin-addr (cmd/viff/docd.go).
 //
 // A DERIVED ADDRESS THAT WILL NOT BIND IS A WARNING; AN EXPLICIT ONE IS FATAL. Nobody asked
 // for port+1, so losing it should not stop a daemon from serving what it is for. But
@@ -42,7 +42,7 @@ type Addr = admin.Addr
 
 // Spec says which daemon this is and where its face goes.
 type Spec struct {
-	// Name identifies the process in the index, e.g. "verse up".
+	// Name identifies the process in the index, e.g. "viff up".
 	Name string
 	// Addr is the --admin-addr flag as given. Empty derives from Serve; `off` disables.
 	Addr string

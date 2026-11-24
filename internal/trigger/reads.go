@@ -8,8 +8,8 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // WHAT A PACKAGE READS, DECLARED — and with it the thing confinement alone could not give:
@@ -28,7 +28,7 @@ import (
 // that issue names: a package DECLARES what it reads, and the graph over packages is required to
 // be acyclic at install.
 //
-//	reads: [ !verse-path [git], drift ]
+//	reads: [ !viff-path [git], drift ]
 //	---
 //	- name: proposal-says
 //	  condition: {subject: {path: "merge.proposal.*"}}
@@ -157,7 +157,7 @@ func (t Trigger) outsideReads() []Subtree {
 				// The read's PLACE, which is its address minus the entity it names — and which
 				// a path read carries as a path rather than as two dimensions. Reading
 				// System/Kind here answered "" for an `at:` read, so a declared read of
-				// `verse-dev.drift.finding` looked like a read of everything.
+				// `viff-dev.drift.finding` looked like a read of everything.
 				add(SubtreeAt(sp.place().Segs()...))
 			}
 		}
@@ -167,10 +167,10 @@ func (t Trigger) outsideReads() []Subtree {
 
 // ParseReads reads the `reads:` declaration — a list of addresses in either spelling, the
 // dotted one an operator types (`drift`, `demo.pr`) or the steps one a path prints
-// (`!verse-path [demo pr]`), which trigger.Match already takes for the same reason.
+// (`!viff-path [demo pr]`), which trigger.Match already takes for the same reason.
 //
-// A READ MAY NAME VERSE'S OWN HALF (`verse.gate.question`), where a charter may not be INSTALLED:
-// installing there would let a charter write the records verse keeps about its own running, and a
+// A READ MAY NAME VIFF'S OWN HALF (`mirror.gate.question`), where a charter may not be INSTALLED:
+// installing there would let a charter write the records viff keeps about its own running, and a
 // read writes nothing. What a package's rules see there is still what their installer may read.
 // It used to be parsed as an install address and refused with that address's reason.
 func ParseReads(in []string) ([]Subtree, error) {
@@ -181,7 +181,7 @@ func ParseReads(in []string) ([]Subtree, error) {
 			return nil, fmt.Errorf("reads: %w", err)
 		}
 		if !st.confined() {
-			return nil, fmt.Errorf("reads: an empty address reads the whole verse, which is "+
+			return nil, fmt.Errorf("reads: an empty address reads the whole viff, which is "+
 				"what having a declaration is for; name a system (`git`) or a system and a kind "+
 				"(`demo.pr`) — got %q", s)
 		}
@@ -190,7 +190,7 @@ func ParseReads(in []string) ([]Subtree, error) {
 	return out, nil
 }
 
-// parseRead is ParseAt for an address a package reads: the same spelling, verse's half allowed.
+// parseRead is ParseAt for an address a package reads: the same spelling, viff's half allowed.
 func parseRead(at string) (Subtree, error) {
 	if at == "" {
 		return Subtree{}, nil
@@ -344,9 +344,9 @@ func (e *Engine) RecheckReads() error {
 // taking either spelling of an address per element:
 //
 //	reads: [drift, "demo.pr"]              the dotted path an operator types
-//	reads: [!verse-path [demo pr], drift]  an address as a list of segments
+//	reads: [!viff-path [demo pr], drift]  an address as a list of segments
 //
-// The second is why this exists rather than a `[]string` decode: `!verse-path` is how an
+// The second is why this exists rather than a `[]string` decode: `!viff-path` is how an
 // address is written as steps everywhere else in a charter (tonycodec.go), and a declaration
 // that took only the dotted form would be the one place in the grammar where the printed form
 // of an address cannot be pasted back.
@@ -384,9 +384,9 @@ func ReadsFromNode(node *ir.Node) ([]Subtree, error) {
 
 // importSubtree reads one element of the list: a place, as a kinded path.
 func importSubtree(v *ir.Node) (Subtree, error) {
-	if tagName(v) == VersePathTag {
+	if tagName(v) == ViffPathTag {
 		return Subtree{}, fmt.Errorf("reads: !%s is not a spelling of an address — write the "+
-			"kinded path (`git`, `demo.pr`)", VersePathTag)
+			"kinded path (`git`, `demo.pr`)", ViffPathTag)
 	}
 	text, ok := stepText(ir.Uncomment(v))
 	if !ok {

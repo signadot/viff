@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // reads counts the reads of the perms mirror that reach the substrate, and the writes to it.
@@ -17,14 +17,14 @@ type reads struct {
 }
 
 func (r *reads) Get(ref entity.Ref) (entity.Entity, bool, error) {
-	if ref.Under(entity.VerseRoot, entity.PermsSystem) {
+	if ref.Under(entity.ViffRoot, entity.PermsSystem) {
 		r.mirror.Add(1)
 	}
 	return r.Store.Get(ref)
 }
 
 func (r *reads) Write(w entity.Write) (bool, int64, error) {
-	if w.At.Under(entity.VerseRoot, entity.PermsSystem) {
+	if w.At.Under(entity.ViffRoot, entity.PermsSystem) {
 		r.writes.Add(1)
 	}
 	return r.Store.Write(w)

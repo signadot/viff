@@ -5,9 +5,9 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// Filter is a reader's if and trim, applied to what verse answered: Keep says which items, as
-// tony.Match decides, and Trim how much of each, as tony.Trim projects. `verse`'s --if and
-// --trim, verse mcp's if and trim, and the verse system's tools apply the one Filter, so a
+// Filter is a reader's if and trim, applied to what viff answered: Keep says which items, as
+// tony.Match decides, and Trim how much of each, as tony.Trim projects. `viff`'s --if and
+// --trim, viff mcp's if and trim, and the viff system's tools apply the one Filter, so a
 // pattern answers the same wherever it is given. Either may be nil.
 type Filter struct{ Keep, Trim *ir.Node }
 

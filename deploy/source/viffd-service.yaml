@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: viff
+  labels:
+    app: viff
+    # `tier`, so a one-tier deploy (`make deploy SELECT=tier=viffd`) reaches this Service too: it selects one
+    # tier out of the render, and an object without the label is an object nothing ships.
+    tier: viffd
+spec:
+  selector:
+    app: viff
+    tier: viffd
+  ports:
+  - name: api
+    port: 9797
+    targetPort: api

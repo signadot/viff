@@ -1,17 +1,17 @@
-# verse — Kubernetes deploy (an `o build`).
+# viff — Kubernetes deploy (an `o build`).
 #
 #   o build deploy | kubectl apply -f -
 #   o build deploy -p minikube | kubectl apply -f -
 #   o build deploy -p eks | kubectl apply -f -
 #
 # Split topology: a docd StatefulSet (logd+docd on a data volume — the AZ-pinned stateful
-# tier) and a versed Deployment (the stateless singleton engine that attaches to docd and
+# tier) and a viffd Deployment (the stateless singleton engine that attaches to docd and
 # floats). Storage shape is per-profile: a dynamic PVC by default, a host mount on minikube,
 # EBS gp3 on eks. Sources are the base manifests in source/; env is injected via patches.
 # See deploy/README.md.
 build:
   env:
-    namespace: verse
+    namespace: viff
     # The cluster this profile is FOR, as a kubectl context name. `kubectl apply` otherwise
     # goes wherever your shell happens to point, which makes `make deploy PROFILE=<name>` a
     # function of ambient state — and the command that deploys staging to staging is character
@@ -19,8 +19,8 @@ build:
     # manifests and the cluster travel together. "" falls back to the current context, which is
     # right for minikube and for anyone whose cluster this file has never heard of.
     kubeContext: ""
-    # Full image ref incl. tag (build/Dockerfile). Override: -e image=localhost:5000/verse:dev
-    image: "signadot/verse:latest"
+    # Full image ref incl. tag (build/Dockerfile). Override: -e image=localhost:5000/viff:dev
+    image: "signadot/viff:latest"
     # Container imagePullPolicy. "" = leave the k8s default (Always for :latest, else
     # IfNotPresent). minikube/Docker Desktop use a locally-loaded image → set Never.
     imagePullPolicy: ""
@@ -38,24 +38,24 @@ build:
     #   eks      — a named StorageClass (dynamic EBS); set storageClassName + emitStorageClass.
     #   minikube — a static hostPath PersistentVolume (set hostPV; class becomes "").
     storageClassName: ""
-    # Emit a verse-gp3 StorageClass (WaitForFirstConsumer, ebs.csi.aws.com). Needs the EBS
+    # Emit a viff-gp3 StorageClass (WaitForFirstConsumer, ebs.csi.aws.com). Needs the EBS
     # CSI driver addon on the cluster.
     emitStorageClass: false
     # hostPV: back the PVC with a static hostPath PersistentVolume (minikube/Docker Desktop).
     hostPV: false
-    # The PV's in-VM host path. Docker Desktop: /run/desktop/mnt/host/Users/<you>/.verse/...
-    # minikube-mount: the node mount target (e.g. /mnt/verse). See deploy/README.md.
-    hostPath: "/mnt/verse"
+    # The PV's in-VM host path. Docker Desktop: /run/desktop/mnt/host/Users/<you>/.viff/...
+    # minikube-mount: the node mount target (e.g. /mnt/viff). See deploy/README.md.
+    hostPath: "/mnt/viff"
 
     # Placement. docd goes on a dedicated node pool: nodes labelled <docdPoolLabel>=<docdPool>
     # and tainted with the same key/value, so the label selects the pool and the toleration
     # gets past the fence that keeps everything else off it. "" leaves docd wherever it lands.
-    # versed is stateless, so it only PREFERS spot (label eks.amazonaws.com/capacityType) —
+    # viffd is stateless, so it only PREFERS spot (label eks.amazonaws.com/capacityType) —
     # a preference costs nothing on a cluster that has no such label.
     docdPool: ""
     # The label and taint key that names the pool, the same on both.
-    docdPoolLabel: "verse/pool"
-    spotVersed: false
+    docdPoolLabel: "viff/pool"
+    spotViffd: false
 
     # The runners' placement, the same two halves as docd's and for a sharper reason once their
     # state is a PVC rather than an emptyDir: an EBS volume is pinned to one AZ, and a spot node
@@ -68,7 +68,7 @@ build:
     # the store. "" leaves the runners wherever they land, which is right while /state is an
     # emptyDir and wrong once it is not.
     runnerPool: ""
-    runnerPoolLabel: "verse/pool"
+    runnerPoolLabel: "viff/pool"
 
     # The runners' state volume (/state: the mirrors and the pkg cellar). "" is the emptyDir the
     # manifests carry, where both die with the pod. A size is a PVC per runner.
@@ -76,7 +76,7 @@ build:
     # Size it OVER the cellar's own ceiling (`pkg.collect-above` in a runner's config), never
     # under: a threshold larger than the volume can never fire and the disk fills first. The
     # mirrors are the other half and the smaller one — seven of a repository set's bare mirrors
-    # are ~1Gi, a few Gi once a year of refs/heads/verse/auto/* and the undelivered refs have
+    # are ~1Gi, a few Gi once a year of refs/heads/viff/auto/* and the undelivered refs have
     # piled up. Start low: a class with allowVolumeExpansion grows in place and never shrinks.
     runnerStateSize: ""
     # The class a runner's PVC asks for, "" to omit the field and take the cluster default. It is
@@ -115,7 +115,7 @@ build:
     #
     # On a cluster it is not right, and the reason is measured. `o sys up` holds logd and
     # docd in one process, and a catch-up is read into memory before it is emitted: logd
-    # materialises every patch in the replayed range, and a whole-verse replay of a large
+    # materialises every patch in the replayed range, and a whole-viff replay of a large
     # store is the size of the log. With no request the pod is BestEffort — first in line
     # when the kubelet needs memory back, and free to take the node with it on the way. On
     # staging (a 7.2Gi node) it did exactly that: four evictions in fifteen minutes at
@@ -150,18 +150,18 @@ build:
     # Inside the cutoff every patch is kept, so a replay or a read at a commit is exact; past it
     # history thins to logd's snapshot tiers, and a read there is answered approximately
     # (tony-format cpqj2tf6h12kr5jxqxn0 has logd answer it at a nearby snapshot and report which,
-    # for verse's AsOf to hold to its contract; until then it says nothing). verse reads at a firing's causing
+    # for viff's AsOf to hold to its contract; until then it says nothing). viff reads at a firing's causing
     # commit when the action runs — after a gate, at a hook, at a sequence step — so the cutoff
-    # wants to be longer than any of those waits, not as short as `verse up`'s 1h.
+    # wants to be longer than any of those waits, not as short as `viff up`'s 1h.
     #
     # Set, it is a ConfigMap (deploy/docd-config) passed to `o sys up` as -config. Only the
     # cutoff is stated; the tiers and the snapshot policy stay upstream's.
     docdCompactionCutoff: ""
 
-    # Put the versed API and docd's client face on the tailnet, through the Tailscale
+    # Put the viffd API and docd's client face on the tailnet, through the Tailscale
     # Kubernetes operator — which has to be installed already; these are just annotations it
     # watches for, and nothing here notices if nobody is watching. The devices are named after
-    # the namespace (verse, verse-docd), so a second deploy under another namespace does not
+    # the namespace (viff, viff-docd), so a second deploy under another namespace does not
     # collide. tailscaleTags is for a tailnet whose ACL wants its own tag rather than the
     # operator's default tag:k8s; "" leaves the default.
     tailscaleExpose: false
@@ -191,14 +191,14 @@ build:
     codexSecretKey: ""
     claudeSecretKey: ""
     issuerSecretKey: ""
-    # The runners' secret store (verse-runner-secrets): an entry whose keys are the store's
+    # The runners' secret store (viff-runner-secrets): an entry whose keys are the store's
     # names, each a file at /secrets/<key> in the three runners, for a credential no other
     # Secret holds. The Linear and Slack tokens reach the store from their own Secrets, so this
     # is empty on a deployment that performs nothing more than those.
     runnerStoreKey: ""
     # Comma-separated grantees who may take a top-level place (`walter@example.com,agent:ops`).
-    # "" is the open verse. See the patch below for how it reaches versed, and what changing it
-    # on a running verse takes.
+    # "" is the open viff. See the patch below for how it reaches viffd, and what changing it
+    # on a running viff takes.
     permsAdmins: ""
     # The model id, when the driver's default (gpt-4o) is not what the credential routes to.
     # A Portkey virtual key resolves to ONE provider, so the model has to be one that provider
@@ -208,17 +208,17 @@ build:
     # an OPENAI_MODEL in the Secret, which is the right way round.
     llmModel: ""
 
-    # The verse runner: a place code work RUNS (its own image, bubblewrap containment, a
+    # The viff runner: a place code work RUNS (its own image, bubblewrap containment, a
     # workspace and a process per task). Off by default and independent of everything above —
-    # deploying it does not install it, which is `verse runner add verse-runner
-    # http://verse-runner:9802` and is somebody's verb for the reason a source's is.
+    # deploying it does not install it, which is `viff runner add viff-runner
+    # http://viff-runner:9802` and is somebody's verb for the reason a source's is.
     #
     # Its own image because the two are sized by different things: the runtime image is thin
     # and pinned to the engine, this one carries the toolchain the repositories it serves need
     # to build. A separate REPOSITORY is not required by that — a tag in the same one is
     # cheaper to grant a pull credential access to.
     runner: false
-    runnerImage: "signadot/verse-runner:latest"
+    runnerImage: "signadot/viff-runner:latest"
     # Its configuration, a path as authConfig is (relative to deploy/, or absolute), in place of
     # the one its manifest
     # carries: what it offers and the ceilings it holds each doer's tasks to. "" runs the
@@ -226,31 +226,31 @@ build:
     # reach none of a deployment's own (deploy/README.md, "Its ceilings are placeholders").
     runnerConfig: ""
     # The codex runner beside it: the same runner in an image with Codex in it, offering the codex
-    # agent, with its own credential (the verse-codex Secret, from the entry codexSecretKey
+    # agent, with its own credential (the viff-codex Secret, from the entry codexSecretKey
     # names). Installing it is
-    # `verse runner add codex http://codex-runner:9802 --subject system:serviceaccount:verse:codex-runner`.
+    # `viff runner add codex http://codex-runner:9802 --subject system:serviceaccount:viff:codex-runner`.
     codexRunner: false
-    codexRunnerImage: "signadot/verse-runner:codex"
+    codexRunnerImage: "signadot/viff-runner:codex"
     codexRunnerConfig: ""   # as runnerConfig, for the codex runner
     # The claude runner, the same way: the runner in an image with Claude Code in it, offering
-    # the claude agent, with its own credential (the verse-claude Secret, from the entry
-    # claudeSecretKey names). Installing it is `verse runner add claude http://claude-runner:9802
-    # --subject system:serviceaccount:verse:claude-runner`.
+    # the claude agent, with its own credential (the viff-claude Secret, from the entry
+    # claudeSecretKey names). Installing it is `viff runner add claude http://claude-runner:9802
+    # --subject system:serviceaccount:viff:claude-runner`.
     claudeRunner: false
-    claudeRunnerImage: "signadot/verse-runner:claude"
+    claudeRunnerImage: "signadot/viff-runner:claude"
     claudeRunnerConfig: ""  # as runnerConfig, for the claude runner
 
-    # ── Sources: what reflects an external system into the verse ──────────────
+    # ── Sources: what reflects an external system into the viff ──────────────
     #
     # Each is off by default and independent of the others, because each costs something
     # different to turn on: the git one costs a clone, the other two cost a credential in the
     # cluster. Turning one on deploys the connector; INSTALLING it is still a verb somebody
-    # runs (`verse iod add …`), since a registration carries an ownership claim verse checks
+    # runs (`viff iod add …`), since a registration carries an ownership claim viff checks
     # against what is already standing, and a manifest is not where that conversation happens.
     #
     # The `<x>IOName` knobs are the registration name each will be added under. They are
     # here because the hint url an iod posts deliveries to contains it, so the name has to be
-    # decided before the pod starts — and verse 404s a hint for a name it has no registration
+    # decided before the pod starts — and viff 404s a hint for a name it has no registration
     # under, which is how a mismatch announces itself.
     #
     # NAMED AFTER THE CONNECTOR, because this deployment runs one of each. The name is free —
@@ -260,17 +260,17 @@ build:
     # that. A second instance of one connector is where a name earns its keep, and it can say so
     # then.
     gitIod: false
-    gitMirror: "https://github.com/signadot/verse.git"
+    gitMirror: "https://github.com/signadot/viff.git"
     # The charters directories the git iod reflects on every ref and the github iod reports a
     # pull request changing, each as [<name>=]<path>, comma-separated (both iods' `-tree`; the
     # name defaults to the path's last segment). A `repoCharters` entry names the one it
     # reconciles by that name (`tree`, `charters` by default), so a repository that keeps its
-    # charters somewhere else is one more here: `.verse/charters,live=charters/live`.
-    charterTrees: ".verse/charters"
+    # charters somewhere else is one more here: `.viff/charters,live=charters/live`.
+    charterTrees: ".viff/charters"
     # The git and git-issue iods fetch, and the git iod pushes, AS THE GITHUB APP: its three keys,
-    # read from the github iod's Secret (verse-github), make the app's installation token the
-    # only credential git presents, in place of the `verse-git` PAT, so nothing they hold can
-    # expire, and what the git iod writes (refs/verse/live, the repo-charters reconciler's
+    # read from the github iod's Secret (viff-github), make the app's installation token the
+    # only credential git presents, in place of the `viff-git` PAT, so nothing they hold can
+    # expire, and what the git iod writes (refs/viff/live, the repo-charters reconciler's
     # record) is written as the app. Needs githubSecretKey's entry to carry the app, and every
     # repository either iod mirrors to be in its installation (deploy/README.md, The GitHub App).
     gitAsApp: false
@@ -331,54 +331,54 @@ build:
     # ingressClassName for the two webhook Ingresses; "" leaves the cluster default.
     ingressClassName: ""
 
-    # A charter versed installs at start AS THE SYSTEM, by path, relative to deploy/ or absolute (VERSE_SYSTEM_CHARTER,
+    # A charter viffd installs at start AS THE SYSTEM, by path, relative to deploy/ or absolute (VIFF_SYSTEM_CHARTER,
     # internal/config/config.go). "" installs none. It is how a rule that has to read what no person may —
     # every ask, to tell each person the ones waiting on them — gets installed at all: `--as
     # system` over the api is refused. Read at start, so a changed file takes a restart.
     systemCharter: ""
 
-    # Whether versed's own runner hosts work, beside the runners registered with it
-    # (VERSE_LOCAL_RUNNER, `localRunner` in internal/config/config.go). False is a central versed: every
+    # Whether viffd's own runner hosts work, beside the runners registered with it
+    # (VIFF_LOCAL_RUNNER, `localRunner` in internal/config/config.go). False is a central viffd: every
     # spawn is routed to a registered runner (docs/runners.md, "Where a spawn runs").
     localRunner: true
 
-    # verse's `auth` block, by path, relative to deploy/ or absolute (VERSE_CONFIG, internal/config/config.go): who verifies
+    # viff's `auth` block, by path, relative to deploy/ or absolute (VIFF_CONFIG, internal/config/config.go): who verifies
     # people, which iods are trusted for whose accounts, and how the iods prove themselves
-    # (docs/reference/up.md). "" leaves versed as it is: a request is whoever it says. The env
-    # verse reads (VERSE_PERMS_ADMINS, the model's) still applies over the file. Read at start.
+    # (docs/reference/up.md). "" leaves viffd as it is: a request is whoever it says. The env
+    # viff reads (VIFF_PERMS_ADMINS, the model's) still applies over the file. Read at start.
     authConfig: ""
     # Let anyone who reaches the API server read its OpenID discovery document and keys
     # (deploy/issuer-discovery): a ClusterRoleBinding of the issuer-discovery role to the
     # unauthenticated group. A cluster whose issuer is private (minikube's, kubeadm's) grants
-    # that to service accounts alone by default, and versed reads the document as nobody; a
+    # that to service accounts alone by default, and viffd reads the document as nobody; a
     # cluster with a public issuer (EKS) needs none of this. Cluster-scoped, and off by default.
     issuerDiscoveryOpen: false
-    # Give the slack, github and git iods a ServiceAccount each and a projected token, audience `verse`,
-    # at /var/run/verse/token, named to iod by VERSE_TOKEN_FILE: how an iod proves it is the iod.
+    # Give the slack, github and git iods a ServiceAccount each and a projected token, audience `viff`,
+    # at /var/run/viff/token, named to iod by VIFF_TOKEN_FILE: how an iod proves it is the iod.
     # The token's subject is system:serviceaccount:<namespace>:<iod>, which `auth.iod.accounts` in
     # the auth config maps to the iod's principal. The cluster is the issuer.
     iodTokens: false
-    # Versed and its runners prove themselves to each other (deploy/runner-tokens; docs/runners.md,
+    # Viffd and its runners prove themselves to each other (deploy/runner-tokens; docs/runners.md,
     # "Who the runner is"). Each deployed runner gets a ServiceAccount and a projected token,
-    # audience `verse`, which it answers on the describe and presents at versed's door, and which
-    # its registration's `subject` is held to (`verse runner add -subject
-    # system:serviceaccount:verse:verse-runner`, as a deployment's repopulate script does); the cluster is the issuer,
-    # as for the iods. Versed proves itself the other way: it is an issuer of its own (the auth
-    # file's `auth.issuer`, signing with the verse-issuer Secret this mounts into it), and presents
-    # to each runner a token minted for that runner alone, so a runner serves this verse and no
+    # audience `viff`, which it answers on the describe and presents at viffd's door, and which
+    # its registration's `subject` is held to (`viff runner add -subject
+    # system:serviceaccount:viff:viff-runner`, as a deployment's repopulate script does); the cluster is the issuer,
+    # as for the iods. Viffd proves itself the other way: it is an issuer of its own (the auth
+    # file's `auth.issuer`, signing with the viff-issuer Secret this mounts into it), and presents
+    # to each runner a token minted for that runner alone, so a runner serves this viff and no
     # other, and a token taken at one runner opens no other's door. On by default, since a
-    # deployed runner needs it (`runnerd` does not start without the verse it serves and its
-    # token), and so versed needs the verse-issuer Secret (`issuerSecretKey`, or made by hand).
+    # deployed runner needs it (`runnerd` does not start without the viff it serves and its
+    # token), and so viffd needs the viff-issuer Secret (`issuerSecretKey`, or made by hand).
     runnerTokens: true
-    # The name versed's tokens are issued under, `auth.issuer.url` in the auth file, which each
-    # runner holds them to (VERSE_ISSUER). The runner reads the keys at versed's in-cluster url,
+    # The name viffd's tokens are issued under, `auth.issuer.url` in the auth file, which each
+    # runner holds them to (VIFF_ISSUER). The runner reads the keys at viffd's in-cluster url,
     # so this is a name, and the in-cluster url is the plain choice where nothing outside the
-    # cluster verifies versed's tokens.
-    issuer: "http://verse:9797"
+    # cluster verifies viffd's tokens.
+    issuer: "http://viff:9797"
 
   sources:
   # Namespace first — kubectl applies the stream in order, so namespaced resources must not
-  # precede the Namespace (else "namespaces \"verse\" not found" on the first apply).
+  # precede the Namespace (else "namespaces \"viff\" not found" on the first apply).
   - dir: namespace
   # Before the workloads on purpose: a ServiceAccount's imagePullSecrets are copied into a
   # pod when the POD is created, so an account that gains the secret after the Deployment
@@ -396,12 +396,12 @@ build:
   # Before docd for the same reason: the config is read when the pod starts.
   - if: '.[ docdCompactionCutoff != "" ]'
     dir: docd-config
-  # Before versed for the reason the secrets are: a volume is read when the pod starts.
+  # Before viffd for the reason the secrets are: a volume is read when the pod starts.
   - if: '.[ systemCharter != "" ]'
     dir: system-charter
   - if: '.[ authConfig != "" ]'
     dir: auth-config
-  # Before versed and the runners, since a pod names its ServiceAccount when it is created.
+  # Before viffd and the runners, since a pod names its ServiceAccount when it is created.
   - if: '.[runnerTokens]'
     dir: runner-tokens
   - dir: source
@@ -425,7 +425,7 @@ build:
   - if: '.[githubIod]'
     dir: github-iod
   - if: '.[runner]'
-    dir: verse-runner
+    dir: viff-runner
   - if: '.[codexRunner]'
     dir: codex-runner
   - if: '.[claudeRunner]'
@@ -464,7 +464,7 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-llm
+        name: viff-llm
     patch:
       spec:
         dataFrom:
@@ -474,14 +474,14 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-llm
+        name: viff-llm
     patch: !delete null
 
   - if: '.[ gitSecretKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-git
+        name: viff-git
     patch:
       spec:
         dataFrom:
@@ -491,14 +491,14 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-git
+        name: viff-git
     patch: !delete null
 
   - if: '.[ slackSecretKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-slack
+        name: viff-slack
     patch:
       spec:
         dataFrom:
@@ -508,14 +508,14 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-slack
+        name: viff-slack
     patch: !delete null
 
   - if: '.[ linearSecretKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-linear
+        name: viff-linear
     patch:
       spec:
         dataFrom:
@@ -525,14 +525,14 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-linear
+        name: viff-linear
     patch: !delete null
 
   - if: '.[ githubSecretKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-github
+        name: viff-github
     patch:
       spec:
         dataFrom:
@@ -542,14 +542,14 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-github
+        name: viff-github
     patch: !delete null
 
   - if: '.[ runnerSecretKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch:
       spec:
         dataFrom:
@@ -559,14 +559,14 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch: !delete null
 
   - if: '.[ codexSecretKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-codex
+        name: viff-codex
     patch:
       spec:
         dataFrom:
@@ -576,14 +576,14 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-codex
+        name: viff-codex
     patch: !delete null
 
   - if: '.[ claudeSecretKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-claude
+        name: viff-claude
     patch:
       spec:
         dataFrom:
@@ -593,14 +593,14 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-claude
+        name: viff-claude
     patch: !delete null
 
   - if: '.[ issuerSecretKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-issuer
+        name: viff-issuer
     patch:
       spec:
         dataFrom:
@@ -610,14 +610,14 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-issuer
+        name: viff-issuer
     patch: !delete null
 
   - if: '.[ runnerStoreKey != "" ]'
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-runner-secrets
+        name: viff-runner-secrets
     patch:
       spec:
         dataFrom:
@@ -627,7 +627,7 @@ build:
     match:
       kind: ExternalSecret
       metadata:
-        name: verse-runner-secrets
+        name: viff-runner-secrets
     patch: !delete null
 
   # The pull secret, onto the `default` ServiceAccount every pod here runs as.
@@ -641,132 +641,132 @@ build:
       imagePullSecrets:
       - name: $[imagePullSecret]
 
-  # WHO MAY TAKE A TOP-LEVEL PLACE, as an env because a pod has no verse.tony: comma-separated
+  # WHO MAY TAKE A TOP-LEVEL PLACE, as an env because a pod has no viff.tony: comma-separated
   # grantees, seeded into the `admin` group and held `owner` out to beneath the root. Empty is
-  # the open verse — anybody takes one — which is what a dogfood deployment runs as.
+  # the open viff — anybody takes one — which is what a dogfood deployment runs as.
   #
   # IT SEEDS the admin group, once. After that membership is changed live, by
-  # `user:admin@verse` with `verse group add admin …`, as any group's is — so editing this on a
-  # running verse changes nothing, by design, and versed does not call a list that differs from
+  # `user:admin@viff` with `viff group add admin …`, as any group's is — so editing this on a
+  # running viff changes nothing, by design, and viffd does not call a list that differs from
   # the group drift. What it does say at every start is when the FORM of its top (open, or held
-  # out to the admin group) is not what this says. `--reseed-perms`, or VERSE_RESEED_PERMS=true
+  # out to the admin group) is not what this says. `--reseed-perms`, or VIFF_RESEED_PERMS=true
   # for one roll and unset after, rewrites the top from here — live membership edits included.
   - if: '.[ permsAdmins != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: versed
+            - name: viffd
               env: !key(name)
-              - name: VERSE_PERMS_ADMINS
+              - name: VIFF_PERMS_ADMINS
                 value: $[permsAdmins]
 
   - if: '.[ llmModel != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: versed
+            - name: viffd
               env: !key(name)
               - name: OPENAI_MODEL
                 value: $[llmModel]
 
-  # A versed that hosts nothing routes every spawn to a registered runner.
+  # A viffd that hosts nothing routes every spawn to a registered runner.
   - if: '.[ localRunner == false ]'
     match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: versed
+            - name: viffd
               env: !key(name)
-              - name: VERSE_LOCAL_RUNNER
+              - name: VIFF_LOCAL_RUNNER
                 value: "false"
 
-  # The system charter, mounted where VERSE_SYSTEM_CHARTER says (deploy/system-charter).
+  # The system charter, mounted where VIFF_SYSTEM_CHARTER says (deploy/system-charter).
   - if: '.[ systemCharter != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: versed
+            - name: viffd
               env: !key(name)
-              - name: VERSE_SYSTEM_CHARTER
-                value: /etc/verse/system-charter/system.tony
+              - name: VIFF_SYSTEM_CHARTER
+                value: /etc/viff/system-charter/system.tony
               volumeMounts: !key(name)
               - name: system-charter
-                mountPath: /etc/verse/system-charter
+                mountPath: /etc/viff/system-charter
                 readOnly: true
             volumes: !key(name)
             - name: system-charter
               configMap:
-                name: verse-system-charter
+                name: viff-system-charter
 
-  # The auth block, mounted where VERSE_CONFIG says (deploy/auth-config). VERSE_CONFIG replaces
-  # the file layers verse would otherwise read, none of which a pod has, and the env still applies
+  # The auth block, mounted where VIFF_CONFIG says (deploy/auth-config). VIFF_CONFIG replaces
+  # the file layers viff would otherwise read, none of which a pod has, and the env still applies
   # over it.
   - if: '.[ authConfig != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: versed
+            - name: viffd
               env: !key(name)
-              - name: VERSE_CONFIG
-                value: /etc/verse/config/verse.tony
+              - name: VIFF_CONFIG
+                value: /etc/viff/config/viff.tony
               volumeMounts: !key(name)
-              - name: verse-auth
-                mountPath: /etc/verse/config
+              - name: viff-auth
+                mountPath: /etc/viff/config
                 readOnly: true
             volumes: !key(name)
-            - name: verse-auth
+            - name: viff-auth
               configMap:
-                name: verse-auth
+                name: viff-auth
 
   # A runner's configuration from a file of the deployment's, carried in whole in place of the
   # manifest's (runnerConfig, codexRunnerConfig, claudeRunnerConfig).
   - if: '.[ runnerConfig != "" ]'
-    match: {kind: ConfigMap, metadata: {name: verse-runner-config}}
+    match: {kind: ConfigMap, metadata: {name: viff-runner-config}}
     patch:
       data:
-        verse-runner.tony: !file $[runnerConfig]
+        viff-runner.tony: !file $[runnerConfig]
   - if: '.[ codexRunnerConfig != "" ]'
     match: {kind: ConfigMap, metadata: {name: codex-runner-config}}
     patch:
       data:
-        verse-runner.tony: !file $[codexRunnerConfig]
+        viff-runner.tony: !file $[codexRunnerConfig]
   - if: '.[ claudeRunnerConfig != "" ]'
     match: {kind: ConfigMap, metadata: {name: claude-runner-config}}
     patch:
       data:
-        verse-runner.tony: !file $[claudeRunnerConfig]
+        viff-runner.tony: !file $[claudeRunnerConfig]
 
-  # The verse image on both tiers (list-merge each container by name; docd runs `o`, versed
-  # runs `verse` — one image, two roles).
+  # The viff image on both tiers (list-merge each container by name; docd runs `o`, viffd
+  # runs `viff` — one image, two roles).
   - match:
       kind: StatefulSet
     patch:
@@ -777,18 +777,18 @@ build:
             - name: docd
               image: $[image]
   # Named rather than by kind alone, now that the source connectors are Deployments too: a
-  # container list-merged BY NAME against a Deployment that has no `versed` in it does not
+  # container list-merged BY NAME against a Deployment that has no `viffd` in it does not
   # patch, it ADDS one.
   - match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: versed
+            - name: viffd
               image: $[image]
 
   # imagePullPolicy on both tiers (when set) — minikube/Docker Desktop → Never (local image).
@@ -806,13 +806,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: versed
+            - name: viffd
               imagePullPolicy: $[imagePullPolicy]
 
   # docd memory (see the knobs). Each half is emitted only when it is set, so a profile may
@@ -874,7 +874,7 @@ build:
         template:
           metadata:
             annotations:
-              verse.signadot.com/compaction-cutoff: $[docdCompactionCutoff]
+              viff.signadot.com/compaction-cutoff: $[docdCompactionCutoff]
           spec:
             containers: !key(name)
             - name: docd
@@ -984,12 +984,12 @@ build:
             - from: pool
               to: $[docdPoolLabel]
 
-  # Let the stateless versed prefer spot.
-  - if: '.[spotVersed]'
+  # Let the stateless viffd prefer spot.
+  - if: '.[spotViffd]'
     match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
@@ -1011,7 +1011,7 @@ build:
     match:
       kind: PersistentVolumeClaim
       metadata:
-        name: verse-runner-state
+        name: viff-runner-state
     patch: !delete null
   - if: '.[ runnerStateSize == "" ]'
     match:
@@ -1031,7 +1031,7 @@ build:
     match:
       kind: PersistentVolumeClaim
       metadata:
-        name: !or [verse-runner-state, codex-runner-state, claude-runner-state]
+        name: !or [viff-runner-state, codex-runner-state, claude-runner-state]
     patch:
       spec:
         resources:
@@ -1041,7 +1041,7 @@ build:
     match:
       kind: PersistentVolumeClaim
       metadata:
-        name: !or [verse-runner-state, codex-runner-state, claude-runner-state]
+        name: !or [viff-runner-state, codex-runner-state, claude-runner-state]
     patch:
       spec:
         storageClassName: $[runnerStateClassName]
@@ -1054,7 +1054,7 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch:
       spec:
         template:
@@ -1063,7 +1063,7 @@ build:
             - name: state
               emptyDir: !delete null
               persistentVolumeClaim:
-                claimName: verse-runner-state
+                claimName: viff-runner-state
   - if: '.[ runnerStateSize != "" ]'
     match:
       kind: Deployment
@@ -1106,7 +1106,7 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: !or [verse-runner, codex-runner, claude-runner]
+        name: !or [viff-runner, codex-runner, claude-runner]
     patch:
       spec:
         template:
@@ -1123,7 +1123,7 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: !or [verse-runner, codex-runner, claude-runner]
+        name: !or [viff-runner, codex-runner, claude-runner]
     patch:
       spec:
         template:
@@ -1140,7 +1140,7 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: !or [verse-runner, codex-runner, claude-runner]
+        name: !or [viff-runner, codex-runner, claude-runner]
     patch:
       spec:
         template:
@@ -1156,13 +1156,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: verse-runner
+            - name: viff-runner
               resources:
                 requests:
                   memory: $[runnerMemoryRequest]
@@ -1198,13 +1198,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: verse-runner
+            - name: viff-runner
               resources:
                 limits:
                   memory: $[runnerMemoryLimit]
@@ -1240,13 +1240,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: verse-runner
+            - name: viff-runner
               resources:
                 requests:
                   ephemeral-storage: $[runnerEphemeralRequest]
@@ -1282,13 +1282,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: verse-runner
+            - name: viff-runner
               resources:
                 limits:
                   ephemeral-storage: $[runnerEphemeralLimit]
@@ -1323,18 +1323,18 @@ build:
 
   # ── Tailscale ─────────────────────────────────────────────────────────────
   #
-  # The versed API. An annotation on the existing Service is all the operator needs — it
+  # The viffd API. An annotation on the existing Service is all the operator needs — it
   # stands up its own proxy pod and dials this Service's ClusterIP, so nothing about the
   # Service itself changes for in-cluster callers.
   #
-  # The hostname is the tailnet device name, i.e. what somebody types (`verse:9797`). It
-  # tracks the namespace rather than being fixed, so two verses on one tailnet are two names
+  # The hostname is the tailnet device name, i.e. what somebody types (`viff:9797`). It
+  # tracks the namespace rather than being fixed, so two viffs on one tailnet are two names
   # instead of a name and a name-1 the operator picked.
   - if: '.[tailscaleExpose]'
     match:
       kind: Service
       metadata:
-        name: verse
+        name: viff
     patch:
       metadata:
         annotations:
@@ -1356,9 +1356,9 @@ build:
         annotations:
           tailscale.com/expose: "true"
           tailscale.com/hostname: "$[namespace]-docd"
-  # …and tell clients so. A client reads an address off verse and connects to it from wherever
+  # …and tell clients so. A client reads an address off viff and connects to it from wherever
   # IT is — which, once the faces are on a tailnet, is somewhere `docd:7071` does not resolve.
-  # versed keeps dialling the Service names; only what it PUBLISHES changes, to the tailnet
+  # viffd keeps dialling the Service names; only what it PUBLISHES changes, to the tailnet
   # names those same Services now answer to.
   #
   # docd's goes on /status, where a store client beside the cluster looks for it.
@@ -1369,13 +1369,13 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: versed
+            - name: viffd
               args:
               - up
               - --docd-addr
@@ -1389,13 +1389,13 @@ build:
     match:
       kind: Service
       metadata:
-        name: !or [verse, docd]
+        name: !or [viff, docd]
     patch:
       metadata:
         annotations:
           tailscale.com/tags: $[tailscaleTags]
 
-  # The verse runner's image — its own, so it takes runnerImage rather than image. The pull
+  # The viff runner's image — its own, so it takes runnerImage rather than image. The pull
   # secret it needs is already handled: it runs as the namespace's `default` ServiceAccount
   # like everything else here, so nothing about a private registry is this deployment's
   # problem. imagePullPolicy tracks the same knob the other tiers do, for the local case.
@@ -1403,25 +1403,25 @@ build:
     match:
       kind: Deployment
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: verse-runner
+            - name: viff-runner
               image: $[runnerImage]
   - if: '.[ runner && imagePullPolicy != "" ]'
     match:
       kind: Deployment
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: verse-runner
+            - name: viff-runner
               imagePullPolicy: $[imagePullPolicy]
 
   # The codex runner's image, the same way.
@@ -1476,65 +1476,65 @@ build:
             - name: claude-runner
               imagePullPolicy: $[imagePullPolicy]
 
-  # Versed's signing key (runnerTokens): the verse-issuer Secret, mounted where the auth file's
-  # `auth.issuer.key` reads it. With it versed signs the token it presents to each runner, minted
+  # Viffd's signing key (runnerTokens): the viff-issuer Secret, mounted where the auth file's
+  # `auth.issuer.key` reads it. With it viffd signs the token it presents to each runner, minted
   # for that runner's subject alone; without the Secret the pod does not start, which is said in
   # its log rather than found at the first spawn.
   - if: '.[runnerTokens]'
     match:
       kind: Deployment
       metadata:
-        name: versed
+        name: viffd
     patch:
       spec:
         template:
           spec:
             containers: !key(name)
-            - name: versed
+            - name: viffd
               volumeMounts: !key(name)
-              - name: verse-issuer
-                mountPath: /etc/verse/issuer
+              - name: viff-issuer
+                mountPath: /etc/viff/issuer
                 readOnly: true
             volumes: !key(name)
-            - name: verse-issuer
+            - name: viff-issuer
               secret:
-                secretName: verse-issuer
+                secretName: viff-issuer
 
   # Each runner's own token (runnerTokens): its ServiceAccount, and a projected token with the
-  # audience `verse`, answered on the describe to the verse the runner verified and presented at
-  # versed's door. `runnerd` reads VERSE_TOKEN_FILE as `iod` does. And the verse the runner
-  # serves, which its configuration leaves to the deployment: where it reaches versed and reads
-  # its keys (VERSE_URL), and the name versed's tokens are issued under (VERSE_ISSUER, the
+  # audience `viff`, answered on the describe to the viff the runner verified and presented at
+  # viffd's door. `runnerd` reads VIFF_TOKEN_FILE as `iod` does. And the viff the runner
+  # serves, which its configuration leaves to the deployment: where it reaches viffd and reads
+  # its keys (VIFF_URL), and the name viffd's tokens are issued under (VIFF_ISSUER, the
   # `issuer` knob). The audience the runner takes them for is its own token's subject.
   - if: '.[ runnerTokens && runner ]'
     match:
       kind: Deployment
       metadata:
-        name: verse-runner
+        name: viff-runner
     patch:
       spec:
         template:
           spec:
-            serviceAccountName: verse-runner
+            serviceAccountName: viff-runner
             containers: !key(name)
-            - name: verse-runner
+            - name: viff-runner
               env: !key(name)
-              - name: VERSE_TOKEN_FILE
-                value: /var/run/verse/token
-              - name: VERSE_URL
-                value: http://verse:9797
-              - name: VERSE_ISSUER
+              - name: VIFF_TOKEN_FILE
+                value: /var/run/viff/token
+              - name: VIFF_URL
+                value: http://viff:9797
+              - name: VIFF_ISSUER
                 value: $[issuer]
               volumeMounts: !key(name)
-              - name: verse-token
-                mountPath: /var/run/verse
+              - name: viff-token
+                mountPath: /var/run/viff
                 readOnly: true
             volumes: !key(name)
-            - name: verse-token
+            - name: viff-token
               projected:
                 sources:
                 - serviceAccountToken:
-                    audience: verse
+                    audience: viff
                     expirationSeconds: 3600
                     path: token
   - if: '.[ runnerTokens && codexRunner ]'
@@ -1550,22 +1550,22 @@ build:
             containers: !key(name)
             - name: codex-runner
               env: !key(name)
-              - name: VERSE_TOKEN_FILE
-                value: /var/run/verse/token
-              - name: VERSE_URL
-                value: http://verse:9797
-              - name: VERSE_ISSUER
+              - name: VIFF_TOKEN_FILE
+                value: /var/run/viff/token
+              - name: VIFF_URL
+                value: http://viff:9797
+              - name: VIFF_ISSUER
                 value: $[issuer]
               volumeMounts: !key(name)
-              - name: verse-token
-                mountPath: /var/run/verse
+              - name: viff-token
+                mountPath: /var/run/viff
                 readOnly: true
             volumes: !key(name)
-            - name: verse-token
+            - name: viff-token
               projected:
                 sources:
                 - serviceAccountToken:
-                    audience: verse
+                    audience: viff
                     expirationSeconds: 3600
                     path: token
   - if: '.[ runnerTokens && claudeRunner ]'
@@ -1581,26 +1581,26 @@ build:
             containers: !key(name)
             - name: claude-runner
               env: !key(name)
-              - name: VERSE_TOKEN_FILE
-                value: /var/run/verse/token
-              - name: VERSE_URL
-                value: http://verse:9797
-              - name: VERSE_ISSUER
+              - name: VIFF_TOKEN_FILE
+                value: /var/run/viff/token
+              - name: VIFF_URL
+                value: http://viff:9797
+              - name: VIFF_ISSUER
                 value: $[issuer]
               volumeMounts: !key(name)
-              - name: verse-token
-                mountPath: /var/run/verse
+              - name: viff-token
+                mountPath: /var/run/viff
                 readOnly: true
             volumes: !key(name)
-            - name: verse-token
+            - name: viff-token
               projected:
                 sources:
                 - serviceAccountToken:
-                    audience: verse
+                    audience: viff
                     expirationSeconds: 3600
                     path: token
 
-  # The source connectors. One image, three roles: these run `iod`, versed runs `verse`,
+  # The source connectors. One image, three roles: these run `iod`, viffd runs `viff`,
   # docd runs `o`. Each patch below re-emits the whole `command`, because that is what a list
   # does — and a source's command IS its configuration, so there is nothing to merge into.
   - if: '.[gitIod]'
@@ -1622,7 +1622,7 @@ build:
               - ":9801"
               # The SAME damping the github source has always had. A source with none answers a
               # full reflection on every resync, and the resync is a constant — so what bounds
-              # the cost is the source's own floor, not verse's interval. It went unnoticed while
+              # the cost is the source's own floor, not viff's interval. It went unnoticed while
               # this mirrored one small repository; a second one made the store the bottleneck
               # and every request on the serialized session started timing out.
               - -min-interval
@@ -1633,7 +1633,7 @@ build:
               - $[gitMirror]
               # The tree sha of the charters directory on every ref, and the out half that
               # makes the tags and moves the branches the repo-charters reconciler asks for
-              # (deploy/git-iod). VERSE_ADDR in the source manifest says where it reads them.
+              # (deploy/git-iod). VIFF_ADDR in the source manifest says where it reads them.
               - -tree
               - $[charterTrees]
               - -out
@@ -1704,11 +1704,11 @@ build:
             - name: slack-iod
               image: $[image]
               env: !key(name)
-              - name: VERSE_HINT_URL
-                value: "http://verse:9797/iods/$[slackIodName]/hint"
+              - name: VIFF_HINT_URL
+                value: "http://viff:9797/iods/$[slackIodName]/hint"
 
   # The iod's own credential (iodTokens): its ServiceAccount, and a projected token at the path
-  # VERSE_TOKEN_FILE names, asked for with the audience `verse` and rotated by the kubelet. The
+  # VIFF_TOKEN_FILE names, asked for with the audience `viff` and rotated by the kubelet. The
   # env rather than a flag, since the command is restated whole by the patch below.
   - if: '.[ iodTokens && slackIod ]'
     match:
@@ -1723,18 +1723,18 @@ build:
             containers: !key(name)
             - name: slack-iod
               env: !key(name)
-              - name: VERSE_TOKEN_FILE
-                value: /var/run/verse/token
+              - name: VIFF_TOKEN_FILE
+                value: /var/run/viff/token
               volumeMounts: !key(name)
-              - name: verse-token
-                mountPath: /var/run/verse
+              - name: viff-token
+                mountPath: /var/run/viff
                 readOnly: true
             volumes: !key(name)
-            - name: verse-token
+            - name: viff-token
               projected:
                 sources:
                 - serviceAccountToken:
-                    audience: verse
+                    audience: viff
                     expirationSeconds: 3600
                     path: token
 
@@ -1774,8 +1774,8 @@ build:
             - name: linear-iod
               image: $[image]
               env: !key(name)
-              - name: VERSE_HINT_URL
-                value: "http://verse:9797/iods/$[linearIodName]/hint"
+              - name: VIFF_HINT_URL
+                value: "http://viff:9797/iods/$[linearIodName]/hint"
 
   - if: '.[githubIod]'
     match:
@@ -1790,8 +1790,8 @@ build:
             - name: github-iod
               image: $[image]
               env: !key(name)
-              - name: VERSE_HINT_URL
-                value: "http://verse:9797/iods/$[githubIodName]/hint"
+              - name: VIFF_HINT_URL
+                value: "http://viff:9797/iods/$[githubIodName]/hint"
 
   # The git iod as the GitHub App (gitAsApp): the app's keys from the github iod's Secret, which
   # iod git reads as the github iod does (cmd/iod/git.go).
@@ -1808,11 +1808,11 @@ build:
             - name: git-iod
               env: !key(name)
               - name: GITHUB_APP_ID
-                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_ID}}
+                valueFrom: {secretKeyRef: {name: viff-github, key: GITHUB_APP_ID}}
               - name: GITHUB_APP_INSTALLATION_ID
-                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_INSTALLATION_ID}}
+                valueFrom: {secretKeyRef: {name: viff-github, key: GITHUB_APP_INSTALLATION_ID}}
               - name: GITHUB_APP_PRIVATE_KEY
-                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_PRIVATE_KEY}}
+                valueFrom: {secretKeyRef: {name: viff-github, key: GITHUB_APP_PRIVATE_KEY}}
 
   # The git-issue iod as the GitHub App, under the same knob and from the same Secret
   # (cmd/iod/gitissue.go).
@@ -1829,11 +1829,11 @@ build:
             - name: git-issue-iod
               env: !key(name)
               - name: GITHUB_APP_ID
-                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_ID}}
+                valueFrom: {secretKeyRef: {name: viff-github, key: GITHUB_APP_ID}}
               - name: GITHUB_APP_INSTALLATION_ID
-                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_INSTALLATION_ID}}
+                valueFrom: {secretKeyRef: {name: viff-github, key: GITHUB_APP_INSTALLATION_ID}}
               - name: GITHUB_APP_PRIVATE_KEY
-                valueFrom: {secretKeyRef: {name: verse-github, key: GITHUB_APP_PRIVATE_KEY}}
+                valueFrom: {secretKeyRef: {name: viff-github, key: GITHUB_APP_PRIVATE_KEY}}
 
   # The github iod's credential, as the slack iod's above.
   - if: '.[ iodTokens && githubIod ]'
@@ -1849,23 +1849,23 @@ build:
             containers: !key(name)
             - name: github-iod
               env: !key(name)
-              - name: VERSE_TOKEN_FILE
-                value: /var/run/verse/token
+              - name: VIFF_TOKEN_FILE
+                value: /var/run/viff/token
               volumeMounts: !key(name)
-              - name: verse-token
-                mountPath: /var/run/verse
+              - name: viff-token
+                mountPath: /var/run/viff
                 readOnly: true
             volumes: !key(name)
-            - name: verse-token
+            - name: viff-token
               projected:
                 sources:
                 - serviceAccountToken:
-                    audience: verse
+                    audience: viff
                     expirationSeconds: 3600
                     path: token
 
   # The git iod's credential, as the github iod's: verified, it may relay the person an install is
-  # for (`Verse-For-Principal`), which the auth config trusts it to for GitHub accounts.
+  # for (`Viff-For-Principal`), which the auth config trusts it to for GitHub accounts.
   - if: '.[ iodTokens && gitIod ]'
     match:
       kind: Deployment
@@ -1879,18 +1879,18 @@ build:
             containers: !key(name)
             - name: git-iod
               env: !key(name)
-              - name: VERSE_TOKEN_FILE
-                value: /var/run/verse/token
+              - name: VIFF_TOKEN_FILE
+                value: /var/run/viff/token
               volumeMounts: !key(name)
-              - name: verse-token
-                mountPath: /var/run/verse
+              - name: viff-token
+                mountPath: /var/run/viff
                 readOnly: true
             volumes: !key(name)
-            - name: verse-token
+            - name: viff-token
               projected:
                 sources:
                 - serviceAccountToken:
-                    audience: verse
+                    audience: viff
                     expirationSeconds: 3600
                     path: token
 
@@ -1923,7 +1923,7 @@ build:
               - $[githubRepos]
               - -discussions=$[githubDiscussions]
               - -out=$[githubOut]
-              # One out loop per repository, each reporting its pass to verse: at the default 5s
+              # One out loop per repository, each reporting its pass to viff: at the default 5s
               # that report alone is most of the store's commits. A comment's hint kicks a pass at
               # once, so a minute is what an input written under an outbox waits at most.
               - -out-every

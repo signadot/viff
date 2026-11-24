@@ -11,7 +11,7 @@ define:
   method: .[string]
   sub: .[string]
 signature:
-  name: verse-account-proof
+  name: viff-account-proof
 ---
 context:
 - tony-format/context
@@ -20,19 +20,19 @@ define:
   iss: .[string]
   login: .[string]
   principal: .[string]
-  proof: .[nullable(verse-account-proof)]
+  proof: .[nullable(viff-account-proof)]
   provider: .[string]
   sub: .[string]
   via: .[string]
 signature:
-  name: verse-account
+  name: viff-account
 ---
 context:
 - tony-format/context
 define:
   login: .[string]
 signature:
-  name: verse-account-claim
+  name: viff-account-claim
 ---
 context:
 - tony-format/context
@@ -42,7 +42,7 @@ define:
   nonce: .[string]
   say: .[string]
 signature:
-  name: verse-account-claimed
+  name: viff-account-claimed
 ---
 context:
 - tony-format/context
@@ -51,28 +51,28 @@ define:
   login: .[string]
   nonce: .[string]
 signature:
-  name: verse-account-heard
+  name: viff-account-heard
 ---
 context:
 - tony-format/context
 define:
   idToken: .[string]
 signature:
-  name: verse-account-link
+  name: viff-account-link
 ---
 context:
 - tony-format/context
 define:
   nonce: .[string]
 signature:
-  name: verse-account-verify
+  name: viff-account-verify
 ---
 context:
 - tony-format/context
 define:
   for: .[string]
 signature:
-  name: verse-answer-for
+  name: viff-answer-for
 ---
 context:
 - tony-format/context
@@ -90,7 +90,7 @@ define:
   serves: .[string]
   to: .[array(string)]
 signature:
-  name: verse-ask
+  name: viff-ask
 ---
 context:
 - tony-format/context
@@ -102,7 +102,7 @@ define:
   say: .[array(string)]
   via: .[string]
 signature:
-  name: verse-ask-ballot
+  name: viff-ask-ballot
 ---
 context:
 - tony-format/context
@@ -112,7 +112,7 @@ define:
   refused: .[string]
   status: .[int]
 signature:
-  name: verse-ask-carried
+  name: viff-ask-carried
 ---
 context:
 - tony-format/context
@@ -124,7 +124,7 @@ define:
   question: .[string]
   to: .[array(string)]
 signature:
-  name: verse-ask-change
+  name: viff-ask-change
 ---
 context:
 - tony-format/context
@@ -135,17 +135,17 @@ define:
   force: .[bool]
   say: .[string]
 signature:
-  name: verse-ask-follow-answer
+  name: viff-ask-follow-answer
 ---
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  answer: .[nullable(verse-ask-follow-answer)]
+  answer: .[nullable(viff-ask-follow-answer)]
   ask: .[tony-base:ir]
   spawn: .[tony-base:ir]
 signature:
-  name: verse-ask-follow
+  name: viff-ask-follow
 ---
 context:
 - tony-format/context
@@ -155,7 +155,7 @@ define:
   refused: .[string]
   status: .[int]
 signature:
-  name: verse-ask-follow-answered
+  name: viff-ask-follow-answered
 ---
 context:
 - tony-format/context
@@ -165,7 +165,7 @@ define:
   refused: .[string]
   status: .[int]
 signature:
-  name: verse-ask-follow-asked
+  name: viff-ask-follow-asked
 ---
 context:
 - tony-format/context
@@ -173,7 +173,7 @@ define:
   at: .[string]
   why: .[string]
 signature:
-  name: verse-ask-follow-failed
+  name: viff-ask-follow-failed
 ---
 context:
 - tony-format/context
@@ -188,7 +188,7 @@ define:
   via: .[string]
   why: .[string]
 signature:
-  name: verse-ask-followed
+  name: viff-ask-followed
 ---
 context:
 - tony-format/context
@@ -198,28 +198,28 @@ define:
   rule: .[string]
   task: .[string]
 signature:
-  name: verse-ask-from
+  name: viff-ask-from
 ---
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   match: .[tony-base:ir]
-  then: .[nullable(verse-ask-follow)]
+  then: .[nullable(viff-ask-follow)]
 signature:
-  name: verse-ask-on
+  name: viff-ask-on
 ---
 context:
 - tony-format/context
 define:
-  answered: .[nullable(verse-ask-follow-answered)]
-  asked: .[nullable(verse-ask-follow-asked)]
+  answered: .[nullable(viff-ask-follow-answered)]
+  asked: .[nullable(viff-ask-follow-asked)]
   at: .[string]
-  failed: .[nullable(verse-ask-follow-failed)]
+  failed: .[nullable(viff-ask-follow-failed)]
   row: .[int]
   task: .[string]
 signature:
-  name: verse-ask-ran
+  name: viff-ask-ran
 ---
 context:
 - tony-format/context
@@ -227,7 +227,7 @@ define:
   by: .[string]
   text: .[string]
 signature:
-  name: verse-ask-said
+  name: viff-ask-said
 ---
 context:
 - tony-format/context
@@ -236,7 +236,7 @@ define:
   for: .[string]
   id: .[string]
 signature:
-  name: verse-ask-serves
+  name: viff-ask-serves
 ---
 context:
 - tony-format/context
@@ -245,7 +245,7 @@ define:
   say: .[array(string)]
   verdict: .[string]
 signature:
-  name: verse-ask-stale
+  name: viff-ask-stale
 ---
 context:
 - tony-format/context
@@ -253,54 +253,54 @@ define:
   grantees: .[array(string)]
   task: .[string]
 signature:
-  name: verse-ask-to
+  name: viff-ask-to
 ---
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
-- task: github.com/signadot/verse/pkg/task
+- task: go.viff.dev/viff/pkg/task
 define:
   about: .[string]
   action: .[string]
   answer: .[string]
   answeredAt: .[string]
   askedAgain: .[bool]
-  ballots: .[object(verse-ask-ballot)]
+  ballots: .[object(viff-ask-ballot)]
   by: .[string]
-  carried: .[nullable(verse-ask-carried)]
-  deadline: .[nullable(task:verse-deadline)]
+  carried: .[nullable(viff-ask-carried)]
+  deadline: .[nullable(task:viff-deadline)]
   due: .[string]
   edit: .[int]
   expires: .[string]
   fields: .[tony-base:ir]
-  followed: .[nullable(verse-ask-followed)]
-  from: .[nullable(verse-ask-from)]
+  followed: .[nullable(viff-ask-followed)]
+  from: .[nullable(viff-ask-from)]
   gate: .[string]
   id: .[string]
   keep: .[string]
   labels: .[object(string)]
   name: .[string]
-  on: .[array(verse-ask-on)]
+  on: .[array(viff-ask-on)]
   onSilence: .[string]
-  options: .[array(task:verse-option)]
+  options: .[array(task:viff-option)]
   orphanedAt: .[string]
   pose: .[string]
   posedAt: .[string]
   posedCursor: .[int]
   posedRun: .[string]
   question: .[string]
-  ran: .[nullable(verse-ask-ran)]
+  ran: .[nullable(viff-ask-ran)]
   reason: .[string]
-  said: .[object(verse-ask-said)]
+  said: .[object(viff-ask-said)]
   say: .[array(string)]
-  serves: .[nullable(verse-ask-serves)]
+  serves: .[nullable(viff-ask-serves)]
   spawns: .[string]
-  stale: .[object(verse-ask-stale)]
+  stale: .[object(viff-ask-stale)]
   status: .[string]
   step: .[string]
   subject: .[string]
   suspended: .[bool]
-  to: .[nullable(verse-ask-to)]
+  to: .[nullable(viff-ask-to)]
   tool: .[string]
   turn: .[string]
   verdict: .[string]
@@ -308,54 +308,54 @@ define:
   waitingOn: .[array(string)]
   why: .[string]
 signature:
-  name: verse-ask-record
+  name: viff-ask-record
 ---
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
-- task: github.com/signadot/verse/pkg/task
+- task: go.viff.dev/viff/pkg/task
 define:
   about: .[string]
   action: .[string]
   answer: .[string]
   answeredAt: .[string]
   askedAgain: .[bool]
-  ballots: .[object(verse-ask-ballot)]
+  ballots: .[object(viff-ask-ballot)]
   by: .[string]
-  carried: .[nullable(verse-ask-carried)]
-  deadline: .[nullable(task:verse-deadline)]
+  carried: .[nullable(viff-ask-carried)]
+  deadline: .[nullable(task:viff-deadline)]
   due: .[string]
   edit: .[int]
   expires: .[string]
   fields: .[tony-base:ir]
-  followed: .[nullable(verse-ask-followed)]
-  from: .[nullable(verse-ask-from)]
+  followed: .[nullable(viff-ask-followed)]
+  from: .[nullable(viff-ask-from)]
   gate: .[string]
   id: .[string]
   keep: .[string]
   labels: .[object(string)]
   name: .[string]
-  on: .[array(verse-ask-on)]
+  on: .[array(viff-ask-on)]
   onSilence: .[string]
-  options: .[array(task:verse-option)]
+  options: .[array(task:viff-option)]
   orphanedAt: .[string]
   pose: .[string]
   posedAt: .[string]
   posedCursor: .[int]
   posedRun: .[string]
   question: .[string]
-  ran: .[nullable(verse-ask-ran)]
+  ran: .[nullable(viff-ask-ran)]
   reason: .[string]
-  said: .[object(verse-ask-said)]
+  said: .[object(viff-ask-said)]
   say: .[array(string)]
-  serves: .[nullable(verse-ask-serves)]
+  serves: .[nullable(viff-ask-serves)]
   spawns: .[string]
-  stale: .[object(verse-ask-stale)]
+  stale: .[object(viff-ask-stale)]
   status: .[string]
   step: .[string]
   subject: .[string]
   suspended: .[bool]
-  to: .[nullable(verse-ask-to)]
+  to: .[nullable(viff-ask-to)]
   tool: .[string]
   turn: .[string]
   unreadable: .[string]
@@ -364,14 +364,14 @@ define:
   waitingOn: .[array(string)]
   why: .[string]
 signature:
-  name: verse-ask-row
+  name: viff-ask-row
 ---
 context:
 - tony-format/context
 define:
   resolver: .[string]
 signature:
-  name: verse-ask-served
+  name: viff-ask-served
 ---
 context:
 - tony-format/context
@@ -379,7 +379,7 @@ define:
   edit: .[int]
   id: .[string]
 signature:
-  name: verse-asked
+  name: viff-asked
 ---
 context:
 - tony-format/context
@@ -387,7 +387,7 @@ define:
   by: .[string]
   reason: .[string]
 signature:
-  name: verse-cancel
+  name: viff-cancel
 ---
 context:
 - tony-format/context
@@ -398,18 +398,18 @@ define:
   held: .[array(string)]
   removed: .[array(string)]
 signature:
-  name: verse-charter-check-package
+  name: viff-charter-check-package
 ---
 context:
 - tony-format/context
 define:
   at: .[string]
-  packages: .[array(verse-charter-check-package)]
+  packages: .[array(viff-charter-check-package)]
   pruned: .[array(string)]
   refusal: .[string]
   verdict: .[string]
 signature:
-  name: verse-charter-check
+  name: viff-charter-check
 ---
 context:
 - tony-format/context
@@ -419,62 +419,62 @@ define:
   exists: .[nullable(bool)]
   pattern: .[tony-base:ir]
 signature:
-  name: verse-condition
+  name: viff-condition
 ---
 context:
 - tony-format/context
 define:
   client: .[string]
 signature:
-  name: verse-docd
+  name: viff-docd
 ---
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
-- task: github.com/signadot/verse/pkg/task
+- task: go.viff.dev/viff/pkg/task
 define:
   about: .[string]
   action: .[string]
   answer: .[string]
   answeredAt: .[string]
   askedAgain: .[bool]
-  ballots: .[object(verse-ask-ballot)]
+  ballots: .[object(viff-ask-ballot)]
   by: .[string]
-  carried: .[nullable(verse-ask-carried)]
-  deadline: .[nullable(task:verse-deadline)]
+  carried: .[nullable(viff-ask-carried)]
+  deadline: .[nullable(task:viff-deadline)]
   due: .[string]
   edit: .[int]
   expires: .[string]
   fields: .[tony-base:ir]
-  followed: .[nullable(verse-ask-followed)]
-  from: .[nullable(verse-ask-from)]
+  followed: .[nullable(viff-ask-followed)]
+  from: .[nullable(viff-ask-from)]
   gate: .[string]
   id: .[string]
   keep: .[string]
   labels: .[object(string)]
   name: .[string]
-  on: .[array(verse-ask-on)]
+  on: .[array(viff-ask-on)]
   onSilence: .[string]
-  options: .[array(task:verse-option)]
+  options: .[array(task:viff-option)]
   orphanedAt: .[string]
   pose: .[string]
   posedAt: .[string]
   posedCursor: .[int]
   posedRun: .[string]
   question: .[string]
-  ran: .[nullable(verse-ask-ran)]
+  ran: .[nullable(viff-ask-ran)]
   reason: .[string]
-  said: .[object(verse-ask-said)]
+  said: .[object(viff-ask-said)]
   say: .[array(string)]
   servedBy: .[string]
-  serves: .[nullable(verse-ask-serves)]
+  serves: .[nullable(viff-ask-serves)]
   spawns: .[string]
-  stale: .[object(verse-ask-stale)]
+  stale: .[object(viff-ask-stale)]
   status: .[string]
   step: .[string]
   subject: .[string]
   suspended: .[bool]
-  to: .[nullable(verse-ask-to)]
+  to: .[nullable(viff-ask-to)]
   tool: .[string]
   turn: .[string]
   unreadable: .[string]
@@ -484,7 +484,7 @@ define:
   where: .[string]
   why: .[string]
 signature:
-  name: verse-docket-row
+  name: viff-docket-row
 ---
 context:
 - tony-format/context
@@ -492,7 +492,7 @@ define:
   failed: .[int]
   unread: .[int]
 signature:
-  name: verse-firings
+  name: viff-firings
 ---
 context:
 - tony-format/context
@@ -500,7 +500,7 @@ define:
   subjects: .[int]
   tasks: .[int]
 signature:
-  name: verse-flow-count
+  name: viff-flow-count
 ---
 context:
 - tony-format/context
@@ -511,7 +511,7 @@ define:
   since: .[string]
   why: .[string]
 signature:
-  name: verse-suspension-holder
+  name: viff-suspension-holder
 ---
 context:
 - tony-format/context
@@ -520,16 +520,16 @@ define:
   questions: .[int]
   tasks: .[int]
 signature:
-  name: verse-suspension-holding
+  name: viff-suspension-holding
 ---
 context:
 - tony-format/context
 define:
   charter: .[string]
   covers: .[nullable(bool)]
-  held: .[array(verse-suspension-holder)]
+  held: .[array(viff-suspension-holder)]
   heldBy: .[array(string)]
-  holding: .[nullable(verse-suspension-holding)]
+  holding: .[nullable(viff-suspension-holding)]
   id: .[string]
   kind: .[string]
   recursive: .[bool]
@@ -538,7 +538,7 @@ define:
   subject: .[string]
   task: .[string]
 signature:
-  name: verse-flow-row
+  name: viff-flow-row
 ---
 context:
 - tony-format/context
@@ -551,7 +551,7 @@ define:
   text: .[string]
   why: .[string]
 signature:
-  name: verse-flow-select
+  name: viff-flow-select
 ---
 context:
 - tony-format/context
@@ -560,7 +560,7 @@ define:
   id: .[string]
   say: .[string]
 signature:
-  name: verse-gate-say
+  name: viff-gate-say
 ---
 context:
 - tony-format/context
@@ -568,7 +568,7 @@ define:
   members: .[array(string)]
   name: .[string]
 signature:
-  name: verse-group
+  name: viff-group
 ---
 context:
 - tony-format/context
@@ -577,7 +577,7 @@ define:
   members: .[array(string)]
   name: .[string]
 signature:
-  name: verse-group-row
+  name: viff-group-row
 ---
 context:
 - tony-format/context
@@ -586,7 +586,7 @@ define:
   ok: .[bool]
   started: .[bool]
 signature:
-  name: verse-health
+  name: viff-health
 ---
 context:
 - tony-format/context
@@ -595,7 +595,7 @@ define:
   rule: .[string]
   waits: .[string]
 signature:
-  name: verse-held-rule
+  name: viff-held-rule
 ---
 context:
 - tony-format/context
@@ -603,19 +603,19 @@ define:
   note: .[string]
   rule: .[string]
 signature:
-  name: verse-rule-note
+  name: viff-rule-note
 ---
 context:
 - tony-format/context
 define:
   at: .[string]
   expires: .[string]
-  held: .[array(verse-held-rule)]
-  notes: .[array(verse-rule-note)]
+  held: .[array(viff-held-rule)]
+  notes: .[array(viff-rule-note)]
   rules: .[int]
   strata: .[int]
 signature:
-  name: verse-installed-package
+  name: viff-installed-package
 ---
 context:
 - tony-format/context
@@ -624,15 +624,15 @@ define:
   removed: .[array(string)]
   uninstalled: .[bool]
 signature:
-  name: verse-pruned
+  name: viff-pruned
 ---
 context:
 - tony-format/context
 define:
-  installed: .[array(verse-installed-package)]
-  pruned: .[array(verse-pruned)]
+  installed: .[array(viff-installed-package)]
+  pruned: .[array(viff-pruned)]
 signature:
-  name: verse-installed
+  name: viff-installed
 ---
 context:
 - tony-format/context
@@ -640,7 +640,7 @@ define:
   key: .[string]
   url: .[string]
 signature:
-  name: verse-issuer
+  name: viff-issuer
 ---
 context:
 - tony-format/context
@@ -651,7 +651,7 @@ define:
   model: .[string]
   virtualKey: .[string]
 signature:
-  name: verse-llm
+  name: viff-llm
 ---
 context:
 - tony-format/context
@@ -659,7 +659,7 @@ define:
   admin: .[string]
   api: .[string]
 signature:
-  name: verse-listen
+  name: viff-listen
 ---
 context:
 - tony-format/context
@@ -667,7 +667,7 @@ define:
   from: .[string]
   to: .[string]
 signature:
-  name: verse-outbox
+  name: viff-outbox
 ---
 context:
 - tony-format/context
@@ -677,7 +677,7 @@ define:
   unparsed: .[int]
   unreadable: .[int]
 signature:
-  name: verse-perms
+  name: viff-perms
 ---
 context:
 - tony-format/context
@@ -690,7 +690,7 @@ define:
   grants: .[tony-base:ir]
   revoke: .[tony-base:ir]
 signature:
-  name: verse-perms-edit
+  name: viff-perms-edit
 ---
 context:
 - tony-format/context
@@ -701,7 +701,7 @@ define:
   grants: .[tony-base:ir]
   owner: .[string]
 signature:
-  name: verse-perms-record
+  name: viff-perms-record
 ---
 context:
 - tony-format/context
@@ -711,9 +711,9 @@ define:
   grants: .[tony-base:ir]
   payload: .[tony-base:ir]
   sub: .[string]
-  when: .[array(verse-condition)]
+  when: .[array(viff-condition)]
 signature:
-  name: verse-put-entity
+  name: viff-put-entity
 ---
 context:
 - tony-format/context
@@ -723,7 +723,7 @@ define:
   need: .[int]
   note: .[string]
 signature:
-  name: verse-recorded
+  name: viff-recorded
 ---
 context:
 - tony-format/context
@@ -734,7 +734,7 @@ define:
   removed: .[string]
   unreachable: .[array(string)]
 signature:
-  name: verse-removed
+  name: viff-removed
 ---
 context:
 - tony-format/context
@@ -747,7 +747,7 @@ define:
   id: .[string]
   say: .[array(string)]
 signature:
-  name: verse-resolve
+  name: viff-resolve
 ---
 context:
 - tony-format/context
@@ -758,45 +758,45 @@ define:
   response: .[string]
   returns: .[string]
 signature:
-  name: verse-route
+  name: viff-route
 ---
 context:
 - tony-format/context
 define:
-  routes: .[array(verse-route)]
+  routes: .[array(viff-route)]
 signature:
-  name: verse-routes
+  name: viff-routes
 ---
 context:
 - tony-format/context
-- runner: github.com/signadot/verse/pkg/runner
+- runner: go.viff.dev/viff/pkg/runner
 define:
-  described: .[nullable(runner:verse-runner-description)]
+  described: .[nullable(runner:viff-runner-description)]
   identity: .[string]
   name: .[string]
   subject: .[string]
   url: .[string]
 signature:
-  name: verse-installed-runner
+  name: viff-installed-runner
 ---
 context:
 - tony-format/context
-- runner: github.com/signadot/verse/pkg/runner
+- runner: go.viff.dev/viff/pkg/runner
 define:
   at: .[string]
-  offers: .[array(runner:verse-runner-offer)]
+  offers: .[array(runner:viff-runner-offer)]
   reach: .[string]
   url: .[string]
   why: .[string]
 signature:
-  name: verse-runner-check
+  name: viff-runner-check
 ---
 context:
 - tony-format/context
-- runner: github.com/signadot/verse/pkg/runner
+- runner: go.viff.dev/viff/pkg/runner
 define:
   at: .[string]
-  described: .[nullable(runner:verse-runner-description)]
+  described: .[nullable(runner:viff-runner-description)]
   identity: .[string]
   lastSpawn: .[string]
   name: .[string]
@@ -810,7 +810,7 @@ define:
   warning: .[string]
   why: .[string]
 signature:
-  name: verse-runner-row
+  name: viff-runner-row
 ---
 context:
 - tony-format/context
@@ -821,7 +821,7 @@ define:
   url: .[string]
   why: .[string]
 signature:
-  name: verse-runner-status
+  name: viff-runner-status
 ---
 context:
 - tony-format/context
@@ -829,7 +829,7 @@ define:
   by: .[string]
   instruction: .[string]
 signature:
-  name: verse-say
+  name: viff-say
 ---
 context:
 - tony-format/context
@@ -843,14 +843,14 @@ define:
   next: .[string]
   tick: .[string]
 signature:
-  name: verse-schedule-row
+  name: viff-schedule-row
 ---
 context:
 - tony-format/context
 define:
   due: .[string]
 signature:
-  name: verse-schedule-tick
+  name: viff-schedule-tick
 ---
 context:
 - tony-format/context
@@ -862,7 +862,7 @@ define:
   labels: .[object(string)]
   pose: .[string]
 signature:
-  name: verse-served-ask
+  name: viff-served-ask
 ---
 context:
 - tony-format/context
@@ -870,26 +870,26 @@ define:
   autonomy: !irtype {}
   by: .[string]
 signature:
-  name: verse-set-autonomy
+  name: viff-set-autonomy
 ---
 context:
 - tony-format/context
-- launch: github.com/signadot/verse/pkg/launch
+- launch: go.viff.dev/viff/pkg/launch
 define:
   converse: .[bool]
   id: .[string]
   name: .[string]
   principal: .[string]
-  spawn: !launch:verse-launch-spec null
+  spawn: !launch:viff-launch-spec null
 signature:
-  name: verse-spawn
+  name: viff-spawn
 ---
 context:
 - tony-format/context
 define:
   id: .[string]
 signature:
-  name: verse-spawned
+  name: viff-spawned
 ---
 context:
 - tony-format/context
@@ -900,31 +900,31 @@ define:
   subjects: .[int]
   tasks: .[int]
 signature:
-  name: verse-suspension-count
+  name: viff-suspension-count
 ---
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
   charter: .[tony-base:ir]
-  docd: .[nullable(verse-docd)]
+  docd: .[nullable(viff-docd)]
   fired: .[int]
-  firings: .[nullable(verse-firings)]
-  flows: !verse-flow-count null
+  firings: .[nullable(viff-firings)]
+  flows: !viff-flow-count null
   gates: .[int]
   iods: .[array(string)]
-  issuer: .[nullable(verse-issuer)]
-  listen: .[nullable(verse-listen)]
-  llm: .[nullable(verse-llm)]
-  perms: .[nullable(verse-perms)]
+  issuer: .[nullable(viff-issuer)]
+  listen: .[nullable(viff-listen)]
+  llm: .[nullable(viff-llm)]
+  perms: .[nullable(viff-perms)]
   restoring: .[array(string)]
-  runner: .[nullable(verse-runner-status)]
+  runner: .[nullable(viff-runner-status)]
   runners: .[array(string)]
   storeRev: .[int]
-  suspensions: .[nullable(verse-suspension-count)]
+  suspensions: .[nullable(viff-suspension-count)]
   tasks: .[int]
 signature:
-  name: verse-status
+  name: viff-status
 ---
 context:
 - tony-format/context
@@ -935,13 +935,13 @@ define:
   task: .[string]
   verb: .[string]
 signature:
-  name: verse-steered
+  name: viff-steered
 ---
 context:
 - tony-format/context
-- runner: github.com/signadot/verse/pkg/runner
+- runner: go.viff.dev/viff/pkg/runner
 define:
-  agent: .[nullable(runner:verse-runner-agent)]
+  agent: .[nullable(runner:viff-runner-agent)]
   autonomy: !irtype {}
   autonomyBy: .[string]
   ended: .[string]
@@ -957,7 +957,7 @@ define:
   started: .[string]
   status: .[string]
 signature:
-  name: verse-instance
+  name: viff-instance
 ---
 context:
 - tony-format/context
@@ -965,7 +965,7 @@ define:
   schedule: .[string]
   tick: .[string]
 signature:
-  name: verse-ticked
+  name: viff-ticked
 ---
 context:
 - tony-format/context
@@ -974,4 +974,4 @@ define:
   principal: .[string]
   via: .[string]
 signature:
-  name: verse-whoami
+  name: viff-whoami

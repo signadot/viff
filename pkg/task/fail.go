@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // NewFailed builds a task that terminates immediately with msg as its error — used

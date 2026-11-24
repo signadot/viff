@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/schedule"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/schedule"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A tick is a subject the store consumes: the schedule replaces it, nobody else writes it, and
@@ -27,8 +27,8 @@ const (
 func tickRule(name string) Trigger {
 	return Trigger{
 		Name:      name,
-		Condition: Condition{Subject: mm("verse.schedule.hourly.tick.*")},
-		Action:    Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: name + " for $[subject.ref]"}},
+		Condition: Condition{Subject: mm("mirror.schedule.hourly.tick.*")},
+		Action:    Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: name + " for $[subject.ref]"}},
 	}
 }
 

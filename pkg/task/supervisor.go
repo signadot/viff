@@ -1,7 +1,7 @@
 package task
 
 import (
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 
 	"context"
 	"fmt"
@@ -56,7 +56,7 @@ type GateQuestion struct {
 	// whom the task acts for. Empty leaves the question to the docket's default. Written as the
 	// question's `read-write` grant when it is posed.
 	Answerers []string
-	// At is the ADDRESS of the charter whose rule is asking — `verse-dev.merge` — empty for
+	// At is the ADDRESS of the charter whose rule is asking — `viff-dev.merge` — empty for
 	// baseline and for a question a task raised (a task knows what it is doing, not which
 	// charter spawned it). Gate above names the rule, and a rule's name is unique within a
 	// charter rather than across them, so without this a docket entry names a `review` and
@@ -97,7 +97,7 @@ type GateQuestion struct {
 	// task's question, which nobody edits.
 	Edit int
 	// Labels are what the question says about itself for whoever watches asks: `team: payments`,
-	// `kind: deploy`. A convention between the raiser and the resolvers matching on them; verse
+	// `kind: deploy`. A convention between the raiser and the resolvers matching on them; viff
 	// reads nothing into a label, and routes nothing by one.
 	Labels map[string]string
 }

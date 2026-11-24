@@ -6,7 +6,7 @@
 // open.
 package systemstest
 
-import "github.com/signadot/verse/pkg/systems"
+import "go.viff.dev/viff/pkg/systems"
 
 // Open is ceilings that leave open each system of the environments given (systems.Open), as a
 // runner whose operator writes its tasks would: what a step may do is then the environment's

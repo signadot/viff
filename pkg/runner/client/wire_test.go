@@ -12,13 +12,13 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/systems/systemstest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // paced takes n steps at a pace, so a task is still running when it is cancelled.
@@ -58,13 +58,13 @@ func remote(t *testing.T, d task.Driver) (*httptest.Server, func() runner.Launch
 }
 
 // A LAUNCH REACHES A REMOTE RUNNER WHOLE: what the builder of a runner at the far end of a url is
-// handed is the launch verse sent, every field of it.
+// handed is the launch viff sent, every field of it.
 func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 	srv, handed := remote(t, &doneDriver{steps: 1})
 	sent := runner.Launch{
 		ID: "review@demo.pr.1",
-		Agent: &runner.Agent{Name: "verse", Settings: map[string]string{"model": "m-1"},
-			Annotations: map[string]string{"verse.portkey/virtual-key": "route-a"}},
+		Agent: &runner.Agent{Name: "viff", Settings: map[string]string{"model": "m-1"},
+			Annotations: map[string]string{"viff.portkey/virtual-key": "route-a"}},
 		Environment: systems.Environment{Vars: map[string]string{"BRANCH": "main"}, Systems: systems.Systems{
 			// As the environment reads back: a block's attributes and verbs are maps, if empty.
 			"slack":   {{Attributes: map[string]string{}, Verbs: map[string][]systems.Shape{"post": {{"channel": ir.FromString("deploys")}}}}},
@@ -100,8 +100,8 @@ func TestALaunchReachesARemoteRunnerWhole(t *testing.T) {
 	}
 	// And the runner says back which run it is, and who runs it.
 	snap, err := client.HTTP(srv.URL).(task.Lister).TaskSnapshot(sent.ID)
-	if err != nil || snap.Occurrence != sent.Occurrence || snap.Agent != "verse" {
-		t.Errorf("the snapshot says occurrence %d, doer %q (%v); want %d, verse", snap.Occurrence, snap.Agent, err, sent.Occurrence)
+	if err != nil || snap.Occurrence != sent.Occurrence || snap.Agent != "viff" {
+		t.Errorf("the snapshot says occurrence %d, doer %q (%v); want %d, viff", snap.Occurrence, snap.Agent, err, sent.Occurrence)
 	}
 	// …and never says the credential back.
 	for _, path := range []string{"/tasks", "/tasks/" + sent.ID} {

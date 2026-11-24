@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // patchEngine is a started engine over a store, for the write-path tests.
@@ -26,7 +26,7 @@ func patchEngine(t *testing.T, store *entity.LogdStore) *Engine {
 
 // The reason `patch` had to replace `set`: two triggers writing under one key must not
 // clobber each other. The old shallow overlay replaced whatever top-level key it touched, so
-// the second writer of `verse` would have erased the first — which is exactly the shape
+// the second writer of `viff` would have erased the first — which is exactly the shape
 // docs/trigger-model.md's progress root has.
 func TestPatchMergesSiblingSubtrees(t *testing.T) {
 	store := entitytest.Store(t)
@@ -35,11 +35,11 @@ func TestPatchMergesSiblingSubtrees(t *testing.T) {
 	for _, tr := range []Trigger{{
 		Name:      "first",
 		Condition: Condition{Subject: prSubject("open")},
-		Action:    Action{Patch: entity.Obj{"verse": entity.Obj{"a": entity.Obj{"step": 1}}}.Payload()},
+		Action:    Action{Patch: entity.Obj{"viff": entity.Obj{"a": entity.Obj{"step": 1}}}.Payload()},
 	}, {
 		Name:      "second",
 		Condition: Condition{Subject: prSubject("open")},
-		Action:    Action{Patch: entity.Obj{"verse": entity.Obj{"b": entity.Obj{"step": 2}}}.Payload()},
+		Action:    Action{Patch: entity.Obj{"viff": entity.Obj{"b": entity.Obj{"step": 2}}}.Payload()},
 	}} {
 		if err := eng.AddTrigger(tr); err != nil {
 			t.Fatalf("AddTrigger %s: %v", tr.Name, err)
@@ -50,9 +50,9 @@ func TestPatchMergesSiblingSubtrees(t *testing.T) {
 
 	// both branches survive, and so does the field neither of them wrote
 	waitFor(t, store, prRef("1"), func(p entity.Payload) bool {
-		v := entity.Get(p, "verse")
+		v := entity.Get(p, "viff")
 		return entity.Get(v, "a") != nil && entity.Get(v, "b") != nil
-	}, "both verse.a and verse.b present")
+	}, "both viff.a and viff.b present")
 	if got := entity.Str(mustGet(t, store, prRef("1")), "stage"); got != "open" {
 		t.Errorf("untouched field lost: stage = %q, want open", got)
 	}
@@ -125,7 +125,7 @@ func TestPatchCreatesNamedSubject(t *testing.T) {
 }
 
 // A failing patch must fail the FIRING, not just the write. Spawning a task about a state
-// the trigger failed to establish is worse than not firing: the task runs against a verse
+// the trigger failed to establish is worse than not firing: the task runs against a viff
 // that never got the transition it was started for.
 func TestFailedPatchDoesNotSpawn(t *testing.T) {
 	store := entitytest.Store(t)
@@ -150,7 +150,7 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 		Condition: Condition{Subject: prSubject("open")},
 		Action: Action{
 			Patch: bad,
-			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "must not run"},
+			Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "must not run"},
 		},
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -173,7 +173,7 @@ func TestFailedPatchDoesNotSpawn(t *testing.T) {
 
 // A charter carrying a patch operator keeps it as a tag through install, and the operator does
 // what it says. The assertion is the EFFECT, not the parse: a patch that decodes but never
-// deletes would pass a shape check and fail in the verse.
+// deletes would pass a shape check and fail in the viff.
 func TestPatchOperatorWorks(t *testing.T) {
 	for _, c := range []struct {
 		name, doc string

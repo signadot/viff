@@ -3,7 +3,7 @@ package trigger
 import (
 	"fmt"
 
-	"github.com/signadot/verse/pkg/schedule"
+	"go.viff.dev/viff/pkg/schedule"
 )
 
 // checkLatch refuses a spawning action that can never stop spawning.

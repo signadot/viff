@@ -9,10 +9,10 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Running a sequence.
@@ -26,7 +26,7 @@ import (
 // Everything lands under the reserved root on the subject, in its charter half, keyed by
 // trigger:
 //
-//	verse:
+//	viff:
 //	  charter:
 //	    review:
 //	      step:  2         elements completed
@@ -38,25 +38,25 @@ import (
 //
 // `done` and `ended` are the two ways a run CONCLUDES, and a run that concluded either way does
 // not run again at this shape (seqConcluded). They are separate fields rather than one, because
-// they are separate facts about the subject: `verse.charter.review.done` is a documented thing
+// they are separate facts about the subject: `@sys.charter.review.done` is a documented thing
 // to write a rule about, and "it finished" must not start meaning "it stopped somewhere".
 //
 // One reserved name rather than a family of flat keys, because the payload is the AUTHOR's
 // document — `flow` on a task entity is the same kind of reservation. The `charter` half
-// keeps rule bookkeeping apart from what verse records about the ENTITY (verse.meta, where the
+// keeps rule bookkeeping apart from what viff records about the ENTITY (@sys.meta, where the
 // lifecycle marker lives): they grow differently — a key per rule against a field per lifecycle
 // concern — and flat they collided, since a trigger NAMED `vanishing` would have written its
 // progress exactly where the marker goes. See entity.ReservedRoot and docs/trigger-model.md.
 
-// VerseRoot and CharterKey address the engine's own bookkeeping: verse.charter.<trigger>. The
+// ViffRoot and CharterKey address the engine's own bookkeeping: @sys.charter.<trigger>. The
 // reservation is the ENTITY's (entity.ReservedRoot), aliased here because the charter grammar
 // is what a reader of this package is looking for.
 const (
-	VerseRoot  = entity.ReservedRoot
+	ViffRoot   = entity.ReservedRoot
 	CharterKey = entity.CharterKey
 )
 
-// Progress field names under verse.charter.<trigger>.
+// Progress field names under @sys.charter.<trigger>.
 const (
 	seqStep  = "step"
 	seqSteps = "steps"
@@ -115,7 +115,7 @@ func (e *Engine) clearConclusion(chain string, subj entity.Ref) {
 		if entity.Get(facts, field) == nil {
 			continue
 		}
-		if _, _, err := e.caused(chain, 0).Write(entity.Write{At: subj.At(VerseRoot, CharterKey, trig, field)}); err != nil {
+		if _, _, err := e.caused(chain, 0).Write(entity.Write{At: subj.At(ViffRoot, CharterKey, trig, field)}); err != nil {
 			e.logger.Warn("a sequence's earlier conclusion could not be cleared from its subject",
 				"chain", chain, "subject", subj.String(), "field", field, "err", err.Error())
 		}
@@ -132,7 +132,7 @@ func (e *Engine) clearConclusion(chain string, subj entity.Ref) {
 //
 // resumed says the elements run off a task's completion (resumeSeq) rather than off a firing
 // (startSeq). There an element is a completion hook in all but name — it reads the task's facts,
-// and the verse as it is when the task ended — and a failure is one too: see failResumed.
+// and the viff as it is when the task ended — and a failure is one too: see failResumed.
 func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, subj entity.Ref, src refSource, resumed bool) {
 	for ; i < len(carrier.Seq); i++ {
 		el := carrier.Seq[i]
@@ -188,7 +188,7 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, su
 // failResumed ends a sequence whose element, resumed off a task's completion, failed.
 //
 // It is the same event as a lost completion hook — the rule could not continue from its firing's
-// world — so it is written where one is: verse.charter.<rule>.hook on the subject, naming the
+// world — so it is written where one is: @sys.charter.<rule>.hook on the subject, naming the
 // element's chain and the task that completed, and `hook` on that task's record
 // (recordHookFailure). The next clean hook or element of the rule removes it.
 //
@@ -290,7 +290,7 @@ func (e *Engine) stopSeq(chain string, subj entity.Ref, status task.Status) {
 // chain does not address a sequence element, in which case the ordinary hook path applies.
 func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 	// oc is the completion's occasion, built by applyHook: the finished task's event for its
-	// references, and the head for reads at a revision — the verse as it is now that the task
+	// references, and the head for reads at a revision — the viff as it is now that the task
 	// has ended, so an element sees what the elements before it wrote. A resumed element begins
 	// a fresh causal chain (oc.parent is 0).
 	carrierChain, idx, ok := seqIndexOf(chain)
@@ -328,7 +328,7 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 		return true
 	}
 	// AN ELEMENT'S END ADVANCES THE RUN ONLY WHILE `step` HAS NOT PASSED THAT ELEMENT. An end can
-	// be run a second time: verse ended after the run had advanced and before the element's own
+	// be run a second time: viff ended after the run had advanced and before the element's own
 	// claim was released, and the claim found at the next start is settled by ending its task
 	// again (settleClaim). Advancing again would run the next element beside its own live task.
 	// So the second end does nothing here, and the element's claim is released by the caller.
@@ -390,7 +390,7 @@ func (e *Engine) seqConcluded(chain string, subj entity.Ref, shape string) bool 
 	return true
 }
 
-// seqFacts reads verse.<trigger-of-chain> off the subject, or nil.
+// seqFacts reads viff.<trigger-of-chain> off the subject, or nil.
 func (e *Engine) seqFacts(chain string, subj entity.Ref) entity.Payload {
 	facts, err := e.readSeqFacts(chain, subj)
 	if err != nil {
@@ -409,7 +409,7 @@ func (e *Engine) readSeqFacts(chain string, subj entity.Ref) (entity.Payload, er
 	if err != nil || !ok {
 		return nil, err
 	}
-	return entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), mirror.TriggerOf(chain)), nil
+	return entity.Get(entity.Get(entity.Get(ent.Payload, ViffRoot), CharterKey), mirror.TriggerOf(chain)), nil
 }
 
 // shapeMatches reports whether the sequence a subject is partway through is still the one the
@@ -425,16 +425,16 @@ func (e *Engine) shapeMatches(chain string, subj entity.Ref, want string) bool {
 
 // publishSeq patches progress under the reserved root. It goes through the same patch path an
 // action's own write does, which is exactly why `patch` had to replace `set`: a shallow
-// overlay here would replace the whole `verse` key and erase a sibling trigger's progress.
+// overlay here would replace the whole `viff` key and erase a sibling trigger's progress.
 //
 // It carries the firing's causal chain for the same reason (see causal.go): progress lands on
-// the SUBJECT, under a root a charter can match on — `verse.review.done` is a documented thing
+// the SUBJECT, under a root a charter can match on — `viff.review.done` is a documented thing
 // to write a rule about — so a progress write can wake a rule exactly as an action's own write
 // can, and a hop it did not count would be a hop the throttle cannot see. parent is 0 wherever
 // the sequence resumed off a task completing, which is the world coming back and the right
 // place for a chain to end.
 func (e *Engine) publishSeq(chain string, parent int64, subj entity.Ref, fields entity.Obj) {
-	patch := entity.Obj{VerseRoot: entity.Obj{CharterKey: entity.Obj{mirror.TriggerOf(chain): fields}}}.Payload()
+	patch := entity.Obj{ViffRoot: entity.Obj{CharterKey: entity.Obj{mirror.TriggerOf(chain): fields}}}.Payload()
 	if err := e.patchRecord(chain, parent, subj, patch); err != nil {
 		e.tracef("seq %s: publishing progress on %s failed: %v", chain, subj, err)
 	}
@@ -587,7 +587,7 @@ func (e *Engine) claimRun(chain string, subj entity.Ref, more entity.Obj) bool {
 // It is tried here, so that a caller finds the claim gone when this returns, which is the
 // ordinary case and what the result reports. Where the store did not take it, it is asked again
 // in the background for as long as the engine runs, and late runs once it has landed: nothing
-// else removes a claim of this verse's while it is up, so a release that was dropped is a subject the rule
+// else removes a claim of this viff's while it is up, so a release that was dropped is a subject the rule
 // never fires about again.
 func (e *Engine) releaseRun(chain string, subj entity.Ref, late ...func()) bool {
 	ref := mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj))

@@ -10,11 +10,11 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // AN ANSWER THE RUNNER RELAYS IS KEPT WITH THE CALL IT IS ABOUT. The task's process here is a
@@ -33,7 +33,7 @@ func TestARelayedAnswerIsKeptWithTheCallItIsAbout(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := NewSubprocessHandler(SubprocessConfig{Log: io.Discard})
-	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: gitEnv("acme/app"),
+	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "viff"}, Environment: gitEnv("acme/app"),
 		Autonomy: task.Autonomy{{Match: &task.Match{System: "git"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAsk}}}}
 	ch, err := delivery.Open(l.ID, &workspace.Workspace{}, nil, func(workspace.Repo) (string, error) { return "", nil }, delivery.Services{}, nil, l, io.Discard)
 	if err != nil {
@@ -43,7 +43,7 @@ func TestARelayedAnswerIsKeptWithTheCallItIsAbout(t *testing.T) {
 	close(ready)
 	p := &proc{id: l.ID, l: l, ready: ready, gone: make(chan struct{}), done: make(chan struct{}),
 		prox: httputil.NewSingleHostReverseProxy(u), co: &checkout{l: l, ch: ch}}
-	push := map[string]string{"repo": "github.com/acme/app", "ref": "refs/heads/verse/auto/x", "delete": "false", "force": "false", "exists": "false", "own": "false"}
+	push := map[string]string{"repo": "github.com/acme/app", "ref": "refs/heads/viff/auto/x", "delete": "false", "force": "false", "exists": "false", "own": "false"}
 	p.record(task.Event{Kind: task.EventPending, Task: "x", Cursor: 1, ID: "x~d1", Step: task.StepGitPush, Fields: systems.FieldsDoc(task.StepGitPush, push)})
 	p.record(task.Event{Kind: task.EventPending, Task: "x", Cursor: 2, ID: "x~d2"}) // a bare ask, about no call
 	h.mu.Lock()

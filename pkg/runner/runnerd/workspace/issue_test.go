@@ -13,7 +13,7 @@ import (
 	"github.com/signadot/tony-format/git-issue/issuelib"
 	"github.com/signadot/tony-format/git-issue/ops"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // AN ISSUE IS FILED IN THE CHECKOUT AND LEAVES WHEN PUSHED, as a commit does: CreateIssue writes

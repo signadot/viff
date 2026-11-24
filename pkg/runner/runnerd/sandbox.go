@@ -11,8 +11,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
 )
 
 // Sandbox confines a task's process. It is drawn once, around the whole process, so everything
@@ -27,7 +27,7 @@ type Sandbox interface {
 	Provides(net Network) error
 	// Wrap rewrites cmd to run confined, with dir the only path it may write and its working
 	// directory, unless cmd.Dir names one under it, and net what it may reach. programs are
-	// the other programs it runs (a script's verse-call-tool), which it finds where they are,
+	// the other programs it runs (a script's viff-call-tool), which it finds where they are,
 	// read only. inst, where it is given, is the task's install root, bound read only at
 	// InstPath: the runner writes tools into it from its own side (the pkg system), and the
 	// task sees them through the bind. The descriptors on cmd.ExtraFiles are passed through.
@@ -135,7 +135,7 @@ var NetworkModes = []string{NetworkOpen, NetworkNone, NetworkAllow}
 
 // EgressPath is where the egress socket appears inside a sandbox: a fixed path, because the
 // sandbox binds it and the task's process dials it (UseEgress), two programs agreeing on a name.
-const EgressPath = "/run/verse-egress"
+const EgressPath = "/run/viff-egress"
 
 // InstPath is where a task's install root appears inside its sandbox, read only: delivery's,
 // which resolves a program the task names against it (delivery.InstPath), and the sandboxes

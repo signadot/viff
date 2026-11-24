@@ -1,6 +1,6 @@
 # Convergence
 
-Verse evaluates a [rule](glossary.md#rule) at every [commit](glossary.md#commit) that touches
+Viff evaluates a [rule](glossary.md#rule) at every [commit](glossary.md#commit) that touches
 what the rule reads ([the charter reference](trigger-model.md#the-rule)). Nothing in the
 dispatcher decides when a rule stops, so the [charter](glossary.md#charter) decides it.
 
@@ -13,7 +13,7 @@ This page shows that a charter does stop. It covers three things:
 
 The page names five ways a charter can be ambiguous:
 
-| How many | How verse handles them |
+| How many | How viff handles them |
 |---|---|
 | two | checked at install |
 | one | a warning at install |
@@ -64,7 +64,7 @@ result as an evaluation. Rules over quiet subtrees cost nothing. A rule over a s
 writes land costs something.
 
 The engine could keep the document and roll it forward instead of reading it again, as `Since`
-does: it reads once and rolls forward with the changes it replays. Verse does not do this.
+does: it reads once and rolls forward with the changes it replays. Viff does not do this.
 Nothing above depends on it; it would make observation cheaper by a constant factor.
 
 ## One snapshot, so two reads cannot disagree
@@ -86,13 +86,13 @@ member's state at C with another member's state at a later commit.
 
 One exception remains. The **flat bindings** read the payload as it stands when the action runs
 (`Engine.refPayload`). A flat binding is a field of the subject's payload by its name, such as
-`stage`. The entity a firing is about cannot change, because verse fixes the subject before any
+`stage`. The entity a firing is about cannot change, because viff fixes the subject before any
 gate. But `stage` is current, and `subject.value.stage` is as of C: the same field, read at two
 moments.
 
 The reason is cost. `refPayload` runs for every firing, and pinning it would take a snapshot for
 every firing. The as-of-C references take a snapshot only when a charter uses them. Keeping the
-evaluated document through the firing, as above, would remove the exception. Verse does not do
+evaluated document through the firing, as above, would remove the exception. Viff does not do
 this.
 
 ## What ends a firing
@@ -111,7 +111,7 @@ prevents lost updates. It does not prevent repeated work.
 subject's predicate refuses, and the next evaluation does not select the subject. This is the
 usual shape, and for a spawn it is the only one. A spawn is not a store write, and repeating it
 is never harmless. The engine removes duplicates only while the task is live; once the task is
-reaped, the next commit spawns again. So verse **refuses at install a spawning action whose
+reaped, the next commit spawns again. So viff **refuses at install a spawning action whose
 subject can still match after it runs.** The message names the paths it could latch on.
 
 The check decides whether the predicate and the state after the action can both hold. It needs
@@ -139,7 +139,7 @@ spawn it lasts after the reap. The latch check therefore does not apply to a `se
 apply to the spawn of a completion hook either, which the completion above it limits.
 
 **In-flight guards cover the time before the latch lands.** Until the latch is written, every
-commit selects the subject again. So verse holds a firing for as long as its work lasts, with two
+commit selects the subject again. So viff holds a firing for as long as its work lasts, with two
 guards:
 
 | Guard | What it covers |
@@ -149,15 +149,15 @@ guards:
 
 Neither guard changes what runs, because `spawnHooked` already refuses a second task under a live
 id. Together they stop a firing for work already under way from asking a question or using
-budget before verse refuses it. Both guards key on (rule, subject), as the spawn id, the gate's
+budget before viff refuses it. Both guards key on (rule, subject), as the spawn id, the gate's
 question and the motion channel do.
 
 ## A narrow `on` samples; a vacuous `on` reconciles
 
-With no `on`, every commit that touches what the rule reads evaluates the rule again, so verse
+With no `on`, every commit that touches what the rule reads evaluates the rule again, so viff
 sees everything that could make the predicate true.
 
-With an `on`, the rising edge fires once, over the subjects *as they stood at that commit*. Verse
+With an `on`, the rising edge fires once, over the subjects *as they stood at that commit*. Viff
 does not act on a member that arrives later, until the cause falls and rises again:
 
 ```tony
@@ -174,7 +174,7 @@ does not act on a member that arrives later, until the cause falls and rises aga
 ```
 
 At commit C1, CI turns green. The edge fires over the pull requests at `reviewed` at C1. At C2, a
-pull request arrives at `reviewed`. `on` was already true, so there is no edge, and verse never
+pull request arrives at `reviewed`. `on` was already true, so there is no edge, and viff never
 ships it.
 
 That is what an edge means. But these are two different sentences:
@@ -217,7 +217,7 @@ is right to:
 - every firing completes;
 - each rule moves its subject out of its own selection, and into the other rule's selection.
 
-Verse catches the cycle at run time, with [the cycle throttle](cycle-throttle.md). The throttle
+Viff catches the cycle at run time, with [the cycle throttle](cycle-throttle.md). The throttle
 limits how deep a chain of firings, each caused by the last, can go. It does not analyse the
 charter. For the pair above, it trips after a few firings and names both rules in the log. By
 default a trip delays the firing and does not stop it: the firing waits for `tripDuration`
@@ -240,18 +240,18 @@ For literal patches, the conflict can be found:
 2. their predicates can both hold;
 3. they write the same path with different values.
 
-Through references it cannot be found in general. Verse warns at install in one case: a rule
+Through references it cannot be found in general. Viff warns at install in one case: a rule
 derives a field at an address, and another rule patches the same field there. The warning names
 both rules. Two patches that disagree get no warning.
 
 The cycle throttle does not cover this case. No chain grows, so nothing trips.
 
-There is no general fix, even when verse finds it. Two rules that disagree about a field make a
+There is no general fix, even when viff finds it. Two rules that disagree about a field make a
 charter that means two things, and only its author can say which.
 
 ## The claim
 
-Verse takes one snapshot per commit. Every action's effect is either a store write or a spawn the
+Viff takes one snapshot per commit. Every action's effect is either a store write or a spawn the
 install check has limited. So **the settled store depends on the charter and its inputs**, and
 not on the order in which firings run.
 

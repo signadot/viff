@@ -1,6 +1,6 @@
 package runner
 
-import "github.com/signadot/verse/pkg/task"
+import "go.viff.dev/viff/pkg/task"
 
 // The bodies of the control routes: `POST /tasks/{id}/say`, `/cancel` and `/resolve`, and
 // `/pause` and `/resume`, and `PUT /tasks/{id}/autonomy`.
@@ -12,7 +12,7 @@ import "github.com/signadot/verse/pkg/task"
 // SayRequest is the body of `POST /tasks/{id}/say`: an instruction to a running task, and who
 // gave it. An empty By is an unattributed caller, said as such on the task's read plane.
 //
-//tony:schemagen=verse-runner-say,notag
+//tony:schemagen=viff-runner-say,notag
 type SayRequest struct {
 	Instruction string `tony:"field=instruction"`
 	By          string `tony:"field=by,omitzero"`
@@ -25,7 +25,7 @@ type SayRequest struct {
 // reason is what the task's charters see on `onCancelled`, so it crosses. A cancel with no
 // body, or no reason, is a cancel all the same, and the runner says its own.
 //
-//tony:schemagen=verse-runner-cancel,notag
+//tony:schemagen=viff-runner-cancel,notag
 type CancelRequest struct {
 	Reason string `tony:"field=reason,omitzero"`
 	// By is who cancelled it; empty is an unattributed caller.
@@ -36,14 +36,14 @@ type CancelRequest struct {
 // at its next boundary, and its `paused` event says who. A pause with no body is a pause all
 // the same, unattributed.
 //
-//tony:schemagen=verse-runner-pause,notag
+//tony:schemagen=viff-runner-pause,notag
 type PauseRequest struct {
 	By string `tony:"field=by,omitzero"`
 }
 
 // ResumeRequest is the body of `POST /tasks/{id}/resume`: who is resuming the task.
 //
-//tony:schemagen=verse-runner-resume,notag
+//tony:schemagen=viff-runner-resume,notag
 type ResumeRequest struct {
 	By string `tony:"field=by,omitzero"`
 }
@@ -52,7 +52,7 @@ type ResumeRequest struct {
 // gates. Answered `400` without a choice, and `404` when the task holds no open gate by that id:
 // an unknown id, or one already answered.
 //
-//tony:schemagen=verse-runner-resolve,notag
+//tony:schemagen=viff-runner-resolve,notag
 type ResolveRequest struct {
 	// ID is the gate answered, as the task's pending event and snapshot name it.
 	ID string `tony:"field=id"`
@@ -71,7 +71,7 @@ type ResolveRequest struct {
 // read plane says who changed it (a `autonomy` event). Refused with 400 as a launch's autonomy
 // would be, and with 410 once the task has ended.
 //
-//tony:schemagen=verse-runner-autonomy,notag
+//tony:schemagen=viff-runner-autonomy,notag
 type AutonomyRequest struct {
 	Autonomy task.Autonomy `tony:"field=autonomy,omitzero"`
 	By       string        `tony:"field=by,omitzero"`

@@ -4,27 +4,27 @@
 # startup and fetches on every pass. That is the read. The out half (`-out`) pushes exactly the
 # refs it is asked for under git.<repo>.out, a tag or a branch at a sha, with the same
 # credential, which must therefore be allowed to push (docs/reference/iod.md, "The out half of
-# git"). `-tree .verse/charters` puts the tree sha of the charters directory on every ref, which is what
+# git"). `-tree .viff/charters` puts the tree sha of the charters directory on every ref, which is what
 # the repo-charters reconciler keys approval on. For a repo that already exists somewhere (a
-# build host, a laptop), run the same binary there with `-repo` instead, or use verse's
-# in-process path (`verse iod add --dir`) and skip this entirely.
+# build host, a laptop), run the same binary there with `-repo` instead, or use viff's
+# in-process path (`viff iod add --dir`) and skip this entirely.
 #
 # Install it once the pods are up. The name is free here, unlike the Slack/Linear/GitHub ones:
 # those bake a hint url containing their name into the pod, so the name has to be decided
 # before it starts and there is a `<x>IodName` knob for it. This one is polled and posts no
 # hints, so there is nothing to match and no knob (there never was a `gitIodName`).
-#   verse iod add cluster http://git-iod:9801 -root git
+#   viff iod add cluster http://git-iod:9801 -root git
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: git-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: git
 spec:
   replicas: 1
-  # Recreate, not RollingUpdate: two pods would each hold a mirror and verse would dial
+  # Recreate, not RollingUpdate: two pods would each hold a mirror and viff would dial
   # whichever the Service picked, so a fetch's timing would decide which answer a pass got.
   # A source is the single writer of its slice; running two of it is the thing the install's
   # disjointness check exists to prevent, arriving through the deployment instead.
@@ -32,19 +32,19 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: verse
+      app: viff
       tier: iods
       io: git
   template:
     metadata:
       labels:
-        app: verse
+        app: viff
         tier: iods
         io: git
     spec:
       containers:
       - name: git-iod
-        image: signadot/verse:latest
+        image: signadot/viff:latest
         # The mirror spec comes from the build (`-e gitMirror=…`); see deploy/build.tony.
         command:
         - iod
@@ -54,9 +54,9 @@ spec:
         - -state
         - /repos
         - -mirror
-        - https://github.com/signadot/verse.git
+        - https://github.com/signadot/viff.git
         - -tree
-        - .verse/charters
+        - .viff/charters
         - -out
         ports:
         - name: source
@@ -71,7 +71,7 @@ spec:
         # mirror wants. That is why this is not a knob. Create it and the same pod reaches a
         # private remote:
         #
-        #   kubectl -n verse create secret generic verse-git \
+        #   kubectl -n viff create secret generic viff-git \
         #     --from-literal=credential=$'username=x-access-token\npassword=<PAT>\n'
         #
         # GIT_CONFIG_* rather than a token in the -mirror url, because the url is in the pod
@@ -83,11 +83,11 @@ spec:
         # every fetch, which is once a minute forever. This one only ever reads, and answers
         # nothing for `store` and `erase`.
         env:
-        # The out half reads what is asked of it from versed, which the reflection never dials
-        # (versed dials it). The other iods derive this from their hint url; git has no hint url,
+        # The out half reads what is asked of it from viffd, which the reflection never dials
+        # (viffd dials it). The other iods derive this from their hint url; git has no hint url,
         # since its hint is a hook, so it is named here.
-        - name: VERSE_ADDR
-          value: verse:9797
+        - name: VIFF_ADDR
+          value: viff:9797
         - name: GIT_CONFIG_COUNT
           value: "1"
         - name: GIT_CONFIG_KEY_0
@@ -102,14 +102,14 @@ spec:
           readOnly: true
         readinessProbe:
           # GET /io is the contract's own "what are you", which is exactly the question a
-          # readiness probe is asking. A source that cannot answer it is one verse's install
+          # readiness probe is asking. A source that cannot answer it is one viff's install
           # probe would call unreachable.
           httpGet:
             path: /io
             port: source
           initialDelaySeconds: 3
           periodSeconds: 10
-          # Explicit, for the reason versed's are (see deploy/source/versed-deployment.yaml):
+          # Explicit, for the reason viffd's are (see deploy/source/viffd-deployment.yaml):
           # the default is one second, and /source is answered by a program that may be busy
           # talking to somebody else's API.
           timeoutSeconds: 5
@@ -122,7 +122,7 @@ spec:
         emptyDir: {}
       - name: git-credentials
         secret:
-          secretName: verse-git
+          secretName: viff-git
           optional: true
 ---
 apiVersion: v1
@@ -130,12 +130,12 @@ kind: Service
 metadata:
   name: git-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: git
 spec:
   selector:
-    app: verse
+    app: viff
     tier: iods
     io: git
   ports:

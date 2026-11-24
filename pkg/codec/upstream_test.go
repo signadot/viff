@@ -11,9 +11,9 @@ import (
 	"github.com/signadot/tony-format/go-tony/parse"
 )
 
-// These tests pin behaviour of go-tony that verse's design depends on. They are not
-// testing verse. They exist because each of these facts, if it silently changed upstream,
-// would break verse somewhere far from here — so it is worth failing loudly and locally
+// These tests pin behaviour of go-tony that viff's design depends on. They are not
+// testing viff. They exist because each of these facts, if it silently changed upstream,
+// would break viff somewhere far from here — so it is worth failing loudly and locally
 // instead.
 
 // Valid JSON is valid tony. This is why a JSON document can be read by the tony parser
@@ -109,9 +109,9 @@ func TestUpstreamBlankInputIsNilNil(t *testing.T) {
 
 // Encoding a tagged node as JSON is a HARD ERROR, not a silent drop.
 //
-// verse no longer renders JSON at all, so this is now a BACKSTOP rather than a load-bearing
+// viff no longer renders JSON at all, so this is now a BACKSTOP rather than a load-bearing
 // fact: encodeNode refuses first. It is kept because the two failures differ in what they
-// cost — verse's refusal is a sentence about formats, upstream's is the guarantee that no
+// cost — viff's refusal is a sentence about formats, upstream's is the guarantee that no
 // path anywhere can turn `!quorum 2` into a plain 2 on the way out.
 func TestUpstreamJSONRejectsTags(t *testing.T) {
 	n := ir.FromInt(2).WithTag("!quorum")
@@ -134,7 +134,7 @@ func TestUpstreamJSONRejectsTags(t *testing.T) {
 // ── the dispatch rules ───────────────────────────────────────────────────────
 //
 // Whether a type's hand-written ToTonyIR is actually CALLED depends on how it is reached.
-// These two tests pin the rules, because between them they decide which verse types can
+// These two tests pin the rules, because between them they decide which viff types can
 // be code-generated and which must be hand-written (see the trigger package).
 
 type dispLeaf struct{ V string }
@@ -171,7 +171,7 @@ type dispHost struct {
 // A hand-written codec is reached however the value is held — value or pointer, struct or
 // named map. Before v0.0.88 gomap checked for the method only inside its pointer branch, so
 // a codec on a value field was skipped silently and the field walked structurally instead;
-// that is what forced verse's charter types to be hand-written all the way up. Now the
+// that is what forced viff's charter types to be hand-written all the way up. Now the
 // dispatch is uniform, which is what lets a generated type hold a hand-written one.
 func TestUpstreamReflectionDispatchIsUniform(t *testing.T) {
 	dispCalls, dispFormats = nil, nil
@@ -246,7 +246,7 @@ func TestUpstreamHonorsOmitzero(t *testing.T) {
 
 // `omit`, `-` and `field=-` exclude a field on the reflection path as well as in generated
 // code. Before v0.0.89 reflection ignored all three, so a field explicitly marked for
-// exclusion was serialized — under its GO field name when no `field=` was given. No verse
+// exclusion was serialized — under its GO field name when no `field=` was given. No viff
 // type relies on `omit` yet; this pin is what makes relying on it safe.
 func TestUpstreamHonorsOmit(t *testing.T) {
 	type probe struct {

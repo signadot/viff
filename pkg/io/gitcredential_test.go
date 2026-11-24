@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // gitCredential is what git's own credential machinery answers for github.com, as a fetch or a
@@ -45,7 +45,7 @@ func TestGitPresentsTheTokenItIsGiven(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := verseio.UseGitToken(ctx, token, t.TempDir(), 20*time.Millisecond); err != nil {
+	if err := viffio.UseGitToken(ctx, token, t.TempDir(), 20*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 	got := gitCredential(t)

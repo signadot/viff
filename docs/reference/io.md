@@ -4,50 +4,50 @@ This page is the surface of an iod. For what an iod *is* (one program, two halve
 dials each half), see [../io.md](../io.md). To build one, copy
 [examples/io](examples/io/main.go).
 
-The examples on this page follow one team, acme, which connects verse to its repository `app`,
+The examples on this page follow one team, acme, which connects viff to its repository `app`,
 to GitHub's `acme/app`, and to its Slack workspace `acme`.
 
-An installed [iod](../glossary.md#iod) is the data at `verse.iods.<name>`:
+An installed [iod](../glossary.md#iod) is the data at `mirror.iods.<name>`:
 
 | | |
 |---|---|
-| `name` | its name, and the whole of its address under `verse.iods`. Required |
+| `name` | its name, and the whole of its address under `mirror.iods`. Required |
 | `root` | the root of the tree this iod writes, and is the single writer of. It is the first segment of every address it writes (`git`, `github`, …). Required |
-| `url` | verse dials this base for the reflection contract |
+| `url` | viff dials this base for the reflection contract |
 | `dir` | a local git repository, reflected in task, with no network |
-| `dial-in` | the iod dials verse. It is designed, and refused at install until it is built |
+| `dial-in` | the iod dials viff. It is designed, and refused at install until it is built |
 | `owns` | the addresses this iod claims to be the single writer of (see below) |
 | `out` | its out half: where it reads what is asked of it, whom it acts as, and who may ask (see below) |
 | `scope` | the copy-on-write scope it reflects into. Empty is baseline |
-| `lastReflect` | when verse last *wrote* from this iod. Verse writes it |
-| `lastError` | the last failure of the reflection. The next success clears it. Verse writes it |
+| `lastReflect` | when viff last *wrote* from this iod. Viff writes it |
+| `lastError` | the last failure of the reflection. The next success clears it. Viff writes it |
 
 The first four rows and `lastReflect` belong to the in half, the
-[source](../glossary.md#source): the reflection that verse dials. `out` belongs to the other
-half, the [sink](../glossary.md#sink), which dials verse.
+[source](../glossary.md#source): the reflection that viff dials. `out` belongs to the other
+half, the [sink](../glossary.md#sink), which dials viff.
 
 **A registration has exactly one of `url`/`dir`/`dial-in`.** The three differ only in where the
 connection comes from. `Reflect` is the same call on all three. For a runner, absence means
 something. Here it does not: the field that is present says which way it is.
 
-The address of an iod is its name and nothing else: `verse.iods.<name>`. It is under the reserved
-root, like everything verse keeps about its own running. So an operator tells two iods of one
+The address of an iod is its name and nothing else: `mirror.iods.<name>`. It is under the reserved
+root, like everything viff keeps about its own running. So an operator tells two iods of one
 connector apart by the names the operator gave them.
 
-`root` answers the question that verse asks of a registration: who writes `git.*`? The root is
+`root` answers the question that viff asks of a registration: who writes `git.*`? The root is
 one segment of an address. So it may not contain `:`, `/` or `.`. A name may not contain `/`,
 because a name is a segment of the route that serves the iod.
 
 **The convention is to name an iod after its connector**, such as `git`, `git-issue` or `slack`.
-Most verses run one iod of each kind. A name that says no more than `root` says would be a second
+Most viffs run one iod of each kind. A name that says no more than `root` says would be a second
 word for one fact. The name is still free. A second iod on one connector is where a name of its
 own is useful (`git` beside `git-buildhost`).
 
-An iod reflects the world outside verse. It never reflects what verse keeps under `verse`:
+An iod reflects the world outside viff. It never reflects what viff keeps under `viff`:
 
-- Verse refuses a reflection that names an address under `verse.`.
-- Verse refuses, at install, a claim that names such an address.
-- No claim reaches there, however wide it is written. `*` claims every address but `verse`.
+- Viff refuses a reflection that names an address under `viff.`.
+- Viff refuses, at install, a claim that names such an address.
+- No claim reaches there, however wide it is written. `*` claims every address but `viff`.
 
 ## Ownership
 
@@ -59,7 +59,7 @@ An iod reflects the world outside verse. It never reflects what verse keeps unde
 
 The node of a claim is its levels up to the first glob. Installing takes each such node for the
 installer. So what the iod reflects beneath the node belongs to the installer, with no owner
-record per address. Verse refuses an install over a node that somebody else owns
+record per address. Viff refuses an install over a node that somebody else owns
 ([perms.md](../perms.md#ownership)).
 
 An ownership claim is an **address**, not a payload predicate. An install compares declarations,
@@ -79,7 +79,7 @@ claim owns the node it names and everything under it. So `git` owns every reposi
 
 **Sharing is a deeper address.** Two iods that share a thing do not share a node. They own two
 nodes beneath it, such as `linear.project.p1.owners.ENG` and `…owners.OPS`. These are two
-addresses, and verse proves them apart with the same comparison, level by level, as any other
+addresses, and viff proves them apart with the same comparison, level by level, as any other
 pair. Sharing is not an exception to single-writership. It is single-writership one level down.
 The extra level costs nothing, because an address has no fixed depth.
 
@@ -91,7 +91,7 @@ Two claims are **disjoint** when any level is disjoint. Two levels are disjoint 
 If no level separates the claims, the shorter claim contains the longer. For example, `git`
 overlaps `git.app.ref.x`, and it is not disjoint from it.
 
-- A `*` level is disjoint from nothing. So verse can prove `git.*.*` apart from nothing under
+- A `*` level is disjoint from nothing. So viff can prove `git.*.*` apart from nothing under
   the same root.
 - A `*` anywhere but at the end of a level is a parse error. It is not an approximation.
 - Levels compare **segment by segment**. So `owners.ENG` and `owners.ENGINE` are disjoint, and
@@ -115,15 +115,15 @@ other surface spells an address: `POST /entity` takes `at`, and so does `!get-pa
 may hold any character, `@`, `/` and `:` among them, so no separator could add a second part to
 the string. A second part goes beside `at`, as a field.
 
-An install with no `owns` takes what the probe reported. Verse can prove a registration with no
-claims apart from nothing. So verse refuses it beside any other registration in its scope.
+An install with no `owns` takes what the probe reported. Viff can prove a registration with no
+claims apart from nothing. So viff refuses it beside any other registration in its scope.
 
 ## Commands
 
 ```
-verse iod                                what is installed, with lastReflect/lastError
+viff iod                                what is installed, with lastReflect/lastError
         [-probe]                             …and what each one says right now (not recorded)
-verse iod add <name> <url> -root <root>       install one, probing the url first
+viff iod add <name> <url> -root <root>       install one, probing the url first
        add -dir <d> <name>                  …or a local git repo, reflected in task
        add [-file <f>] | [file] | stdin      …or as a document (.tony/.json/.yaml)
            [-no-probe]                       install without asking it what it is
@@ -135,15 +135,15 @@ verse iod add <name> <url> -root <root>       install one, probing the url first
               [-keep]                        …the truth is moving: leave the last known state
 ```
 
-A `<ref>` is `verse.iods.laptop` or `laptop`: the whole address or the bare name. The middle form
+A `<ref>` is `mirror.iods.laptop` or `laptop`: the whole address or the bare name. The middle form
 (`iods.laptop`) is not accepted.
 
-`verse status` names the installed iods under `iods:`. It shows the refs only. `verse iod` shows
+`viff status` names the installed iods under `iods:`. It shows the refs only. `viff iod` shows
 their health.
 
-The list is in `verse status` because it is the one line that says whether anything is
-*arriving*. Every other counter moves on what verse already has. So a verse whose last iod was
-removed looks the same as a healthy, quiet verse, until that list is empty.
+The list is in `viff status` because it is the one line that says whether anything is
+*arriving*. Every other counter moves on what viff already has. So a viff whose last iod was
+removed looks the same as a healthy, quiet viff, until that list is empty.
 
 Every command takes the global `-scope`. A scoped iod is installed, listed and removed in the
 scope it reflects into.
@@ -167,10 +167,10 @@ A route that names one iod has two answers when it does not find the iod:
 | `404` | `in your view, no iod "<name>" is installed`. The iod is not installed, or it is not yours to read. The answer is the same for both. |
 | `503` | `iod "<name>" could not be read: …`. The store did not answer. Nothing is known to be missing, so ask again. |
 
-The listing leaves out the iods you may not read. It answers `503` when verse could not read the
+The listing leaves out the iods you may not read. It answers `503` when viff could not read the
 store.
 
-`reach` is one of `a source`, `not a source` and `unreachable`. Verse writes nothing about it to
+`reach` is one of `a source`, `not a source` and `unreachable`. Viff writes nothing about it to
 the store.
 
 A `500` from an iod is *unreachable*, not *not a source*. Something speaks HTTP and fails. That is
@@ -178,16 +178,16 @@ at least as often an iod with a temporary fault as a wrong url. Refusing the ins
 a fault that fixes itself.
 
 The listing reports `lastPass` from the live reflector: when a pass last *completed*, whatever
-it did. It reports `running: false` for a registration with no reflector. Verse stores neither
+it did. It reports `running: false` for a registration with no reflector. Viff stores neither
 in the document.
 
 **A [hint](../glossary.md#hint) carries no data.** It names which address went stale, and
-nothing else. So the route can stay unauthenticated in a wide-open dogfood verse. A delivery
+nothing else. So the route can stay unauthenticated in a wide-open dogfood viff. A delivery
 that is duplicated, reordered or forged costs at most a reconcile of an address whose contents
 its sender does not choose.
 
 A malformed ref is `400`, not a silent full resync. A hint to a registration that is installed
-but not running is `503`, not a quiet `204`. A hint that verse drops must not look like one that
+but not running is `503`, not a quiet `204`. A hint that viff drops must not look like one that
 worked.
 
 ## The contract an iod serves
@@ -222,7 +222,7 @@ per level, and `*` matches any one segment. The path is also what converge **rea
 under `git.app.ref` and the node `git.app.head`, not all of `git`.
 
 The first segment of a cover is a literal, and it is the `root` of this iod. A cover that begins
-with `*` would claim every address it is compared against, so verse refuses it.
+with `*` would claim every address it is compared against, so viff refuses it.
 
 A cover may add `value`, a payload predicate. Use it where an address alone cannot say what the
 answer is complete for. GitHub covers the open issues of a repository and its recent closed
@@ -242,40 +242,40 @@ So the payload predicate is spelled `value`, as it is in a charter.
 
 On the wire, each cover also carries an empty `op: ""`. It means nothing here, and it comes from
 upstream: the code generator honours `omitzero` on every field of that struct except the field
-whose type implements `MarshalText`. Ignore it. A cover has no op, and verse refuses a cover
+whose type implements `MarshalText`. Ignore it. A cover has no op, and viff refuses a cover
 whose op is not empty.
 
 **A failed reflect must fail loudly**: `500`, never `200` with an empty body. An empty answer
-that carries covers is an instruction to tombstone everything under them, and verse will believe
+that carries covers is an instruction to tombstone everything under them, and viff will believe
 it.
 
 ## The reflector
 
-Verse runs one [reflector](../glossary.md#reflector) per installed registration.
+Viff runs one [reflector](../glossary.md#reflector) per installed registration.
 
 | When | What happens |
 |---|---|
-| install | verse starts it |
-| removal | verse stops it |
-| restart | verse restores it, after the charter |
+| install | viff starts it |
+| removal | viff stops it |
+| restart | viff restores it, after the charter |
 
 A reflector restores after the charter because a reflection is a write that rules react to. A
 level-triggered pass does not repeat itself. A rule restored late would miss what it missed, for
 good.
 
 A restart may fail to list the registrations: the store is busy, or the read passes its
-deadline. Then verse restores them when the listing does happen. After the charter is back,
-verse asks for the listing again until it answers. Until then, `verse status` lists
-`restored sources` under `restoring`, each registration shows `running: false`, and verse
+deadline. Then viff restores them when the listing does happen. After the charter is back,
+viff asks for the listing again until it answers. Until then, `viff status` lists
+`restored sources` under `restoring`, each registration shows `running: false`, and viff
 refuses a hint to it. None of this needs any action.
 
 Each reflector runs three kinds of pass:
 
 - an initial full pass;
-- a periodic full pass every `versed.ResyncEvery` (one minute);
+- a periodic full pass every `viffd.ResyncEvery` (one minute);
 - a targeted pass for each hint.
 
-Verse does **not** restore scoped registrations on restart. `entity.Store` has no way to list
+Viff does **not** restore scoped registrations on restart. `entity.Store` has no way to list
 scopes, and a scoped store reads baseline layered underneath, so nothing can find them. Scoped
 charters have the same gap. Whatever owns a scope creates it on demand, so the thing that made
 the scope can install into it again.
@@ -298,10 +298,10 @@ out:
 | `places` | where it reads what is asked of it, as kinded paths. Each must lie inside what this iod claims, and outside what its reflection covers. It is a list, because one iod may serve several. A Linear iod reads one address per team, since a claim per team is what keeps two installs apart |
 | `as` | the principal it acts as. This principal owns every status the iod writes, so nobody else can forge one |
 | `requesters` | who may ask, as grantees. Empty asks for nobody. That is how an operator says that the grants are managed by hand |
-| `lastError` | the failure that stopped a pass, and when it began. Verse writes it from the iod's report (see below). What the last pass did is in the report too, kept in scratch rather than on the record |
+| `lastError` | the failure that stopped a pass, and when it began. Viff writes it from the iod's report (see below). What the last pass did is in the report too, kept in scratch rather than on the record |
 
 ```sh
-verse iod add slack http://slack-iod:9801 --root slack \
+viff iod add slack http://slack-iod:9801 --root slack \
   --out slack.acme.out --as agent:slack-iod --requesters group:acme-dev
 ```
 
@@ -316,7 +316,7 @@ child-grants {read: ["*"]}                         which everyone may read
 
 The grant to the requesters is *below*, and not a child grant, on purpose. A child grant is
 copied onto every record created beneath, statuses included. So it would let the askers write
-the answers. Nobody sees that difference until somebody edits a status. For this reason verse
+the answers. Nobody sees that difference until somebody edits a status. For this reason viff
 writes the grants from the record, and does not leave them to a runbook.
 
 The install checks these things, while the operator is present:
@@ -345,7 +345,7 @@ sends: [{from: out.slack, to: slack.acme.out}]
 ```
 
 Each pass, the out half reads its own place and then every outbox sending to it, which it asks
-verse for (`GET /outboxes`). An input in an outbox is handed to the connector as one asked at the
+viff for (`GET /outboxes`). An input in an outbox is handed to the connector as one asked at the
 iod's own place, so a connector serving several places treats it the same. Its status is written
 beside it, inside the package, where the package's rules can read it.
 
@@ -409,9 +409,9 @@ limit for the account an iod acted as.
 A connector that keeps something current on every pass is still told of an input it does not
 offer. Slack's keeps the thread a message's replies are matched in.
 
-### Health: verse is told
+### Health: viff is told
 
-Verse dials a reflection, so it knows how the reflection is doing. Verse never dials an out half,
+Viff dials a reflection, so it knows how the reflection is doing. Viff never dials an out half,
 so the out half reports:
 
 ```
@@ -422,7 +422,7 @@ When the pass finished and what it did (`lastPass`, `delivered`, `failed`) go to
 *scratch*: a document beside the log with no history and no watches, for facts that are only
 about now, so a pass costs no commit. The failure that stopped a pass (`lastError`, with when it
 began) goes on the registration, written when it begins and removed by the pass that ends it;
-a pass that repeats either writes nothing. `verse iod` reads both and shows them beside the
+a pass that repeats either writes nothing. `viff iod` reads both and shows them beside the
 columns of the reflection: the report under `report`, the failure under `out.lastError`. So an
 iod with a healthy reflection and an out half refused for an hour does not look healthy. A
 scoped iod's report is its scope's, beside baseline's and not on it, and goes with the scope.
@@ -437,7 +437,7 @@ the iod's own half of the world. A forged report costs a misleading timestamp.
 
 A reply or a mention is not a reflection and not a delivery. It is a control request,
 and an intervention is never a store write ([control.md](../control.md)). So a connector that
-hears one asks verse for it through the ordinary route. It does not write the record.
+hears one asks viff for it through the ordinary route. It does not write the record.
 
 `io.Controller` is that seam. It gets `func(principal, account string) *client.Client`: a
 factory, not a client. `account` is the person's account in the external system,
@@ -454,7 +454,7 @@ Three invariants hold for every connector:
   `agent:slack-iod` is an answer that nobody gave.
 
 The connector presents its own token and names the person's account beside the person
-(`Verse-For-Principal`). Verse admits the request as the person only through that account's
+(`Viff-For-Principal`). Viff admits the request as the person only through that account's
 binding, and only from an iod the deployment trusts for the provider
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)). Where the
-iod presents no token, verse takes the name as it takes the CLI's.
+iod presents no token, viff takes the name as it takes the CLI's.

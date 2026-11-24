@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // counted is a Source that records what it was asked and answers whatever it was told to.
@@ -16,21 +16,21 @@ type counted struct {
 	mu    sync.Mutex
 	calls []entity.Ref
 	err   error
-	owns  []verseio.Own
+	owns  []viffio.Own
 }
 
 func (c *counted) Root() string { return "demo" }
 
-func (c *counted) Owns() []verseio.Own { return c.owns }
+func (c *counted) Owns() []viffio.Own { return c.owns }
 
-func (c *counted) Reflect(_ context.Context, ref entity.Ref) (verseio.Reflection, error) {
+func (c *counted) Reflect(_ context.Context, ref entity.Ref) (viffio.Reflection, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.calls = append(c.calls, ref)
 	if c.err != nil {
-		return verseio.Reflection{}, c.err
+		return viffio.Reflection{}, c.err
 	}
-	rn := verseio.Reflection{Covers: []entity.Pattern{verseio.Cover("demo", "*", "*")}}
+	rn := viffio.Reflection{Covers: []entity.Pattern{viffio.Cover("demo", "*", "*")}}
 	rn.Add(entity.RefAt("demo", "thing", "1"),
 		entity.Obj{"calls": len(c.calls)})
 	return rn, nil
@@ -47,7 +47,7 @@ func (c *counted) count() int {
 func TestThrottleAnswersFromTheLastReflectionPerRef(t *testing.T) {
 	ctx := context.Background()
 	src := &counted{}
-	th := verseio.Throttle(src, time.Minute)
+	th := viffio.Throttle(src, time.Minute)
 
 	a := entity.RefAt("demo", "thing", "a")
 	b := entity.RefAt("demo", "thing", "b")
@@ -71,11 +71,11 @@ func TestThrottleAnswersFromTheLastReflectionPerRef(t *testing.T) {
 // A window of zero is no window at all: Throttle hands back the source it was given.
 func TestThrottleWithNoWindowIsTheSourceItself(t *testing.T) {
 	src := &counted{}
-	if verseio.Throttle(src, 0) != verseio.Source(src) {
+	if viffio.Throttle(src, 0) != viffio.Source(src) {
 		t.Fatal("a zero window wrapped the source anyway")
 	}
 	ctx := context.Background()
-	th := verseio.Throttle(src, -time.Second)
+	th := viffio.Throttle(src, -time.Second)
 	for range 3 {
 		if _, err := th.Reflect(ctx, entity.Ref{}); err != nil {
 			t.Fatal(err)
@@ -93,7 +93,7 @@ func TestThrottleNeverCachesAFailure(t *testing.T) {
 	ctx := context.Background()
 	boom := errors.New("the external system said no")
 	src := &counted{err: boom}
-	th := verseio.Throttle(src, time.Hour)
+	th := viffio.Throttle(src, time.Hour)
 
 	for range 3 {
 		rn, err := th.Reflect(ctx, entity.Ref{})
@@ -125,9 +125,9 @@ func TestThrottleNeverCachesAFailure(t *testing.T) {
 // The wrapper must not swallow the ownership claim: a source that owns nothing is refused an
 // install beside anything it cannot be proved apart from.
 func TestThrottleKeepsTheOwnershipClaim(t *testing.T) {
-	src := &counted{owns: []verseio.Own{{At: "demo.*.acme/*"}}}
-	th := verseio.Throttle(src, time.Minute)
-	d := verseio.Describe(th)
+	src := &counted{owns: []viffio.Own{{At: "demo.*.acme/*"}}}
+	th := viffio.Throttle(src, time.Minute)
+	d := viffio.Describe(th)
 	if d.Root != "demo" {
 		t.Fatalf("system %q, want demo", d.Root)
 	}
@@ -136,7 +136,7 @@ func TestThrottleKeepsTheOwnershipClaim(t *testing.T) {
 	}
 	// A source that declines to say still declines to say through the wrapper — a claim
 	// invented here would be worse than none.
-	plain := verseio.Describe(verseio.Throttle(&counted{}, time.Minute))
+	plain := viffio.Describe(viffio.Throttle(&counted{}, time.Minute))
 	if len(plain.Owns) != 0 {
 		t.Fatalf("owns %v, want none", plain.Owns)
 	}

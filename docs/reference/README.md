@@ -1,26 +1,26 @@
 # Commands and the rest
 
 This page has every command, how to select by what the data says, and the scripts that seed a
-verse. What a charter says is in [the charter reference](../trigger-model.md), and the
-[tutorial](../tutorial/README.md) walks through all of it. Running a verse, runners, iods and
+viff. What a charter says is in [the charter reference](../trigger-model.md), and the
+[tutorial](../tutorial/README.md) walks through all of it. Running a viff, runners, iods and
 resolvers are in [the platform docs](../platform.md), in the repository. For the map of all
 the docs, see [the docs index](../README.md).
 
 | | |
 |---|---|
 | [tasks.md](tasks.md) | the task surface: the work, the agent, the environment, the autonomy, attaching, the mirror, and steering |
-| [mcp.md](mcp.md) | `verse mcp`: verse to an agent's host, as you, the tools it serves and how they wait |
+| [mcp.md](mcp.md) | `viff mcp`: viff to an agent's host, as you, the tools it serves and how they wait |
 | [scopes.md](scopes.md) | scopes: a private copy of the store, what runs in it, and what it owns |
 | [entities.md](entities.md) | addresses, payloads, merging writes, conditional writes, selection, and watching |
-| [perms.md](perms.md) | permissions in detail: the grammar, the fields of a record, what verse checks on a write and a read, installed things, questions, the seed, and `verse perms`. The model itself is in [../perms.md](../perms.md). |
-| [representation.md](representation.md) | tony, JSON and YAML: what verse reads, what it writes, and why the two differ |
+| [perms.md](perms.md) | permissions in detail: the grammar, the fields of a record, what viff checks on a write and a read, installed things, questions, the seed, and `viff perms`. The model itself is in [../perms.md](../perms.md). |
+| [representation.md](representation.md) | tony, JSON and YAML: what viff reads, what it writes, and why the two differ |
 
 ## Commands
 
-Every command is `verse <command>`. Each collection is one command, named in the singular:
-bare, it lists; with a verb, it acts on one member. `verse question` lists the questions
-waiting on you, and `verse question approve <id>` answers one. The plural is an alias of the
-same command (`verse questions`, `verse tasks`). `verse question list` is an error: bare, it
+Every command is `viff <command>`. Each collection is one command, named in the singular:
+bare, it lists; with a verb, it acts on one member. `viff question` lists the questions
+waiting on you, and `viff question approve <id>` answers one. The plural is an alias of the
+same command (`viff questions`, `viff tasks`). `viff question list` is an error: bare, it
 already lists.
 
 Flags may come before or after positionals: `question approve <id> -as you@example.com -say ok`
@@ -28,8 +28,8 @@ works. A `<who>` is a [principal](../glossary.md#principal) in the
 [grammar](../perms.md#principals-and-grantees): `user:<email>` or the bare email,
 `agent:<name>`, or `runner:<identity>`.
 
-The commands that start and stop a verse, and that install runners, iods and resolvers, are
-for somebody who runs verse. They are in [commands.md](../platform/commands.md), in the
+The commands that start and stop a viff, and that install runners, iods and resolvers, are
+for somebody who runs viff. They are in [commands.md](../platform/commands.md), in the
 repository.
 
 ### Every listing filters
@@ -43,9 +43,9 @@ error (exit 0).
 | `-trim <match>` | writes only the parts the document names |
 
 ```sh
-verse ps -if '{status: running}' -trim '{id status}'
-verse data demo pr '*' -trim '{stage}'         # per pr: the `*` makes each one an item
-verse watch demo -trim '{at to}'
+viff ps -if '{status: running}' -trim '{id status}'
+viff data demo pr '*' -trim '{stage}'         # per pr: the `*` makes each one an item
+viff watch demo -trim '{at to}'
 ```
 
 Write a `-trim` document as a **key set**: in braces, a key with no `:` and no value is that
@@ -61,13 +61,13 @@ On `data` and `watch`, `-if` is the server's selector: it decides which addresse
 about before any data crosses the wire. So those two take `-trim` alone
 ([selecting by what the data says](#selecting-by-what-the-data-says)).
 
-Comments need no flag: verse reads and writes them everywhere.
+Comments need no flag: viff reads and writes them everywhere.
 
 ### status, schema
 
 | Command | What it does |
 |---|---|
-| `status` | the engine and the store, now. `restoring:` names the parts of a start that are still waiting on the store; `arming:` under a charter names armed rules whose watch the store is still opening, with what it is doing for each — in line, opening it, opening it again after a drop, or refused and asking again — and `pending:` the rules held for something else — a stratum, a runner — with what each waits for. All are absent on a verse that is up. |
+| `status` | the engine and the store, now. `restoring:` names the parts of a start that are still waiting on the store; `arming:` under a charter names armed rules whose watch the store is still opening, with what it is doing for each — in line, opening it, opening it again after a drop, or refused and asking again — and `pending:` the rules held for something else — a stratum, a runner — with what each waits for. All are absent on a viff that is up. |
 | `schema [<name>]` | the whole schema: the root, by top-level path, then every shape it names. A name prints that one definition. |
 
 ### data (d)
@@ -83,14 +83,14 @@ flag, so its positional is always a path. The path is given as **steps**, one pl
 | `demo pr '*'` | any one segment |
 | `demo pr 1 '"[0]"'` | the field named `[0]` |
 | `demo pr '"*"'` | the name that is `*` |
-| (none) | the whole verse |
+| (none) | the whole viff |
 
 A path nothing stands at is a non-zero exit. An empty `{}` with exit 0 means the path stands
 and `-if` kept none of it.
 
 | Form | What it does |
 |---|---|
-| `data <step>…` | the verse at that address |
+| `data <step>…` | the viff at that address |
 | `data -at <path>` | the same, as one kinded path: `demo.pr.1`, `'demo.pr.*.stage'` |
 | `data … -if <pat> [-if-at <path>]` | only the data whose payload matches |
 | `data … -paths [-depth <n>]` | every address under the one asked for, one per line, as steps. `-depth` walks at most `<n>` levels beneath the address: `0` is the address alone (default: no limit). |
@@ -107,7 +107,7 @@ and `-if` kept none of it.
 |---|---|
 | `watch [<path>]` | stream changes to the store, with a cursor. It names the same addresses as a read, and is refused the same way: a path nothing stands at is a non-zero exit, not a stream that never carries anything. |
 | `-since <rev>` | start from a revision |
-| `-wait-if-absent` | watch a path that holds nothing yet, and report when a value arrives. You ask for it, because a mistyped address held open looks exactly like a quiet verse. |
+| `-wait-if-absent` | watch a path that holds nothing yet, and report when a value arrives. You ask for it, because a mistyped address held open looks exactly like a quiet viff. |
 | `-init` · `-no-init` | open with what already stands at the path, then the changes (the default) · stream from now ([watching](entities.md#watching)) |
 | `-ago <n>` | the last `<n>` commits the store keeps ([watching](entities.md#watching)) |
 | `-if <pat> [-if-at <field.path>]` | only changes whose payload matches |
@@ -125,7 +125,7 @@ and `-if` kept none of it.
 | `question <id> -answer <option> -as <who> [-say <text>] [-force]` | answer by option. A yes-or-no question's options are `proceed` and `deny`; a selection's are its doers. A question that needs more than one voice records the ballot and says where the tally stands (`1 of 2 for proceed`). `-force` answers one a resolver serves for you. |
 | `question approve <id> [-say <text>]` · `deny <id> [-say <text>]` | the two default options, as verbs. Also `y`, `yes` · `n`, `no`; `-s` for `-say`. |
 | `question -watch [-since <rev>] [-notify]` | a line when a question starts waiting on you, and when it settles. Runs until stopped. `-since` replays from a revision, as far back as the store keeps its log. `-notify` also says it on the desktop (D-Bus on Linux and the BSDs, Notification Center on macOS): urgent when a question starts waiting, closed when it settles, one summary for what stood when the watch opened ([asking](../asking.md)). |
-| `tui [--at <address>] [--every 2s] [--all] [--config] [--commands]` | a terminal screen of the questions waiting on you, the tasks, the data an address at a time, the charters installed and the runners, answered and cancelled in place: the explorer on the left, a section's table or one row on the right, `:` for a command by name, `?` for every key; the config's `tui:` section sets its sections, bookmarks and keys ([asking](../asking.md), [example](examples/tui/verse.tony)). |
+| `tui [--at <address>] [--every 2s] [--all] [--config] [--commands]` | a terminal screen of the questions waiting on you, the tasks, the data an address at a time, the charters installed and the runners, answered and cancelled in place: the explorer on the left, a section's table or one row on the right, `:` for a command by name, `?` for every key; the config's `tui:` section sets its sections, bookmarks and keys ([asking](../asking.md), [example](examples/tui/viff.tony)). |
 
 ### ask (asks)
 
@@ -155,14 +155,14 @@ them, installs at the path. A directory of charter files is several packages
 | `charter [<path>] -d <dir>` | every charter at or under the path, one file each: `<dir>/<address as directories>/charter.tony` |
 | `-depth <n>` | how far under it to go: `0` is that address alone, `-1` (the default) everything |
 | `-scope <name>` | a scope's own charter instead |
-| `-paths` · `-kpaths` | one line per rule and level, instead of the document. `-paths` answers in steps, so `c -paths \| xargs -L1 verse c` round-trips; `-kpaths` in one kinded path per line. A package that holds nothing yet prints itself. |
-| `charter <address> rules\|strata\|schedules [<name>]` | into the node there: its rules, its levels, one by name, and on into that one (`c repos.verse.drift rules claim action`). `c rules claim` is baseline's. A name that is elsewhere is named in the refusal, with the path that reaches it. |
+| `-paths` · `-kpaths` | one line per rule and level, instead of the document. `-paths` answers in steps, so `c -paths \| xargs -L1 viff c` round-trips; `-kpaths` in one kinded path per line. A package that holds nothing yet prints itself. |
+| `charter <address> rules\|strata\|schedules [<name>]` | into the node there: its rules, its levels, one by name, and on into that one (`c repos.viff.drift rules claim action`). `c rules claim` is baseline's. A name that is elsewhere is named in the refusal, with the path that reaches it. |
 | `charter -a [<address>] -f <file>\|-` | **install** one charter from one file, as one step. Applying an edited file again is how a charter changes. |
 | `charter -a -d <dir>` | every charter file under the directory, each at its own `at:`, all or none |
 | `charter -a <address> -d <dir> -prune` | the same, and **remove** what the directory leaves out at and under the address: a package with no file is uninstalled first, as `-R` does, then `-a -d` |
 | `charter -check <address> -d <dir>` · `-check <address> -f <file>` | whether the charters would install as `-a <address> -d <dir> -prune` installs them, and what would change, installing nothing. `-f` is a directory holding that one file. A refusal is the answer, so the command succeeds either way ([the charter](charter.md)). |
 | `charter -a -scope <name>` | into a scope's own charter |
-| `charter -r <path>` | **remove** what the path names: a package, or one rule or level in it (`c -r repos.verse.drift rules claim`) |
+| `charter -r <path>` | **remove** what the path names: a package, or one rule or level in it (`c -r repos.viff.drift rules claim`) |
 | `charter -R <address>` | the charter there and every charter under it. (`-R` is not `rm -r`: `-r` is the removal.) |
 | `charter <address> -- rules\|strata\|schedules` | where the address ends, for a package whose own address ends in `rules` or `strata` |
 
@@ -171,9 +171,9 @@ them, installs at the path. A directory of charter files is several packages
 | Form | What it does |
 |---|---|
 | `task [-runner <ref>]` | every task, whatever runs it |
-| `task run -f <spawn> [-name <label>] [-wait]` | run one: a spawn as a charter writes one, from a file or `-` for stdin. Verse routes it to a runner that offers its doer, and it is mirrored. |
+| `task run -f <spawn> [-name <label>] [-wait]` | run one: a spawn as a charter writes one, from a file or `-` for stdin. Viff routes it to a runner that offers its doer, and it is mirrored. |
 | `task run … -attach [-no-converse]` | a conversation: the turn is yours whenever the model goes quiet. Ctrl-D ends it. |
-| `task run … -name <label> -as <who>` | what the run is called, and who it is. What it is about, what it may reach and do, its answer and its credential are keys of the spawn (`subject`, `environment`, `autonomy`, `answer`, `virtualKey`); where it runs is verse's to say |
+| `task run … -name <label> -as <who>` | what the run is called, and who it is. What it is about, what it may reach and do, its answer and its credential are keys of the spawn (`subject`, `environment`, `autonomy`, `answer`, `virtualKey`); where it runs is viff's to say |
 | `task get <id>` · `task attach <id>` | the operator's view, for any backend. `attach` prompts for each gate, and for a question asked in words, with an identity. |
 | `task cancel <id>` · `task say <id> <text…>` | end it · tell it something |
 | `task autonomy <id> <rows> [-as <who>]` · `task autonomy <id> -file <f>` | replace its autonomy with a whole one, each row reaching what its environment gives |
@@ -204,7 +204,7 @@ nothing.
 | Form | What it does |
 |---|---|
 | `flow -task <id>` | that run only; combines with neither of the others |
-| `flow -charter <address>[:<rule>]` | a charter, and one rule of it: `repos.verse.drift:claim`, `:review` (baseline's), `'*'` (every charter) |
+| `flow -charter <address>[:<rule>]` | a charter, and one rule of it: `repos.viff.drift:claim`, `:review` (baseline's), `'*'` (every charter) |
 | `flow … -r` (`-recursive`) | and every charter installed beneath the address |
 | `flow -subject <address>` | a selector, `*` open in any segment: `demo.pr.*`, `demo.*.1`, `'*'`. Quote it. |
 | `flow … -args` | each row as the flags that name it, for `xargs -L1` |
@@ -218,16 +218,16 @@ nothing.
 
 | Form | What it does |
 |---|---|
-| `schedule` | the schedules the verse ticks on: period, next, the tick standing. `minutely`, `hourly`, `daily` and `weekly` come with it. |
+| `schedule` | the schedules the viff ticks on: period, next, the tick standing. `minutely`, `hourly`, `daily` and `weekly` come with it. |
 | `schedule tick <name> -due <instant> [-at <address>]` | write the tick for a past instant, as the schedule would have. A rule about it fires as it would have. |
 
 ### Global flags
 
 | Flag | What it does |
 |---|---|
-| `-addr <host:port>` | the verse to talk to |
+| `-addr <host:port>` | the viff to talk to |
 | `-scope <name>` | work in a copy-on-write scope |
-| `-ofmt`, `-o <tony\|yaml>` | output format (default tony; verse renders no JSON) |
+| `-ofmt`, `-o <tony\|yaml>` | output format (default tony; viff renders no JSON) |
 | `-ifmt`, `-i <tony\|json\|yaml>` | input format for stdin and files with no extension |
 | `-color auto\|always\|never` | color (auto: only on a terminal) |
 
@@ -236,14 +236,14 @@ nothing.
 The [address](../glossary.md#address) narrows by where the data lives. `-if` narrows by what
 the data says. `-if` is a tony match against the [payload](../glossary.md#payload). It is the
 same [predicate](../glossary.md#predicate) that a charter carries in `value`, in its `subject`,
-its `on` or its `when`. So `verse data demo pr '*' -if X` names exactly what a rule with the
+its `on` or its `when`. So `viff data demo pr '*' -if X` names exactly what a rule with the
 subject `{path: "demo.pr.*", value: X}` would select.
 
 ```sh
-verse data demo pr '*' -if '{stage: !or [open, merged]}'   # an operator, not just equality
-verse data demo pr '*' -if '{urgent: true}' -if-at labels  # rooted inside the payload
-verse watch -if '{stage: open}' demo pr '*'     # the same selector, as it happens
-verse watch -until '{to: {stage: merged}}' demo pr '*'  # …until one of them merges, then stop
+viff data demo pr '*' -if '{stage: !or [open, merged]}'   # an operator, not just equality
+viff data demo pr '*' -if '{urgent: true}' -if-at labels  # rooted inside the payload
+viff watch -if '{stage: open}' demo pr '*'     # the same selector, as it happens
+viff watch -until '{to: {stage: merged}}' demo pr '*'  # …until one of them merges, then stop
 ```
 
 `-until` is the exception, and the shape of its pattern shows it.
@@ -255,7 +255,7 @@ verse watch -until '{to: {stage: merged}}' demo pr '*'  # …until one of them m
 
 Only the client knows when it has seen enough, so the client answers `-until`. A pattern
 written the other way round, such as `-until '{stage: merged}'`, matches nothing. A watch
-that matches nothing looks exactly like a watch that waits. So verse refuses that pattern
+that matches nothing looks exactly like a watch that waits. So viff refuses that pattern
 where you type it.
 
 `-if-at` takes a field path separated by dots, and roots `-if` there. So a predicate about a
@@ -268,30 +268,30 @@ These do not match:
 - a path that leads nowhere, such as an absent field, or a scalar in the way;
 - a delete on `watch`, which has no payload left to test.
 
-Verse reads the pattern in `-ifmt` and sends it as tony, so operators and tags are kept.
+Viff reads the pattern in `-ifmt` and sends it as tony, so operators and tags are kept.
 
 A precondition on a write is a different flag: `-create`, `-update` or `-expect` on
-`verse data -put`. See [entities.md](entities.md#conditional-writes).
+`viff data -put`. See [entities.md](entities.md#conditional-writes).
 
 ## The scripts
 
-Four scripts write into a verse that you already run. Each one prints what to type next. They
+Four scripts write into a viff that you already run. Each one prints what to type next. They
 are for reading as much as for running: each is a worked example of the surface it seeds.
 
 | | |
 |---|---|
 | `./scripts/seed-demo.sh` | the whole demo at once: a charter, the data it reacts to, one reaction that has already happened, and one gate waiting for you |
-| `./scripts/seed-entities.sh` | a dozen records under `verse-tutorial`, and nothing that reacts to them ([the data page of the tutorial](../tutorial/data.md)) |
+| `./scripts/seed-entities.sh` | a dozen records under `viff-tutorial`, and nothing that reacts to them ([the data page of the tutorial](../tutorial/data.md)) |
 | `./scripts/charter-shapes.sh` | the coarse shapes that a rule comes in, one command each. It also runs `suspend`/`resume` on one rule, so you can watch the rule hold and then act on the world as it stands ([charters, continued](../tutorial/charters-2.md#stopping-a-rule)) |
 | `./scripts/lineage.sh` | a commit becomes a PR, and the PR becomes a release. It shows how ids from three systems correlate without a fourth id, and the two limits of that design. |
 
 All four take `--scope <name>`, and each one removes what it wrote (`--clean`, or `clean`).
 
-## Use verse
+## Use viff
 
 - [Commands](#commands): every command, and a file per topic.
 - [Tasks](tasks.md): running a task by hand, and answering its gates.
-- [Asking](../asking.md): `verse ask`: a question to somebody, with a date, and what follows a
+- [Asking](../asking.md): `viff ask`: a question to somebody, with a date, and what follows a
   yes run on your authority.
 - [Permissions, walked](../perms-guide.md): your own data, a task and its gates, a charter
   and what it owns, a gate with nobody behind it, a gate with a resolver.
@@ -306,7 +306,7 @@ its parts.
 
 - [tony](https://signadot.github.io/tony-format/): the document language a charter is
   written in, and [docd](https://signadot.github.io/tony-format/docd/), the store behind a
-  durable verse.
+  durable viff.
 - [go-tony](https://pkg.go.dev/github.com/signadot/tony-format/go-tony) on pkg.go.dev —
   including [`ir/kpath`](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath)
   (the addressing a task chain uses),

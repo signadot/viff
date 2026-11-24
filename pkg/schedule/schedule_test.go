@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 func mustZone(t *testing.T, name string) *time.Location {
@@ -137,13 +137,13 @@ func TestValidateRefusesWhatCannotTick(t *testing.T) {
 }
 
 func TestIsTickSubject(t *testing.T) {
-	if !IsTickSubject([]string{"verse", "schedule", "hourly", "tick", "*"}) {
+	if !IsTickSubject([]string{"mirror", "schedule", "hourly", "tick", "*"}) {
 		t.Error("the tick glob is not a tick subject")
 	}
-	if IsTickSubject([]string{"verse", "schedule", "hourly"}) || IsTickSubject([]string{"demo", "pr", "*"}) {
+	if IsTickSubject([]string{"mirror", "schedule", "hourly"}) || IsTickSubject([]string{"demo", "pr", "*"}) {
 		t.Error("a record or a world address read as a tick subject")
 	}
-	if NameOf("verse-dev.drift:hourly") != "hourly" || NameOf("hourly") != "hourly" {
+	if NameOf("viff-dev.drift:hourly") != "hourly" || NameOf("hourly") != "hourly" {
 		t.Error("NameOf")
 	}
 }

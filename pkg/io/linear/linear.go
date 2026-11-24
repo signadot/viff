@@ -1,9 +1,9 @@
 // Package linear reflects Linear teams — their issues and cycles — into the `linear:*` slice
-// of the entity-verse.
+// of the entity-viff.
 //
 // It is a deployed source: a program holding an API key, serving the two routes source/iod
-// serves, with verse dialling it and converging its answers. Like the Slack source and unlike
-// the git one, the credential is the whole reason it cannot live in verse.
+// serves, with viff dialling it and converging its answers. Like the Slack source and unlike
+// the git one, the credential is the whole reason it cannot live in viff.
 //
 // THE TEAM IS THE SLICE, and it is a LEVEL OF THE ADDRESS: a source reflects a set of teams,
 // and everything one of them has stands under its place.
@@ -26,8 +26,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // Root is the entity slice a Linear source owns and is the single writer of.
@@ -74,7 +74,7 @@ type Linear struct {
 	log      func(string, ...any)
 }
 
-var _ verseio.Source = (*Linear)(nil)
+var _ viffio.Source = (*Linear)(nil)
 
 // New builds a Linear source and asks the credential which teams it can see.
 //
@@ -197,12 +197,12 @@ func (l *Linear) Teams() []string { return append([]string(nil), l.teams...) }
 // an owner (`linear.project.<id>.owners.ENG.state`), and two owners hold the same bytes. That is
 // the honest shape of a node nobody owns the whole of, and it is worth knowing before writing a
 // rule against one.
-func (l *Linear) Owns() []verseio.Own {
-	out := make([]verseio.Own, 0, 2*len(l.teams))
+func (l *Linear) Owns() []viffio.Own {
+	out := make([]viffio.Own, 0, 2*len(l.teams))
 	for _, key := range l.teams {
 		out = append(out,
-			verseio.Own{At: verseio.ClaimAt(l.root, key)},
-			verseio.Own{At: verseio.ClaimAt(l.root, projectKind, "*", ownersField, key)})
+			viffio.Own{At: viffio.ClaimAt(l.root, key)},
+			viffio.Own{At: viffio.ClaimAt(l.root, projectKind, "*", ownersField, key)})
 	}
 	return out
 }
@@ -253,19 +253,19 @@ func (l *Linear) ProjectRef(id string) entity.Ref {
 }
 
 // ProjectOwnerRef is the node one team owns inside a project — the whole of what it writes
-// there. Its claim is the same address with the id a wildcard, spelled by verseio.ClaimAt.
+// there. Its claim is the same address with the id a wildcard, spelled by viffio.ClaimAt.
 func (l *Linear) ProjectOwnerRef(id, key string) entity.Ref {
 	return entity.RefAt(l.root, projectKind, id, ownersField, key)
 }
 
 // Reflect reads the configured teams and returns what `linear:*` should hold. A zero ref reads
 // every team (the full pass); a team, issue or cycle ref reads just the team it belongs to.
-func (l *Linear) Reflect(ctx context.Context, ref entity.Ref) (verseio.Reflection, error) {
-	var out verseio.Reflection
+func (l *Linear) Reflect(ctx context.Context, ref entity.Ref) (viffio.Reflection, error) {
+	var out viffio.Reflection
 	for _, key := range l.targets(ref) {
 		rn, err := l.reflectTeam(ctx, key)
 		if err != nil {
-			return verseio.Reflection{}, fmt.Errorf("linear reflect %s: %w", key, err)
+			return viffio.Reflection{}, fmt.Errorf("linear reflect %s: %w", key, err)
 		}
 		out.Covers = append(out.Covers, rn.Covers...)
 		out.Entities = append(out.Entities, rn.Entities...)
@@ -303,28 +303,28 @@ func (l *Linear) targets(ref entity.Ref) []string {
 
 // reflectTeam reads one team whole. Everything it returns stands under that team's place —
 // covers included — so one team's pass never tombstones another's issues.
-func (l *Linear) reflectTeam(ctx context.Context, key string) (verseio.Reflection, error) {
+func (l *Linear) reflectTeam(ctx context.Context, key string) (viffio.Reflection, error) {
 	// Declared BEFORE the read and unconditionally, as the git source declares its per-repo
 	// covers: a team whose every issue was deleted must still cover `linear:issue:{team: key}`,
 	// or the issues it no longer has would stand forever.
-	rn := verseio.Reflection{Covers: []entity.Pattern{
+	rn := viffio.Reflection{Covers: []entity.Pattern{
 		// PLACES UNDER THE TEAM, which is what makes them this team's — rather than a pattern
 		// over every id of a kind, narrowed back to one team by a payload predicate every
 		// entity would have to carry.
-		verseio.Cover(l.place(key, "team")...),
-		verseio.Cover(l.place(key, "issue", "*")...),
-		verseio.Cover(l.place(key, "cycle", "*")...),
+		viffio.Cover(l.place(key, "team")...),
+		viffio.Cover(l.place(key, "issue", "*")...),
+		viffio.Cover(l.place(key, "cycle", "*")...),
 		// THE PROJECT COVER IS THIS TEAM'S PLACE INSIDE EVERY PROJECT:
 		// `linear.project.*.owners.ENG` claims completeness for what ENG writes there and
 		// reaches nothing else. A project ENG has never been on holds nothing at that address,
 		// so a pass that does not carry it tombstones nothing; one ENG has just joined is
 		// written because the answer carries it. Another team's place under the same project is
 		// a different address, and neither claim reaches it.
-		verseio.Cover(l.root, projectKind, "*", ownersField, key),
+		viffio.Cover(l.root, projectKind, "*", ownersField, key),
 	}}
 	page, err := l.api.readTeam(ctx, key, l.pageSize, l.max)
 	if err != nil {
-		return verseio.Reflection{}, err
+		return viffio.Reflection{}, err
 	}
 	t := entity.Obj{
 		"team":    key,

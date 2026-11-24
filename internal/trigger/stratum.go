@@ -35,10 +35,10 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/exprs"
-	"github.com/signadot/verse/pkg/launch"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/exprs"
+	"go.viff.dev/viff/pkg/launch"
 )
 
 // Stratum is one level of the ordering: what it owns, and where it sits.
@@ -47,7 +47,7 @@ import (
 // pattern bare or a union as a list, and a generator that has to be told a field takes two
 // shapes is being told to write the codec anyway.
 //
-//tony:schemagen=verse-stratum,notag,codec=custom
+//tony:schemagen=viff-stratum,notag,codec=custom
 type Stratum struct {
 	Name  string  `tony:"field=name"`
 	Level int     `tony:"field=level"`
@@ -92,7 +92,7 @@ func (ms *Matches) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 		return nil
 	}
 	// A TAGGED ARRAY IS ONE MATCH, not a union of its steps, and the tag is what says so —
-	// `!verse-path [verse-dev, drift, finding]` is an address, and its three steps are not three
+	// `!viff-path [viff-dev, drift, finding]` is an address, and its three steps are not three
 	// matches. tonycodec's own note on the tag names this hazard ("the union form a stratum's
 	// `match` takes is already one"), and reading it wrong is not a parse error: each step reads
 	// as a bare name, which matches a system and so matches nearly everything.
@@ -100,9 +100,9 @@ func (ms *Matches) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 	// It cost a restart. A stratum written down as a path came back as a union that overlapped
 	// its neighbour, so restore refused it — and then refused every rule whose derive needed the
 	// level it named. The charter SHRANK across a restart, silently, in the store's own copy of
-	// itself: `verse-dev.drift` lost `ledger` and `comment-drift`, `verse-dev.merge` lost `train`
+	// itself: `viff-dev.drift` lost `ledger` and `comment-drift`, `viff-dev.merge` lost `train`
 	// and the two rules that run on it.
-	if node.Type == ir.ArrayType && tagName(node) == VersePathTag {
+	if node.Type == ir.ArrayType && tagName(node) == ViffPathTag {
 		var m Match
 		if err := m.FromTonyIR(node, opts...); err != nil {
 			return err
@@ -221,8 +221,8 @@ func matchContains(outer, inner Match) bool {
 
 // segContains reports whether every name the inner segment admits, the outer one admits too.
 //
-// SEGMENT BY SEGMENT, and the outer path may be SHORTER: `[verse-dev, drift]` contains
-// `[verse-dev, drift, head]` (entity.Under). An outer `*` contains anything at its position. An
+// SEGMENT BY SEGMENT, and the outer path may be SHORTER: `[viff-dev, drift]` contains
+// `[viff-dev, drift, head]` (entity.Under). An outer `*` contains anything at its position. An
 // inner literal is contained by an outer segment that admits it — the same name, or an operator
 // that matches it. An inner `*` or operator admits names nobody listed, so only an outer `*` can
 // contain it: `!glob "a*"` does not contain a `*` that could be `b`.
@@ -591,7 +591,7 @@ func (e *Engine) removeStratumAt(ctx context.Context, name string) error {
 			continue
 		}
 		// A RULE THAT DERIVES INTO IT IS A USER TOO, and counting only the rules that LIVE in a
-		// stratum let the other kind through: `ledger` owns `verse-dev.drift.finding`, no rule
+		// stratum let the other kind through: `ledger` owns `viff-dev.drift.finding`, no rule
 		// declares `stratum: ledger`, and removing it left `comment-drift` deriving into a level
 		// that no longer existed. That is precisely the state install refuses ("derive into X
 		// matches no stratum: every derived entity has to belong to a level"), reached through
@@ -675,7 +675,7 @@ func (e *Engine) nameTaken(name string) error {
 // the stratum is here (reconcile.go).
 func (e *Engine) promote(string) { e.kick() }
 
-// persistStratum writes s into the verse as its stratum entity. Raw for the same reason a rule
+// persistStratum writes s into the viff as its stratum entity. Raw for the same reason a rule
 // is raw: a match is full of operator tags, and an unescaped write has the store execute them
 // rather than store them (see charter.go's charter.SpecField).
 func (e *Engine) persistStratum(s Stratum, as string, take bool) (int64, error) {
@@ -863,17 +863,17 @@ type deriveTarget struct {
 	// the no-op that lets a rule read a higher level safely.
 	Key entity.Payload
 	// ID is `key` with the composition dropped: the derived entity is the place plus this
-	// value, verbatim, so `verse-dev.drift.head.aaaa1111` is an address a charter can SPELL.
+	// value, verbatim, so `viff-dev.drift.head.aaaa1111` is an address a charter can SPELL.
 	//
 	// That is the whole difference, and it is the reader's. A keyed id is
-	// `head-moved@git.verse.head@aaaa1111` — a function of (rule, subject, key), which no
+	// `head-moved@git.viff.head@aaaa1111` — a function of (rule, subject, key), which no
 	// charter can compose, so anything wanting that record has to describe it instead of naming
 	// it. Describing it costs a glob and a predicate at every reader; naming it costs nothing.
 	//
 	// WHAT THE PREFIX BOUGHT, and who pays for it now: two subjects of one rule that compute the
 	// same key share one entity here, where `key` gives them one each. So `id` says the key
 	// identifies the record ACROSS subjects — `head-moved`'s does, its subject being the single
-	// entity `git.verse.head` — and `key` says it identifies it only within one. Getting that
+	// entity `git.viff.head` — and `key` says it identifies it only within one. Getting that
 	// backwards is the clobber this charter already paid for once, one plane over.
 	//
 	// The PLACE is still the engine's: a derive may only write inside its own stratum, checked
@@ -1091,8 +1091,8 @@ func deriveContentNode(el *ir.Node) *ir.Node {
 	return nil
 }
 
-// addressSegs reads an address written as a list of names — `[verse-dev, drift, head]`, or the
-// same under `!verse-path`. A derive TARGET is a place to write, so its segments are names: an
+// addressSegs reads an address written as a list of names — `[viff-dev, drift, head]`, or the
+// same under `!viff-path`. A derive TARGET is a place to write, so its segments are names: an
 // operator selects, and there is nothing to select when the question is where to put something.
 func addressSegs(n *ir.Node) ([]string, bool) {
 	if n == nil {
@@ -1142,9 +1142,9 @@ func (a Action) validateDerive() error {
 	// that writes its record, and by nothing that observes the store, so a record a rule derived
 	// would suspend nothing while every listing said it did.
 	for _, t := range a.derives() {
-		if segs := t.segs(); len(segs) >= 2 && segs[0] == entity.VerseRoot && segs[1] == charter.System &&
+		if segs := t.segs(); len(segs) >= 2 && segs[0] == entity.ViffRoot && segs[1] == charter.System &&
 			(len(segs) == 2 || segs[2] == SuspensionKind) {
-			return fmt.Errorf("action.derive into %s: a suspension is made by `verse flow suspend`, "+
+			return fmt.Errorf("action.derive into %s: a suspension is made by `viff flow suspend`, "+
 				"and a record a rule wrote there would hold nothing", strings.Join(segs, "."))
 		}
 	}
@@ -1283,7 +1283,7 @@ const refItem = "item"
 // Unbounded, across a level, paced only by the throttle — the cycle the ordering exists to rule
 // out, and it would cost the read side its freedom (`read at your level or below` would have to
 // come back). The engine's own linkage stays commit-free for exactly this reason: recording the
-// causing commit at verse.meta.derivedFrom would reintroduce the loop from inside the engine.
+// causing commit at @sys.meta.derivedFrom would reintroduce the loop from inside the engine.
 //
 // readsOnly is the check, over every expression in a document: the first that reads a name
 // outside allowed, or subject.commit, as text to quote; "" when none does. `$env` reads every
@@ -1368,7 +1368,7 @@ func eachSegs(chain string, ref entity.Ref, key string) []string {
 }
 
 // deriveFromField is where the engine records what a derived entity is about, under the reserved
-// root: verse.meta.derivedFrom = {rule, subject}.
+// root: @sys.meta.derivedFrom = {rule, subject}.
 //
 // Engine-owned, on the exact precedent a spawn sets — "the subject is the engine's to set, not
 // the charter's" — and for the same reason: a derivation is about exactly one subject, and which
@@ -1468,7 +1468,7 @@ func keyText(key entity.Payload, env launch.Binding) (string, error) {
 //
 // A PROJECTION — a derive with a literal `id`, one entity for every subject — records the rule
 // and not the subject. The entity is about whichever subject fired last, and naming it would
-// make every firing new bytes: `verse.schedule.date` would commit at every hourly tick rather
+// make every firing new bytes: `mirror.schedule.date` would commit at every hourly tick rather
 // than once a day, which is the whole point of a fact standing at its own address.
 func deriveLinkage(payload entity.Payload, chain string, subj entity.Ref, projection bool) (entity.Payload, error) {
 	from := entity.Obj{"rule": chainKPath(chain)}
@@ -1558,7 +1558,7 @@ func checkDeriveKey(key entity.Payload, where string) error {
 // where the latest firing's bytes stand at an address a reader can spell. It is sound for the
 // reason a keyed derive is: the address is fixed and the content is the subject's, so a
 // re-fire about the same subject is a no-op, and a later subject is the later value. The base
-// charter's calendar is the customer: `verse.schedule.date` is derived from every hourly tick.
+// charter's calendar is the customer: `mirror.schedule.date` is derived from every hourly tick.
 func checkDeriveID(id entity.Payload, where string) error {
 	if literalKey(id) != "" {
 		return nil

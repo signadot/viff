@@ -1,11 +1,11 @@
-// Package verbs is the verse verbs an agent is offered twice, defined once: by `verse mcp`, to an
-// agent acting as you (verse_data), and by a runner's verse system, to a task acting as the
-// person it runs for (verse-data-get). Each verb says its name in both, the command it mirrors,
+// Package verbs is the viff verbs an agent is offered twice, defined once: by `viff mcp`, to an
+// agent acting as you (viff_data), and by a runner's viff system, to a task acting as the
+// person it runs for (viff-data-get). Each verb says its name in both, the command it mirrors,
 // what it does, the parameters it takes and what a call must say; both faces read a call through
 // Read, and what it sends from there (AskOf, DataGetOf, …), so what one takes or refuses the other
-// does too. How each answers stays its own: the format verse mcp was started with, or tony.
+// does too. How each answers stays its own: the format viff mcp was started with, or tony.
 //
-// What only one face offers (verse_question, verse_wait, question-ask) is that face's.
+// What only one face offers (viff_question, viff_wait, question-ask) is that face's.
 package verbs
 
 import (
@@ -14,17 +14,17 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // A Face is who a verb is offered to.
 type Face int
 
 const (
-	// MCP is `verse mcp`: an agent acting as you, its tools spelled verse_data.
+	// MCP is `viff mcp`: an agent acting as you, its tools spelled viff_data.
 	MCP Face = iota
-	// Task is a runner's verse system: a task acting as the person it runs for, its tools
-	// spelled verse-data-get.
+	// Task is a runner's viff system: a task acting as the person it runs for, its tools
+	// spelled viff-data-get.
 	Task
 )
 
@@ -47,14 +47,14 @@ type Param struct {
 
 // Verb is one verb as both faces offer it.
 type Verb struct {
-	// Name is the verse system's verb (ask-create): the step verse.ask-create and the task's
-	// tool verse-ask-create.
+	// Name is the viff system's verb (ask-create): the step viff.ask-create and the task's
+	// tool viff-ask-create.
 	Name string
-	// Tool is verse mcp's tool (verse_ask_create).
+	// Tool is viff mcp's tool (viff_ask_create).
 	Tool string
-	// Lead is what it does, said before who it acts as: "Read the verse at an address".
+	// Lead is what it does, said before who it acts as: "Read the viff at an address".
 	Lead string
-	// CLI is the command it mirrors, as a person types it: "`verse data`".
+	// CLI is the command it mirrors, as a person types it: "`viff data`".
 	CLI string
 	// Does is what it does, said after the command. {<verb>} in it, and in a note or a
 	// parameter's description, is that verb's tool as the face spells it.
@@ -69,8 +69,8 @@ type Verb struct {
 	Reads, Takes bool
 }
 
-// TaskTool is the verb's tool where a task is offered it: verse-<name>.
-func (v *Verb) TaskTool() string { return systems.ToolName("verse", v.Name) }
+// TaskTool is the verb's tool where a task is offered it: viff-<name>.
+func (v *Verb) TaskTool() string { return systems.ToolName("viff", v.Name) }
 
 // ToolOf is the verb's tool as f spells it.
 func (v *Verb) ToolOf(f Face) string {
@@ -81,7 +81,7 @@ func (v *Verb) ToolOf(f Face) string {
 }
 
 // Description is what f's agent reads about the verb: what it does, as whom, as which command
-// (and, to a task, which verse mcp tool) does it too.
+// (and, to a task, which viff mcp tool) does it too.
 func (v *Verb) Description(f Face) string {
 	var b strings.Builder
 	b.WriteString(v.Lead)

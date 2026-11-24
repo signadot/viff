@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"github.com/signadot/verse/pkg/entity"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	viffio "go.viff.dev/viff/pkg/io"
 	"log"
 	"net/http"
 	"strings"
 
-	"github.com/signadot/verse/pkg/io/github"
+	"go.viff.dev/viff/pkg/io/github"
 )
 
 // The GitHub source: a token, a set of repositories, and a webhook it owns.
@@ -116,24 +116,24 @@ func githubMain(args []string) error {
 	signing := secret("GITHUB_WEBHOOK_SECRET")
 	if signing == "" {
 		log.Printf("no GITHUB_WEBHOOK_SECRET: the webhook will refuse deliveries, and only " +
-			"verse's periodic resync will converge")
+			"viff's periodic resync will converge")
 	}
 	hint := c.hinter()
 
-	// The out half dials the verse, where the reflection is dialled BY it: one pass loop per
+	// The out half dials the viff, where the reflection is dialled BY it: one pass loop per
 	// repository's place, all of them the same sink, which reads the repository off the place.
 	if *out {
 		sink := src.Sink()
-		// The questions a comment is about are read as this io, and a `/verse` comment answers
+		// The questions a comment is about are read as this io, and a `/viff` comment answers
 		// as its author, relayed with their GitHub account beside this io's own credential
 		// (io.Controller's shape, for a pull rather than a socket).
-		sink.Verse = c.outClient(src.Root())
-		sink.As = verseio.As(c.verse(), c.bearer())
-		outs, err := c.outHalf(ctx, src.Root(), sink, src.OutRefs(), sink.Verse)
+		sink.Viff = c.outClient(src.Root())
+		sink.As = viffio.As(c.viff(), c.bearer())
+		outs, err := c.outHalf(ctx, src.Root(), sink, src.OutRefs(), sink.Viff)
 		if err != nil {
 			return err
 		}
-		// A comment's delivery is a reply in the making: the hint has verse reflect it, and a
+		// A comment's delivery is a reply in the making: the hint has viff reflect it, and a
 		// pass asked for now reads the reflection a moment behind the hint. The pass that misses
 		// it is caught by the next interval, which is the net either way.
 		inner := hint

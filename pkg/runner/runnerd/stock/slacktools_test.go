@@ -11,12 +11,12 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // slackAPI is a Slack Web API for the runner's calls: the bot is in #deploys and #general, a
@@ -64,7 +64,7 @@ func (f *slackAPI) serve(t *testing.T) string {
 	return srv.URL
 }
 
-// slackRunner is a verse runner that holds a Slack bot token and no repos, under the ceiling
+// slackRunner is a viff runner that holds a Slack bot token and no repos, under the ceiling
 // given.
 func slackRunner(t *testing.T, api string, ceiling systems.Ceiling) client.Launcher {
 	t.Helper()
@@ -86,9 +86,9 @@ func TestAScriptPostsToSlackUnderAnAskingPolicy(t *testing.T) {
 	env := envOf(netOpen, nil, nil)
 	env.Systems["slack"] = []systems.Block{{Verbs: deploys}}
 	script := "#!/bin/sh\n" +
-		"verse-call-tool slack-post -channel '#deploys' -text 'v1.3 is rolling out'\necho \"exit=$?\"\n" +
-		"verse-call-tool slack-post -channel general -text 'hello all'\necho \"exit=$?\"\n" +
-		"verse-call-tool slack-read -channel deploys -thread 1790000000.000100\n" +
+		"viff-call-tool slack-post -channel '#deploys' -text 'v1.3 is rolling out'\necho \"exit=$?\"\n" +
+		"viff-call-tool slack-post -channel general -text 'hello all'\necho \"exit=$?\"\n" +
+		"viff-call-tool slack-read -channel deploys -thread 1790000000.000100\n" +
 		"env | grep -c xoxb || true"
 	rt.Launch(runner.Launch{ID: "s1", Script: script, Environment: env, Autonomy: task.Autonomy{
 		{Name: "announce", Match: &task.Match{System: "slack", Verb: "post", Params: map[string]*ir.Node{"channel": ir.FromString("deploys")}}, Then: task.Then{Mode: task.ThenAsk}},
@@ -203,8 +203,8 @@ func TestARunnerPerformsSlackWithItsBotToken(t *testing.T) {
 			t.Errorf("the offer %s does not intercept slack, with its doer's ceiling: %+v", o.Name(), o.Systems["slack"])
 		}
 	}
-	none := func(name string) string { // the verse agent's model key alone
-		if name == verse.EnvAPIKey {
+	none := func(name string) string { // the viff agent's model key alone
+		if name == viff.EnvAPIKey {
 			return "k"
 		}
 		return ""

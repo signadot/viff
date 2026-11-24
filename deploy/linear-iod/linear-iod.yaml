@@ -2,7 +2,7 @@
 #
 # The credential first, as with Slack:
 #
-#   kubectl -n verse create secret generic verse-linear \
+#   kubectl -n viff create secret generic viff-linear \
 #     --from-literal=LINEAR_API_KEY=lin_api_… \
 #     --from-literal=LINEAR_WEBHOOK_SECRET=…
 #
@@ -11,13 +11,13 @@
 #
 # Install it once the pods are up (the name must match `linearIodName`, because the hint url
 # below carries it):
-#   verse iod add teams http://linear-iod:9801 -root linear
+#   viff iod add teams http://linear-iod:9801 -root linear
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: linear-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: linear
 spec:
@@ -27,19 +27,19 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: verse
+      app: viff
       tier: iods
       io: linear
   template:
     metadata:
       labels:
-        app: verse
+        app: viff
         tier: iods
         io: linear
     spec:
       containers:
       - name: linear-iod
-        image: signadot/verse:latest
+        image: signadot/viff:latest
         command:
         - iod
         - linear
@@ -47,7 +47,7 @@ spec:
         - :9801
         # Longer than Slack's, because Linear's budget is HOURLY and a team's read is a paged
         # GraphQL query: a source that spends the hour in its first ten minutes reflects
-        # nothing for the next fifty. verse still resyncs every minute; this is the source
+        # nothing for the next fifty. viff still resyncs every minute; this is the source
         # saying how often it will really answer.
         - -min-interval
         - "2m"
@@ -59,18 +59,18 @@ spec:
         - name: admin
           containerPort: 9802
         env:
-        - name: VERSE_HINT_URL
-          value: http://verse:9797/iods/teams/hint
+        - name: VIFF_HINT_URL
+          value: http://viff:9797/iods/teams/hint
         envFrom:
         - secretRef:
-            name: verse-linear
+            name: viff-linear
         readinessProbe:
           httpGet:
             path: /io
             port: source
           initialDelaySeconds: 3
           periodSeconds: 10
-          # Explicit, for the reason versed's are (see deploy/source/versed-deployment.yaml):
+          # Explicit, for the reason viffd's are (see deploy/source/viffd-deployment.yaml):
           # the default is one second, and /source is answered by a program that may be busy
           # talking to somebody else's API.
           timeoutSeconds: 5
@@ -80,12 +80,12 @@ kind: Service
 metadata:
   name: linear-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: linear
 spec:
   selector:
-    app: verse
+    app: viff
     tier: iods
     io: linear
   ports:
@@ -102,7 +102,7 @@ kind: Ingress
 metadata:
   name: linear-iod
   labels:
-    app: verse
+    app: viff
     tier: iods
     io: linear
 spec:

@@ -255,7 +255,7 @@ func (d *waitThenDone) Next(ctx context.Context, _ StepResult) (ToolUse, bool, e
 // about is the same action afterwards: nobody declined it and nobody withdrew it.
 //
 // Read as a refusal it was FATAL for any driver that cannot re-plan. Driven against a live
-// verse: a scripted task parked on its question, a pause, a resume, and
+// viff: a scripted task parked on its question, a pause, a resume, and
 //
 //	stage: broke
 //	err: "call 1 of 1 (run_bash): refused: the question about this action was withdrawn:

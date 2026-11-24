@@ -11,18 +11,18 @@ package api
 //
 // Response names ONE document; a name is all it can carry. Returns says how many arrive and by
 // what means, because the name alone could not: `GET /triggers` published `response:
-// verse-trigger` while its body is an ARRAY of them, and `GET /watch` published the same claim
+// viff-trigger` while its body is an ARRAY of them, and `GET /watch` published the same claim
 // for a thing that is not a document at all but an SSE stream of them. Both read as "returns a
-// verse-trigger" / "returns a verse-event", which is wrong in the way a published signature
+// viff-trigger" / "returns a viff-event", which is wrong in the way a published signature
 // must never be wrong — confidently, in the artifact that exists to be trusted about the wire.
 //
 // Returns is also what makes a route COMPARABLE to the schema. The root (internal/schema/root.tony)
-// types each top-level path — `state: .[verse-state]` — and is written by hand,
+// types each top-level path — `state: .[viff-state]` — and is written by hand,
 // beholden to no route table; a route's response and returns together say the same thing in the
 // same terms, which is what lets a test hold the two accounts of one surface equal. See
 // TestTheRootIsTheServedSurface.
 //
-//tony:schemagen=verse-route,notag
+//tony:schemagen=viff-route,notag
 type Route struct {
 	Method  string `tony:"field=method"`
 	Path    string `tony:"field=path"`
@@ -50,7 +50,7 @@ const (
 
 // Routes is the whole table, as served.
 //
-//tony:schemagen=verse-routes,notag
+//tony:schemagen=viff-routes,notag
 type Routes struct {
 	Routes []Route `tony:"field=routes"`
 }

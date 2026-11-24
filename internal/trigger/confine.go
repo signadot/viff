@@ -5,13 +5,13 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// A CONFINED ENGINE may only write inside one subtree of the verse.
+// A CONFINED ENGINE may only write inside one subtree of the viff.
 //
 // It is what makes a charter's isolation a guarantee rather than a convention. Two groups
-// running rules in one verse are isolated when neither can write where the other reads, and
+// running rules in one viff are isolated when neither can write where the other reads, and
 // "neither does today" is a property of the rules somebody happens to have installed — it stops
 // being true the moment one is edited. A confinement is a property of the ENGINE, so it holds
 // over whatever the charter says next.
@@ -44,7 +44,7 @@ import (
 // What it does NOT confine is a spawn. A rule's task acts in the world under its `grant`, and
 // store confinement is not world confinement: the task's autonomy is the dial that
 // is. Nor does it confine what the ENGINE writes about its own running (a task's mirror, a
-// motion, a posed question): those are verse's, they land in verse's half of the tree, and a
+// motion, a posed question): those are viff's, they land in viff's half of the tree, and a
 // charter cannot address them anyway.
 
 // Confine narrows what this engine's charter may write to one subtree. The zero subtree is no
@@ -58,7 +58,7 @@ func (e *Engine) Confine(at Subtree) { e.confine = at }
 // Confinement is the subtree this engine may write in, zero when it may write anywhere.
 func (e *Engine) Confinement() Subtree { return e.confine }
 
-// At is the ADDRESS of the charter this engine runs — `verse-dev.merge` — and empty for
+// At is the ADDRESS of the charter this engine runs — `viff-dev.merge` — and empty for
 // baseline. It is the confinement said as a place rather than as a permission, and it is what
 // a record has to carry for anything to know afterwards WHOSE rule wrote it.
 //
@@ -102,7 +102,7 @@ func (s Subtree) String() string {
 //
 // It asks about WRITES only, and the subject is a write ONLY WHEN THE ACTION PATCHES IT. That
 // distinction is the difference between a useful package and a useless one, and the charter we
-// run is what says so: comment-drift's `head-moved` selects `git.verse.head` and derives into
+// run is what says so: comment-drift's `head-moved` selects `git.viff.head` and derives into
 // `drift.head` — it reads a source as its subject and writes somewhere else entirely. A rule
 // like that belongs to the `drift` package, and a check that asked only "is the subject inside"
 // would refuse it, leaving packages unable to react to any source — which two charters both
@@ -114,13 +114,13 @@ func (s Subtree) String() string {
 //
 // A subject that NAMES one entity is checked the same way a selecting one is — the containment
 // question is about the address, and naming does not make it somebody else's to write.
-// VERSE'S HALF IS WRITTEN BY THE VERBS THAT OWN IT, and a rule's action is not one of them. The
-// api refuses a generic write under `verse` for that reason (a rule is installed by `charter -a`,
+// VIFF'S HALF IS WRITTEN BY THE VERBS THAT OWN IT, and a rule's action is not one of them. The
+// api refuses a generic write under `viff` for that reason (a rule is installed by `charter -a`,
 // a runner by `runner add`, a question answered by `question approve`), and a firing's patch or
 // derive is the same generic write arriving by another door. Left open, it is how a name the
 // system has not used yet is taken: the rows there hold `child-owner` out to everyone, so a
-// person's rule deriving `verse.schedule.date` before the base charter first does creates it,
-// owns it, and the system then writes into a node that is theirs. A rule READS verse's half
+// person's rule deriving `mirror.schedule.date` before the base charter first does creates it,
+// owns it, and the system then writes into a node that is theirs. A rule READS viff's half
 // freely — a posed question, a tick, a task's mirror are subjects like any other.
 //
 // The system's own rules are the exception, being how the system writes there: the base
@@ -131,15 +131,15 @@ func (s Subtree) String() string {
 // since a derive's target and a subject's first segment may not be literal.
 var errReservedWrite = fmt.Errorf("%w: what stands under %s is written by the verbs that own it "+
 	"(charter -a, runner add, iod add, resolver add, question approve), not by a rule's patch or "+
-	"derive; a rule may read it, select it as a subject and spawn about it", entity.ErrForbidden, entity.VerseRoot)
+	"derive; a rule may read it, select it as a subject and spawn about it", entity.ErrForbidden, entity.ViffRoot)
 
 // checkReserved refuses, at install, a rule of anybody's but the system's that names an address
-// under `verse` to write: a subject it patches, or a derive's target.
+// under `viff` to write: a subject it patches, or a derive's target.
 func (e *Engine) checkReserved(t Trigger, as string) error {
 	if entity.PolicyOf(e.store) == nil || entity.IsSystem(e.installer(as)) {
 		return nil
 	}
-	under := func(segs []string) bool { return len(segs) > 0 && segs[0] == entity.VerseRoot }
+	under := func(segs []string) bool { return len(segs) > 0 && segs[0] == entity.ViffRoot }
 	if t.writesSubject() && under(t.Condition.Subject.Segs()) {
 		return fmt.Errorf("subject %s is patched by this rule: %w", subjectText(t.Condition.Subject), errReservedWrite)
 	}
@@ -196,7 +196,7 @@ func (e *Engine) checkConfined(t Trigger) error {
 // a check somebody's template can walk past.
 //
 // It is asked on the CHARTER's writes — a patch, a derive — and not on the engine's own, which
-// are about verse's running rather than about the world and live in the reserved half.
+// are about viff's running rather than about the world and live in the reserved half.
 func (e *Engine) mayWrite(ref entity.Ref) error {
 	if !e.confine.confined() {
 		return nil
@@ -226,12 +226,12 @@ func (s Subtree) stamp() string {
 // ParseAt reads a charter's address — the subtree a package is installed at — from the kinded
 // path an operator types or a record stamps.
 //
-// A PLACE OF ANY DEPTH: `demo`, `demo.pr`, `verse-dev.drift.head`. It used to be one or two
+// A PLACE OF ANY DEPTH: `demo`, `demo.pr`, `viff-dev.drift.head`. It used to be one or two
 // segments, because a charter writes where it is installed and an address was three deep — so a
 // third segment named an entity rather than a place. An address is as deep as the tree now, and
 // so is a charter's.
 //
-// `verse` is still refused as the first segment: verse's own half is not somebody's to install a
+// `viff` is still refused as the first segment: viff's own half is not somebody's to install a
 // charter into.
 func ParseAt(at string) (Subtree, error) {
 	if at == "" {
@@ -244,10 +244,10 @@ func ParseAt(at string) (Subtree, error) {
 	if len(segs) == 0 {
 		return Subtree{}, nil
 	}
-	if segs[0] == entity.VerseRoot {
-		return Subtree{}, fmt.Errorf("a charter may not be installed at %s: %s is verse's own "+
-			"half of the tree, and a charter installed there could write the records verse "+
-			"keeps about its own running", at, entity.VerseRoot)
+	if segs[0] == entity.ViffRoot {
+		return Subtree{}, fmt.Errorf("a charter may not be installed at %s: %s is viff's own "+
+			"half of the tree, and a charter installed there could write the records viff "+
+			"keeps about its own running", at, entity.ViffRoot)
 	}
 	for _, sg := range segs {
 		if sg == "" {
@@ -261,7 +261,7 @@ func ParseAt(at string) (Subtree, error) {
 // subject's address a write rather than a read.
 //
 // A `patch` is the only thing that writes the subject: a `derive` writes the address it names,
-// a `spawn` writes a task record in verse's own half, and neither is the subject. The walk goes
+// a `spawn` writes a task record in viff's own half, and neither is the subject. The walk goes
 // through the same places `allDerives` looks — hooks, sequence elements — plus a gate's
 // `onDenied`, which is an action about the same subjects and is how a refusal is recorded.
 func (t Trigger) writesSubject() bool {

@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // The latch check, over the shapes a charter actually comes in. It is advisory today (see
@@ -26,7 +26,7 @@ func TestLatchCheck(t *testing.T) {
 		}
 		return m
 	}
-	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}
+	spawn := &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"}
 
 	ok := map[string]Trigger{
 		// The canonical shape: spawn the work, let its completion advance the subject past
@@ -100,7 +100,7 @@ func TestAbsenceLatchShapeLatches(t *testing.T) {
 			{Key: ir.FromString("validated"), Val: ir.Null()},
 		}).WithTag("!not"),
 	}}
-	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: `Read the file at path "$[path]" and report any problems.`}
+	spawn := &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: `Read the file at path "$[path]" and report any problems.`}
 
 	// A literal latch.
 	act := Action{Spawn: spawn, OnDone: &Action{Patch: entity.Obj{"validated": true}.Payload()}}
@@ -128,7 +128,7 @@ func TestAbsenceLatchShapeLatches(t *testing.T) {
 // (git-issue 2xth4bxsh12krsfwdxn0). A payload is any tony value, and both sides of that check
 // were collapsed to the top-level keys of an object.
 func TestLatchDecidesShapesKeysCouldNot(t *testing.T) {
-	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}
+	spawn := &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"}
 	subject := func(pred *ir.Node) Condition {
 		return Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": pred}}
 	}
@@ -224,7 +224,7 @@ func TestLatchFoldsThroughPredicateStructure(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			act := Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "work"}, OnDone: &Action{Patch: c.patch}}
+			act := Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "work"}, OnDone: &Action{Patch: c.patch}}
 			if got := latchOf(c.pred, act); got != c.want {
 				t.Fatalf("latchOf = %d, want %d", got, c.want)
 			}
@@ -237,7 +237,7 @@ func TestLatchFoldsThroughPredicateStructure(t *testing.T) {
 // writing a value out of a task (`patch: {stage: .[result.status]}`), which may well latch.
 func TestLatchRefusesOnlyWhatItCanSee(t *testing.T) {
 	pred := entity.Obj{"stage": "open"}.Payload()
-	spawn := &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}
+	spawn := &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"}
 	hook := func(p entity.Payload) Action { return Action{Spawn: spawn, OnDone: &Action{Patch: p}} }
 
 	cases := []struct {
@@ -292,7 +292,7 @@ func TestAFiringDoesNotAskAgainWhileItsWorkRuns(t *testing.T) {
 			"value": map[string]any{"stage": "open"}}},
 		Gates: []Gate{{Name: "go", Mode: "ask"}},
 		Action: Action{
-			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+			Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 			OnDone: &Action{Patch: entity.Obj{"stage": "reviewed"}.Payload()},
 		},
 	}); err != nil {
@@ -364,12 +364,12 @@ func waitFlow(t *testing.T, eng *Engine, ref entity.Ref, n int) {
 // twice, and it is the shape half the sequence tests are written in.
 func TestLatchCheckLeavesSequencesAlone(t *testing.T) {
 	cond := Condition{Subject: mm("demo.pr.*")} // no predicate at all
-	seq := Action{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one"}}, {Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "two"}}}}
+	seq := Action{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "one"}}, {Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "two"}}}}
 	if err := checkLatch(cond, seq); err != nil {
 		t.Fatalf("a sequence was asked to latch: %v", err)
 	}
 	// A bare spawn under the same subject is not excused.
-	if err := checkLatch(cond, Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "one"}}); err == nil {
+	if err := checkLatch(cond, Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "one"}}); err == nil {
 		t.Fatal("a bare spawn with nothing to latch on was accepted")
 	}
 }
@@ -381,7 +381,7 @@ func TestAddTriggerRefusesAnUnlatchedSpawn(t *testing.T) {
 	err := eng.AddTrigger(Trigger{
 		Name:      "spin",
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": map[string]any{"stage": "open"}}},
-		Action:    Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"}},
+		Action:    Action{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"}},
 	})
 	if err == nil {
 		t.Fatal("installed a charter that cannot stop spawning")
@@ -393,7 +393,7 @@ func TestAddTriggerRefusesAnUnlatchedSpawn(t *testing.T) {
 	err = eng.AddTrigger(Trigger{
 		Name:      "nested",
 		Condition: Condition{Subject: mm("demo.pr.*")},
-		Action:    Action{Seq: []Action{{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "inner"}}}}}},
+		Action:    Action{Seq: []Action{{Seq: []Action{{Spawn: &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "inner"}}}}}},
 	})
 	if err == nil {
 		t.Fatal("installed a nested sequence")

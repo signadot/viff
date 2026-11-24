@@ -12,25 +12,25 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/client"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/client"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 var (
 	callToolOnce sync.Once
-	callToolDir  string // where main's verse-call-tool is built, once for the package
+	callToolDir  string // where main's viff-call-tool is built, once for the package
 	callToolErr  error
 )
 
-// withCallTool builds verse-call-tool and puts it on PATH, where a runner finds it and its tasks'
+// withCallTool builds viff-call-tool and puts it on PATH, where a runner finds it and its tasks'
 // processes do too, as an image's runner finds the one installed beside it.
 func withCallTool(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("no go on PATH to build verse-call-tool with")
+		t.Skip("no go on PATH to build viff-call-tool with")
 	}
 	callToolOnce.Do(func() {
 		callToolDir, callToolErr = os.MkdirTemp("", "vct")
@@ -38,7 +38,7 @@ func withCallTool(t *testing.T) {
 			return
 		}
 		out, err := exec.Command("go", "build", "-o", filepath.Join(callToolDir, CallToolBinary),
-			"github.com/signadot/verse/cmd/verse-call-tool").CombinedOutput()
+			"go.viff.dev/viff/cmd/viff-call-tool").CombinedOutput()
 		if err != nil {
 			callToolErr = &buildError{err, out}
 		}
@@ -55,13 +55,13 @@ type buildError struct {
 }
 
 func (e *buildError) Error() string {
-	return "building verse-call-tool: " + e.err.Error() + "\n" + string(e.out)
+	return "building viff-call-tool: " + e.err.Error() + "\n" + string(e.out)
 }
 
 // commitScript commits work on the task's checkout of svc, as a script's own git does, ending the
 // message with the trailers the runner gave it.
 const commitScript = "cd svc\necho work > f\ngit add f\n" +
-	"git commit -qm work -m \"$VERSE_TRAILERS\"\n"
+	"git commit -qm work -m \"$VIFF_TRAILERS\"\n"
 
 // launchScript launches a script on acme/svc, allowed to create the task's own branches, under
 // the rows given and `allow` for the rest, in an environment giving the repository, its tracker,
@@ -84,7 +84,7 @@ func TestAScriptsPushIsAskedAboutAndLands(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	launchScript(rt, "t1", "#!/bin/sh\nset -e\n"+commitScript+"verse-call-tool git-push", pushGate)
+	launchScript(rt, "t1", "#!/bin/sh\nset -e\n"+commitScript+"viff-call-tool git-push", pushGate)
 	q := pending(t, rt, "t1")
 	if q.Step != task.StepGitPush {
 		t.Fatalf("asked about %+v, want git.push", q)
@@ -92,18 +92,18 @@ func TestAScriptsPushIsAskedAboutAndLands(t *testing.T) {
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Proceed, "", "user:ana"); err != nil {
 		t.Fatal(err)
 	}
-	if snap := ended(t, rt, "t1"); snap.Status != task.Done || !strings.Contains(snap.Result, "verse/auto/t1") {
+	if snap := ended(t, rt, "t1"); snap.Status != task.Done || !strings.Contains(snap.Result, "viff/auto/t1") {
 		t.Fatalf("task: %+v", snap)
 	}
-	if !at(t, forge, "refs/heads/verse/auto/t1") {
+	if !at(t, forge, "refs/heads/viff/auto/t1") {
 		t.Fatal("the approved push didn't reach the forge")
 	}
 }
 
-// verseOnly is a git ceiling on acme/svc giving its fetch and pushes to its verse/ branches.
-var verseOnly = systems.Ceiling{{
+// viffOnly is a git ceiling on acme/svc giving its fetch and pushes to its viff/ branches.
+var viffOnly = systems.Ceiling{{
 	Attributes: map[string]*ir.Node{"repo": systems.OneOf("github.com/acme/svc")},
-	Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": systems.Regexp("^refs/heads/verse/")}}},
+	Verbs:      map[string][]systems.Shape{"fetch": {{}}, "push": {{"ref": systems.Regexp("^refs/heads/viff/")}}},
 }}
 
 // pushesTo is an environment giving acme/svc's fetch and a push to refs as shaped.
@@ -124,22 +124,22 @@ func TestAScriptIsHeldToTheRunnersCeiling(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveConfigured(t, every(Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge}},
-		map[string]System{"git": {Ceiling: verseOnly}}), Secrets{}, Tokens{})
+		map[string]System{"git": {Ceiling: viffOnly}}), Secrets{}, Tokens{})
 
 	allow := task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}
 	l := rt.Launch(runner.Launch{ID: "t0", Autonomy: allow, Script: "true", Environment: pushesTo(ir.FromString("refs/heads/main"))})
-	if !strings.Contains(l.Err(), "beyond this runner's ceiling for git") || !strings.Contains(l.Err(), "{ref: !regexp ^refs/heads/verse/}") {
+	if !strings.Contains(l.Err(), "beyond this runner's ceiling for git") || !strings.Contains(l.Err(), "{ref: !regexp ^refs/heads/viff/}") {
 		t.Fatalf("a launch giving a push to main past the ceiling: %q, want it refused saying what the ceiling gives", l.Err())
 	}
 
-	rt.Launch(runner.Launch{ID: "t1", Autonomy: allow, Environment: pushesTo(systems.Regexp("^refs/heads/verse/")), Script: "#!/bin/sh\n" + commitScript +
-		"verse-call-tool git-push -branch main\necho \"main=$?\"\nverse-call-tool git-push\necho \"own=$?\""})
+	rt.Launch(runner.Launch{ID: "t1", Autonomy: allow, Environment: pushesTo(systems.Regexp("^refs/heads/viff/")), Script: "#!/bin/sh\n" + commitScript +
+		"viff-call-tool git-push -branch main\necho \"main=$?\"\nviff-call-tool git-push\necho \"own=$?\""})
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "main=3") || !strings.Contains(snap.Result, "own=0") ||
 		!strings.Contains(snap.Result, "outside the environment") {
 		t.Fatalf("task: %+v", snap)
 	}
-	if !at(t, forge, "refs/heads/verse/auto/t1") {
+	if !at(t, forge, "refs/heads/viff/auto/t1") {
 		t.Fatal("the push within the ceiling didn't reach the forge")
 	}
 	if strings.Contains(message(t, forge), "work") {
@@ -155,9 +155,9 @@ func TestAnAskBeyondTheEnvironmentIsNeverPut(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveConfigured(t, every(Config{Repos: &Repos{Mirrors: t.TempDir(), Forge: forge}},
-		map[string]System{"git": {Ceiling: verseOnly}}), Secrets{}, Tokens{})
-	rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{pushGate, {Then: task.Then{Mode: task.ThenAllow}}}, Environment: pushesTo(systems.Regexp("^refs/heads/verse/")),
-		Script: "#!/bin/sh\n" + commitScript + "verse-call-tool git-push -branch main\necho \"main=$?\""})
+		map[string]System{"git": {Ceiling: viffOnly}}), Secrets{}, Tokens{})
+	rt.Launch(runner.Launch{ID: "t1", Autonomy: task.Autonomy{pushGate, {Then: task.Then{Mode: task.ThenAllow}}}, Environment: pushesTo(systems.Regexp("^refs/heads/viff/")),
+		Script: "#!/bin/sh\n" + commitScript + "viff-call-tool git-push -branch main\necho \"main=$?\""})
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "main=3") || !strings.Contains(snap.Result, "outside the environment") {
 		t.Fatalf("task: %+v", snap)
@@ -178,7 +178,7 @@ func TestAScriptReadsADenialAndGoesOn(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	launchScript(rt, "t1", "#!/bin/sh\n"+commitScript+"verse-call-tool git-push\necho \"exit=$?\"", pushGate)
+	launchScript(rt, "t1", "#!/bin/sh\n"+commitScript+"viff-call-tool git-push\necho \"exit=$?\"", pushGate)
 	q := pending(t, rt, "t1")
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Deny, "", "user:ana"); err != nil {
 		t.Fatal(err)
@@ -188,7 +188,7 @@ func TestAScriptReadsADenialAndGoesOn(t *testing.T) {
 		!strings.Contains(snap.Result, "denied by user:ana") {
 		t.Fatalf("task: %+v", snap)
 	}
-	if at(t, forge, "refs/heads/verse/auto/t1") {
+	if at(t, forge, "refs/heads/viff/auto/t1") {
 		t.Fatal("a denied push reached the forge")
 	}
 }
@@ -201,8 +201,8 @@ func TestAScriptsRefusedAndFailedCallsAreAnswers(t *testing.T) {
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
 	launchScript(rt, "t1", "#!/bin/sh\n"+commitScript+
-		"verse-call-tool git-push -branch main\necho \"push=$?\"\n"+
-		"verse-call-tool question-ask -question q -within never 2>&1\necho \"ask=$?\"", noMain, pushGate)
+		"viff-call-tool git-push -branch main\necho \"push=$?\"\n"+
+		"viff-call-tool question-ask -question q -within never 2>&1\necho \"ask=$?\"", noMain, pushGate)
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "push=3") ||
 		!strings.Contains(snap.Result, "no-main") || !strings.Contains(snap.Result, "ask=1") {
@@ -223,7 +223,7 @@ func TestAScriptAsksAndReadsTheAnswer(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	launchScript(rt, "t1", "#!/bin/sh\nverse-call-tool question-ask -question 'ship it?'")
+	launchScript(rt, "t1", "#!/bin/sh\nviff-call-tool question-ask -question 'ship it?'")
 	q := pending(t, rt, "t1")
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Reply, "ship it", "user:ana"); err != nil {
 		t.Fatal(err)
@@ -243,13 +243,13 @@ func TestAScriptThatStopsWaitingWithdrawsItsQuestion(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	launchScript(rt, "t1", "#!/bin/sh\n"+commitScript+"timeout 2 verse-call-tool git-push\necho gave up", pushGate)
+	launchScript(rt, "t1", "#!/bin/sh\n"+commitScript+"timeout 2 viff-call-tool git-push\necho gave up", pushGate)
 	pending(t, rt, "t1")
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "gave up") || len(snap.Pending) != 0 {
 		t.Fatalf("task: %+v", snap)
 	}
-	if at(t, forge, "refs/heads/verse/auto/t1") {
+	if at(t, forge, "refs/heads/viff/auto/t1") {
 		t.Fatal("a withdrawn push reached the forge")
 	}
 }
@@ -263,7 +263,7 @@ func TestAScriptsToolsAreItsReposAndAsk(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	list := "#!/bin/sh\nverse-call-tool | grep -x '[a-z-]*' | sort | tr '\\n' ' '"
+	list := "#!/bin/sh\nviff-call-tool | grep -x '[a-z-]*' | sort | tr '\\n' ' '"
 	tracked := envOf(netOpen, []runner.Repo{{Repo: "acme/svc"}}, []runner.Tracker{{Repo: "acme/svc"}})
 	fetchOnly := giving(systems.Environment{Systems: systems.Systems{"git": {{Attributes: map[string]string{"repo": "acme/svc"},
 		Verbs: map[string][]systems.Shape{"fetch": {{}}}}}}}, "question")
@@ -293,7 +293,7 @@ func TestAConfinedScriptReachesItsTools(t *testing.T) {
 		t.Skipf("bwrap can't run here: %v", err)
 	}
 	rt, _ := serveNetwork(t, sb)
-	rt.Launch(runner.Launch{ID: "t1", Autonomy: allowing("question"), Script: "#!/bin/sh\nverse-call-tool question-ask -question hi; echo \"$VERSE_TOOLS\"", Environment: giving(envOf(netOpen, nil, nil), "question")})
+	rt.Launch(runner.Launch{ID: "t1", Autonomy: allowing("question"), Script: "#!/bin/sh\nviff-call-tool question-ask -question hi; echo \"$VIFF_TOOLS\"", Environment: giving(envOf(netOpen, nil, nil), "question")})
 	q := pending(t, rt, "t1")
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Reply, "hello back", "user:ana"); err != nil {
 		t.Fatal(err)
@@ -325,7 +325,7 @@ func TestAScriptGetsTheRunnersBinaryWithoutPATH(t *testing.T) {
 	srv := httptest.NewServer(h.HTTPHandler())
 	defer func() { srv.Close(); h.Shutdown() }()
 	rt := client.HTTP(srv.URL)
-	rt.Launch(runner.Launch{ID: "t1", Autonomy: allowing("question"), Script: "#!/bin/sh\nverse-call-tool question-ask -question hi", Environment: giving(envOf(netOpen, nil, nil), "question")})
+	rt.Launch(runner.Launch{ID: "t1", Autonomy: allowing("question"), Script: "#!/bin/sh\nviff-call-tool question-ask -question hi", Environment: giving(envOf(netOpen, nil, nil), "question")})
 	q := pending(t, rt, "t1")
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Reply, "found", "user:ana"); err != nil {
 		t.Fatal(err)
@@ -342,13 +342,13 @@ func TestAScriptReadsWhatItsApproverSaid(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	launchScript(rt, "t1", "#!/bin/sh\nset -e\n"+commitScript+"verse-call-tool git-push", pushGate)
+	launchScript(rt, "t1", "#!/bin/sh\nset -e\n"+commitScript+"viff-call-tool git-push", pushGate)
 	q := pending(t, rt, "t1")
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Proceed, "next time, a draft", "user:ana"); err != nil {
 		t.Fatal(err)
 	}
 	snap := ended(t, rt, "t1")
-	if snap.Status != task.Done || !strings.Contains(snap.Result, "verse/auto/t1") || !strings.Contains(snap.Result, "next time, a draft") {
+	if snap.Status != task.Done || !strings.Contains(snap.Result, "viff/auto/t1") || !strings.Contains(snap.Result, "next time, a draft") {
 		t.Fatalf("task: %+v", snap)
 	}
 }
@@ -360,7 +360,7 @@ func TestASayToARunningScriptIsRefused(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	launchScript(rt, "t1", "#!/bin/sh\nverse-call-tool question-ask -question hi")
+	launchScript(rt, "t1", "#!/bin/sh\nviff-call-tool question-ask -question hi")
 	q := pending(t, rt, "t1")
 	if err := rt.Attach("t1").Steer("do something else", "user:bo", ""); !errors.Is(err, task.ErrUnsteerable) {
 		t.Fatalf("the say = %v, want ErrUnsteerable", err)
@@ -380,7 +380,7 @@ func TestASayDuringAScriptsPushLeavesItsQuestionStanding(t *testing.T) {
 	forge := t.TempDir()
 	seed(t, forge, "acme/svc")
 	rt := serveRepos(t, forge, Secrets{})
-	launchScript(rt, "t1", "#!/bin/sh\nset -e\n"+commitScript+"verse-call-tool git-push", pushGate)
+	launchScript(rt, "t1", "#!/bin/sh\nset -e\n"+commitScript+"viff-call-tool git-push", pushGate)
 	q := pending(t, rt, "t1")
 	if err := rt.Attach("t1").Steer("also bump the version", "user:ana", ""); !errors.Is(err, task.ErrUnsteerable) {
 		t.Fatalf("the say = %v, want ErrUnsteerable", err)
@@ -391,7 +391,7 @@ func TestASayDuringAScriptsPushLeavesItsQuestionStanding(t *testing.T) {
 	if err := rt.Attach("t1").(resolver).Resolve(q.ID, task.Proceed, "", "user:ana"); err != nil {
 		t.Fatal(err)
 	}
-	if snap := ended(t, rt, "t1"); snap.Status != task.Done || !at(t, forge, "refs/heads/verse/auto/t1") {
+	if snap := ended(t, rt, "t1"); snap.Status != task.Done || !at(t, forge, "refs/heads/viff/auto/t1") {
 		t.Fatalf("task: %+v; the approved push didn't land", snap)
 	}
 }
@@ -421,11 +421,11 @@ func TestAPushWithinOnlyThroughOwnPassesBothChecks(t *testing.T) {
 		"fetch": {{}},
 		"push":  {{"ref": systems.Regexp("^refs/heads/"), "exists": ir.FromBool(false)}, {"ref": systems.Regexp("^refs/heads/"), "own": ir.FromBool(true)}},
 	}}}
-	again := "cd svc\necho more > f\ngit commit -qam more -m 'Verse-Task: t1'\ncd ..\n"
+	again := "cd svc\necho more > f\ngit commit -qam more -m 'Viff-Task: t1'\ncd ..\n"
 	script := "#!/bin/sh\n" + commitScript + "cd ..\n" +
-		"verse-call-tool git-push\necho \"first=$?\"\n" + again +
-		"verse-call-tool git-push\necho \"second=$?\"\n" +
-		"verse-call-tool git-push -branch main\necho \"main=$?\""
+		"viff-call-tool git-push\necho \"first=$?\"\n" + again +
+		"viff-call-tool git-push\necho \"second=$?\"\n" +
+		"viff-call-tool git-push -branch main\necho \"main=$?\""
 	rt.Launch(runner.Launch{ID: "t1", Autonomy: allowing("git"), Script: script, Environment: env})
 	snap := ended(t, rt, "t1")
 	if snap.Status != task.Done || !strings.Contains(snap.Result, "first=0") || !strings.Contains(snap.Result, "second=0") ||
@@ -433,7 +433,7 @@ func TestAPushWithinOnlyThroughOwnPassesBothChecks(t *testing.T) {
 		!strings.Contains(snap.Result, "{exists: false, ref: !regexp ^refs/heads/}, {own: true, ref: !regexp ^refs/heads/}") {
 		t.Fatalf("task: %+v", snap)
 	}
-	if !at(t, forge, "refs/heads/verse/auto/t1") {
+	if !at(t, forge, "refs/heads/viff/auto/t1") {
 		t.Fatal("the pushes within the environment didn't reach the forge")
 	}
 }

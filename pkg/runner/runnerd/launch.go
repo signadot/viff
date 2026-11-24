@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // EnvOf is the variables of a runner's environment a launch's task shell is given, by name: its
@@ -58,7 +58,7 @@ func CheckLaunch(l *runner.Launch, desc runner.Description, owned []string) erro
 // one of its offers, and that what the launch asks of the offer — the agent's settings, systems
 // it holds (and repositories within its `git` ceiling), a network it builds, a conversation,
 // rows on systems it holds — is what the offer takes. A runner with no offers takes no repos and
-// otherwise refuses nothing. Verse makes this check with the description it read from the
+// otherwise refuses nothing. Viff makes this check with the description it read from the
 // runner, so a spawn is refused where it is written rather than at its first firing.
 //
 // The launch is bound: a `$` in a value is part of it (systems.Ceiling.Contains). A charter's
@@ -242,11 +242,11 @@ func doerName(l *runner.Launch, desc runner.Description) string {
 	return cmp.Or(l.Who(), "agent")
 }
 
-// offerFor is the offer a doer runs under. A launch names its doer: verse binds its default agent
+// offerFor is the offer a doer runs under. A launch names its doer: viff binds its default agent
 // to a prompt that names none before it launches, so a runner keeps no default of its own.
 func offerFor(who string, desc runner.Description) (runner.Offer, error) {
 	if who == "" {
-		return runner.Offer{}, errors.New("agent: a prompt's launch names its agent (verse binds its default agent before the launch)")
+		return runner.Offer{}, errors.New("agent: a prompt's launch names its agent (viff binds its default agent before the launch)")
 	}
 	var agents []string
 	for _, o := range desc.Offers {

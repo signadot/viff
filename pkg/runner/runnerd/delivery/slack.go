@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strings"
 
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/io/slack"
-	"github.com/signadot/verse/pkg/task"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/io/slack"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // SLACK IS A SYSTEM WITH FOUR VERBS, each a call the runner makes with its bot token over the
@@ -35,7 +35,7 @@ const (
 )
 
 // SlackFooter is the line a task's message ends with: the task's id, in Slack's italics.
-func SlackFooter(taskID string) string { return "_verse task " + taskID + "_" }
+func SlackFooter(taskID string) string { return "_viff task " + taskID + "_" }
 
 // slack answers a `slack.*` op with the runner's bot token: the channel by its name, decided by
 // the launch's autonomy and the runner's ceiling on the name, then the call.
@@ -117,7 +117,7 @@ func (s *Server) slack(ctx context.Context, tk Task, req Request) (asked, Reply)
 // slackFailed is a failed call as the task reads it: Slack's refusal, which asking again the same
 // way gets again, as a refusal to re-plan on, and anything else as the error it is.
 func slackFailed(err error) Reply {
-	if verseio.IsPermanent(err) {
+	if viffio.IsPermanent(err) {
 		return Reply{Refused: err.Error()}
 	}
 	return Reply{Error: err.Error()}

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signadot/verse/pkg/launch"
+	"go.viff.dev/viff/pkg/launch"
 
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
@@ -22,7 +22,7 @@ import (
 //	id form     review.seq.2.onFailed     what goes in a task id
 //
 // The id cannot carry brackets. Under zsh `review.seq[2]@demo:pr:1` dies with "no matches
-// found" BEFORE verse runs, and ids are pasted back onto command lines constantly — the same
+// found" BEFORE viff runs, and ids are pasted back onto command lines constantly — the same
 // principle a task id follows. The flattening is lossless because
 // Action's field set is closed: a segment following `seq` is an element, everything else is a
 // field name, so nothing has to be guessed.

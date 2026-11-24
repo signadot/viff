@@ -18,10 +18,10 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A checkout per task, off a real repository, delivered back to it.
@@ -46,8 +46,8 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(ws.Root, "svc", "README")); err != nil {
 		t.Fatalf("checkout does not carry the base's content under its repo name: %v", err)
 	}
-	if ws.Branch != "verse/auto/p1" {
-		t.Errorf("branch = %q, want verse/auto/p1 — the branch is per task or two tasks share one", ws.Branch)
+	if ws.Branch != "viff/auto/p1" {
+		t.Errorf("branch = %q, want viff/auto/p1 — the branch is per task or two tasks share one", ws.Branch)
 	}
 
 	// A second task on the same repository must get its own tree and its own branch: the
@@ -64,7 +64,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Root, "svc", "new.txt"), []byte("hi\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if ws.Branch != "verse/auto/p1" || ws.Trees[0].Repo.From != "main" {
+	if ws.Branch != "viff/auto/p1" || ws.Trees[0].Repo.From != "main" {
 		t.Errorf("the workspace is on %s from %s, want the task's branch and its base", ws.Branch, ws.Trees[0].Repo.From)
 	}
 	if got := ws.Trees[0].Changed(); len(got) != 1 || got[0] != "new.txt" {
@@ -83,17 +83,17 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 		t.Errorf("work is still staged after a successful delivery: %v (%v)", held, err)
 	}
 	// The push landed on the origin, under the ref the task named.
-	if out := commitAt(t, origin, "refs/heads/verse/auto/p1"); out == "" {
-		t.Fatal("origin has no verse/auto/p1")
+	if out := commitAt(t, origin, "refs/heads/viff/auto/p1"); out == "" {
+		t.Fatal("origin has no viff/auto/p1")
 	} else {
-		// The trailers are the whole attribution channel out of the verse: a push under a
+		// The trailers are the whole attribution channel out of the viff: a push under a
 		// shared credential says nothing at the far end about who it was for.
 		for _, want := range []string{
 			"fixed the flaky test",
-			"Verse-Task: p1",
-			"Verse-Principal: walter",
-			`Verse-Subject: demo.pr."1"`,
-			"Verse-Chain: review",
+			"Viff-Task: p1",
+			"Viff-Principal: walter",
+			`Viff-Subject: demo.pr."1"`,
+			"Viff-Chain: review",
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("commit message is missing %q:\n%s", want, out)
@@ -132,8 +132,8 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 	}
 	// The same task branch in both, so a gate matching on branch has one answer.
 	for _, tr := range ws.Trees {
-		if got := headBranch(t, tr.Dir); got != "verse/auto/p1" {
-			t.Errorf("%s is on %q, want verse/auto/p1", tr.Repo.Name(), got)
+		if got := headBranch(t, tr.Dir); got != "viff/auto/p1" {
+			t.Errorf("%s is on %q, want viff/auto/p1", tr.Repo.Name(), got)
 		}
 	}
 
@@ -152,10 +152,10 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 	if _, err := deliver(t, ws, &runner.Launch{ID: "p1"}, "did the thing", ""); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
-	if commitAt(t, svcOrigin, "refs/heads/verse/auto/p1") == "" {
+	if commitAt(t, svcOrigin, "refs/heads/viff/auto/p1") == "" {
 		t.Fatal("the repository with a destination did not deliver")
 	}
-	if commitAt(t, libOrigin, "refs/heads/verse/auto/p1") != "" {
+	if commitAt(t, libOrigin, "refs/heads/viff/auto/p1") != "" {
 		t.Error("the reference repository received a push it never declared a target for")
 	}
 }
@@ -164,7 +164,7 @@ func TestMultipleReposOneWorkspace(t *testing.T) {
 //
 // This guards a failure that was real and was quiet. The first version of this runner used
 // linked worktrees off a shared mirror, so task branches lived in the MIRROR's ref namespace —
-// and `fetch --prune` on the next launch deleted every `verse/auto/*`, because none of them exists
+// and `fetch --prune` on the next launch deleted every `viff/auto/*`, because none of them exists
 // upstream. Nothing errored; a running worktree was simply left on a ref that was gone, its
 // whole tree read as untracked, and its work could not be committed.
 //
@@ -188,7 +188,7 @@ func TestFetchDoesNotPruneRunningTasksBranches(t *testing.T) {
 	if _, err := m.Open(context.Background(), "p2", repos, worktrees, Author{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := headBranch(t, ws.Trees[0].Dir); got != "verse/auto/p1" {
+	if got := headBranch(t, ws.Trees[0].Dir); got != "viff/auto/p1" {
 		t.Fatalf("first task's HEAD = %q — a second launch disturbed its branch", got)
 	}
 	if clean, st := isClean(t, ws.Trees[0].Dir); !clean {
@@ -254,11 +254,11 @@ func TestTaskCannotRedirectItsOwnPush(t *testing.T) {
 	if _, err := deliver(t, ws, &runner.Launch{ID: "p1"}, "work", ""); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
-	if commitAt(t, attacker, "refs/heads/verse/auto/p1") != "" {
+	if commitAt(t, attacker, "refs/heads/viff/auto/p1") != "" {
 		t.Fatal("the task redirected its own push by editing .git/config — the runner's " +
 			"credential goes wherever the agent points it")
 	}
-	if commitAt(t, intended, "refs/heads/verse/auto/p1") == "" {
+	if commitAt(t, intended, "refs/heads/viff/auto/p1") == "" {
 		t.Fatal("the push did not reach the remote the launch named")
 	}
 }
@@ -613,7 +613,7 @@ func TestWorkThatCouldNotBePushedIsInTheMirror(t *testing.T) {
 	}
 	// Under the pending namespace, not the forced one: a first push of a branch the task creates
 	// makes it only if nothing is there, and so does its retry.
-	want := StagedRef(StagePending, "p1", "svc", "refs/heads/verse/auto/p1")
+	want := StagedRef(StagePending, "p1", "svc", "refs/heads/viff/auto/p1")
 	if len(d.Staged) != 1 || d.Staged[0] != want {
 		t.Fatalf("Staged = %v, want [%s] — the work has nowhere to wait", d.Staged, want)
 	}
@@ -629,7 +629,7 @@ func TestWorkThatCouldNotBePushedIsInTheMirror(t *testing.T) {
 	if err := ws.Remove(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if msg := commitAt(t, m.Dir(origin), want); !strings.Contains(msg, "Verse-Task: p1") {
+	if msg := commitAt(t, m.Dir(origin), want); !strings.Contains(msg, "Viff-Task: p1") {
 		t.Fatalf("the mirror does not hold the work at %s: %q", want, msg)
 	}
 }
@@ -644,7 +644,7 @@ func TestWorkThatCouldNotBePushedIsInTheMirror(t *testing.T) {
 //
 // Nothing here could have caught that, which is why the test says so: every other test passes a
 // `t.TempDir()`, and those are absolute already. It took starting the runner with
-// `-data scratchpad/…` — the ordinary thing to type — against a real verse.
+// `-data scratchpad/…` — the ordinary thing to type — against a real viff.
 func TestAWorkspaceRootIsAbsoluteWhereverItWasToldToGo(t *testing.T) {
 	origin := initRepo(t)
 	m := NewMirrors(t.TempDir(), TokenAuth(""))
@@ -685,7 +685,7 @@ func mustGetwd(t *testing.T) string {
 // answer was dropped entirely — the body held nothing but trailers.
 func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
 	l := &runner.Launch{ID: "run-1", Provenance: runner.Provenance{
-		Chain: "comment-drift", Subject: "drift.head.head-moved@git.head.verse",
+		Chain: "comment-drift", Subject: "drift.head.head-moved@git.head.viff",
 	}}
 	answer := "{\"files\": 1, \"fixed\": 1, \"findings\": [{\"symbol\": \"main.shortSha\"}]}"
 	msg := CommitMessage(l, answer)
@@ -694,7 +694,7 @@ func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
 	if strings.Contains(subject, "{") {
 		t.Errorf("the subject is the document: %q", subject)
 	}
-	if subject != "comment-drift on drift.head.head-moved@git.head.verse" {
+	if subject != "comment-drift on drift.head.head-moved@git.head.viff" {
 		t.Errorf("subject = %q, want what fired and about what", subject)
 	}
 	if !strings.Contains(msg, answer) {
@@ -704,7 +704,7 @@ func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
 	// trap that makes putting a document in a message worth a test at all.
 	last := msg[strings.LastIndex(strings.TrimRight(msg, "\n"), "\n\n")+2:]
 	for _, line := range strings.Split(strings.TrimRight(last, "\n"), "\n") {
-		if !strings.HasPrefix(line, "Verse-") {
+		if !strings.HasPrefix(line, "Viff-") {
 			t.Errorf("the last paragraph holds %q, so git reads no trailers at all", line)
 		}
 	}
@@ -722,7 +722,7 @@ func TestAStructuredAnswerIsTheBodyNotTheSubject(t *testing.T) {
 // (git-issue qwbacp11h12krq1tgsn0).
 func TestAFencedAnswerIsTheBodyNotTheSubject(t *testing.T) {
 	l := &runner.Launch{ID: "run-1", Provenance: runner.Provenance{
-		Chain: "review-range", Subject: "verse-dev.drift.at",
+		Chain: "review-range", Subject: "viff-dev.drift.at",
 	}}
 	for _, answer := range []string{
 		"```json\n{\"files\": 2, \"findings\": []}\n```",
@@ -734,7 +734,7 @@ func TestAFencedAnswerIsTheBodyNotTheSubject(t *testing.T) {
 		if strings.HasPrefix(subject, "```") {
 			t.Errorf("the subject is the fence: %q", subject)
 		}
-		if subject != "review-range on verse-dev.drift.at" {
+		if subject != "review-range on viff-dev.drift.at" {
 			t.Errorf("subject = %q, want what fired and about what", subject)
 		}
 		if !strings.Contains(msg, answer) {
@@ -766,20 +766,20 @@ func TestOnlyARunsOwnBranchesMayBeDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := head.Storer.SetReference(plumbing.NewHashReference("refs/heads/verse/auto/task-1", ref.Hash())); err != nil {
+	if err := head.Storer.SetReference(plumbing.NewHashReference("refs/heads/viff/auto/task-1", ref.Hash())); err != nil {
 		t.Fatal(err)
 	}
 	tree := ws.Trees[0]
 
 	// A branch the task names resolves to its full ref, and a name git refuses does not.
-	full, err := runner.BranchRef("verse/auto/task-1")
-	if err != nil || full != "refs/heads/verse/auto/task-1" {
+	full, err := runner.BranchRef("viff/auto/task-1")
+	if err != nil || full != "refs/heads/viff/auto/task-1" {
 		t.Fatalf("a delete did not resolve: %q %v", full, err)
 	}
 	for name, bad := range map[string]string{
 		"nothing at all": "",
 		"an option":      "-D",
-		"a climb":        "verse/../main",
+		"a climb":        "viff/../main",
 	} {
 		if got, err := runner.BranchRef(bad); err == nil {
 			t.Errorf("%s: %q resolved to %q", name, bad, got)
@@ -834,20 +834,20 @@ func TestAnExistingBranchFastForwardsUnlessForced(t *testing.T) {
 // has the one mailbox it can vouch for: an agent, a rule acting alone, a pair whose asker is no
 // person.
 func TestTheWorkspaceCommitsAsThePersonWhoLaunchedIt(t *testing.T) {
-	forAna := entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request")
+	forAna := entity.Pair("user:ana@example.com", "via:mirror.trigger.rule.run-request")
 	cases := []struct{ principal, doer, name, email string }{
-		{"user:ana@example.com", "codex", "ana@example.com (verse codex)", "ana+verse-codex-runner@example.com"},
-		{"user:ana@example.com", "llm", "ana@example.com (verse llm)", "ana+verse-llm-runner@example.com"},
-		{"user:ana@example.com", "", "ana@example.com (verse code)", "ana+verse-code-runner@example.com"},
+		{"user:ana@example.com", "codex", "ana@example.com (viff codex)", "ana+viff-codex-runner@example.com"},
+		{"user:ana@example.com", "llm", "ana@example.com (viff llm)", "ana+viff-llm-runner@example.com"},
+		{"user:ana@example.com", "", "ana@example.com (viff code)", "ana+viff-code-runner@example.com"},
 		{"agent:reviewer", "codex", RunnerAuthor.Name, RunnerAuthor.Email},
 		{"user:ana", "codex", RunnerAuthor.Name, RunnerAuthor.Email},
 		{"", "codex", RunnerAuthor.Name, RunnerAuthor.Email},
-		{forAna, "codex", "ana@example.com (verse codex)", "ana+verse-codex-runner@example.com"},
-		{forAna, "", "ana@example.com (verse code)", "ana+verse-code-runner@example.com"},
-		{entity.Pair("agent:reviewer", "via:verse.trigger.rule.x"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
-		{entity.Pair("runner:verse-runner", "via:verse.trigger.rule.x"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
-		{entity.Pair("user:ana", "via:verse.trigger.rule.x"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
-		{"via:verse.trigger.rule.x", "codex", RunnerAuthor.Name, RunnerAuthor.Email},
+		{forAna, "codex", "ana@example.com (viff codex)", "ana+viff-codex-runner@example.com"},
+		{forAna, "", "ana@example.com (viff code)", "ana+viff-code-runner@example.com"},
+		{entity.Pair("agent:reviewer", "via:mirror.trigger.rule.x"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
+		{entity.Pair("runner:viff-runner", "via:mirror.trigger.rule.x"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
+		{entity.Pair("user:ana", "via:mirror.trigger.rule.x"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
+		{"via:mirror.trigger.rule.x", "codex", RunnerAuthor.Name, RunnerAuthor.Email},
 		{entity.Pair(entity.Pair("user:ana@example.com", "via:a"), "via:b"), "codex", RunnerAuthor.Name, RunnerAuthor.Email},
 	}
 	for _, c := range cases {
@@ -868,7 +868,7 @@ func TestTheWorkspaceCommitsAsThePersonWhoLaunchedIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.User.Name != "ana@example.com (verse codex)" || cfg.User.Email != "ana+verse-codex-runner@example.com" {
+	if cfg.User.Name != "ana@example.com (viff codex)" || cfg.User.Email != "ana+viff-codex-runner@example.com" {
 		t.Errorf("the clone's identity is %q <%s>", cfg.User.Name, cfg.User.Email)
 	}
 }
@@ -912,14 +912,14 @@ func TestAnAgentsDeliveryIsItsCommitsWithTrailers(t *testing.T) {
 	// Committed without the trailers: refused, naming what is missing.
 	commit("add a")
 	ok, why, _, err = tree.AuthoredWork(l)
-	if err != nil || !ok || !strings.Contains(why, "Verse-Task: p1") || !strings.Contains(why, "Verse-Principal: user:ana") {
+	if err != nil || !ok || !strings.Contains(why, "Viff-Task: p1") || !strings.Contains(why, "Viff-Principal: user:ana") {
 		t.Fatalf("a commit without trailers: ok=%v why=%q err=%v", ok, why, err)
 	}
 	// Committed with them: deliverable, and the uncommitted scratch beside it is not its concern.
 	if err := os.WriteFile(filepath.Join(tree.Dir, "b.txt"), []byte("b\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	commit("add b\n\nVerse-Task: p1\nVerse-Principal: user:ana\n")
+	commit("add b\n\nViff-Task: p1\nViff-Principal: user:ana\n")
 	if err := os.WriteFile(filepath.Join(tree.Dir, "scratch.txt"), []byte("notes\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -929,13 +929,13 @@ func TestAnAgentsDeliveryIsItsCommitsWithTrailers(t *testing.T) {
 	if err != nil || !ok || !strings.Contains(why, "These commits do not") {
 		t.Fatalf("a branch with one bad commit: ok=%v why=%q err=%v", ok, why, err)
 	}
-	if got := MissingTrailers("add b\n\nVerse-Task: p1\nVerse-Principal: user:ana\n", l); got != "" {
+	if got := MissingTrailers("add b\n\nViff-Task: p1\nViff-Principal: user:ana\n", l); got != "" {
 		t.Errorf("a complete trailer block reads as %q", got)
 	}
-	if got := MissingTrailers("add b\n\nVerse-Task: other\nVerse-Principal: user:ana\n", l); !strings.Contains(got, "Verse-Task") {
+	if got := MissingTrailers("add b\n\nViff-Task: other\nViff-Principal: user:ana\n", l); !strings.Contains(got, "Viff-Task") {
 		t.Errorf("a wrong task id reads as %q", got)
 	}
-	if got := MissingTrailers("Verse-Task: p1\n\nwords after the trailers\n", l); got == "" {
+	if got := MissingTrailers("Viff-Task: p1\n\nwords after the trailers\n", l); got == "" {
 		t.Error("trailers that are not the last paragraph were accepted")
 	}
 }
@@ -948,15 +948,15 @@ func TestIdentityForIsWhatTheCheckoutIsGiven(t *testing.T) {
 		t.Errorf("a person's launch: %v, want %v", got, want)
 	}
 	noAgent := &runner.Launch{ID: "p1", Provenance: runner.Provenance{Principal: "user:ana@example.com"}}
-	if got := IdentityFor(noAgent); got.Email != "ana+verse-agent-runner@example.com" {
+	if got := IdentityFor(noAgent); got.Email != "ana+viff-agent-runner@example.com" {
 		t.Errorf("a person's launch with no agent named: %v, want the doer \"agent\"", got)
 	}
 	forAna := &runner.Launch{ID: "r1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{
-		Principal: entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request")}}
+		Principal: entity.Pair("user:ana@example.com", "via:mirror.trigger.rule.run-request")}}
 	if got, want := IdentityFor(forAna), AuthorFor("user:ana@example.com", "codex"); got != want {
 		t.Errorf("a rule's launch for a person: %v, want the person's %v", got, want)
 	}
-	for _, p := range []string{"agent:x", "", entity.Pair("agent:x", "via:verse.trigger.rule.x")} {
+	for _, p := range []string{"agent:x", "", entity.Pair("agent:x", "via:mirror.trigger.rule.x")} {
 		l := &runner.Launch{ID: "c1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: p}}
 		if got := IdentityFor(l); got != RunnerAuthor {
 			t.Errorf("principal %q: %v, want the runner's", p, got)
@@ -974,13 +974,13 @@ func TestADeliveryIsHeldToTheCheckoutsIdentity(t *testing.T) {
 		name, want string
 		l          *runner.Launch
 	}{
-		{"person", "ana@example.com (verse codex) <ana+verse-codex-runner@example.com>", &runner.Launch{
+		{"person", "ana@example.com (viff codex) <ana+viff-codex-runner@example.com>", &runner.Launch{
 			ID: "p1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: "user:ana@example.com"}}},
-		{"charter", "verse runner <runner@invalid>", &runner.Launch{
+		{"charter", "viff runner <runner@invalid>", &runner.Launch{
 			ID: "c1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: "agent:comment-drift", Chain: "comment-drift"}}},
-		{"pair", "ana@example.com (verse codex) <ana+verse-codex-runner@example.com>", &runner.Launch{
+		{"pair", "ana@example.com (viff codex) <ana+viff-codex-runner@example.com>", &runner.Launch{
 			ID: "r1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{
-				Principal: entity.Pair("user:ana@example.com", "via:verse.trigger.rule.run-request"), Chain: "run-request"}}},
+				Principal: entity.Pair("user:ana@example.com", "via:mirror.trigger.rule.run-request"), Chain: "run-request"}}},
 	}
 	other := &object.Signature{Name: "test", Email: "test@example.com", When: time.Now()}
 	runnerSig := &object.Signature{Name: RunnerAuthor.Name, Email: RunnerAuthor.Email, When: time.Now()}
@@ -1037,7 +1037,7 @@ func TestADeliveryIsHeldToTheCheckoutsIdentity(t *testing.T) {
 			if id != RunnerAuthor {
 				t.Run("the runner's identity", func(t *testing.T) {
 					sha, ok, why := deliver(t, runnerSig, runnerSig, signed)
-					for _, s := range []string{sha, "author verse runner <runner@invalid>", "committer verse runner <runner@invalid>", lc.want} {
+					for _, s := range []string{sha, "author viff runner <runner@invalid>", "committer viff runner <runner@invalid>", lc.want} {
 						if !ok || !strings.Contains(why, s) {
 							t.Errorf("ok=%v, refusal %q lacks %q", ok, why, s)
 						}
@@ -1058,7 +1058,7 @@ func TestADeliveryIsHeldToTheCheckoutsIdentity(t *testing.T) {
 				if !ok || strings.Count(why, sha) != 1 {
 					t.Fatalf("ok=%v why=%q, want %s named once", ok, why, sha)
 				}
-				for _, s := range []string{"missing or wrong: Verse-Task", "author test <test@example.com>", RequiredTrailers(l)[0], lc.want} {
+				for _, s := range []string{"missing or wrong: Viff-Task", "author test <test@example.com>", RequiredTrailers(l)[0], lc.want} {
 					if !strings.Contains(why, s) {
 						t.Errorf("refusal %q lacks %q", why, s)
 					}
@@ -1070,7 +1070,7 @@ func TestADeliveryIsHeldToTheCheckoutsIdentity(t *testing.T) {
 
 // THE IDENTITY HELD IS THE LAUNCH'S, NOT THE CHECKOUT CONFIG'S. Committing with the git binary as
 // an agent does: left alone, the checkout's config is the identity held; GIT_AUTHOR_* in the
-// command (how a test command's identity reached signadot/verse#1) and an agent's own `git config
+// command (how a test command's identity reached signadot/viff#1) and an agent's own `git config
 // user.*` are both refused.
 func TestTheIdentityHeldIsTheLaunchsNotTheCheckoutConfig(t *testing.T) {
 	l := &runner.Launch{ID: "p1", Agent: &runner.Agent{Name: "codex"}, Provenance: runner.Provenance{Principal: "user:ana@example.com"}}
@@ -1281,7 +1281,7 @@ func TestADeliveryAfterARebaseIsTheTasksCommitsAlone(t *testing.T) {
 	}
 	id := IdentityFor(l)
 	sig := &object.Signature{Name: id.Name, Email: id.Email, When: time.Now()}
-	if _, err := wt.Commit("work\n\nVerse-Task: p1\n", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
+	if _, err := wt.Commit("work\n\nViff-Task: p1\n", &git.CommitOptions{Author: sig, Committer: sig}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, why, _, err := tree.AuthoredWork(l); err != nil || !ok || why != "" {
@@ -1324,7 +1324,7 @@ func TestADeliveryAfterAMergeOfUpstreamReadsTheTasksSide(t *testing.T) {
 		}
 		own := "own"
 		if signed {
-			own = "own\n\nVerse-Task: p1\n"
+			own = "own\n\nViff-Task: p1\n"
 		}
 		mine := commit("own.txt", own)
 
@@ -1343,7 +1343,7 @@ func TestADeliveryAfterAMergeOfUpstreamReadsTheTasksSide(t *testing.T) {
 		if wt, err = tree.repo.Worktree(); err != nil { // the refreshed repository's
 			t.Fatal(err)
 		}
-		commit("merge.txt", "merge mirror/main\n\nVerse-Task: p1\n", mine, upstream.Hash())
+		commit("merge.txt", "merge mirror/main\n\nViff-Task: p1\n", mine, upstream.Hash())
 
 		ok, why, _, err := tree.AuthoredWork(l)
 		switch {
@@ -1409,7 +1409,7 @@ func TestARefTheTaskWritesDoesntMakeItsCommitUpstream(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		commit("d.txt", "signed\n\nVerse-Task: p1\n")
+		commit("d.txt", "signed\n\nViff-Task: p1\n")
 		ok, why, _, err := tree.AuthoredWork(l)
 		if err != nil || !ok || !strings.Contains(why, ShortSha(c.String())) {
 			t.Fatalf("cheat=%v: ok=%v why=%q err=%v, want the unsigned commit refused by name", cheat, ok, why, err)

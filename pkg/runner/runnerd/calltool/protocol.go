@@ -3,17 +3,17 @@ package calltool
 import (
 	"fmt"
 
-	"github.com/signadot/verse/pkg/codec"
+	"go.viff.dev/viff/pkg/codec"
 )
 
 // Env is the environment variable that names the socket, as the task process sets it for the
-// programs it runs and as verse-call-tool reads it.
-const Env = "VERSE_TOOLS"
+// programs it runs and as viff-call-tool reads it.
+const Env = "VIFF_TOOLS"
 
 // Tool is one tool as the shell sees it: what the model is told about it, less the code. A host
 // offers its tools as these, with params as it has them; the server describes them (Describe).
 // The params are JSON-schema properties, and `enum` on one is the vocabulary the server accepts
-// — verse-call-tool shows it in a tool's usage and refuses a value outside it before the call
+// — viff-call-tool shows it in a tool's usage and refuses a value outside it before the call
 // crosses.
 type Tool struct {
 	Name        string         `tony:"field=name"`
@@ -22,7 +22,7 @@ type Tool struct {
 	Required    []string       `tony:"field=required,omitzero"`
 }
 
-// Reserved is the one name a tool's parameter may not have. verse-call-tool takes the whole
+// Reserved is the one name a tool's parameter may not have. viff-call-tool takes the whole
 // input as `-input`, and a parameter of that name would be the same flag twice; the list grows
 // on the server with no change to the binary, so the server is where it is refused.
 const Reserved = "input"
@@ -34,7 +34,7 @@ const Reserved = "input"
 // described with a schema its check would then quietly skip. Server.Start refuses it.
 func Describe(t Tool) (Tool, error) {
 	if _, has := t.Params[Reserved]; has {
-		return Tool{}, fmt.Errorf("calltool: %s has a parameter named %q, which verse-call-tool reserves for the whole input", t.Name, Reserved)
+		return Tool{}, fmt.Errorf("calltool: %s has a parameter named %q, which viff-call-tool reserves for the whole input", t.Name, Reserved)
 	}
 	params, err := normalise(t.Params)
 	if err != nil {

@@ -102,7 +102,7 @@ func (f *fakeSlack) handle(w http.ResponseWriter, r *http.Request) {
 	case "auth.test":
 		write(w, map[string]any{
 			"ok": true, "team": "Acme", "team_id": "T1",
-			"url": "https://acme.slack.com/", "user": "verse", "user_id": "U0",
+			"url": "https://acme.slack.com/", "user": "viff", "user_id": "U0",
 		})
 	case "users.conversations":
 		write(w, map[string]any{"ok": true, "channels": f.channels})

@@ -12,13 +12,13 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/parse"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/secretstore"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // anyVars is the shape that gives any command with any variables.
@@ -103,7 +103,7 @@ func TestSecretExecIsTheStepTheRunnerDecides(t *testing.T) {
 
 // startRun starts a run with the tools' `secret-exec` and is its id: the call answers at the
 // start, with the id and the directory on its first line.
-func startRun(t *testing.T, tools []verse.Tool, root string, in map[string]any) string {
+func startRun(t *testing.T, tools []viff.Tool, root string, in map[string]any) string {
 	t.Helper()
 	out, blocked, err := tools[0].Do(t.Context(), task.ToolUse{Name: tools[0].Name, Input: in})
 	if err != nil || blocked {
@@ -111,14 +111,14 @@ func startRun(t *testing.T, tools []verse.Tool, root string, in map[string]any) 
 	}
 	first, _, _ := strings.Cut(out, "\n")
 	id, dir, ok := strings.Cut(first, ": started, in ")
-	if !ok || dir != filepath.Join(root, ".verse", "exec") || !strings.Contains(out, "\nstdout: "+id+".sock while it runs, "+id+".out\n") {
+	if !ok || dir != filepath.Join(root, ".viff", "exec") || !strings.Contains(out, "\nstdout: "+id+".sock while it runs, "+id+".out\n") {
 		t.Fatalf("the start's answer:\n%s", out)
 	}
 	return id
 }
 
 // waitRun is what `secret-exec-wait` answers for the run id.
-func waitRun(ctx context.Context, tools []verse.Tool, id string) (string, error) {
+func waitRun(ctx context.Context, tools []viff.Tool, id string) (string, error) {
 	out, _, err := tools[1].Do(ctx, task.ToolUse{Name: tools[1].Name, Input: map[string]any{"id": id}})
 	return out, err
 }
@@ -171,13 +171,13 @@ func TestSecretExecRunsTheCommandAndServesItsOutput(t *testing.T) {
 	script := func(script string) map[string]any {
 		return map[string]any{"name": "npm-token", "argv": []any{"sh", "-c", script}, "timeout": 20}
 	}
-	exec := filepath.Join(root, ".verse", "exec")
+	exec := filepath.Join(root, ".viff", "exec")
 	id := startRun(t, tools, root, script("echo t=$NPM_TOKEN; echo oops >&2; exit 3"))
 	out, err := waitRun(t.Context(), tools, id)
 	if err != nil || id != "e1" {
 		t.Fatalf("%s: %q, %v", id, out, err)
 	}
-	for _, want := range []string{"e1: exited 3\n", "stdout: .verse/exec/e1.out, 21 bytes:\nt=[secret npm-token]\n", "stderr: .verse/exec/e1.err, 5 bytes:\noops\n"} {
+	for _, want := range []string{"e1: exited 3\n", "stdout: .viff/exec/e1.out, 21 bytes:\nt=[secret npm-token]\n", "stderr: .viff/exec/e1.err, 5 bytes:\noops\n"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the answer lacks %q:\n%s", want, out)
 		}
@@ -320,12 +320,12 @@ func TestSecretExecServesTheCommandsStdin(t *testing.T) {
 	cl := delivery.NewClient(conn)
 	tools, _ := secretTools(cl, &workspace.Workspace{Root: root}, env)
 	id := startRun(t, tools, root, map[string]any{"name": "npm-token", "argv": []any{"sh", "-c", "cat; echo done"}, "timeout": 20, "stdin": true})
-	c, err := net.Dial("unix", filepath.Join(root, ".verse", "exec", id+".in.sock"))
+	c, err := net.Dial("unix", filepath.Join(root, ".viff", "exec", id+".in.sock"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// A second connection is closed at once: one input, whole.
-	c2, err := net.Dial("unix", filepath.Join(root, ".verse", "exec", "e1.in.sock"))
+	c2, err := net.Dial("unix", filepath.Join(root, ".viff", "exec", "e1.in.sock"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,15 +341,15 @@ func TestSecretExecServesTheCommandsStdin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"e1: exited 0", "stdout: .verse/exec/e1.out, 11 bytes:\nhello\ndone\n", "stdin: .verse/exec/e1.in, 6 bytes"} {
+	for _, want := range []string{"e1: exited 0", "stdout: .viff/exec/e1.out, 11 bytes:\nhello\ndone\n", "stdin: .viff/exec/e1.in, 6 bytes"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the answer lacks %q:\n%s", want, out)
 		}
 	}
-	if got, err := os.ReadFile(filepath.Join(root, ".verse", "exec", "e1.in")); err != nil || string(got) != "hello\n" {
+	if got, err := os.ReadFile(filepath.Join(root, ".viff", "exec", "e1.in")); err != nil || string(got) != "hello\n" {
 		t.Errorf("e1.in: %q, %v", got, err)
 	}
-	if _, err := os.Stat(filepath.Join(root, ".verse", "exec", "e1.in.sock")); err == nil {
+	if _, err := os.Stat(filepath.Join(root, ".viff", "exec", "e1.in.sock")); err == nil {
 		t.Error("the input socket is still there after the run")
 	}
 	// Without `stdin: true` nothing serves: a plain run leaves no in.sock behind it.

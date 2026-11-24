@@ -1,11 +1,11 @@
 package api
 
-// WhoAmI is what `GET /whoami` answers: who the request is from, and how versed knows it. By
+// WhoAmI is what `GET /whoami` answers: who the request is from, and how viffd knows it. By
 // is the provider that verified them, or `asserted` for a caller who is whoever their request
 // said; Via is the io that relayed them, where one did. A request that names nobody is answered
 // with none of them.
 //
-//tony:schemagen=verse-whoami,notag
+//tony:schemagen=viff-whoami,notag
 type WhoAmI struct {
 	Principal string `tony:"field=principal,omitzero"`
 	By        string `tony:"field=by,omitzero"`
@@ -17,7 +17,7 @@ type WhoAmI struct {
 // verify, a heard or a link answers once it binds. Claimant is how the claim was made; Via the io
 // a person was relayed from.
 //
-//tony:schemagen=verse-account,notag
+//tony:schemagen=viff-account,notag
 type Account struct {
 	Provider  string        `tony:"field=provider"`
 	Principal string        `tony:"field=principal,omitzero"`
@@ -33,7 +33,7 @@ type Account struct {
 // (Evidence, At), a token's Iss, Sub and Iat, or the IO and Account a person was relayed from or
 // heard by.
 //
-//tony:schemagen=verse-account-proof,notag
+//tony:schemagen=viff-account-proof,notag
 type AccountProof struct {
 	Method   string `tony:"field=method,omitzero"`
 	Evidence string `tony:"field=evidence,omitzero"`
@@ -48,7 +48,7 @@ type AccountProof struct {
 // AccountClaim is what `POST /accounts/{provider}` takes: for `github`, the login the caller
 // says is theirs; for a provider whose io hears the nonce said, nothing.
 //
-//tony:schemagen=verse-account-claim,notag
+//tony:schemagen=viff-account-claim,notag
 type AccountClaim struct {
 	Login string `tony:"field=login,omitzero"`
 }
@@ -56,7 +56,7 @@ type AccountClaim struct {
 // AccountClaimed is what `POST /accounts/{provider}` answers: the nonce to say from the account,
 // when the claim Expires, and the line to Say, word for word.
 //
-//tony:schemagen=verse-account-claimed,notag
+//tony:schemagen=viff-account-claimed,notag
 type AccountClaimed struct {
 	Nonce   string `tony:"field=nonce"`
 	Expires string `tony:"field=expires"`
@@ -66,7 +66,7 @@ type AccountClaimed struct {
 
 // AccountVerify is what `POST /accounts/github/verify` takes: the nonce the account has said.
 //
-//tony:schemagen=verse-account-verify,notag
+//tony:schemagen=viff-account-verify,notag
 type AccountVerify struct {
 	Nonce string `tony:"field=nonce"`
 }
@@ -74,7 +74,7 @@ type AccountVerify struct {
 // AccountHeard is what `POST /accounts/{provider}/heard` takes, from a trusted io: a nonce it
 // heard said, the account that said it, and the account's login where the system has one.
 //
-//tony:schemagen=verse-account-heard,notag
+//tony:schemagen=viff-account-heard,notag
 type AccountHeard struct {
 	Nonce   string `tony:"field=nonce"`
 	Account string `tony:"field=account"`
@@ -84,7 +84,7 @@ type AccountHeard struct {
 // AccountLink is what `POST /accounts/{provider}/link` takes: an id_token from that provider, as
 // evidence that the caller holds the account it names.
 //
-//tony:schemagen=verse-account-link,notag
+//tony:schemagen=viff-account-link,notag
 type AccountLink struct {
 	IDToken string `tony:"field=idToken"`
 }

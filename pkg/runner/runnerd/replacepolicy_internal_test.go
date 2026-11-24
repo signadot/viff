@@ -12,12 +12,12 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A REPLACED POLICY IS CHECKED BY THE RUNNER'S OWN PROCESS, before the task's process hears of
@@ -39,13 +39,13 @@ func TestAReplacedPolicyIsCheckedByTheRunnerAndReachesItsChannel(t *testing.T) {
 
 	allow, ask := task.Then{Mode: task.ThenAllow}, task.Then{Mode: task.ThenAsk}
 	h := NewSubprocessHandler(SubprocessConfig{Log: io.Discard})
-	h.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "verse"},
+	h.Describe(runner.Description{Version: runner.DescriptionVersion, Offers: []runner.Offer{{Agent: &runner.AgentOffer{Name: "viff"},
 		Systems: map[string]runner.System{
-			"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", fetch: {}, push: {ref: !regexp "^refs/heads/verse/"}}`)},
+			"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", fetch: {}, push: {ref: !regexp "^refs/heads/viff/"}}`)},
 		}}}})
 	env := gitEnv("acme/app")
-	env.Systems["git"][0].Verbs["push"] = []systems.Shape{{"ref": systems.Regexp("^refs/heads/verse/")}}
-	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "verse"}, Environment: env,
+	env.Systems["git"][0].Verbs["push"] = []systems.Shape{{"ref": systems.Regexp("^refs/heads/viff/")}}
+	l := &runner.Launch{ID: "x", Prompt: "p", Agent: &runner.Agent{Name: "viff"}, Environment: env,
 		Autonomy: task.Autonomy{{Match: &task.Match{System: "git"}, Then: ask}, {Then: ask}}}
 	ch, err := delivery.Open(l.ID, &workspace.Workspace{}, nil, func(workspace.Repo) (string, error) { return "", nil }, delivery.Services{}, nil, l, io.Discard)
 	if err != nil {
@@ -89,8 +89,8 @@ func TestAReplacedPolicyIsCheckedByTheRunnerAndReachesItsChannel(t *testing.T) {
 	}
 
 	// Within it: the task's process takes it, and the channel holds it from then on.
-	want := task.Autonomy{{Name: "auto", Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/verse/auto/*")}}, Then: allow}, {Then: ask}}
-	if code, msg := put(`{autonomy: [{name: auto, match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*"}, then: allow}, {then: ask}]}`); code != http.StatusNoContent {
+	want := task.Autonomy{{Name: "auto", Match: &task.Match{System: "git", Verb: "push", Params: map[string]*ir.Node{"ref": systems.Glob("refs/heads/viff/auto/*")}}, Then: allow}, {Then: ask}}
+	if code, msg := put(`{autonomy: [{name: auto, match: {system: git, verb: push, ref: !glob "refs/heads/viff/auto/*"}, then: allow}, {then: ask}]}`); code != http.StatusNoContent {
 		t.Fatalf("a replacement within the ceiling = %d %q, want 204", code, msg)
 	}
 	if n := reached.Load(); n != 1 {

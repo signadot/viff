@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	verseio "github.com/signadot/verse/pkg/io"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // The Slack Web API, as much of it as a reflection and the out half need.
 //
 // encoding/json rather than codec, and this file is on scripts/check-json.sh's allowlist for
-// the reason pkg/runner/runnerd/verse/llm.go is: this is somebody else's wire format.
-// verse renders in tony; Slack does not, and re-rendering its schema through codec would buy
+// the reason pkg/runner/runnerd/viff/llm.go is: this is somebody else's wire format.
+// viff renders in tony; Slack does not, and re-rendering its schema through codec would buy
 // nothing but a second place for it to be wrong.
 //
 // Hand-rolled rather than slack-go, which is the same call the tree already made for the
@@ -61,8 +61,8 @@ func (e envelope) err() error {
 	if transientCodes[e.Error] {
 		return err
 	}
-	// A REFUSAL: asked the same way, Slack says the same thing (verseio.Permanent).
-	return verseio.Permanent(err)
+	// A REFUSAL: asked the same way, Slack says the same thing (viffio.Permanent).
+	return viffio.Permanent(err)
 }
 
 // transientCodes are the refusals Slack names that fix themselves, and are asked again. Every
@@ -124,7 +124,7 @@ func (a *api) do(req *http.Request, method string, out answer) error {
 	}
 	// A 429 is the one status worth naming: it is the answer a source gets for asking too
 	// often, it fixes itself, and reading it as anything else would send an operator looking
-	// at scopes. See verseio.Throttle for the side that prevents it.
+	// at scopes. See viffio.Throttle for the side that prevents it.
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return fmt.Errorf("slack %s: rate limited (retry after %s)", method,
 			resp.Header.Get("Retry-After"))
@@ -132,7 +132,7 @@ func (a *api) do(req *http.Request, method string, out answer) error {
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("slack %s: %s", method, resp.Status)
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusRequestTimeout {
-			return verseio.Permanent(err) // a 4xx is not asked again; a 429 is answered above
+			return viffio.Permanent(err) // a 4xx is not asked again; a 429 is answered above
 		}
 		return err
 	}
@@ -337,7 +337,7 @@ type conversationsResp struct {
 // users.conversations rather than conversations.list, and the difference is honesty about
 // permission: a bot can enumerate public channels it has never been invited to, and can read
 // the history of none of them. Reflecting a channel whose messages will always be missing
-// would put an entity in the verse that no trigger can ever say anything true about. So the
+// would put an entity in the viff that no trigger can ever say anything true about. So the
 // membership IS the configuration — invite the bot to what you want reflected.
 func (a *api) conversations(ctx context.Context) ([]channel, error) {
 	var out []channel
@@ -417,7 +417,7 @@ type userInfoResp struct {
 }
 
 // userEmail is the email of the person with id userID (`users:read.email`): how a click in Slack
-// becomes a principal in the verse.
+// becomes a principal in the viff.
 func (a *api) userEmail(ctx context.Context, userID string) (string, error) {
 	var r userInfoResp
 	if err := a.call(ctx, "users.info", url.Values{"user": {userID}}, &r); err != nil {
@@ -429,7 +429,7 @@ func (a *api) userEmail(ctx context.Context, userID string) (string, error) {
 	return r.User.Profile.Email, nil
 }
 
-// lookupByEmail is the Slack user with this email (`users:read.email`): how a person verse knows
+// lookupByEmail is the Slack user with this email (`users:read.email`): how a person viff knows
 // as `user:<email>` becomes somebody Slack can be told something.
 //
 // THE JOIN IS SLACK'S, not a table this program keeps. The reflection already writes every user's

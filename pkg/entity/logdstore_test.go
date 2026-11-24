@@ -84,12 +84,12 @@ func startLogd(t *testing.T) string {
 	return srv.TCPAddr()
 }
 
-// openStore opens a store the way a person runs one: THROUGH DOCD. `verse up` brings up
+// openStore opens a store the way a person runs one: THROUGH DOCD. `viff up` brings up
 // logd and docd and points the store at docd's client face, so a store spoken straight to
 // logd is a configuration nobody deploys — and the two do not accept the same writes. docd
 // decomposes a patch by mount, statically, over the path's FIELD names, so it refuses a
 // path holding an array index that logd takes (tony-format: docd non-field segment). These
-// tests said an array element could be written; against every real verse it could not.
+// tests said an array element could be written; against every real viff it could not.
 //
 // A test that needs the logd underneath — one restarting it, or reading its commits — takes
 // startLogd directly.
@@ -101,7 +101,7 @@ func openStore(t *testing.T) *LogdStore {
 // clients (or two opened at different commits) over one substrate.
 func openStoreAt(t *testing.T, addr string) *LogdStore {
 	t.Helper()
-	s, err := OpenLogdStore(LogdConfig{Addr: addr, ClientID: "verse-test"})
+	s, err := OpenLogdStore(LogdConfig{Addr: addr, ClientID: "viff-test"})
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestLogdStore_SinceIsPureSet(t *testing.T) {
 // exactly the kind of change a data race would punish.
 //
 // Both faces are covered because the admission rule lives in two places: logd's session
-// (direct) and docd's per-watch bookkeeping (which is what verse actually talks to).
+// (direct) and docd's per-watch bookkeeping (which is what viff actually talks to).
 func TestLogdStore_ConcurrentSince(t *testing.T) {
 	run := func(t *testing.T, s *LogdStore) {
 		t.Helper()
@@ -456,7 +456,7 @@ func TestLogdStore_ConcurrentSince(t *testing.T) {
 }
 
 // A store answers Since for commits that landed before it opened: the cursor names a STORE
-// revision, not a mark in this process's memory, so a restarted verse still replays what its
+// revision, not a mark in this process's memory, so a restarted viff still replays what its
 // predecessor wrote.
 //
 // This asserted the opposite, and called itself deliberately conservative — logd may well still

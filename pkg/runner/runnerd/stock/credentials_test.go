@@ -12,13 +12,13 @@ import (
 	"github.com/signadot/tony-format/go-tony/gomap"
 	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/parse"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/claude"
-	"github.com/signadot/verse/pkg/runner/runnerd/codex"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/claude"
+	"go.viff.dev/viff/pkg/runner/runnerd/codex"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // ceiling reads a ceiling as a runner's config writes it.
@@ -51,7 +51,7 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 		says string
 	}{
 		{Config{Script: &Script{Systems: map[string]System{"gitlab": {}}}}, "script.systems.gitlab: no system is called that"},
-		{agentWith(AgentName, map[string]System{"files": {}}), "agents.verse.systems.files: a section names a ceiling"},
+		{agentWith(AgentName, map[string]System{"files": {}}), "agents.viff.systems.files: a section names a ceiling"},
 		{Config{Script: &Script{Systems: map[string]System{"git": {Ceiling: systems.Open()}}}}, "does not perform git"},
 		{Config{Repos: &Repos{Mirrors: "/m", Host: "ghe.corp"}, Script: &Script{Systems: map[string]System{"github": {Ceiling: systems.Open()}}}}, "does not perform github"},
 		{Config{Repos: &Repos{Mirrors: "/m"}, Script: &Script{Systems: map[string]System{"git": {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", fly: {}}`)}}}}, `no attribute or verb "fly"`},
@@ -66,7 +66,7 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 
 	cfg := Config{Repos: &Repos{Mirrors: "/m", Forge: "/forge"},
 		Agents: map[string]Agent{AgentName: {Systems: map[string]System{
-			"git":          {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", fetch: {}, push: {ref: !regexp "^refs/heads/verse/"}}`)},
+			"git":          {Ceiling: ceiling(t, `{repo: !regexp "^github\\.com/acme/", fetch: {}, push: {ref: !regexp "^refs/heads/viff/"}}`)},
 			"linear-issue": {Ceiling: ceiling(t, `{create: {team: ENG}, comment: {}}`)},
 		}}},
 		Script: &Script{Systems: map[string]System{
@@ -142,7 +142,7 @@ func TestTheRunnersSystemsAndCeilings(t *testing.T) {
 }
 
 // WHAT THE RUNNER CANNOT START WITH IS REFUSED AT START, from the environment it starts in:
-// nothing left to offer once the verse agent is closed for its model key, an agent whose program
+// nothing left to offer once the viff agent is closed for its model key, an agent whose program
 // is not there. A missing forge token, an agent left to its own login, or claude's API key
 // shadowed by an OAuth token, is said and let start.
 func TestTheRunnerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
@@ -156,8 +156,8 @@ func TestTheRunnerRefusesToStartWithoutWhatItNeeds(t *testing.T) {
 	}
 	found := func(string) (string, error) { return "/bin/x", nil }
 	alone, _ := agentWith(AgentName, nil).Held(env())
-	if _, err := alone.CheckStart(env(), found); err == nil || !strings.Contains(err.Error(), "the runner offers nothing it can run") || !strings.Contains(err.Error(), verse.EnvAPIKey) {
-		t.Errorf("the verse agent alone, with no model key: %v", err)
+	if _, err := alone.CheckStart(env(), found); err == nil || !strings.Contains(err.Error(), "the runner offers nothing it can run") || !strings.Contains(err.Error(), viff.EnvAPIKey) {
+		t.Errorf("the viff agent alone, with no model key: %v", err)
 	}
 	cx := agentWith(codex.Agent, nil)
 	gone := func(string) (string, error) { return "", os.ErrNotExist }
@@ -190,16 +190,16 @@ func TestASystemWithNoCredentialIsClosed(t *testing.T) {
 		Agents: map[string]Agent{AgentName: {Systems: map[string]System{"linear-issue": {Ceiling: systems.Open()}, "question": {Ceiling: systems.Open()}}}},
 		Script: &Script{Systems: map[string]System{"linear-issue": {Ceiling: systems.Open()}}},
 	}
-	// The verse agent's model key is set: only Linear's is missing.
+	// The viff agent's model key is set: only Linear's is missing.
 	none := func(name string) string {
-		if name == verse.EnvAPIKey {
+		if name == viff.EnvAPIKey {
 			return "k"
 		}
 		return ""
 	}
 	got, warnings := lin.Held(none)
 	if len(warnings) != 1 || !strings.Contains(warnings[0], EnvLinearAPIKey+" is not set: linear-issue is closed") ||
-		!strings.Contains(warnings[0], "agents.verse.systems.linear-issue, script.systems.linear-issue") {
+		!strings.Contains(warnings[0], "agents.viff.systems.linear-issue, script.systems.linear-issue") {
 		t.Errorf("warnings %v", warnings)
 	}
 	if err := got.Check(); err != nil {
@@ -225,7 +225,7 @@ func TestASystemWithNoCredentialIsClosed(t *testing.T) {
 		t.Errorf("a launch needing linear-issue: %v, want it refused", err)
 	}
 	set := func(name string) string {
-		if name == EnvLinearAPIKey || name == verse.EnvAPIKey {
+		if name == EnvLinearAPIKey || name == viff.EnvAPIKey {
 			return "k"
 		}
 		return ""
@@ -235,21 +235,21 @@ func TestASystemWithNoCredentialIsClosed(t *testing.T) {
 	}
 }
 
-// THE VERSE AGENT WITH NO MODEL KEY IS CLOSED, NOT REFUSED: the runner starts offering what
+// THE VIFF AGENT WITH NO MODEL KEY IS CLOSED, NOT REFUSED: the runner starts offering what
 // else it offers, saying so, and a prompt on it is refused where it is written. Codex and claude
 // with no key stay offered, since a login may still authenticate them.
-func TestTheVerseAgentWithNoKeyIsClosed(t *testing.T) {
+func TestTheViffAgentWithNoKeyIsClosed(t *testing.T) {
 	c := Config{
 		Agents: map[string]Agent{AgentName: {Systems: OpenInside(AgentName)}, codex.Agent: {Systems: OpenInside(codex.Agent)}},
 		Script: &Script{},
 	}
 	none := func(string) string { return "" }
 	got, warnings := c.Held(none)
-	if len(warnings) != 1 || !strings.Contains(warnings[0], verse.EnvAPIKey+" is not set: agents.verse is closed") {
+	if len(warnings) != 1 || !strings.Contains(warnings[0], viff.EnvAPIKey+" is not set: agents.viff is closed") {
 		t.Errorf("warnings %v", warnings)
 	}
 	if _, ok := got.Agents[AgentName]; ok {
-		t.Error("the verse agent is still run")
+		t.Error("the viff agent is still run")
 	}
 	if _, ok := got.Agents[codex.Agent]; !ok {
 		t.Error("codex was closed with it")
@@ -266,15 +266,15 @@ func TestTheVerseAgentWithNoKeyIsClosed(t *testing.T) {
 	d := got.Describe(nil)
 	for _, o := range d.Offers {
 		if o.Agent != nil && o.Agent.Name == AgentName {
-			t.Error("an offer holds the verse agent")
+			t.Error("an offer holds the viff agent")
 		}
 	}
 	l := &runner.Launch{ID: "p", Prompt: "go", Agent: &runner.Agent{Name: AgentName}}
 	if err := runnerd.CheckLaunch(l, d, nil); err == nil {
-		t.Error("a prompt to the closed verse agent is taken")
+		t.Error("a prompt to the closed viff agent is taken")
 	}
 	key := func(name string) string {
-		if name == verse.EnvAPIKey {
+		if name == viff.EnvAPIKey {
 			return "k"
 		}
 		return ""
@@ -348,19 +348,19 @@ func TestTheConfigShapeIsChecked(t *testing.T) {
 		return p
 	}
 	for body, says := range map[string]string{
-		"listen: \":9802\"\n":                                                          "the runner offers nothing",
-		"script: {}\nmodels: {model: m}\n":                                             `no setting "models"`,
-		"script: {}\nshellEnv: [PATH]\n":                                               `no setting "shellEnv"`,
-		"codex: {sandbox: read-only}\n":                                                `no setting "codex"`,
-		"script: {systems: {slack: {credential: K}}}\n":                                `no setting "script.systems.slack.credential"`,
-		"agents: {claude: {modle: x}}\n":                                               `no setting "agents.claude.modle"`,
-		"agents: {claude: {sandbox: read-only}}\n":                                     "agents.claude.sandbox: claude takes no sandbox (its program's keys: bin",
-		"agents: {verse: {bin: /x}}\n":                                                 "agents.verse.bin: verse takes no bin (its program's keys: none",
-		"agents: {gemini: {}}\n":                                                       `agents.gemini: this runner runs no agent "gemini" (it runs: verse, codex, claude)`,
-		"agents: {verse: {settings: {model: {values: [claude-*], default: gpt-5}}}}\n": "agents.verse.settings.model.default: outside the values taken",
-		"script: {shellEnv: []}\n":                                                     "script.shellEnv: an empty list gives the shell nothing; leave it out for the default (PATH",
-		"script: {shellEnv: [PATH, GITHUB_TOKEN]}\n":                                   "script.shellEnv: GITHUB_TOKEN is a credential the runner acts with",
-		"agents: {claude: {shellEnv: [ANTHROPIC_API_KEY]}}\n":                          "agents.claude.shellEnv: ANTHROPIC_API_KEY is a credential",
+		"listen: \":9802\"\n":                                                         "the runner offers nothing",
+		"script: {}\nmodels: {model: m}\n":                                            `no setting "models"`,
+		"script: {}\nshellEnv: [PATH]\n":                                              `no setting "shellEnv"`,
+		"codex: {sandbox: read-only}\n":                                               `no setting "codex"`,
+		"script: {systems: {slack: {credential: K}}}\n":                               `no setting "script.systems.slack.credential"`,
+		"agents: {claude: {modle: x}}\n":                                              `no setting "agents.claude.modle"`,
+		"agents: {claude: {sandbox: read-only}}\n":                                    "agents.claude.sandbox: claude takes no sandbox (its program's keys: bin",
+		"agents: {viff: {bin: /x}}\n":                                                 "agents.viff.bin: viff takes no bin (its program's keys: none",
+		"agents: {gemini: {}}\n":                                                      `agents.gemini: this runner runs no agent "gemini" (it runs: viff, codex, claude)`,
+		"agents: {viff: {settings: {model: {values: [claude-*], default: gpt-5}}}}\n": "agents.viff.settings.model.default: outside the values taken",
+		"script: {shellEnv: []}\n":                                                    "script.shellEnv: an empty list gives the shell nothing; leave it out for the default (PATH",
+		"script: {shellEnv: [PATH, GITHUB_TOKEN]}\n":                                  "script.shellEnv: GITHUB_TOKEN is a credential the runner acts with",
+		"agents: {claude: {shellEnv: [ANTHROPIC_API_KEY]}}\n":                         "agents.claude.shellEnv: ANTHROPIC_API_KEY is a credential",
 	} {
 		if _, _, err := Load(write(body)); err == nil || !strings.Contains(err.Error(), says) {
 			t.Errorf("%q: %v, want %q", body, err, says)
@@ -380,7 +380,7 @@ func TestTheConfigShapeIsChecked(t *testing.T) {
 func TestACeilingOfRowsIsRefused(t *testing.T) {
 	c := agentWith(AgentName, map[string]System{"commands": {Ceiling: ceiling(t, `[{then: allow}]`)}})
 	err := c.Check()
-	if err == nil || !strings.Contains(err.Error(), "agents.verse.systems.commands.ceiling") || !strings.Contains(err.Error(), `"then"`) {
+	if err == nil || !strings.Contains(err.Error(), "agents.viff.systems.commands.ceiling") || !strings.Contains(err.Error(), `"then"`) {
 		t.Errorf("a ceiling of rows: %v, want it refused naming the key", err)
 	}
 }
@@ -445,20 +445,20 @@ func TestAnInnerSystemsCeilingIsTheOperatorsLine(t *testing.T) {
 	}
 }
 
-// VERSE'S SECTION IS A CEILING, taken whether or not the runner reaches a verse: the file is
-// checked before that is known, and verse's verbs go with the runner's own token.
-func TestVersesSectionIsTakenBeforeTheRunnerReachesAVerse(t *testing.T) {
-	c := Config{Script: &Script{Systems: map[string]System{"verse": {Ceiling: systems.Open()}}}}
+// VIFF'S SECTION IS A CEILING, taken whether or not the runner reaches a viff: the file is
+// checked before that is known, and viff's verbs go with the runner's own token.
+func TestViffsSectionIsTakenBeforeTheRunnerReachesAViff(t *testing.T) {
+	c := Config{Script: &Script{Systems: map[string]System{"viff": {Ceiling: systems.Open()}}}}
 	if err := c.Check(); err != nil {
-		t.Errorf("a ceiling for verse: %v", err)
+		t.Errorf("a ceiling for viff: %v", err)
 	}
 }
 
-// OPEN INSIDE IS EVERY SYSTEM A RUN OF THE DOER IS STOPPED ON, UNDER AN OPEN CEILING: what `verse
+// OPEN INSIDE IS EVERY SYSTEM A RUN OF THE DOER IS STOPPED ON, UNDER AN OPEN CEILING: what `viff
 // up`'s runner, whose operator is its tasks' author, is configured with (Open).
 func TestOpenInsideOpensWhatARunIsStoppedOn(t *testing.T) {
 	if got := slices.Sorted(maps.Keys(OpenInside(AgentName))); !slices.Equal(got, slices.Sorted(maps.Keys(inner))) {
-		t.Fatalf("OpenInside(verse) covers %v, want %v", got, slices.Sorted(maps.Keys(inner)))
+		t.Fatalf("OpenInside(viff) covers %v, want %v", got, slices.Sorted(maps.Keys(inner)))
 	}
 	if got := slices.Sorted(maps.Keys(OpenInside(ScriptDoer))); !slices.Equal(got, []string{"question"}) {
 		t.Fatalf("OpenInside(script) covers %v, want question alone", got)
@@ -475,7 +475,7 @@ func TestOpenInsideOpensWhatARunIsStoppedOn(t *testing.T) {
 	}
 }
 
-// WHAT THE RUNNER DESCRIBES: its version; its agents, the verse agent first (the default), each
+// WHAT THE RUNNER DESCRIBES: its version; its agents, the viff agent first (the default), each
 // with the settings it takes narrowed by the operator and holding a conversation, a default where
 // the agent has its own or the configuration names one; and every offer holding the network, with
 // what the sandbox builds of it beside the doer's ceiling, as written.
@@ -500,11 +500,11 @@ func TestDescribePublishesBuildsAndSettings(t *testing.T) {
 		t.Fatalf("the description does not check: %v", err)
 	}
 	if len(d.Offers) != 3 || d.Offers[0].Name() != AgentName || d.Offers[1].Name() != codex.Agent || !d.Offers[2].Script {
-		t.Fatalf("offers %v, want verse, codex, scripts", []string{d.Offers[0].Name(), d.Offers[1].Name(), d.Offers[2].Name()})
+		t.Fatalf("offers %v, want viff, codex, scripts", []string{d.Offers[0].Name(), d.Offers[1].Name(), d.Offers[2].Name()})
 	}
-	verse, cx := d.Offers[0].Agent, d.Offers[1].Agent
-	if m := verse.Settings[runner.SettingModel]; strings.Join(m.Values, ",") != "claude-*" || !m.Default {
-		t.Errorf("verse's model: %+v, want claude-* with the configured default", m)
+	viff, cx := d.Offers[0].Agent, d.Offers[1].Agent
+	if m := viff.Settings[runner.SettingModel]; strings.Join(m.Values, ",") != "claude-*" || !m.Default {
+		t.Errorf("viff's model: %+v, want claude-* with the configured default", m)
 	}
 	if e := cx.Settings["effort"]; strings.Join(e.Values, ",") != "low,high" || !e.Default {
 		t.Errorf("codex's effort: %+v", e)
@@ -525,10 +525,10 @@ func TestDescribePublishesBuildsAndSettings(t *testing.T) {
 		}
 	}
 	if m := agentWith(AgentName, nil).Describe(nil).Offers[0].Agent.Settings[runner.SettingModel]; m.Default {
-		t.Error("a verse agent with no configured model has no default of its own")
+		t.Error("a viff agent with no configured model has no default of its own")
 	}
 	if d := agentWith(codex.Agent, nil).Describe(nil); d.Offers[0].Name() != codex.Agent {
-		t.Errorf("with no verse agent, codex is the default: %s", d.Offers[0].Name())
+		t.Errorf("with no viff agent, codex is the default: %s", d.Offers[0].Name())
 	}
 	// A launch naming no setting runs the configured default, and the record says so.
 	l := c.withDefaults(runner.Launch{Prompt: "p"}, AgentName)

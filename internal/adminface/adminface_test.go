@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The derived default is the daemon's own port plus one, and the host it was given: a verse on
+// The derived default is the daemon's own port plus one, and the host it was given: a viff on
 // localhost:9797 answers pprof on localhost:9798, and one bound to every interface stays bound
 // to every interface. What is NOT derivable answers off rather than guessing at a port.
 func TestDefaultIsThePortPlusOne(t *testing.T) {
@@ -27,7 +27,7 @@ func TestDefaultIsThePortPlusOne(t *testing.T) {
 }
 
 // A DERIVED PORT THAT IS TAKEN COSTS THE FACE, NOT THE DAEMON. Nobody asked for port+1, and
-// two verses on one laptop is the ordinary case the derivation exists for — so losing the race
+// two viffs on one laptop is the ordinary case the derivation exists for — so losing the race
 // for it must not be how a smoke run fails.
 func TestADerivedAddressThatIsTakenIsNotFatal(t *testing.T) {
 	held, err := net.Listen("tcp", "127.0.0.1:0")
@@ -87,7 +87,7 @@ func TestOffServesNothing(t *testing.T) {
 // The face is REACHABLE and reports what this process is, which is the whole reason it is not
 // gops: an operator who knows the daemon's address knows this one, and gets stacks off it.
 func TestTheFaceAnswersWithTheProcessFacts(t *testing.T) {
-	srv, err := Start(Spec{Name: "verse up", Addr: "127.0.0.1:0", Serve: "127.0.0.1:9797"})
+	srv, err := Start(Spec{Name: "viff up", Addr: "127.0.0.1:0", Serve: "127.0.0.1:9797"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestTheFaceAnswersWithTheProcessFacts(t *testing.T) {
 	if srv.Addr() == "" {
 		t.Fatal("nothing bound")
 	}
-	if info := srv.Info(); info.Name != "verse up" {
+	if info := srv.Info(); info.Name != "viff up" {
 		t.Errorf("index names %q, want the daemon", info.Name)
 	}
 }

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner/runnerd/workspace"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner/runnerd/workspace"
 )
 
 // A STREAM FRAME CARRIES DESCRIPTORS TO THE ASKER, ahead of the answer: an act that streams

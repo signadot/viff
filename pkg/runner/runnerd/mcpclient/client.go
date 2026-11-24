@@ -23,9 +23,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner/runnerd/secretstore"
+	"go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner/runnerd/secretstore"
 )
 
 const (
@@ -453,7 +453,7 @@ func (s *Sessions) connect(ctx context.Context, server string) (*mcp.ClientSessi
 		// A server does not choose where the credential goes: a redirect is the call's failure.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "verse-runner", Version: api.Version()},
+	client := mcp.NewClient(&mcp.Implementation{Name: "viff-runner", Version: api.Version()},
 		&mcp.ClientOptions{Capabilities: &mcp.ClientCapabilities{}})
 	t := &mcp.StreamableClientTransport{Endpoint: srv.URL, HTTPClient: hc, MaxRetries: 5,
 		DisableStandaloneSSE: true, MaxEventSize: int(s.readMost)}

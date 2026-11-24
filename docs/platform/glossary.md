@@ -1,6 +1,6 @@
 # Platform glossary
 
-This page defines the terms that somebody who runs, extends or changes verse meets. The terms
+This page defines the terms that somebody who runs, extends or changes viff meets. The terms
 a user meets are in [the glossary](../glossary.md).
 
 ## Tasks and where they run
@@ -24,30 +24,30 @@ See [Iods (reference)](../reference/io.md#the-contract-an-iod-serves).
 ### cover (of a reflection)
 
 A cover of a reflection is a pattern under which the reflection is complete, such as
-`git.verse.ref.*`. Verse removes a stored entity that a cover reaches and that the reflection
+`git.viff.ref.*`. Viff removes a stored entity that a cover reaches and that the reflection
 does not hold.
 
 See [Iods (reference)](../reference/io.md#the-contract-an-iod-serves).
 
 ### converge
 
-To converge is to make the store match a reflection. Verse writes what changed, and tombstones
+To converge is to make the store match a reflection. Viff writes what changed, and tombstones
 what a cover reaches and the reflection does not hold.
 
 The page [Convergence](../convergence.md) is about how rules come to rest.
 
-See [Iods](../io.md#the-seam-a-source-answers-verse-converges).
+See [Iods](../io.md#the-seam-a-source-answers-viff-converges).
 
 ### tombstone
 
 To tombstone an entity is to remove it from the store because its external system does not
 hold it any more.
 
-See [Iods](../io.md#the-seam-a-source-answers-verse-converges).
+See [Iods](../io.md#the-seam-a-source-answers-viff-converges).
 
 ### reflector
 
-The reflector is the part of verse that drives one installed source. It asks for a full
+The reflector is the part of viff that drives one installed source. It asks for a full
 reflection every minute, and for a part of one when a hint arrives. It converges the store
 with each answer.
 
@@ -55,7 +55,7 @@ See [Iods (reference)](../reference/io.md#the-reflector).
 
 ### iod
 
-`iod` is the binary that holds the five iods that verse ships. Each is a subcommand: `git`,
+`iod` is the binary that holds the five iods that viff ships. Each is a subcommand: `git`,
 `git-issue`, `slack`, `linear` and `github`.
 
 See [iod](../reference/iod.md).
@@ -63,7 +63,7 @@ See [iod](../reference/iod.md).
 ### mirror (of a git repository)
 
 A mirror of a git repository is a copy of a remote repository, kept fetched.
-`iod git -mirror <url>` reflects from one, and the verse runner clones a task's checkout from one.
+`iod git -mirror <url>` reflects from one, and the viff runner clones a task's checkout from one.
 
 In a page about git, "mirror" has this meaning.
 
@@ -73,7 +73,7 @@ See [iod](../reference/iod.md#git).
 
 ### observation plane
 
-The observation plane is the part of verse that reads: `get`, `list` and `watch`. A read may be
+The observation plane is the part of viff that reads: `get`, `list` and `watch`. A read may be
 late.
 
 See [Deployment and steering](../deployment-and-steering.md#two-planes).
@@ -96,6 +96,6 @@ See [Deployment and steering](../deployment-and-steering.md#two-planes).
 
 + [reflector](#reflector)
 
-+ [root (of verse up)](#root-of-verse-up)
++ [root (of viff up)](#root-of-viff-up)
 
 + [tombstone](#tombstone)

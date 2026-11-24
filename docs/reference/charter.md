@@ -4,16 +4,16 @@ This page describes a [charter](../glossary.md#charter) as a whole:
 
 - how a charter is installed at an address, as a package;
 - what a package may read and write;
-- what `verse charter` shows;
-- how verse stores a [rule](../glossary.md#rule), so that a charter survives a restart;
+- what `viff charter` shows;
+- how viff stores a [rule](../glossary.md#rule), so that a charter survives a restart;
 - what an install does not check.
 
 [The charter reference](../trigger-model.md) describes the rules a charter holds, and
 [the tutorial's charters pages](../tutorial/charters.md) write one, step by step.
 
-One example runs through the page: comment-drift, the charter in `.verse/charters/comment-drift/`
-of the verse repository. It has two halves. `drift`, at `repos.verse.drift`, reviews what lands on
-`main` and records what it finds. `merge`, at `repos.verse.merge`, turns each branch a review's fix
+One example runs through the page: comment-drift, the charter in `.viff/charters/comment-drift/`
+of the viff repository. It has two halves. `drift`, at `repos.viff.drift`, reviews what lands on
+`main` and records what it finds. `merge`, at `repos.viff.merge`, turns each branch a review's fix
 delivers into a proposal that somebody decides.
 
 ## A charter can be installed at an address
@@ -27,11 +27,11 @@ takes the address:
 
 - The address gets an owner record that names the installer.
 - What the package derives beneath the address is owned through that record.
-- Verse refuses an install at an address that somebody else owns ([perms.md](../perms.md)).
+- Viff refuses an install at an address that somebody else owns ([perms.md](../perms.md)).
 
 ```sh
-verse c -a repos.verse.drift -f drift.tony   # its rules write under repos.verse.drift
-verse c -a -f charter.tony                   # baseline: may write anywhere
+viff c -a repos.viff.drift -f drift.tony   # its rules write under repos.viff.drift
+viff c -a -f charter.tony                   # baseline: may write anywhere
 ```
 
 So two groups can keep rules in one store without agreeing on anything to avoid a collision.
@@ -39,7 +39,7 @@ The *engine* keeps a package inside its address, not the rules installed in it. 
 two ways:
 
 - A `derive` that lands outside the address does not install.
-- When a rule fires, verse refuses a write that lands outside the address.
+- When a rule fires, viff refuses a write that lands outside the address.
 
 The second way matters more, because the address of a derive can be a template that only the
 firing fills in.
@@ -51,25 +51,25 @@ wrote and derive from it. Most rules of a package do this. The first rule of `me
 each branch a fix delivered, which the git iod wrote, and derives a proposal from it:
 
 ```tony
-at: repos.verse.merge       # where this package writes — its engine is confined to it
-reads: [git, repos.verse.drift]   # …and what it may read besides
+at: repos.viff.merge       # where this package writes — its engine is confined to it
+reads: [git, repos.viff.drift]   # …and what it may read besides
 strata:
 - name: reflected           # the level the source sits at
   level: 0
   match: {path: "git"}
 - name: merge
   level: 30
-  match: {path: "repos.verse.merge.proposal"}
+  match: {path: "repos.viff.merge.proposal"}
 rules:
 - name: proposal-appeared
   stratum: reflected
   condition:
     subject:                # a source: read, never written
-      path: "git.verse.ref.*"
-      value: {name: !glob "verse/auto/*"}
+      path: "git.viff.ref.*"
+      value: {name: !glob "viff/auto/*"}
   action:
     derive:
-    - path: "repos.verse.merge.proposal"
+    - path: "repos.viff.merge.proposal"
       id: .[subject.value.name]
       value: {repo: .[subject.value.repo], branch: .[subject.value.name], sha: .[subject.value.sha]}
 ```
@@ -79,13 +79,13 @@ Two packages that both react to `git.*` are normal.
 **Reads are declared**, in the `reads:` line of the example. A package reads inside its own
 address and what it names in `reads:`, and nothing else. A rule that reads anything else does
 not install, and the refusal says which line to add. A rule of `merge` that copies the review's
-report onto a proposal reads `repos.verse.drift.range`, so `merge` declares `repos.verse.drift`.
+report onto a proposal reads `repos.viff.drift.range`, so `merge` declares `repos.viff.drift`.
 With `reads: [git]` alone, the refusal is:
 
 ```
-rule "proposal-says" reads repos.verse.drift.range.*, which repos.verse.merge.* does not
+rule "proposal-says" reads repos.viff.drift.range.*, which repos.viff.merge.* does not
 declare: a charter installed at an address reads inside it and what it declares, so that the
-graph over packages can be checked for a cycle. Add it: `reads: [repos.verse.drift.range]` (it
+graph over packages can be checked for a cycle. Add it: `reads: [repos.viff.drift.range]` (it
 reads git)
 ```
 
@@ -103,7 +103,7 @@ inside the package that the package declares the iod reads.
 outbox. For it to post a message of its own there, it would declare one:
 
 ```tony
-at: repos.verse.merge
+at: repos.viff.merge
 sends:
 - from: out.slack                # inside this package's address
   to: slack.Signadot.out         # an iod's out place, as its registration names it
@@ -128,20 +128,20 @@ with no address. [The out half](io.md#the-out-half) says what an iod does with a
 three days before it stays, install it with a ttl:
 
 ```tony
-at: repos.verse.drift
+at: repos.viff.drift
 ttl: 72h
 rules:
 - …
 ```
 
-- The install says when the charter goes: its own time plus the ttl. At that time verse removes
-  the package as `verse charter -r` removes it: its rules, levels, schedules and declaration, and
+- The install says when the charter goes: its own time plus the ttl. At that time viff removes
+  the package as `viff charter -r` removes it: its rules, levels, schedules and declaration, and
   nothing it wrote. A charter installed under its address is a package of its own, and stays.
 - Like `reads:` and `sends:`, the ttl is the package's declaration, and each install of the file
   replaces it. Installing the file again starts the ttl over. Installing it without `ttl:` makes
   it stand until it is removed. Rules installed at the address on their own leave the ttl as it
   is.
-- `verse charter` writes the ttl in the file, which installs back as it was written. It says
+- `viff charter` writes the ttl in the file, which installs back as it was written. It says
   when the charter goes in a note beside the file, as it says a rule is held.
 - Anyone who installs a charter may give it a ttl, and nobody has to.
 
@@ -154,10 +154,10 @@ The install refuses three things:
 | `ttl:` on a charter in a scope | a scope's charter goes with its scope |
 
 **A charter a task installs launches within the task.** A task installs a charter as the person
-it runs for ([the verse system](../systems/verse.md)), and the charter stands after the task
+it runs for ([the viff system](../systems/viff.md)), and the charter stands after the task
 ends. Every spawn among its rules is held within the task:
 
-- its environment no wider than the task's, less `verse.charter-install`, so nothing a task
+- its environment no wider than the task's, less `viff.charter-install`, so nothing a task
   installs installs charters;
 - its autonomy no looser than the task's when it installs;
 - the task's credential, named as the task's spawn named it, where the spawn spends one: a
@@ -166,31 +166,31 @@ ends. Every spawn among its rules is held within the task:
 
 The hold is on spawns. A rule's `patch` and `derive`, a write into an outbox among them, are the
 person's own writes, as any charter's are, held by nothing the task was: a task given
-`verse.charter-install` installs rules that write what the person may write, whether or not the
-task itself has `verse.data-put`. A spawn's author who gives a task charter-install gives it
+`viff.charter-install` installs rules that write what the person may write, whether or not the
+task itself has `viff.data-put`. A spawn's author who gives a task charter-install gives it
 that.
 
-The install and `verse charter --check` refuse a spawn beyond the task, and an attribute still to
+The install and `viff charter --check` refuse a spawn beyond the task, and an attribute still to
 be bound, such as `repo: $[subject.value.repo]`, is within where some value of it could be. The rule
 records the task, and what the task could hand on when it installed it. At each firing the spawn,
 bound, is held to that, after the task has ended too and whatever becomes of the task's record: a
 firing that binds a repository the task never reached fails, with the reason in `err`. A task in a
-scope installs in baseline, as everything a task does on verse is done. `verse charter` says which
+scope installs in baseline, as everything a task does on viff is done. `viff charter` says which
 task installed a rule in a note beside the file. A rule the person installs over the task's is theirs, held by
 nothing the task was.
 
 **One file is one charter, and a directory holds several.** Each file says where its charter
 goes with its own `at:`, so the layout of the directory is free.
 
-So `.verse/charters/comment-drift/` holds the two packages, `drift.tony` and `merge.tony`. One
-`verse c -a -d .verse/charters/comment-drift` installs both, or neither.
+So `.viff/charters/comment-drift/` holds the two packages, `drift.tony` and `merge.tony`. One
+`viff c -a -d .viff/charters/comment-drift` installs both, or neither.
 
 Each package goes in **as one step**. Its declaration, its levels and its rules install
 together or not at all. So a refusal anywhere puts back what stood before it
 ([strata](../strata.md#installing-and-the-order-it-does-not-depend-on)).
 
 **Its levels are its own**, and so are its records. The rules and the strata of a package are
-addressed by package (`verse.trigger.rule."repos.verse.drift:claim"`). So two packages may
+addressed by package (`mirror.trigger.rule."repos.viff.drift:claim"`). So two packages may
 each declare a level of one name, and neither overwrites the other. `merge` declares
 `reflected` for the git refs it selects. If `drift` came to select git refs too, it could declare
 its own `reflected`.
@@ -203,17 +203,17 @@ order across packages to define. Two packages may both declare a level 10, and t
 mean nothing to each other.
 
 **The reads graph has no cycles.** The `reads:` lines make a graph: P → Q when what P reads
-meets what Q may write, which is the address of Q. Verse refuses a cycle at install, and shows
+meets what Q may write, which is the address of Q. Viff refuses a cycle at install, and shows
 the loop:
 
 ```
-reads: this would close a cycle between packages: repos.verse.drift → repos.verse.merge →
-repos.verse.drift — one reads what the next writes, all the way round, so a write on any of
+reads: this would close a cycle between packages: repos.viff.drift → repos.viff.merge →
+repos.viff.drift — one reads what the next writes, all the way round, so a write on any of
 them can wake the others and come back. A package graph is acyclic: break the loop, or fold
 the two halves into one package
 ```
 
-`merge` reads `drift`, so `drift` may not read `merge`. A `reads: [repos.verse.merge]` in
+`merge` reads `drift`, so `drift` may not read `merge`. A `reads: [repos.viff.merge]` in
 `drift.tony` gives this refusal.
 
 Nothing else catches such a loop. Suppose `a` reads what `b` writes, and `b` reads what `a`
@@ -229,19 +229,19 @@ iod writes, and reading it is not depending on a package. So `drift` and `merge`
 is not a loop between packages, and the check cannot see it. Baseline is unconfined in what it
 writes for the same reason.
 
-`verse charter` reads the charter at an address, as `verse data` reads the store at one. What
+`viff charter` reads the charter at an address, as `viff data` reads the store at one. What
 it prints is **the file that installs that charter**: the same keys, and `at:` naming the
 address. So what you read is what you can keep, edit and install again:
 
 ```sh
-verse charter repos.verse.drift > drift.tony    # the `drift` package, as its file
-verse charter -a -f drift.tony                  # …installs it back where it came from
-verse charter                                   # baseline's, which has no `at:`
-verse c repos.verse.drift rules claim           # one rule by name, which also installs as it stands
+viff charter repos.viff.drift > drift.tony    # the `drift` package, as its file
+viff charter -a -f drift.tony                  # …installs it back where it came from
+viff charter                                   # baseline's, which has no `at:`
+viff c repos.viff.drift rules claim           # one rule by name, which also installs as it stands
 ```
 
 ```tony
-at: repos.verse.drift
+at: repos.viff.drift
 reads: [git]
 rules: [ … the rules, in full, comments and all … ]
 strata: [ … ]
@@ -250,33 +250,33 @@ strata: [ … ]
 Keys come out in one order, whatever order the file you installed wrote them in: `at`, `reads`,
 `sends`, `ttl`, `rules`, `schedules`, `strata`. A key the charter does not have is left out.
 
-`verse charter` prints the rules themselves, not their names. The charter is the program verse
+`viff charter` prints the rules themselves, not their names. The charter is the program viff
 runs, and a list of names would need another command per rule to show what it *does*.
 
 **What a file cannot hold goes to stderr.** A rule that is held, suspended, installed by a task,
 or has failed at a firing is marked there, and so is when a charter's ttl ends. Those are facts
 about the running charter, not part of the file, and an install would refuse them. The charters
 under the address are named there too. If `merge.tony` left out its level `reflected`, bare
-`verse charter` would say:
+`viff charter` would say:
 
 ```
-note: repos verse merge: rule proposal-appeared is held: waiting for stratum reflected
-note: under here: repos verse drift, repos verse merge — `verse c -d <dir>` writes every charter to a file of its own
+note: repos viff merge: rule proposal-appeared is held: waiting for stratum reflected
+note: under here: repos viff drift, repos viff merge — `viff c -d <dir>` writes every charter to a file of its own
 ```
 
 **A tree of charters is a directory**, one file per charter. `-d` writes every charter at or
 under an address, and `-a -d` installs every charter file under a directory in one step:
 
 ```sh
-verse charter repos.verse -d out/              # out/repos/verse/drift/charter.tony, …
-verse charter -a -d out/                       # each at its own `at:`, all of them or none
-verse charter -a repos.verse -d out/ --prune   # …and remove what out/ leaves out at and under repos.verse
+viff charter repos.viff -d out/              # out/repos/viff/drift/charter.tony, …
+viff charter -a -d out/                       # each at its own `at:`, all of them or none
+viff charter -a repos.viff -d out/ --prune   # …and remove what out/ leaves out at and under repos.viff
 ```
 
 An install adds and replaces by name, so a rule missing from the directory stays installed.
 `--prune` makes the directory the whole truth under an address:
 
-- A package with no file is uninstalled first, as `verse c -R` uninstalls it: its tasks are
+- A package with no file is uninstalled first, as `viff c -R` uninstalls it: its tasks are
   cancelled and their hooks run, except a hook that would start work, before anything of the
   directory is installed. The install waits for as long as those tasks take to end.
 - Then the directory is installed, and a rule, level or schedule missing from a file is removed.
@@ -291,7 +291,7 @@ opens behind the answer, and a rule held for a stratum or a runner arms when tha
 any is still arming when it runs out; a held rule is said, and waited for by nothing:
 
 ```sh
-verse charter -a repos.verse -f drift.tony --wait 10s   # back when drift's rules can fire, or after 10s
+viff charter -a repos.viff -f drift.tony --wait 10s   # back when drift's rules can fire, or after 10s
 ```
 
 **`--check` asks what an install would do, and does none of it.** It takes `-d` or `-f`, as
@@ -300,20 +300,20 @@ with the install's own words, and for each package the rules and levels it would
 remove or hold, and the packages the prune would take away:
 
 ```sh
-verse charter --check repos.verse -d out/        # verdict: installs, packages: […], pruned: […]
-verse charter --check repos.verse -f drift.tony  # a directory holding this one file
+viff charter --check repos.viff -d out/        # verdict: installs, packages: […], pruned: […]
+viff charter --check repos.viff -f drift.tony  # a directory holding this one file
 ```
 
 A spawn no runner offers is refused by the check, as the install refuses it. When the runners
-are not up yet, `--runners-to-come` checks the way verse places a rule it restores: such a rule
+are not up yet, `--runners-to-come` checks the way viff places a rule it restores: such a rule
 is held for a runner and named among the held ones, where the install would refuse it.
 
 ```sh
-verse charter --check repos.verse -d out/ --runners-to-come
+viff charter --check repos.viff -d out/ --runners-to-come
 ```
 
 A check with `-f` is the check of a directory that holds that one file, the prune included: the
-answer names what `-a repos.verse -d` with `--prune` would take from under `repos.verse`, which
+answer names what `-a repos.viff -d` with `--prune` would take from under `repos.viff`, which
 `-a -f` never takes. So the check of `drift.tony` alone names `merge` among what the prune takes.
 The file says its own `at:`, as a file in a directory does.
 
@@ -326,7 +326,7 @@ charters, installs the same. `--paths` lists every charter as one path per rule 
 
 A package is removed whole: its rules, its levels, its schedules, its declaration (what it
 reads, what it sends, its ttl), the grants on its outboxes, and the engine that runs them. What
-the package *wrote* stays. `verse data -rm` removes that.
+the package *wrote* stays. `viff data -rm` removes that.
 
 Removing a package ends its work first, in this order:
 
@@ -343,14 +343,14 @@ of a rule, a level, a schedule or a declaration, and the removal of a rule, a le
 schedule. The same request is taken once the uninstall is over, so it can be asked again.
 
 A task whose runner does not answer the cancel is asked again until it ends, and the removal
-waits for it with the package still installed and locked. `verse c -R` waits too. If it is
+waits for it with the package still installed and locked. `viff c -R` waits too. If it is
 interrupted, the removal of the package it was waiting on goes on, and asking again joins it
-and takes the rest. If verse restarts meanwhile, the package comes back installed and unlocked,
+and takes the rest. If viff restarts meanwhile, the package comes back installed and unlocked,
 and the removal has to be asked again.
 
 ```sh
-verse c -r repos.verse.merge
-verse c -R repos.verse                   # …and every charter under that address
+viff c -r repos.viff.merge
+viff c -R repos.viff                   # …and every charter under that address
 ```
 
 **Two things a package does not confine:**
@@ -358,7 +358,7 @@ verse c -R repos.verse                   # …and every charter under that addre
 | Thing | Why a package does not confine it |
 |---|---|
 | a spawn | A task acts in the world, outside the store. What it may do there is its [environment](tasks.md#the-doer), held to its runner's ceiling, and its [autonomy](tasks.md#the-autonomy) decides each step. |
-| verse's own records, such as the mirror of a task or a posed question | The engine writes them into [`verse`'s own part of the tree](entities.md). No charter may be installed there, and no charter may write there. |
+| viff's own records, such as the mirror of a task or a posed question | The engine writes them into [`viff`'s own part of the tree](entities.md). No charter may be installed there, and no charter may write there. |
 
 A package has the same shape as a [scope](../glossary.md#scope), along another line:
 
@@ -371,10 +371,10 @@ Both mark their records, so a restore takes only its own.
 
 ## The charter is durable
 
-Installing a rule writes it into the store as the data at `verse.trigger.rule.<name>`. For a
-package the address is `verse.trigger.rule.<package>:<name>`, so two packages may use one name.
+Installing a rule writes it into the store as the data at `mirror.trigger.rule.<name>`. For a
+package the address is `mirror.trigger.rule.<package>:<name>`, so two packages may use one name.
 Removing a rule removes the data at that address. A start reads the rules back before anything
-else runs. So a verse comes back running the program it stopped with.
+else runs. So a viff comes back running the program it stopped with.
 
 The record holds the rule as `spec`. It also holds the `scope` and the package address `at`
 that the rule was installed in, when it has them.
@@ -383,7 +383,7 @@ The record does not hold who installed the rule. The installer is the owner on t
 permissions record ([records](perms.md#records)): the principal the install acted as. For the
 charter the deployment names, the owner is `system:charter`.
 
-A restore installs the rule again as that owner. When verse refuses a charter file part way, it
+A restore installs the rule again as that owner. When viff refuses a charter file part way, it
 puts a replaced rule back as its installer, not as the system.
 
 Everything else that a restart needs is durable in the same way.
@@ -392,17 +392,17 @@ Everything else that a restart needs is durable in the same way.
 |---|---|
 | a task | it is mirrored |
 | the position of a sequence | a fact on its subject |
-| a claim | a record in the store of what verse owes |
+| a claim | a record in the store of what viff owes |
 | an open question | a record, with its ballots on it |
 | an open selection | a channel, with its ballots beside it |
 
-At a restart, verse poses each open question again. From these records it also restores the
-hooks of a chain and the awaiter of a selection. The rules must be durable too, or a verse
+At a restart, viff poses each open question again. From these records it also restores the
+hooks of a chain and the awaiter of a selection. The rules must be durable too, or a viff
 would come back with its work in progress and nothing to react to it.
 
 **There is one record for each rule.** An install writes one record, a removal removes one, and
 neither reads the others. So two installs cannot lose each other's rules, and a rule has an
-address (`verse data verse trigger rule review`).
+address (`viff data mirror trigger rule review`).
 
 **A rule is stored as structure, under the `!raw` tag.** `!raw` says *the tags beneath me are
 data*. The store keeps the subtree as written, and runs no operator beneath it at any depth. The
@@ -423,7 +423,7 @@ earlier version behind.
 
 The gain is that the record is the rule:
 
-- `verse data verse trigger rule review` shows a document that you read field by field.
+- `viff data mirror trigger rule review` shows a document that you read field by field.
 - A change to a charter is an observable fact about a shape, and not about a string.
 - Nothing has to parse the rule again to ask a question about it.
 
@@ -442,11 +442,11 @@ value, or the codec of what the value sits inside. Together they cover a charter
 | `name:`, `stratum:`, `condition:`, `gates:`, `seq:`, a gate's `name:`/`mode:` | the *field* holding it. In this way a value whose own type cannot carry a comment still keeps it. |
 | `subject:`, `on:`, `when:` | Condition's own codec, which is hand-written and so carries them by hand |
 
-The two positions are one question asked twice, and verse carries both.
+The two positions are one question asked twice, and viff carries both.
 `name: review # the short name` reads back as it was written, and so does
 `# what this rule is for` above it.
 
-The exception is the fields of a spawn: `prompt:`, `agent:`, `environment:` and the rest. Verse
+The exception is the fields of a spawn: `prompt:`, `agent:`, `environment:` and the rest. Viff
 keeps a comment above or beside `spawn:`. It does not keep a comment on a field inside the
 spawn.
 
@@ -477,10 +477,10 @@ first rule belongs to the file. To attach the comment to the rule, write it insi
 ```
 
 **Restoring a rule is an ordinary install**, so the rule acts on what already matches it,
-including what arrived while verse was down ([the backlog](condition.md#the-backlog)).
+including what arrived while viff was down ([the backlog](condition.md#the-backlog)).
 
-A **charter in a scope** (`verse c -a -scope <name>`) is restored the same way, when the scope's
-engine is next built. Verse builds that engine when it is needed: in practice, when the developer
+A **charter in a scope** (`viff c -a -scope <name>`) is restored the same way, when the scope's
+engine is next built. Viff builds that engine when it is needed: in practice, when the developer
 reconnects. The record of a rule in a scope carries `scope: <name>`. A scope reads baseline
 beneath it, so a listing in a scope returns the rules of both, and only the record says which is
 which. The restore skips the rules of baseline, because a scope runs what was installed into it
@@ -488,14 +488,14 @@ which. The restore skips the rules of baseline, because a scope runs what was in
 asked for again, because nothing lists the scopes.
 
 **A rule can watch the charter**, because the charter is a place in the store like any other:
-`subject: {path: "verse.trigger.rule.*"}`. The rule must *name* the place. `verse.trigger.*` and
-`verse.task.*` are the engine's own records. A rule reaches either only with a path that begins
-with `verse`, so a rule does not react to its own records by accident.
+`subject: {path: "mirror.trigger.rule.*"}`. The rule must *name* the place. `mirror.trigger.*` and
+`mirror.task.*` are the engine's own records. A rule reaches either only with a path that begins
+with `viff`, so a rule does not react to its own records by accident.
 
-The permissions records (`verse.perms`) belong to the system, and no grant opens them to
-anybody. So only the system's own charter can read them. Verse refuses at install a rule of
+The permissions records (`mirror.perms`) belong to the system, and no grant opens them to
+anybody. So only the system's own charter can read them. Viff refuses at install a rule of
 anybody else that names them, rather than installing a rule that matches nothing
-([verse's own half](../perms.md#verses-own-half)). A rule reads as its owner, all the way down.
+([viff's own half](../perms.md#viffs-own-half)). A rule reads as its owner, all the way down.
 
 ## What an install does not check
 
@@ -506,9 +506,9 @@ a system, an environment beyond its ceilings. It accepts each of these:
 
 | What the rule holds | What happens |
 |---|---|
-| a key spelled wrongly inside `patch:` or inside the `value` of a `derive` | Verse writes the key as spelled. The keys of a payload are yours. |
+| a key spelled wrongly inside `patch:` or inside the `value` of a `derive` | Viff writes the key as spelled. The keys of a payload are yours. |
 | an expression that names nothing, such as `.[subject.valeu.x]` | The firing fails and writes nothing. The rule gets `trouble`. |
-| a spawn whose `runner:` was removed after the install | The patch of the action lands, and the task fails at once: `verse task` shows `status: failed` and the reason in `err`. The rule gets no `trouble`. |
+| a spawn whose `runner:` was removed after the install | The patch of the action lands, and the task fails at once: `viff task` shows `status: failed` and the reason in `err`. The rule gets no `trouble`. |
 | a condition over a place that the rule's owner may not read | The rule selects nothing, and nothing reports it. A rule reads the store as its owner does. |
 
 In the second row the firing writes nothing, so the rule fires again at the next commit that

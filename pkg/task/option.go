@@ -4,7 +4,7 @@ import "time"
 
 // Deadline is how long a question stands, and what it settles on when the clock passes.
 //
-//tony:schemagen=verse-deadline,notag
+//tony:schemagen=viff-deadline,notag
 type Deadline struct {
 	// Within is how long the question stands from when it is posed: "24h".
 	Within string `tony:"field=within,omitzero"`
@@ -35,7 +35,7 @@ const NoOption = "none"
 
 // Option is one outcome a question can settle on, and how many ballots settle it.
 //
-//tony:schemagen=verse-option,notag
+//tony:schemagen=viff-option,notag
 type Option struct {
 	ID   string `tony:"field=id"`
 	Need int    `tony:"field=need,omitzero"`

@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A charter must survive a round trip through every dialect. It asserts the round trip
@@ -32,7 +32,7 @@ func TestCharterRoundTrip(t *testing.T) {
 			},
 			Gates: []Gate{{Name: "human", Mode: "ask"}},
 			Action: Action{Spawn: &launch.Spec{
-				Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
+				Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 			}},
 		},
 		{

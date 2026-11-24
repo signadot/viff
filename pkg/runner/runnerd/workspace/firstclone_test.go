@@ -8,7 +8,7 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // A first clone finishes whatever happened to the task that asked for it. A clone of anything

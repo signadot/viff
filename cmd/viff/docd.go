@@ -1,0 +1,515 @@
+package main
+
+import (
+	"debug/buildinfo"
+	"fmt"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime/debug"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/scott-cotton/cli"
+
+	"go.viff.dev/viff/internal/config"
+)
+
+// docdAddrFile is where, in the data dir, viff records the client face of the docd it started,
+// so the next run on the dir finds it by dialing.
+const docdAddrFile = "docd.addr"
+
+// goTonyModule is the pinned go-tony module and goTonyO its daemon runner — the `o`
+// command viff brings logd+docd up with. Keeping the two in one place is what lets
+// the resolution below talk about a VERSION rather than a build recipe.
+const (
+	goTonyModule = "github.com/signadot/tony-format/go-tony"
+	goTonyO      = goTonyModule + "/cmd/o"
+)
+
+// docd is the resolved docd the store uses: its client face (logd session protocol),
+// plus a stop that tears down anything viff spawned.
+type docd struct {
+	clientAddr string
+	// dataDir is where viff brought docd up, empty where it connected to one (--docd-addr).
+	dataDir string
+	stop    func()
+}
+
+// resolveDocd yields docd's addresses. Three modes, in order:
+//   - --docd-addr given: connect to a running docd (viff spawns nothing).
+//   - --data given: bring logd+docd up on that dir via `o sys up`.
+//   - neither: do the same on ~/.viff/<addr> (defaultDataDir), made on the first run and
+//     kept, so a bare `viff up` comes back to the same viff, its local runner with it.
+//
+// For the spawned modes viff reserves free loopback ports and passes them to
+// `o sys up`, so it already knows the addresses (no stdout scraping), and waits for
+// docd to accept connections before returning.
+func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
+	if cfg.DocdAddr != "" { // contradictory combinations are refused by upConfig.validate
+		if set, ok := configuredCutoff(appCfg); ok {
+			fmt.Fprintf(cc.Err, "viff up: the compaction cutoff %q, from %s, is not applied: the store at %s is configured where it runs\n", set.value, set.from, cfg.DocdAddr)
+		}
+		return docd{clientAddr: cfg.DocdAddr, stop: func() {}}, nil
+	}
+	// The cutoff before anything else, so a bad one is said before `o` is installed or a data
+	// dir made. --logd-config replaces the file it goes into, so a configured one is said and
+	// not applied, as beside --docd-addr.
+	var cut cutoff
+	if cfg.LogdConfig != "" {
+		if set, ok := configuredCutoff(appCfg); ok {
+			fmt.Fprintf(cc.Err, "viff up: the compaction cutoff %q, from %s, is not applied: --logd-config %s replaces the file it goes into\n", set.value, set.from, cfg.LogdConfig)
+		}
+	} else {
+		var err error
+		if cut, err = resolveCutoff(cfg.CompactionCutoff, appCfg); err != nil {
+			return docd{}, err
+		}
+	}
+
+	// Resolve `o` BEFORE the data dir and the ports: with no o there is nothing to bring
+	// up, and saying so first keeps the failure from arriving after a "data dir: …" line
+	// that reads like progress.
+	oBin, err := resolveO(cfg.OBin, cc)
+	if err != nil {
+		return docd{}, err
+	}
+
+	dataDir := cfg.Data
+	if dataDir == "" {
+		if dataDir, err = defaultDataDir(g.Addr); err != nil {
+			return docd{}, fmt.Errorf("viff up: the data dir: %w", err)
+		}
+	}
+	fmt.Fprintf(cc.Out, "data dir: %s (kept)\n", dataDir)
+
+	// THE PAIR THE LAST RUN LEFT, found by dialing: a `viff up` that crashed left logd and docd
+	// holding this dir, and a second pair started on it would be two stores writing one. What
+	// answers at the client face the last run recorded is used as it stands, and left running
+	// when this run stops, since this run holds no process of it to stop.
+	recorded := filepath.Join(dataDir, docdAddrFile)
+	if b, err := os.ReadFile(recorded); err == nil {
+		if addr := strings.TrimSpace(string(b)); addr != "" {
+			if c, err := net.DialTimeout("tcp", addr, time.Second); err == nil {
+				c.Close()
+				fmt.Fprintf(cc.Out, "docd: %s, left running on this data dir by the last `viff up`, used as it stands\n", addr)
+				return docd{clientAddr: addr, dataDir: dataDir, stop: func() {
+					fmt.Fprintf(cc.Err, "viff up: docd at %s, which this run found running, is left running; the next `viff up` on %s uses it\n", addr, dataDir)
+				}}, nil
+			}
+		}
+	}
+
+	logdCfg, err := resolveLogdConfig(cfg.LogdConfig, dataDir, cut)
+	if err != nil {
+		return docd{}, err
+	}
+
+	logdAddr, err := freeAddr()
+	if err != nil {
+		return docd{}, err
+	}
+	clientAddr, err := freeAddr()
+	if err != nil {
+		return docd{}, err
+	}
+	// docd's mount face (its controller-facing listener) is reserved like the rest, because
+	// `o sys up` defaults it to a fixed port too; viff itself never dials it.
+	mountAddr, err := freeAddr()
+	if err != nil {
+		return docd{}, err
+	}
+	// The admin/pprof face gets a reserved port too. `o sys up` defaults it to a FIXED
+	// localhost:9223 and treats the bind as fatal, so leaving it unset made every viff
+	// that spawns its own daemons claim one global port: a second viff — a smoke beside
+	// a dev server, two smokes in two worktrees — died on "address already in use" from a
+	// listener neither of them asked for. Ephemeral here for the same reason as the three
+	// above; `off` would buy the same isolation but throw away the one channel that still
+	// answers when the data path has wedged.
+	adminAddr, err := freeAddr()
+	if err != nil {
+		return docd{}, err
+	}
+
+	child := exec.Command(oBin,
+		"sys", "up",
+		"--data", dataDir,
+		"--logd-addr", logdAddr,
+		"--docd-addr", clientAddr,
+		"--docd-mount-addr", mountAddr,
+		"--admin-addr", adminAddr,
+		"--config", logdCfg,
+	)
+	child.Stdout, child.Stderr = cc.Err, cc.Err
+	// Own process group. This once read "`o sys up` runs logd and docd as children" — it
+	// no longer does: as of v0.0.120 both are in-process listeners behind one admin face
+	// (system/…/cmd/o/system_compose.go), which is also why there is one admin port to
+	// reserve above and not three. The group still earns its keep for the other reason:
+	// it keeps `o` out of the terminal's foreground group, so a Ctrl+C reaches viff
+	// alone and viff decides when the daemons die, rather than both racing teardown.
+	// Killing -pgid rather than the pid also keeps stop() correct if `o` grows children
+	// again — the orphaned-daemon leak that piled up abandoned tasks is the history here.
+	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := child.Start(); err != nil {
+		return docd{}, fmt.Errorf("start `%s sys up`: %w", oBin, err)
+	}
+	// ONE Wait, whose completion both stop() and the readiness loop observe. The loop needs
+	// it because `o` exiting early — a stale binary, an unreadable data dir, a port taken
+	// between reservation and bind — is the answer to "is docd up yet", and only dialling
+	// for it turned a one-line failure into a 45-second wait for a daemon that was already
+	// gone.
+	var waitErr error
+	exited := make(chan struct{})
+	go func() { waitErr = child.Wait(); close(exited) }()
+	var once sync.Once
+	stop := func() {
+		once.Do(func() {
+			pgid := child.Process.Pid // == the group id (Setpgid made child the leader)
+			_ = syscall.Kill(-pgid, syscall.SIGTERM)
+			select {
+			case <-exited:
+			case <-time.After(5 * time.Second):
+				_ = syscall.Kill(-pgid, syscall.SIGKILL) // force it out if SIGTERM stalls
+				<-exited
+			}
+		})
+	}
+	if err := waitDial(clientAddr, exited, 45*time.Second); err != nil {
+		stop()
+		if waitErr != nil {
+			err = fmt.Errorf("%w (`%s sys up` exited: %v)", err, oBin, waitErr)
+		}
+		return docd{}, fmt.Errorf("docd did not come up on %s: %w", clientAddr, err)
+	}
+	// Where the next run finds this pair, should this one not live to stop it.
+	if err := os.WriteFile(recorded, []byte(clientAddr+"\n"), 0o644); err != nil {
+		stop()
+		return docd{}, fmt.Errorf("viff up: recording docd's address: %w", err)
+	}
+	stopped := stop
+	stop = func() { stopped(); _ = os.Remove(recorded) }
+	return docd{clientAddr: clientAddr, dataDir: dataDir, stop: stop}, nil
+}
+
+// ── resolving o ──────────────────────────────────────────────────────────────
+
+// resolveO answers with the `o` binary to spawn logd+docd with.
+//
+// This used to be `go run <pinned cmd/o>`, which works in exactly one place: a checkout of
+// this module. Everywhere else — the directory an operator actually starts a viff in —
+// `go run` cannot resolve a package it has no go.mod for, so `viff up` printed a module
+// error from a tool nobody asked about and then waited out its startup timeout.
+//
+// So it is resolved rather than compiled, in this order:
+//
+//  1. --o-bin, which is an answer, not a hint.
+//  2. viff's own cache — an `o` installed here earlier AT THE PINNED VERSION, so the
+//     install is paid once per pin rather than once per up.
+//  3. `o` on PATH, but only if it was built from the pinned go-tony.
+//  4. `go install` the pinned cmd/o into the cache and use that.
+//  5. failing all of it, a skewed `o` from PATH, with a warning — better a wrong version
+//     than no store at all, and the warning names both versions.
+//
+// The version check at (3) is the part worth stating. viff and o share the logd session
+// protocol, so a skewed `o` does not fail cleanly: the first sign of it is a store that
+// will not talk, or — as on the machine this was written on, where `o` on PATH is a local
+// go-tony build — `o sys up` refusing a flag viff passes it. Since an `o` binary carries
+// the version it was built from, that is knowable BEFORE spawning it, and something
+// knowable should be acted on rather than warned about. Hence: match the pin and it is
+// used silently; miss it and the pinned one is fetched instead. Someone working on go-tony
+// itself points --o-bin at their build, which is the flag saying "this one, I mean it".
+func resolveO(explicit string, cc *cli.Context) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	pinned := pinnedGoTony()
+	cached := cachedO(pinned)
+	if cached != "" && isFile(cached) {
+		return cached, nil
+	}
+	onPath, pathErr := exec.LookPath("o")
+	if pathErr == nil && pinned != "" && goTonyOf(onPath) == pinned {
+		return onPath, nil
+	}
+	// Nothing pinned to fetch — a build with no module info, or a replaced go-tony — so
+	// there is nothing that is knowably the right thing to install.
+	if cached == "" {
+		if pathErr == nil {
+			fmt.Fprintf(cc.Err, "viff up: using `o` from PATH (%s); viff cannot tell which go-tony it pins, so the versions are unchecked\n", onPath)
+			return onPath, nil
+		}
+		return "", fmt.Errorf("viff up: no `o` on PATH, and viff cannot tell which go-tony it pins — pass --o-bin <path> (build one with `go build -o o %s`)", goTonyO)
+	}
+	if _, err := exec.LookPath("go"); err == nil {
+		fmt.Fprintf(cc.Err, "viff up: installing %s@%s into %s (once per version)…\n", goTonyO, pinned, filepath.Dir(cached))
+		install := exec.Command("go", "install", goTonyO+"@"+pinned)
+		install.Env = append(os.Environ(), "GOBIN="+filepath.Dir(cached))
+		install.Stdout, install.Stderr = cc.Err, cc.Err
+		runErr := install.Run()
+		switch {
+		case runErr != nil:
+			// An install that failed with no `o` anywhere is the end of the road; with one
+			// on PATH there is still something to run, so say what happened and use it.
+			if pathErr != nil {
+				return "", fmt.Errorf("viff up: go install %s@%s: %w — or pass --o-bin <path>", goTonyO, pinned, runErr)
+			}
+			fmt.Fprintf(cc.Err, "viff up: go install %s@%s failed (%v); falling back to PATH\n", goTonyO, pinned, runErr)
+		case !isFile(cached): // GOBIN honored but the binary is not where we expect it
+			return "", fmt.Errorf("viff up: installed %s@%s but found no binary at %s — pass --o-bin <path>", goTonyO, pinned, cached)
+		default:
+			return cached, nil
+		}
+	} else if pathErr != nil {
+		return "", fmt.Errorf("viff up: no `o` on PATH and no `go` to install one — put `o` (%s) on your PATH, or pass --o-bin <path>", goTonyO)
+	}
+	fmt.Fprintf(cc.Err, "viff up: %s\n", skewWarning(onPath, goTonyOf(onPath), pinned))
+	return onPath, nil
+}
+
+// defaultCutoff is the compaction cutoff of the store `viff up` starts, where neither
+// --compaction-cutoff nor the config's compactionCutoff says another.
+//
+// COMPACTION, which logd leaves off. Off means every patch ever written is retained, and a
+// read replays the ones that reach its path — so a store's read cost grows with its whole
+// history and never comes back down. Snapshots bound what a read replays; they do not bound
+// what the disk holds. A viff is a long-lived store written to by an engine that fires on
+// every commit, so "keep everything forever" is not a default it can live on.
+//
+// A DAY, because the cutoff is how far back an EXACT read works, and viff reads at a firing's
+// causing commit when the action runs: after a gate, at a hook, at a sequence step. A
+// completion hook reads its subject at the commit that fired it, which is as old as the task it
+// waited on, so a cutoff shorter than a task loses the task's hook: the read is refused as too
+// old, nothing is written, and the subject stays where it was. An hour lost the hook of every
+// task that ran longer. A day is the eks profile's cutoff (docdCompactionCutoff in deploy/profiles/eks.tony).
+const defaultCutoff = "1d"
+
+// cutoff is the compaction cutoff viff writes into the logd config, and where it came from,
+// which the file names so that whoever reads it knows what to change.
+type cutoff struct {
+	value string
+	from  string
+}
+
+// resolveCutoff is the cutoff for this run: the flag, else the configured one
+// (configuredCutoff), else defaultCutoff. A value logd would refuse is refused here, before
+// anything is started.
+func resolveCutoff(flag string, c *config.Config) (cutoff, error) {
+	cut := cutoff{value: defaultCutoff, from: "viff up's default"}
+	if set, ok := configuredCutoff(c); ok {
+		cut = set
+	}
+	if flag != "" {
+		cut = cutoff{value: flag, from: "viff up --compaction-cutoff"}
+	}
+	if _, err := parseCutoff(cut.value); err != nil {
+		return cutoff{}, fmt.Errorf("viff up: the compaction cutoff %q, from %s: %w", cut.value, cut.from, err)
+	}
+	return cut, nil
+}
+
+// configuredCutoff is the cutoff the configuration sets, and where: the variable, which
+// overrides the file, else the file's compactionCutoff. False where neither sets one.
+func configuredCutoff(c *config.Config) (cutoff, bool) {
+	if v := os.Getenv("VIFF_COMPACTION_CUTOFF"); v != "" {
+		return cutoff{value: v, from: "VIFF_COMPACTION_CUTOFF"}, true
+	}
+	if c.CompactionCutoff != "" {
+		return cutoff{value: c.CompactionCutoff, from: "compactionCutoff in the viff config"}, true
+	}
+	return cutoff{}, false
+}
+
+// parseCutoff reads a duration as logd does (server.ParseDuration): time.ParseDuration's, plus
+// d for 24h, w for 7d and y for 365d. Here rather than imported, because logd's server package
+// brings its storage engine into this binary with it. Stricter than logd in one thing: zero
+// and negatives are refused, since logd reads a cutoff that is not positive as its own 1h
+// default, the silent hour this setting exists to replace.
+func parseCutoff(s string) (time.Duration, error) {
+	var out strings.Builder
+	for rest := s; rest != ""; {
+		i := 0
+		for i < len(rest) && (rest[i] >= '0' && rest[i] <= '9' || rest[i] == '.') {
+			i++
+		}
+		j := i
+		for j < len(rest) && !(rest[j] >= '0' && rest[j] <= '9' || rest[j] == '.') {
+			j++
+		}
+		num, unit := rest[:i], rest[i:j]
+		rest = rest[j:]
+		hours := map[string]float64{"d": 24, "w": 24 * 7, "y": 24 * 365}[unit]
+		if hours == 0 {
+			out.WriteString(num + unit)
+			continue
+		}
+		n, err := strconv.ParseFloat(num, 64)
+		if err != nil {
+			return 0, fmt.Errorf("not a duration: write it as 1d, 36h or 90m")
+		}
+		fmt.Fprintf(&out, "%gh", n*hours)
+	}
+	d, err := time.ParseDuration(out.String())
+	if err != nil {
+		return 0, fmt.Errorf("not a duration: write it as 1d, 36h or 90m")
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("a cutoff is longer than nothing")
+	}
+	return d, nil
+}
+
+// logdConfig is the logd config viff writes for the store it starts: the cutoff, and a header
+// that says where the cutoff came from and that the file is rewritten.
+//
+// ONE FIELD, and the rest is logd's. The cutoff is the only part of the autonomy viff has an
+// opinion about. The tiers, the multiplier and the grace period are upstream's guess and stay
+// upstream's guess, so improving them does not need a viff release.
+func logdConfig(cut cutoff) string {
+	return `# Written by viff on every ` + "`viff up`" + `; edits here do not survive one.
+# Its cutoff is from ` + cut.from + `. Another is set with --compaction-cutoff,
+# or compactionCutoff in the viff config. To configure the logd yourself, pass
+# viff up --logd-config <file>, the same file ` + "`o system logd serve`" + ` takes.
+compaction: {
+  cutoff: ` + cut.value + `
+}
+`
+}
+
+// resolveLogdConfig answers with the config file `o sys up` is given: the operator's, if they
+// named one, and otherwise viff's own, written into the data dir with the cutoff cut.
+//
+// It is written into the DATA DIR rather than a temp file so that a store being debugged
+// carries the autonomy it was run under beside the data that autonomy shaped — `ls /data` says
+// what compaction was asked for. It is rewritten every up, and says so in its own first line,
+// because it is viff's statement about the store rather than the store's own configuration:
+// an operator with something to say sets the cutoff, or passes --logd-config, which replaces
+// the file entirely.
+func resolveLogdConfig(explicit, dataDir string, cut cutoff) (string, error) {
+	if explicit != "" {
+		if !isFile(explicit) {
+			return "", fmt.Errorf("viff up: --logd-config %s: no such file", explicit)
+		}
+		return explicit, nil
+	}
+	// The data dir is viff's to name and may not exist yet — `o sys up` creates it, and
+	// this runs first.
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		return "", fmt.Errorf("viff up: making the data dir: %w", err)
+	}
+	path := filepath.Join(dataDir, "logd.viff.tony")
+	if err := os.WriteFile(path, []byte(logdConfig(cut)), 0o644); err != nil {
+		return "", fmt.Errorf("viff up: writing the logd config: %w", err)
+	}
+	return path, nil
+}
+
+// pinnedGoTony is the go-tony version THIS binary was built against, read from its own
+// build info rather than parsed out of go.mod — the go.mod of a checkout is not present
+// where an installed viff runs, and the build info is the pin that actually shipped.
+func pinnedGoTony() string {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	for _, d := range bi.Deps {
+		if d.Path != goTonyModule {
+			continue
+		}
+		if d.Replace != nil { // a replaced module has no version to install
+			return ""
+		}
+		return d.Version
+	}
+	return ""
+}
+
+// cachedO is where viff keeps an `o` it installed: ~/.viff/bin/<version>/o. The version
+// is a directory rather than part of the name so the binary keeps calling itself `o`, and
+// so a viff built against a newer go-tony installs beside the old one instead of racing
+// another running viff for the same path.
+func cachedO(version string) string {
+	if version == "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".viff", "bin", version, "o")
+}
+
+// goTonyOf reports the go-tony version an `o` binary was built from, read straight out of
+// the binary's own embedded build info — no `go` toolchain and no `o` subcommand required,
+// which matters because the whole point is to check a binary that may be too old to have
+// one. It is "" when the file carries no build info, and "(devel)" for a local build.
+func goTonyOf(bin string) string {
+	bi, err := buildinfo.ReadFile(bin)
+	if err != nil {
+		return ""
+	}
+	if bi.Main.Path == goTonyModule {
+		return bi.Main.Version
+	}
+	for _, d := range bi.Deps {
+		if d.Path == goTonyModule {
+			return d.Version
+		}
+	}
+	return ""
+}
+
+// skewWarning is what resolveO prints when it has to fall back to an `o` it could not
+// match to the pin — no cache, no install. It is silent when the versions agree, so it can
+// be called without asking first.
+//
+// The line names BOTH versions on purpose: the failure that follows a skew is a store that
+// will not talk, or a flag `o sys up` does not know, and neither says "your o is old".
+func skewWarning(bin, found, pinned string) string {
+	switch {
+	case pinned == "" || found == pinned:
+		return ""
+	case found == "":
+		return fmt.Sprintf("using `o` from PATH (%s); it carries no version info, and viff pins go-tony %s — pass --o-bin if the store will not connect", bin, pinned)
+	default:
+		return fmt.Sprintf("using `o` from PATH (%s), built from go-tony %s; viff pins %s — pass --o-bin if the store will not connect", bin, found, pinned)
+	}
+}
+
+func isFile(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode().IsRegular()
+}
+
+// freeAddr reserves and releases a loopback TCP address, so a daemon can bind it
+// shortly after — conflict-free ports without scraping the daemon's output.
+func freeAddr() (string, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", err
+	}
+	defer l.Close()
+	return l.Addr().String(), nil
+}
+
+// waitDial blocks until addr accepts a connection, the daemon it belongs to exits, or the
+// timeout elapses.
+func waitDial(addr string, exited <-chan struct{}, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", addr, 250*time.Millisecond)
+		if err == nil {
+			c.Close()
+			return nil
+		}
+		select {
+		case <-exited:
+			return fmt.Errorf("the daemon runner exited before %s accepted a connection", addr)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("%s not reachable after %s", addr, timeout)
+}

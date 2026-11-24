@@ -24,7 +24,7 @@ type inner struct {
 	B string `tony:"field=b,omitzero"`
 }
 
-// An optional field that is not set does not appear. This is verse's requirement rather
+// An optional field that is not set does not appear. This is viff's requirement rather
 // than a test of gomap: it is what makes a document readable, and it was carried by a
 // pruning pass in this package until go-tony v0.0.89 honored the tag itself. The tests stay
 // where the requirement is.

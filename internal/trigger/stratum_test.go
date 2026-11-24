@@ -9,13 +9,13 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // observe/sdlc/effectuate — the ordering the design note is written around, which is what
@@ -201,7 +201,7 @@ func TestDeriveMustLandStrictlyAbove(t *testing.T) {
 			Name: "x4", Stratum: "sdlc",
 			Condition: Condition{Subject: mm("signadot.feature.*")},
 			Action: Action{
-				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.ref]"},
+				Spawn:  &launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.ref]"},
 				OnDone: &Action{Derive: deriveAction("gh.issue", entity.Obj{"a": 1}).Derive},
 			},
 		},
@@ -249,7 +249,7 @@ func TestDeriveContentMustBeLiteral(t *testing.T) {
 		"one inside text":      {"note": "about $[result] now"},
 		"one nested deeper":    {"a": entity.Obj{"b": ".[stage]"}},
 		"one inside a list":    {"a": []any{"ok", ".[result]"}},
-		"a dotted path":        {"a": ".[verse.review.step]"},
+		"a dotted path":        {"a": ".[viff.review.step]"},
 		"an indexed reference": {"a": ".[result.findings[0].id]"},
 	} {
 		err := eng.AddTrigger(Trigger{
@@ -608,7 +608,7 @@ func TestAStratumWithRulesCannotBeRemoved(t *testing.T) {
 
 // ── durability ────────────────────────────────────────────────────────────────────
 
-// Strata are durable for the same reason rules are: a verse comes back up with its work in
+// Strata are durable for the same reason rules are: a viff comes back up with its work in
 // progress intact, and the ordering its rules were checked against has to come back with it.
 func TestStrataSurviveARestart(t *testing.T) {
 	store := entitytest.Store(t)
@@ -840,7 +840,7 @@ func TestTheCausalChainCrossesTheLevel(t *testing.T) {
 func TestSubjectPartsBindInSpawnStrings(t *testing.T) {
 	payload := entity.Obj{"stage": "open"}.Payload()
 	b := bindingFor(payload, entity.RefAt("demo", "pr", "1"), payload)
-	spec := launch.Spec{Agent: &runner.Agent{Name: "verse"}, Prompt: "review $[subject.name] at $[subject.ref] at $[stage]"}
+	spec := launch.Spec{Agent: &runner.Agent{Name: "viff"}, Prompt: "review $[subject.name] at $[subject.ref] at $[stage]"}
 	got := bound(t, spec, b).Prompt
 	if want := `review 1 at demo.pr."1" at open`; got != want {
 		t.Fatalf("task = %q, want %q", got, want)

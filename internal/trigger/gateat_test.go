@@ -5,9 +5,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // captureResolver records the questions a firing asks, so a test can read what was published
@@ -31,10 +31,10 @@ func TestAFiringGateNamesItsCharter(t *testing.T) {
 	store := entitytest.Store(t)
 	res := &captureResolver{}
 	eng := New(store, res)
-	eng.Confine(SubtreeAt("verse-dev", "merge"))
+	eng.Confine(SubtreeAt("viff-dev", "merge"))
 	if err := eng.AddTrigger(Trigger{
 		Name:      "train-run",
-		Condition: Condition{Subject: mm("verse-dev.merge.*")},
+		Condition: Condition{Subject: mm("viff-dev.merge.*")},
 		Gates:     []Gate{{Name: "merge-to-main", Mode: "ask"}},
 		Action:    Action{Patch: entity.Obj{"seen": true}.Payload()},
 	}); err != nil {
@@ -43,8 +43,8 @@ func TestAFiringGateNamesItsCharter(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	eng.Start(ctx)
-	entitytest.Set(t, store, entity.RefAt("verse-dev", "merge", "1"), entity.Obj{"stage": "cut"}.Payload())
-	if q := firstQuestion(t, res); q.At != "verse-dev.merge" {
+	entitytest.Set(t, store, entity.RefAt("viff-dev", "merge", "1"), entity.Obj{"stage": "cut"}.Payload())
+	if q := firstQuestion(t, res); q.At != "viff-dev.merge" {
 		t.Fatalf("gate question At = %q, want the charter that asked: %+v", q.At, q)
 	}
 }

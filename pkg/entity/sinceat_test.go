@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// A CATCH-UP ASKS ABOUT ONE SLICE, and gets that slice — the same commits the whole-verse
+// A CATCH-UP ASKS ABOUT ONE SLICE, and gets that slice — the same commits the whole-viff
 // replay would have carried for it, levelled the same way.
 //
 // It matters for what it COSTS rather than for what it returns: the replay reads the document
@@ -51,7 +51,7 @@ func TestSinceAtOneSlice(t *testing.T) {
 	}
 	// The same commits the wide replay carried for that slice, and the wide one carried more.
 	if len(wide) <= len(narrow) {
-		t.Errorf("the whole-verse replay carried %d events and the slice %d; the other slice's "+
+		t.Errorf("the whole-viff replay carried %d events and the slice %d; the other slice's "+
 			"write is missing from the wide one", len(wide), len(narrow))
 	}
 }
@@ -60,7 +60,7 @@ func TestSinceAtOneSlice(t *testing.T) {
 //
 // The watch has a bounded buffer and logd fails a consumer that does not keep up. Levelling
 // each delta inside the receive — a patch applied to the whole document, then the entity walk
-// over it — is the most expensive work in the verse, and putting it between one event and the
+// over it — is the most expensive work in the viff, and putting it between one event and the
 // next filled that buffer: this replay was cut off after about a thousand commits, and the
 // caller was handed a truncated catch-up reported as a failure it could do nothing about
 // (git-issue 3qf2z59dh12ksdazg9n0). 1500 is comfortably past where that happened.

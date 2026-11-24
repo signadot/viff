@@ -1,16 +1,16 @@
 # Why: The gates of a rule
 
-The reasons behind [The gates of a rule](../reference/gates.md). They are for somebody changing verse; the page itself says what verse does.
+The reasons behind [The gates of a rule](../reference/gates.md). They are for somebody changing viff; the page itself says what viff does.
 
 ## `pose` is expanded at the firing
 
-Verse expands `pose` at the firing, and not where the question is shown. There are three
+Viff expands `pose` at the firing, and not where the question is shown. There are three
 reasons, in order of weight.
 
 1. A presenter may hold no grant on the subject. The engine already reads the subject to fire.
 2. The sentence says what the rule *saw*, and not what the subject looks like when somebody
    reads it.
-3. Verse reads the subject once, and not once for each presenter.
+3. Viff reads the subject once, and not once for each presenter.
 
 A rule name beside an address is not what a person who decides needs to read. So `pose` holds
 the question in words.
@@ -43,7 +43,7 @@ in front of.
 ## One field for the gates
 
 `gating` is one field read two ways, and not two fields that can disagree. A rule that says
-which gates it has twice has said it twice, so verse refuses it.
+which gates it has twice has said it twice, so viff refuses it.
 
 A resolver that is not installed is refused, so that no question is owned by something that
 cannot answer it.

@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // ABSENCE AS THE INITIAL STATE, and a field pinned once — the two halves of what keeps a
@@ -24,7 +24,7 @@ func TestAbsenceIsUndecidedAndAPinHolds(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 
-	head := entity.RefAt("git", "head", "verse")
+	head := entity.RefAt("git", "head", "viff")
 	setPayload(t, store, head, `{sha: aaa111}`)
 
 	// rule 1b (pin base once) and rule 3's selector (undecided AND passed by), as proposed.
@@ -33,7 +33,7 @@ func TestAbsenceIsUndecidedAndAPinHolds(t *testing.T) {
   condition:
     subject: {path: "merge.proposal.*", value: !not.has-path base}
   action:
-    patch: {base: !get-path {at: "git.head.verse", path: sha}}
+    patch: {base: !get-path {at: "git.head.viff", path: sha}}
 `, `
 - name: proposal-outrun
   condition:
@@ -42,7 +42,7 @@ func TestAbsenceIsUndecidedAndAPinHolds(t *testing.T) {
       value: !and
       - !not.has-path state
       - !let
-        let: [{tip: !get-path {at: "git.head.verse", path: sha}}]
+        let: [{tip: !get-path {at: "git.head.viff", path: sha}}]
         in: {base: !not .[tip]}
   action:
     patch: {state: stale}
@@ -57,12 +57,12 @@ func TestAbsenceIsUndecidedAndAPinHolds(t *testing.T) {
 
 	// A proposal appears with no base and no state — what the trimmed derive writes.
 	fresh := entity.RefAt("merge", "proposal", "fresh")
-	setPayload(t, store, fresh, `{branch: "verse/auto/x", sha: bbb}`)
+	setPayload(t, store, fresh, `{branch: "viff/auto/x", sha: bbb}`)
 	waitField(t, store, fresh, "base", "aaa111") // 1b pinned it, once
 
 	// A decided one is left alone even when main passes it by.
 	decided := entity.RefAt("merge", "proposal", "decided")
-	setPayload(t, store, decided, `{branch: "verse/auto/y", sha: ccc, base: aaa111, state: merged}`)
+	setPayload(t, store, decided, `{branch: "viff/auto/y", sha: ccc, base: aaa111, state: merged}`)
 
 	setPayload(t, store, head, `{sha: zzz999}`) // main moves
 	waitField(t, store, fresh, "state", "stale")

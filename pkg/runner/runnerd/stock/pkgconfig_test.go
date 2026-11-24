@@ -12,10 +12,10 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/runner/runnerd/apt"
-	"github.com/signadot/verse/pkg/runner/runnerd/cellar"
-	"github.com/signadot/verse/pkg/runner/runnerd/delivery"
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/runner/runnerd/apt"
+	"go.viff.dev/viff/pkg/runner/runnerd/cellar"
+	"go.viff.dev/viff/pkg/runner/runnerd/delivery"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // pkgSection is a `pkg:` section that checks out.
@@ -97,7 +97,7 @@ func (f fakeWrap) Build(context.Context, apt.Resolution) func(string) error {
 
 // THE OFFERED PKG BUILDS PASS THE DESCRIPTION'S OWN CHECK. Every shape of install names `pkg`
 // (null: any of the index), so the builds' shape says it too — an offer without it fails
-// Description.Check, and verse refuses the runner's announcement, which keeps whatever the
+// Description.Check, and viff refuses the runner's announcement, which keeps whatever the
 // runner said before and closes pkg to every spawn.
 func TestTheOfferedPkgBuildsPassTheDescriptionsCheck(t *testing.T) {
 	c := Config{Script: &Script{Systems: map[string]System{"pkg": {Ceiling: systems.Open()}}}, Pkg: pkgSection()}

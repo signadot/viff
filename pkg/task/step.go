@@ -8,7 +8,7 @@ import (
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 )
 
 // Step is what a task is about to do: a call of a system's verb, `<system>.<verb>`
@@ -168,24 +168,24 @@ var (
 	StepSlackReact = systems.Step("slack", "react", "channel", "emoji")
 	// A question the doer puts to a person, the `question-ask` tool's or codex's own.
 	StepQuestionAsk = systems.Step("question", "ask")
-	// An ask the doer raises for the person the task runs for, `verse ask`'s, carried to verse by
+	// An ask the doer raises for the person the task runs for, `viff ask`'s, carried to viff by
 	// the runner: it does not wait.
-	StepVerseAskCreate = systems.Step("verse", "ask-create", "to", "labels", "on")
-	// One of that person's asks read back, `verse ask <name|id>`'s: whether it was answered.
-	StepVerseAskGet = systems.Step("verse", "ask-get")
-	// All of that person's asks, `verse ask`'s listing.
-	StepVerseAskList = systems.Step("verse", "ask-list")
-	// The verse at an address, `verse data`'s: read, written, or removed, as that person.
-	StepVerseDataGet = systems.Step("verse", "data-get", "path")
-	StepVerseDataPut = systems.Step("verse", "data-put", "path", "value")
-	StepVerseDataRm  = systems.Step("verse", "data-rm", "path")
-	// The charters, `verse charter`'s: read, asked whether some would install, installed, or
+	StepViffAskCreate = systems.Step("viff", "ask-create", "to", "labels", "on")
+	// One of that person's asks read back, `viff ask <name|id>`'s: whether it was answered.
+	StepViffAskGet = systems.Step("viff", "ask-get")
+	// All of that person's asks, `viff ask`'s listing.
+	StepViffAskList = systems.Step("viff", "ask-list")
+	// The viff at an address, `viff data`'s: read, written, or removed, as that person.
+	StepViffDataGet = systems.Step("viff", "data-get", "path")
+	StepViffDataPut = systems.Step("viff", "data-put", "path", "value")
+	StepViffDataRm  = systems.Step("viff", "data-rm", "path")
+	// The charters, `viff charter`'s: read, asked whether some would install, installed, or
 	// removed. An install names the address it acts at (charterfile.InstallAt), which everything
 	// it installs lies at or under.
-	StepVerseCharterGet     = systems.Step("verse", "charter-get")
-	StepVerseCharterCheck   = systems.Step("verse", "charter-check")
-	StepVerseCharterInstall = systems.Step("verse", "charter-install", "at")
-	StepVerseCharterRemove  = systems.Step("verse", "charter-remove")
+	StepViffCharterGet     = systems.Step("viff", "charter-get")
+	StepViffCharterCheck   = systems.Step("viff", "charter-check")
+	StepViffCharterInstall = systems.Step("viff", "charter-install", "at")
+	StepViffCharterRemove  = systems.Step("viff", "charter-remove")
 	// A connection a task opens through the runner's proxy, which only a network of allow has:
 	// the proxy decides it, by the host and the port it sees.
 	StepNetworkTCPClient = systems.Step("network", "tcp-client", "mode", "host", "port")
@@ -215,7 +215,7 @@ func (s Step) String() string {
 	return b.String()
 }
 
-// StepOf is the step an action is, for the tools every verse driver proposes: `write_file` writes
+// StepOf is the step an action is, for the tools every viff driver proposes: `write_file` writes
 // a file, `run_bash` runs a command, and a delegation delegates. Anything else is no step.
 func StepOf(tu ToolUse) (Step, bool) {
 	if tu.CallAgent != nil {

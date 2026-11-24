@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd"
 )
 
 // READ ONLY IS ABSOLUTE AND BELOW /: a relative path names nothing a sandbox can bind, and / would

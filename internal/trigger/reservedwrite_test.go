@@ -4,20 +4,20 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/signadot/verse/internal/trigger/charter"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/internal/trigger/charter"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // THE REFUSAL AT THE WRITE, which is the one every charter-authored write passes: a person's
-// rule writes nothing under `verse`, whatever the address it arrived at, and the system's own
+// rule writes nothing under `viff`, whatever the address it arrived at, and the system's own
 // does. Alice is given the right to create where her rule would write, so that what refuses it
 // is this and not the perms check beneath.
-func TestAPersonsRuleIsRefusedUnderVerseAtTheWrite(t *testing.T) {
+func TestAPersonsRuleIsRefusedUnderViffAtTheWrite(t *testing.T) {
 	const alice = "user:alice@example.com"
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)
-	for _, row := range []entity.Ref{entity.VerseRef(charter.System, charter.RuleKind), entity.VerseRef("schedule")} {
+	for _, row := range []entity.Ref{entity.ViffRef(charter.System, charter.RuleKind), entity.ViffRef("schedule")} {
 		if err := entity.SetGrants(store, row, []entity.Grant{{
 			At: row.Segs(), Below: true, To: map[entity.Level][]string{entity.OwnerLevel: {entity.Everyone}},
 		}}); err != nil {
@@ -31,7 +31,7 @@ func TestAPersonsRuleIsRefusedUnderVerseAtTheWrite(t *testing.T) {
 	if err := eng.AddTrigger(reviewRule("the-systems", entity.Obj{"stage": "seen"})); err != nil {
 		t.Fatal(err)
 	}
-	squat := entity.VerseRef("schedule", "date")
+	squat := entity.ViffRef("schedule", "date")
 	if ok, err := entity.MayCreate(store, entity.Via(eng.RuleRef("hers")), squat); err != nil || !ok {
 		t.Fatalf("the fixture is wrong: alice's rule may not create %s anyway (%v %v)", squat, ok, err)
 	}

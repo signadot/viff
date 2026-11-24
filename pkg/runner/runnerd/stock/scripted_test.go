@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse/modeltest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff/modeltest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // scriptRun is what a script's task came to: its output, and its failure.
@@ -39,7 +39,7 @@ func runScript(t *testing.T, script string) scriptRun {
 // A script's shell sees the declared passthrough and not the runner's environment,
 // which carries the runner's secrets.
 func TestAScriptSeesOnlyThePassthrough(t *testing.T) {
-	t.Setenv("VERSE_TEST_SECRET", "hunter2")
+	t.Setenv("VIFF_TEST_SECRET", "hunter2")
 	res := runScript(t, "env")
 	if res.Err != nil {
 		t.Fatalf("env failed: %v\n%s", res.Err, res.Output)

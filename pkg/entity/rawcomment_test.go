@@ -3,8 +3,8 @@ package entity_test
 import (
 	"testing"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/entity"
 )
 
 // THE STORE GUARD SEES UNDER A COMMENT, and this pins it because the walks beside it did not.

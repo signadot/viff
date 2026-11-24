@@ -7,11 +7,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/systems/systemstest"
-	"github.com/signadot/verse/pkg/task"
-	"github.com/signadot/verse/pkg/task/tasktest"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/systems/systemstest"
+	"go.viff.dev/viff/pkg/task"
+	"go.viff.dev/viff/pkg/task/tasktest"
 )
 
 // The in-process handler joins the task.Snapshot conformance suite, so the two producers are

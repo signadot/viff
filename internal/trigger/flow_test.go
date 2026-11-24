@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/systems"
+	"go.viff.dev/viff/pkg/systems"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/launch"
-	"github.com/signadot/verse/pkg/mirror"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/launch"
+	"go.viff.dev/viff/pkg/mirror"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // HoldTask holds a run at its next boundary, and lifting it releases the run. It is per-task
@@ -33,7 +33,7 @@ func TestHoldTaskHoldsThenReleases(t *testing.T) {
 	})
 
 	subj := `demo.pr."1"`
-	eng.Spawn("work-1", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: subj})
+	eng.Spawn("work-1", launch.Spec{Agent: &runner.Agent{Name: "viff"}, Subject: subj})
 	if tk == nil {
 		t.Fatal("spawner was not invoked")
 	}
@@ -86,7 +86,7 @@ func TestFlowReapedOnCompletion(t *testing.T) {
 	eng.Start(ctx) // the engine must observe the store to reap
 
 	subj := `demo.pr."1"`
-	eng.Spawn("work-1", launch.Spec{Agent: &runner.Agent{Name: "verse"}, Subject: subj})
+	eng.Spawn("work-1", launch.Spec{Agent: &runner.Agent{Name: "viff"}, Subject: subj})
 
 	deadline := time.After(2 * time.Second)
 	for slices.Contains(eng.Flows(), subj) {

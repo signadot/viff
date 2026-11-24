@@ -3,16 +3,16 @@ package entity_test
 import (
 	"testing"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
 // The root is a node, and its record decides what stands beneath it: the walk asks about every
 // prefix of an address down to the empty path, which is where a deployment says who may take a
 // place of their own. With no record there the check admits nobody but the system, so these
-// tests write the record the way versed's seed does.
+// tests write the record the way viffd's seed does.
 
-// seedRoot writes the root's record, which stands beside the mirror at `verse.perms.root`: the
+// seedRoot writes the root's record, which stands beside the mirror at `mirror.perms.root`: the
 // address it is about is the empty path, and a key that is no key would put its fields on the
 // node every other record stands under.
 func seedRoot(t *testing.T, store entity.Store, owner string, grants ...entity.Grant) {
@@ -35,12 +35,12 @@ func grant(level entity.Level, to ...string) entity.Grant {
 func TestTheRootsRecordDecidesBeneathIt(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemDefault)
-	// alice owns the root and holds `read` out to everyone beneath it — the shape of a verse
+	// alice owns the root and holds `read` out to everyone beneath it — the shape of a viff
 	// whose top is administered rather than open.
 	seedRoot(t, system, "user:alice@example.com", grant(entity.Read, entity.Everyone))
 
 	pr := entity.RefAt("demo", "pr", "1")
-	task := entity.VerseRef("task", "instance", "run-1")
+	task := entity.ViffRef("task", "instance", "run-1")
 	for _, at := range []entity.Ref{pr, task} {
 		// Ownership descends all the way down, from the root as from anywhere else.
 		if ok, err := entity.Holds(system, "user:alice@example.com", entity.OwnerLevel, at); err != nil || !ok {
@@ -57,7 +57,7 @@ func TestTheRootsRecordDecidesBeneathIt(t *testing.T) {
 }
 
 // A STORE NOBODY SEEDED ADMITS NOBODY. Openness is a deployment's policy — the root record its
-// seed writes — and not something the check supplies when it finds no record: a verse whose seed
+// seed writes — and not something the check supplies when it finds no record: a viff whose seed
 // failed refuses rather than standing wide open, which is the safe way for that to be wrong.
 // The system still holds everything, since it owns the root whichever part of it writes.
 func TestWithNoRootRecordNobodyButTheSystemHolds(t *testing.T) {
@@ -67,7 +67,7 @@ func TestWithNoRootRecordNobodyButTheSystemHolds(t *testing.T) {
 	for _, at := range []entity.Ref{
 		entity.RefAt("demo", "pr", "1"),
 		entity.RefAt(),
-		entity.VerseRef("task", "instance", "run-1"),
+		entity.ViffRef("task", "instance", "run-1"),
 	} {
 		if ok, err := entity.Holds(system, bob, entity.Read, at); err != nil || ok {
 			t.Errorf("bob reads %s in an unseeded store: %v %v", at, ok, err)
@@ -110,7 +110,7 @@ func TestWritingTheRootsRecordIsSeenByTheNextCheck(t *testing.T) {
 	pr := entity.RefAt("demo", "pr", "1")
 	bob := "user:bob@example.com"
 	if ok, err := entity.MayCreate(system, bob, pr); err != nil || !ok {
-		t.Fatalf("bob may create in an open verse: %v %v", ok, err)
+		t.Fatalf("bob may create in an open viff: %v %v", ok, err)
 	}
 	// The operator closes the top, and the next check is asked as the record now stands.
 	if err := entity.SetGrants(system, entity.RefAt(), nil); err != nil {
@@ -122,7 +122,7 @@ func TestWritingTheRootsRecordIsSeenByTheNextCheck(t *testing.T) {
 }
 
 // THE ROOT'S DEFAULT IS READ, like any other record's. The walk that finds what a new node holds
-// out stopped one short of the root, so `verse perms --root --child-grants '{}'` was accepted, echoed
+// out stopped one short of the root, so `viff perms --root --child-grants '{}'` was accepted, echoed
 // back, and did nothing: whatever anybody created was still readable by everyone.
 func TestTheRootsDefaultIsWhatATopLevelCreationHoldsOut(t *testing.T) {
 	store := entity.As(entitytest.OpenStore(t), entity.SystemDefault)

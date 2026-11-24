@@ -13,15 +13,15 @@ import (
 
 	"golang.org/x/net/websocket"
 
-	verseapi "github.com/signadot/verse/pkg/api"
-	"github.com/signadot/verse/pkg/client"
-	verseio "github.com/signadot/verse/pkg/io"
-	"github.com/signadot/verse/pkg/task"
+	viffapi "go.viff.dev/viff/pkg/api"
+	"go.viff.dev/viff/pkg/client"
+	viffio "go.viff.dev/viff/pkg/io"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Socket Mode: how what somebody says in Slack reaches this program with no Ingress in front of it.
 //
-// Slack can post an event to a public url, and a verse with no Ingress (staging has none, and is
+// Slack can post an event to a public url, and a viff with no Ingress (staging has none, and is
 // not meant to) has none to give it. In Socket Mode this program dials OUT instead: it asks for a
 // url with the app-level token (`xapp-…`, `connections:write`), opens a WebSocket to it, and Slack
 // sends each event down it as an envelope, which is acknowledged by its id. Slack refreshes the
@@ -34,7 +34,7 @@ import (
 //
 // A QUESTION IS ANSWERED BY REPLYING TO IT. The out half posts a message asking one, and a reply
 // in that message's thread saying one of the question's options is that answer — typed plainly, or
-// addressed to the bot (`@verse proceed`), which is the same event with a mention in it. No
+// addressed to the bot (`@viff proceed`), which is the same event with a mention in it. No
 // button, no dialog, no slash command: a reply renders wherever Slack does, reads the same in a
 // notification as on screen, and is what one person would have typed to another.
 //
@@ -52,32 +52,32 @@ import (
 // Under a turn — an ask that takes `reply` — any words are the reply.
 //
 // AS THE PERSON WHO TYPED IT: users.info turns their Slack id into `user:<email>`, and the answer
-// goes to versed's resolve route as them, so versed's permissions decide whether they may answer.
+// goes to viffd's resolve route as them, so viffd's permissions decide whether they may answer.
 // An answer is said back in the thread, where everyone reading it can see what was decided; a
-// refusal — not an answerer, somebody answered first — is said to them alone, in versed's words,
+// refusal — not an answerer, somebody answered first — is said to them alone, in viffd's words,
 // since it is about them rather than about the question. The question's own record is what the
 // message then shows, redrawn by the out half (out.go, body), which Answered asks for at once.
 //
 // It is never made as this program's own principal: an answer recorded as agent:slack-iod would be
 // an answer nobody gave. The Slack user comes from an envelope on a socket the app token
-// authenticated, and this program presents that person to verse with the account they are,
-// `slack:<user id>`, beside its own credential; a verse that verifies people admits the request
+// authenticated, and this program presents that person to viff with the account they are,
+// `slack:<user id>`, beside its own credential; a viff that verifies people admits the request
 // through the account's binding, from a Slack io it trusts, and the ballot says so.
 type Socket struct {
 	s   *Slack
 	app *api // holding the app-level token, which only apps.connections.open takes
-	// as is the client factory io.Controller is handed: one verse, and a request made as
+	// as is the client factory io.Controller is handed: one viff, and a request made as
 	// whoever Slack says did the thing, with their account. nil until Control runs, and then
 	// never as this program.
 	as func(principal, account string) *client.Client
 
-	// Verse, when set, is the verse as this io itself: whose word it is that a member said
-	// `/verse link <nonce>` (link). Nil links nobody, and says so.
-	Verse *client.Client
+	// Viff, when set, is the viff as this io itself: whose word it is that a member said
+	// `/viff link <nonce>` (link). Nil links nobody, and says so.
+	Viff *client.Client
 
 	// Hint, when set, receives the hint each Events API delivery calls for, as the request url's
 	// handler would send it.
-	Hint verseio.Hinter
+	Hint viffio.Hinter
 
 	// Asking, when set, answers which questions the message at (channel, ts) is asking: the out
 	// half's index of its own messages. Without it nothing here answers anything.
@@ -88,7 +88,7 @@ type Socket struct {
 	Answered func()
 }
 
-// Socket is this workspace's Socket Mode listener, answering clicks at the verse at verseAddr.
+// Socket is this workspace's Socket Mode listener, answering clicks at the viff at viffAddr.
 func (s *Slack) Socket(appToken string) *Socket {
 	return &Socket{s: s, app: newAPI(appToken, s.api.base, s.api.cl)}
 }
@@ -100,11 +100,11 @@ func (k *Socket) Control(ctx context.Context, as func(principal, account string)
 	return ctx.Err()
 }
 
-// account is a Slack member as verse's `slack` provider knows them: the workspace's own id for
+// account is a Slack member as viff's `slack` provider knows them: the workspace's own id for
 // them. One io serves one workspace, so the id needs no team beside it.
 func account(userID string) string { return "slack:" + userID }
 
-var _ verseio.Controller = (*Socket)(nil)
+var _ viffio.Controller = (*Socket)(nil)
 
 // Run keeps a connection open until ctx is done. Slack's disconnect is a request to dial again,
 // which is done at once; a failure is dialled again after a backoff that resets once a connection
@@ -240,7 +240,7 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 	if e.Type == "message" && k.s.me != "" && strings.Contains(e.Text, "<@"+k.s.me+">") {
 		return
 	}
-	// `link <nonce>`, said to the app in a message or a DM, is the person proving a verse
+	// `link <nonce>`, said to the app in a message or a DM, is the person proving a viff
 	// account is theirs, and is about no question. The slash command is the same words (commanded).
 	if nonce, ok := linking(e.Text); ok {
 		k.link(ctx, e.Channel, e.ThreadTS, e.User, "", nonce)
@@ -349,7 +349,7 @@ func pending(asked []Asked) []Asked {
 // TWO READINGS, and which one applies is not a matter of degree. A reply to the thread at large
 // must SAY an option — one word, the question's own or `y`/`n` — because people talk under these
 // messages and no amount of confidence should let a conversation answer a gate by accident.
-// Addressed to the bot BY NAME (`@verse approve it pls`), prose is read as well, because that
+// Addressed to the bot BY NAME (`@viff approve it pls`), prose is read as well, because that
 // message was written to this program and means to be acted on.
 //
 // What prose may yield is still one of the ids on the record — never an effect of its own — and
@@ -476,8 +476,8 @@ func stripMentions(text string) string {
 	}
 }
 
-// commanded reads a slash command sent down the socket: `/verse link <nonce>`, where the app
-// registers `/verse`. Said anywhere, a channel the bot is not in included, so what became of it
+// commanded reads a slash command sent down the socket: `/viff link <nonce>`, where the app
+// registers `/viff`. Said anywhere, a channel the bot is not in included, so what became of it
 // goes back through the command's `response_url`, which reaches the person alone.
 func (k *Socket) commanded(ctx context.Context, payload json.RawMessage) {
 	var c struct {
@@ -494,19 +494,19 @@ func (k *Socket) commanded(ctx context.Context, payload json.RawMessage) {
 	if !ok {
 		k.tell(ctx, c.Channel, "", c.User, c.ResponseURL,
 			fmt.Sprintf("`%s %s` is not a command I know: `%s link <nonce>` links your Slack account "+
-				"to who you are in verse (`verse account -link slack` gives the nonce).",
+				"to who you are in viff (`viff account -link slack` gives the nonce).",
 				c.Command, strings.TrimSpace(c.Text), c.Command))
 		return
 	}
 	k.link(ctx, c.Channel, "", c.User, c.ResponseURL, nonce)
 }
 
-// linking reads `link <nonce>` from what was said to the app — `/verse link <nonce>` as the
-// command or typed out, `@verse link <nonce>`, or `link <nonce>` in a DM — and nothing else: a
+// linking reads `link <nonce>` from what was said to the app — `/viff link <nonce>` as the
+// command or typed out, `@viff link <nonce>`, or `link <nonce>` in a DM — and nothing else: a
 // nonce is the whole of the message, never a word in one.
 func linking(text string) (nonce string, ok bool) {
 	f := strings.Fields(stripMentions(text))
-	if len(f) == 3 && (f[0] == "/verse" || strings.EqualFold(f[0], "verse")) {
+	if len(f) == 3 && (f[0] == "/viff" || strings.EqualFold(f[0], "viff")) {
 		f = f[1:]
 	}
 	if len(f) == 2 && strings.EqualFold(f[0], "link") {
@@ -515,34 +515,34 @@ func linking(text string) (nonce string, ok bool) {
 	return "", false
 }
 
-// link proves the Slack account is the claimant's. The verse gave somebody the nonce
-// (`verse account -link slack`); this io's word that this account said it is what binds the two
+// link proves the Slack account is the claimant's. The viff gave somebody the nonce
+// (`viff account -link slack`); this io's word that this account said it is what binds the two
 // (`POST /accounts/slack/heard`; perms.md, "accounts in other systems"). The word is the io's own,
 // so it is given as the io itself; what became of it is said to the person alone.
 func (k *Socket) link(ctx context.Context, channel, thread, user, responseURL, nonce string) {
 	tell := func(text string) { k.tell(ctx, channel, thread, user, responseURL, text) }
-	if k.Verse == nil {
-		tell("Not linked: this program was not told which verse to tell.")
+	if k.Viff == nil {
+		tell("Not linked: this program was not told which viff to tell.")
 		return
 	}
-	resp, err := k.Verse.Post("/accounts/slack/heard", nil, verseapi.AccountHeard{Nonce: nonce, Account: account(user)})
+	resp, err := k.Viff.Post("/accounts/slack/heard", nil, viffapi.AccountHeard{Nonce: nonce, Account: account(user)})
 	if err != nil {
 		tell("Not linked: " + err.Error())
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		tell("Not linked: " + client.StatusError(resp, "`/verse link`").Error())
+		tell("Not linked: " + client.StatusError(resp, "`/viff link`").Error())
 		return
 	}
 	var row struct {
 		Principal string `tony:"field=principal"`
 	}
 	if err := client.Decode(resp, &row); err != nil {
-		tell("Linked, though the verse's answer did not decode: " + err.Error())
+		tell("Linked, though the viff's answer did not decode: " + err.Error())
 		return
 	}
-	tell(fmt.Sprintf("Linked: in verse, <@%s> is %s.", user, row.Principal))
+	tell(fmt.Sprintf("Linked: in viff, <@%s> is %s.", user, row.Principal))
 }
 
 // tell says text to one person: through a slash command's response_url where there is one, which
@@ -570,10 +570,10 @@ func (k *Socket) say(ctx context.Context, userID string, asked []Asked, text str
 		return false
 	}
 	who := "user:" + email
-	verse := k.as(who, account(userID))
+	viff := k.as(who, account(userID))
 	noted := false
 	for _, a := range asked {
-		resp, err := verse.Post("/asks/"+url.PathEscape(a.ID)+"/say", nil, verseapi.GateSay{ID: a.ID, By: who, Say: text})
+		resp, err := viff.Post("/asks/"+url.PathEscape(a.ID)+"/say", nil, viffapi.GateSay{ID: a.ID, By: who, Say: text})
 		if err != nil {
 			k.s.log("slack socket: saying on %s: %v", a.ID, err)
 			continue
@@ -594,7 +594,7 @@ func (k *Socket) say(ctx context.Context, userID string, asked []Asked, text str
 func (k *Socket) answer(ctx context.Context, userID string, a Asked, option, say string, force bool) (said string, answered, public bool) {
 	id := a.ID
 	if k.as == nil {
-		return "Not answered: this program was not told which verse the question is in", false, false
+		return "Not answered: this program was not told which viff the question is in", false, false
 	}
 	email, err := k.s.api.userEmail(ctx, userID)
 	if err != nil {
@@ -602,8 +602,8 @@ func (k *Socket) answer(ctx context.Context, userID string, a Asked, option, say
 	}
 	who := "user:" + email
 	// THE EDIT THE MESSAGE SHOWED, which is what was consented to: a reply to words since changed
-	// is refused by versed rather than counted against the new ones.
-	body := verseapi.Resolve{ID: id, Choice: option, By: who, Edit: a.Edit, Force: force}
+	// is refused by viffd rather than counted against the new ones.
+	body := viffapi.Resolve{ID: id, Choice: option, By: who, Edit: a.Edit, Force: force}
 	if say != "" {
 		body.Say = []string{say}
 	}
@@ -618,7 +618,7 @@ func (k *Socket) answer(ctx context.Context, userID string, a Asked, option, say
 	case http.StatusAccepted:
 		// The server says where the tally stands, and the thread is where the others it waits
 		// on will look.
-		var tally verseapi.Recorded
+		var tally viffapi.Recorded
 		if err := client.Decode(resp, &tally); err != nil {
 			return fmt.Sprintf("`%s`: recorded (<@%s> said *%s*).", id, userID, option), true, true
 		}

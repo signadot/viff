@@ -9,17 +9,17 @@ import (
 	"time"
 
 	"github.com/signadot/tony-format/go-tony/ir"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/runner/runnerd"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse"
-	"github.com/signadot/verse/pkg/runner/runnerd/verse/modeltest"
-	"github.com/signadot/verse/pkg/systems"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/runner/runnerd"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff"
+	"go.viff.dev/viff/pkg/runner/runnerd/viff/modeltest"
+	"go.viff.dev/viff/pkg/systems"
+	"go.viff.dev/viff/pkg/task"
 )
 
-// verseAgent is a runner configuration offering the verse agent alone, with the annotations
+// viffAgent is a runner configuration offering the viff agent alone, with the annotations
 // and settings given.
-func verseAgent(anns map[string]Annotation, settings map[string]Setting) Config {
+func viffAgent(anns map[string]Annotation, settings map[string]Setting) Config {
 	return Config{Agents: map[string]Agent{AgentName: {Annotations: anns, Settings: settings}}}
 }
 
@@ -28,9 +28,9 @@ func TestCheckRefusesAnnotationsItDoesNotKnow(t *testing.T) {
 		c    Config
 		want string
 	}{
-		{verseAgent(map[string]Annotation{"verse.portkey/route": {Type: "string"}}, nil), "takes no annotation"},
-		{verseAgent(map[string]Annotation{verse.AnnotationVirtualKey: {Type: "int"}}, nil), "takes a string"},
-		{Config{Agents: map[string]Agent{"codex": {Annotations: map[string]Annotation{verse.AnnotationVirtualKey: {Type: "string"}}}}}, "codex takes no annotation"},
+		{viffAgent(map[string]Annotation{"viff.portkey/route": {Type: "string"}}, nil), "takes no annotation"},
+		{viffAgent(map[string]Annotation{viff.AnnotationVirtualKey: {Type: "int"}}, nil), "takes a string"},
+		{Config{Agents: map[string]Agent{"codex": {Annotations: map[string]Annotation{viff.AnnotationVirtualKey: {Type: "string"}}}}}, "codex takes no annotation"},
 	} {
 		if err := tc.c.Check(); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%+v: got %v, want %q", tc.c, err, tc.want)
@@ -44,10 +44,10 @@ func TestDescribeOffersWhatTheConfigNames(t *testing.T) {
 	if d := (Config{Script: &Script{}}).Describe(nil); len(d.Offers) != 1 || !d.Offers[0].Script {
 		t.Fatalf("scripts alone: %+v", d)
 	}
-	c := verseAgent(map[string]Annotation{verse.AnnotationVirtualKey: {Type: "string"}}, nil)
+	c := viffAgent(map[string]Annotation{viff.AnnotationVirtualKey: {Type: "string"}}, nil)
 	d := c.Describe(nil)
 	if len(d.Offers) != 1 || d.Offers[0].Agent == nil || d.Offers[0].Agent.Name != AgentName {
-		t.Fatalf("the verse agent alone: %+v", d)
+		t.Fatalf("the viff agent alone: %+v", d)
 	}
 	agent := d.Offers[0]
 	// The systems it stops inside a run are held, closed until a ceiling says what of them.
@@ -55,7 +55,7 @@ func TestDescribeOffersWhatTheConfigNames(t *testing.T) {
 	_, commands := agent.Systems["commands"]
 	_, sub := agent.Systems["agent"]
 	model, takesModel := agent.Agent.Settings[runner.SettingModel]
-	if !takesModel || len(model.Values) != 0 || model.Default || agent.Agent.Annotations[verse.AnnotationVirtualKey] != "string" || !files || !commands || !sub ||
+	if !takesModel || len(model.Values) != 0 || model.Default || agent.Agent.Annotations[viff.AnnotationVirtualKey] != "string" || !files || !commands || !sub ||
 		len(agent.Systems["commands"].Ceiling) != 0 {
 		t.Fatalf("agent offer: %+v", agent)
 	}
@@ -69,13 +69,13 @@ func TestDescribeOffersWhatTheConfigNames(t *testing.T) {
 // the configured one is.
 func TestTheVirtualKeyAnnotation(t *testing.T) {
 	model := modeltest.New(t, func(modeltest.Request) modeltest.Reply { return modeltest.Say("ok") })
-	r := New(opened(verseAgent(map[string]Annotation{verse.AnnotationVirtualKey: {Type: "string", Default: "default-vk"}}, nil)),
+	r := New(opened(viffAgent(map[string]Annotation{viff.AnnotationVirtualKey: {Type: "string", Default: "default-vk"}}, nil)),
 		Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL}, t.TempDir(), io.Discard)
 	for i, picked := range []string{"picked", ""} {
 		l := runner.Launch{ID: fmt.Sprint("t", i), Prompt: "go", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 			Agent: &runner.Agent{Name: AgentName}, Environment: envOf(netOpen, nil, nil)}
 		if picked != "" {
-			l.Agent.Annotations = map[string]string{verse.AnnotationVirtualKey: picked}
+			l.Agent.Annotations = map[string]string{viff.AnnotationVirtualKey: picked}
 		}
 		if _, err := r.Build(l, task.NewRegistry()).Run(context.Background()); err != nil {
 			t.Fatal(err)
@@ -92,7 +92,7 @@ func TestTheVirtualKeyAnnotation(t *testing.T) {
 func TestTheVirtualKeyFromTheEnvironment(t *testing.T) {
 	model := modeltest.New(t, func(modeltest.Request) modeltest.Reply { return modeltest.Say("ok") })
 	secrets := Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL, PortkeyVirtualKey: "env-vk"}
-	for i, cfg := range []Config{verseAgent(nil, nil), verseAgent(map[string]Annotation{verse.AnnotationVirtualKey: {Type: "string", Default: "config-vk"}}, nil)} {
+	for i, cfg := range []Config{viffAgent(nil, nil), viffAgent(map[string]Annotation{viff.AnnotationVirtualKey: {Type: "string", Default: "config-vk"}}, nil)} {
 		l := runner.Launch{ID: fmt.Sprint("t", i), Prompt: "go", Autonomy: task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}},
 			Agent: &runner.Agent{Name: AgentName}, Environment: envOf(netOpen, nil, nil)}
 		if _, err := New(cfg, secrets, t.TempDir(), io.Discard).Build(l, task.NewRegistry()).Run(context.Background()); err != nil {
@@ -106,7 +106,7 @@ func TestTheVirtualKeyFromTheEnvironment(t *testing.T) {
 }
 
 // Without a model key an agent launch that reaches the runner fails its own task (a runner
-// configured with the verse agent and no key runs without it: Held).
+// configured with the viff agent and no key runs without it: Held).
 func TestWithNoKeyThereIsNoAgent(t *testing.T) {
 	_, err := New(opened(Config{}), Secrets{}, t.TempDir(), io.Discard).Build(runner.Launch{ID: "t1",
 		Agent: &runner.Agent{Name: AgentName}, Prompt: "go"}, task.NewRegistry()).Run(context.Background())
@@ -115,10 +115,10 @@ func TestWithNoKeyThereIsNoAgent(t *testing.T) {
 	}
 }
 
-// AN AGENT LAUNCH RUNS THE VERSE AGENT AS IT SAYS: under the model `with.model` names, with the
+// AN AGENT LAUNCH RUNS THE VIFF AGENT AS IT SAYS: under the model `with.model` names, with the
 // launch's prompt, its `with.env` set in the agent's shell, and a policy that allows its
 // command to run unasked.
-func TestAnAgentLaunchRunsTheVerseAgent(t *testing.T) {
+func TestAnAgentLaunchRunsTheViffAgent(t *testing.T) {
 	model := modeltest.New(t, func(r modeltest.Request) modeltest.Reply {
 		if res := r.Results(); len(res) > 0 {
 			out := strings.Split(strings.TrimSpace(res[0]), "\n") // run_bash's result ends with stdout
@@ -126,7 +126,7 @@ func TestAnAgentLaunchRunsTheVerseAgent(t *testing.T) {
 		}
 		return modeltest.Use("run_bash", map[string]any{"command": "echo $BRANCH"})
 	})
-	d := New(opened(verseAgent(nil, map[string]Setting{runner.SettingModel: {Default: "the-default"}})), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL},
+	d := New(opened(viffAgent(nil, map[string]Setting{runner.SettingModel: {Default: "the-default"}})), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: model.URL},
 		t.TempDir(), io.Discard)
 	l := runner.Launch{ID: "t1", Prompt: "which branch?", Autonomy: allowing("commands"),
 		Agent: &runner.Agent{Name: AgentName, Settings: map[string]string{runner.SettingModel: "m-2"}}, Environment: giving(withVars(envOf(netOpen, nil, nil), map[string]string{"BRANCH": "main"}), "commands")}
@@ -144,11 +144,11 @@ func TestAnAgentLaunchRunsTheVerseAgent(t *testing.T) {
 	// What it ran with is the record's to say: the launch's model, and the configured one where
 	// the launch named none.
 	if name, settings := p.Agent(); name != AgentName || settings[runner.SettingModel] != "m-2" {
-		t.Errorf("the task says it ran as %q with model %q, want verse with m-2", name, settings[runner.SettingModel])
+		t.Errorf("the task says it ran as %q with model %q, want viff with m-2", name, settings[runner.SettingModel])
 	}
 	l.ID, l.Agent = "t2", &runner.Agent{Name: AgentName}
 	if name, settings := d.Build(l, task.NewRegistry()).Agent(); name != AgentName || settings[runner.SettingModel] != "the-default" {
-		t.Errorf("a launch naming no model: the task says %q with %q, want verse with the configured default", name, settings[runner.SettingModel])
+		t.Errorf("a launch naming no model: the task says %q with %q, want viff with the configured default", name, settings[runner.SettingModel])
 	}
 }
 
@@ -253,7 +253,7 @@ func TestUnderAskAnAgentsCommandAsks(t *testing.T) {
 func TestAHostlessModelURLIsAConfigError(t *testing.T) {
 	_, err := Standalone(opened(Config{}), Secrets{PortkeyAPIKey: "k", PortkeyBaseURL: "/v1"}, Tokens{},
 		runnerd.Unconfined{}, []string{"true"}, t.TempDir(), t.TempDir(), nil, io.Discard)
-	if err == nil || !strings.Contains(err.Error(), verse.EnvBaseURL) {
-		t.Fatalf("Standalone with a hostless base url = %v, want it refused naming %s", err, verse.EnvBaseURL)
+	if err == nil || !strings.Contains(err.Error(), viff.EnvBaseURL) {
+		t.Fatalf("Standalone with a hostless base url = %v, want it refused naming %s", err, viff.EnvBaseURL)
 	}
 }

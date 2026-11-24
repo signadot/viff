@@ -17,46 +17,46 @@ is a copy-on-write overlay:
 A scope exists from its first write. Nothing creates one ahead of time.
 
 ```sh
-verse data -scope me demo x 1 -put '{k: v}' # in the scope only
-verse data -scope me demo x 1                # the scope: there
-verse data demo x 1                          # baseline: not there
-verse watch -scope me                        # the scope's changes, baseline's beneath
-verse charter -a -f rules.tony -scope me     # a charter that runs in the scope alone
+viff data -scope me demo x 1 -put '{k: v}' # in the scope only
+viff data -scope me demo x 1                # the scope: there
+viff data demo x 1                          # baseline: not there
+viff watch -scope me                        # the scope's changes, baseline's beneath
+viff charter -a -f rules.tony -scope me     # a charter that runs in the scope alone
 ```
 
 An operator drops a scope with `POST /scope/delete?scope=<name>`. That removes every write of
-the scope in one step. Before it does, verse stops what the scope started:
+the scope in one step. Before it does, viff stops what the scope started:
 
 1. its sources stop;
 2. its engine stops;
-3. verse cancels every live task that the scope owns ([below](#what-a-scope-owns)). For a task
-   that one of the scope's rules started, verse does not fire `onCancelled`, because that hook
+3. viff cancels every live task that the scope owns ([below](#what-a-scope-owns)). For a task
+   that one of the scope's rules started, viff does not fire `onCancelled`, because that hook
    would act inside the scope that is being dropped.
 
 How the store makes a scope is in [scopes.md](../platform/scopes.md), in the repository.
 
 ## The charter a scope runs
 
-A scope runs **the rules installed into it**, and only those. `verse c -a -scope me` writes the
+A scope runs **the rules installed into it**, and only those. `viff c -a -scope me` writes the
 rule into the scope. The rule is durable there, and you can read it at its address
-(`verse data verse trigger rule x -scope me`). Its record carries `scope: me`, which says whose
+(`viff data mirror trigger rule x -scope me`). Its record carries `scope: me`, which says whose
 rule it is.
 
 A scope does **not** run the rules of baseline, even though a read in the scope sees them. So
-`verse data verse trigger rule x -scope me` also answers for a rule that the scope never
+`viff data mirror trigger rule x -scope me` also answers for a rule that the scope never
 installed. The `scope` field on the record tells the two apart.
 
-`verse charter -scope me` asks the scope's engine, not the store. So it shows only what runs in
+`viff charter -scope me` asks the scope's engine, not the store. So it shows only what runs in
 the scope: the rules you installed there, and none of baseline's.
 
 To run a baseline rule in your scope, install it there. To **replace** a baseline rule in your
 scope, install yours under the same name. Your rule is then the only rule of that name in the
 scope, and baseline does not change. You do not remove the baseline rule first, and you cannot:
-`verse c -r rules <a baseline rule> -scope me` writes to baseline's charter from a scope, and
-verse refuses it ([what a scope owns](#what-a-scope-owns)).
+`viff c -r rules <a baseline rule> -scope me` writes to baseline's charter from a scope, and
+viff refuses it ([what a scope owns](#what-a-scope-owns)).
 
-After verse restarts, a scope's charter comes back the first time something asks for the scope.
-Until then, the scope has no engine and its rules do not run. Verse keeps no list of scopes, so
+After viff restarts, a scope's charter comes back the first time something asks for the scope.
+Until then, the scope has no engine and its rules do not run. Viff keeps no list of scopes, so
 a restart cannot start them all. The tasks the scope's rules started are attached again, and
 its claims are paid, at the same moment. A task run by hand in the scope is not attached again.
 
@@ -87,7 +87,7 @@ scope created. These are the control writes: `flow suspend|resume|say|cancel`,
 `task cancel|say|autonomy`, `question <id> --answer` and `charter -r`. What a suspension covers
 in a scope is in [control](../control.md#scopes).
 
-Verse **refuses** a control write in a scope that names something the scope did not create. The
+Viff **refuses** a control write in a scope that names something the scope did not create. The
 refusal names the scope that holds it, and baseline is the scope with no name:
 
 ```
@@ -97,7 +97,7 @@ task review@demo.pr.1 is baseline's; scope me did not create it — act on it wi
 The same holds from baseline: a task that a scope started belongs to that scope, and baseline
 cannot cancel it without naming the scope.
 
-Verse never refuses a creation, because creating is what makes a thing the scope's own:
+Viff never refuses a creation, because creating is what makes a thing the scope's own:
 `charter -a -scope me`, `task run -scope me`, and everything that a scope's rule fires.
 
 **Grants are copied, like the world** ([permissions](../perms.md#scopes)).

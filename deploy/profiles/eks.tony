@@ -1,4 +1,4 @@
-# verse on EKS. The stateful docd tier on a dynamic gp3 volume; the stateless versed floats over
+# viff on EKS. The stateful docd tier on a dynamic gp3 volume; the stateless viffd floats over
 # the cluster. This profile is the shape; a deployment keeps its own copy with its values filled
 # in, outside this repository, and passes it as a file: `o build deploy -p <path>` and
 # `make deploy PROFILE=<path>` both take one. The knobs and what each means: deploy/README.md.
@@ -12,12 +12,12 @@ env:
   # IMAGE_ARCH=amd64`. Deploy at an immutable ref (`IMAGE=<ref>:<commit>`) rather than a moving
   # tag: a node that has pulled a tag once keeps it, and a rollout then reports success on the
   # binary from before it.
-  image: "signadot/verse:latest"
+  image: "signadot/viff:latest"
   # A pull Secret that already exists in the namespace, for a private registry; "" attaches none.
   imagePullSecret: ""
   # The cluster's gp3 class, which the EBS CSI driver backs. On a cluster that has none,
-  # `emitStorageClass: true` emits a `verse-gp3` class (WaitForFirstConsumer), and then
-  # `storageClassName` has to say `verse-gp3` too, or the claim stays Pending on a class that is
+  # `emitStorageClass: true` emits a `viff-gp3` class (WaitForFirstConsumer), and then
+  # `storageClassName` has to say `viff-gp3` too, or the claim stays Pending on a class that is
   # not there. The emitted class still needs the driver addon with node-role IAM to create and
   # attach volumes.
   storageClassName: "gp3"
@@ -29,10 +29,10 @@ env:
   # usually wait.
   docdCompactionCutoff: "1d"
   # Placement. A dedicated node pool for docd (`<docdPoolLabel>=<x>`, tolerating its taint), and
-  # whether versed may prefer spot capacity: it is stateless, so it may.
+  # whether viffd may prefer spot capacity: it is stateless, so it may.
   docdPool: ""
-  docdPoolLabel: "verse/pool"
-  spotVersed: true
+  docdPoolLabel: "viff/pool"
+  spotViffd: true
   # docd's memory, from its measured footprint (deploy/README.md, Knobs): the request above its
   # high-water mark, the limit about twice that and under the node, the Go heap ceiling under the
   # limit.
@@ -47,19 +47,19 @@ env:
   # each entry must hold: deploy/README.md, Credentials. Name an entry only once it exists: an
   # ExternalSecret for a missing entry is a Secret that never appears, and for Slack a pod that
   # does not start.
-  llmSecretKey: ""         # e.g. "<deployment>/verse/llm"
-  gitSecretKey: ""         # "<deployment>/verse/git"
-  runnerSecretKey: ""      # "<deployment>/verse/verse-runner"
-  codexSecretKey: ""       # "<deployment>/verse/codex"
-  claudeSecretKey: ""      # "<deployment>/verse/claude"
-  slackSecretKey: ""       # "<deployment>/verse/slack"
-  linearSecretKey: ""      # "<deployment>/verse/linear"
-  githubSecretKey: ""      # "<deployment>/verse/github"
-  # versed does not start without the verse-issuer Secret (an RSA key, `openssl genrsa 2048`,
+  llmSecretKey: ""         # e.g. "<deployment>/viff/llm"
+  gitSecretKey: ""         # "<deployment>/viff/git"
+  runnerSecretKey: ""      # "<deployment>/viff/viff-runner"
+  codexSecretKey: ""       # "<deployment>/viff/codex"
+  claudeSecretKey: ""      # "<deployment>/viff/claude"
+  slackSecretKey: ""       # "<deployment>/viff/slack"
+  linearSecretKey: ""      # "<deployment>/viff/linear"
+  githubSecretKey: ""      # "<deployment>/viff/github"
+  # viffd does not start without the viff-issuer Secret (an RSA key, `openssl genrsa 2048`,
   # as `issuer.pem`): what it signs its own tokens with, toward each runner and for each gate.
-  issuerSecretKey: ""      # "<deployment>/verse/issuer"
+  issuerSecretKey: ""      # "<deployment>/viff/issuer"
   # Who a request is from (deploy/auth/eks.tony): people as they say they are, binding their
-  # Slack and GitHub accounts by the nonce `verse account -link` gives them; the iods and the
+  # Slack and GitHub accounts by the nonce `viff account -link` gives them; the iods and the
   # runners by their pods' projected tokens, with the cluster's OIDC issuer.
   authConfig: "auth/eks.tony"
   iodTokens: true
@@ -79,21 +79,21 @@ env:
   # The rule that reaches each person the asks waiting on them, installed as the system
   # (docs/reference/examples/gate-ask): a copy with your Slack workspace in it, by path.
   systemCharter: ""
-  # The runners, each its own image: scripts and the verse agent on the verse runner, codex and
-  # claude on theirs. versed hosts nothing itself.
+  # The runners, each its own image: scripts and the viff agent on the viff runner, codex and
+  # claude on theirs. viffd hosts nothing itself.
   runner: false
-  runnerImage: "signadot/verse-runner:latest"
+  runnerImage: "signadot/viff-runner:latest"
   # Each runner's config, a path of yours, absolute where it sits beside this profile: the
   # manifest's ceilings are placeholders
   # (deploy/README.md, "Its ceilings are placeholders").
   runnerConfig: ""
   localRunner: false
   codexRunner: false
-  codexRunnerImage: "signadot/verse-runner:codex"
+  codexRunnerImage: "signadot/viff-runner:codex"
   codexRunnerConfig: ""
   claudeRunner: false
-  claudeRunnerImage: "signadot/verse-runner:claude"
+  claudeRunnerImage: "signadot/viff-runner:claude"
   claudeRunnerConfig: ""
   # The admin group, SEEDED at the first start on a store with no root record; membership is
-  # changed live after that (`verse group add admin …`).
+  # changed live after that (`viff group add admin …`).
   permsAdmins: ""          # "admin@example.com"

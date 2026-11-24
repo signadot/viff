@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/runner"
+	"go.viff.dev/viff/pkg/runner"
 )
 
 // A launch that joins a task sets its lease to the one it names, which is the one its launcher

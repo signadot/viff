@@ -9,16 +9,16 @@ import (
 	"testing"
 
 	"github.com/signadot/tony-format/git-issue/issuelib"
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	verseio "github.com/signadot/verse/pkg/io"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	viffio "go.viff.dev/viff/pkg/io"
 )
 
 // fileIssue writes a real issue with git-issue's OWN storage layer, in the repository dir, and
 // answers with its XIDR.
 //
 // Upstream's writer rather than a hand-built tree, because that is what makes these tests
-// worth running: they pin that verse reads what `git issue` actually writes, so a change to
+// worth running: they pin that viff reads what `git issue` actually writes, so a change to
 // the tree layout, to meta.tony's field names or to the ref namespaces fails here rather than
 // in somebody's tracker. issuelib.GitStore selects its repository by the process working
 // directory and its own doc names t.Chdir as how a test does that — fine for one test, and
@@ -85,7 +85,7 @@ func needGit(t *testing.T) {
 
 // reflectIssues runs one pass and answers ref-string → payload object, without a store: the
 // tests that are about the ANSWER do not need converge in the way.
-func reflectIssues(t *testing.T, gi *verseio.GitIssue, ref entity.Ref) (map[entity.Ref]entity.Obj, verseio.Reflection) {
+func reflectIssues(t *testing.T, gi *viffio.GitIssue, ref entity.Ref) (map[entity.Ref]entity.Obj, viffio.Reflection) {
 	t.Helper()
 	rn, err := gi.Reflect(context.Background(), ref)
 	if err != nil {
@@ -122,16 +122,16 @@ func TestGitIssueReconcile(t *testing.T) {
 	commentOn(t, dirA, open, "20260912T213534Z", "underway on a branch")
 	commentOn(t, dirA, open, "20260912T213630Z", "landed; closing next")
 
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	gi.AddRepo("A", dirA)
 	gi.AddRepo("B", dirB)
-	rf := verseio.NewReflector(gi, store, 0)
+	rf := viffio.NewReflector(gi, store, 0)
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
 
 	get := func(segs ...string) entity.Obj {
-		ref := entity.RefAt(append([]string{verseio.GitIssueRoot}, segs...)...)
+		ref := entity.RefAt(append([]string{viffio.GitIssueRoot}, segs...)...)
 		e, ok, _ := store.Get(ref)
 		if !ok {
 			t.Fatalf("missing %s", ref)
@@ -172,7 +172,7 @@ func TestGitIssueReconcile(t *testing.T) {
 	if o["lastCommentAt"] != "2026-09-12T21:36:30Z" {
 		t.Errorf("lastCommentAt = %v", o["lastCommentAt"])
 	}
-	e, _, _ := store.Get(entity.RefAt(verseio.GitIssueRoot, "A", "issue", open))
+	e, _, _ := store.Get(entity.RefAt(viffio.GitIssueRoot, "A", "issue", open))
 	discussion := entity.Get(e.Payload, "discussion")
 	if discussion == nil || len(discussion.Values) != 2 {
 		t.Fatalf("discussion = %v, want two comments", discussion)
@@ -192,7 +192,7 @@ func TestGitIssueReconcile(t *testing.T) {
 
 	// Multi-repo: B's issue is B's, and A's summary counts only A's two.
 	get("B", "issue", elsewhere)
-	if _, ok, _ := store.Get(entity.RefAt(verseio.GitIssueRoot, "A", "issue", elsewhere)); ok {
+	if _, ok, _ := store.Get(entity.RefAt(viffio.GitIssueRoot, "A", "issue", elsewhere)); ok {
 		t.Error("B's issue leaked into A")
 	}
 	if s := get("A", "repo"); s["open"] != int64(1) || s["closed"] != int64(1) || s["issues"] != int64(2) {
@@ -204,10 +204,10 @@ func TestGitIssueReconcile(t *testing.T) {
 	if err := rf.Reconcile(ctx, entity.Ref{}); err != nil {
 		t.Fatalf("reconcile after delete: %v", err)
 	}
-	if _, ok, _ := store.Get(entity.RefAt(verseio.GitIssueRoot, "A", "issue", shut)); ok {
+	if _, ok, _ := store.Get(entity.RefAt(viffio.GitIssueRoot, "A", "issue", shut)); ok {
 		t.Error("a deleted issue ref must tombstone its entity")
 	}
-	if _, ok, _ := store.Get(entity.RefAt(verseio.GitIssueRoot, "B", "issue", elsewhere)); !ok {
+	if _, ok, _ := store.Get(entity.RefAt(viffio.GitIssueRoot, "B", "issue", elsewhere)); !ok {
 		t.Error("A's reconcile tombstoned B's issue")
 	}
 }
@@ -220,7 +220,7 @@ func TestGitIssueCoversPerRepoEvenWhenEmpty(t *testing.T) {
 	dir := t.TempDir()
 	initRepo(t, dir)
 
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	gi.AddRepo("A", dir)
 
 	_, rn := reflectIssues(t, gi, entity.Ref{})
@@ -230,17 +230,17 @@ func TestGitIssueCoversPerRepoEvenWhenEmpty(t *testing.T) {
 	// Each cover is at the repository's place, which is what keeps it from tombstoning another
 	// repository's issues.
 	for _, c := range rn.Covers {
-		if !c.MatchRef(entity.RefAt(verseio.GitIssueRoot, "A", "repo")) &&
-			!c.MatchRef(entity.RefAt(verseio.GitIssueRoot, "A", "issue", "x")) {
+		if !c.MatchRef(entity.RefAt(viffio.GitIssueRoot, "A", "repo")) &&
+			!c.MatchRef(entity.RefAt(viffio.GitIssueRoot, "A", "issue", "x")) {
 			t.Errorf("cover %+v is not at A's place", c.Path)
 		}
-		if c.MatchRef(entity.RefAt(verseio.GitIssueRoot, "B", "repo")) ||
-			c.MatchRef(entity.RefAt(verseio.GitIssueRoot, "B", "issue", "x")) {
+		if c.MatchRef(entity.RefAt(viffio.GitIssueRoot, "B", "repo")) ||
+			c.MatchRef(entity.RefAt(viffio.GitIssueRoot, "B", "issue", "x")) {
 			t.Errorf("cover %+v reaches B, so it would tombstone another repository", c.Path)
 		}
 	}
 	// The summary is the one entity a tracker with no issues has.
-	if len(rn.Entities) != 1 || rn.Entities[0].Ref != entity.RefAt(verseio.GitIssueRoot, "A", "repo") {
+	if len(rn.Entities) != 1 || rn.Entities[0].Ref != entity.RefAt(viffio.GitIssueRoot, "A", "repo") {
 		t.Fatalf("want just the repo summary, got %+v", rn.Entities)
 	}
 }
@@ -255,14 +255,14 @@ func TestGitIssueTargetedReconcile(t *testing.T) {
 	a := fileIssue(t, dirA, "in A", "", nil)
 	fileIssue(t, dirB, "in B", "", nil)
 
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	gi.AddRepo("A", dirA)
 	gi.AddRepo("B", dirB)
 
 	for _, ref := range []entity.Ref{
 		gi.RepoRef("A"),
-		entity.RefAt(verseio.GitIssueRoot, "A", "repo"),
-		entity.RefAt(verseio.GitIssueRoot, "A", "issue", a),
+		entity.RefAt(viffio.GitIssueRoot, "A", "repo"),
+		entity.RefAt(viffio.GitIssueRoot, "A", "issue", a),
 	} {
 		got, rn := reflectIssues(t, gi, ref)
 		for name, p := range got {
@@ -309,11 +309,11 @@ func TestGitIssueLegacyIssueDoesNotFailThePass(t *testing.T) {
 		t.Fatalf("MoveRef: %v", err)
 	}
 
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	gi.AddRepo("A", dir)
 	got, _ := reflectIssues(t, gi, entity.Ref{})
 
-	p := got[entity.RefAt(verseio.GitIssueRoot, "A", "issue", "000005")]
+	p := got[entity.RefAt(viffio.GitIssueRoot, "A", "issue", "000005")]
 	if p == nil {
 		t.Fatalf("the legacy issue was dropped; got %v", len(got))
 	}
@@ -330,10 +330,10 @@ func TestGitIssueLegacyIssueDoesNotFailThePass(t *testing.T) {
 		t.Error("no metaError: a thin issue with no explanation reads as an unlabelled one")
 	}
 	// And the healthy issue beside it is untouched — the point of not failing the pass.
-	if q := got[entity.RefAt(verseio.GitIssueRoot, "A", "issue", fine)]; q == nil || q["metaError"] != nil {
+	if q := got[entity.RefAt(viffio.GitIssueRoot, "A", "issue", fine)]; q == nil || q["metaError"] != nil {
 		t.Errorf("the ordinary issue was collateral: %+v", q)
 	}
-	if sm := got[entity.RefAt(verseio.GitIssueRoot, "A", "repo")]; sm["issues"] != int64(2) {
+	if sm := got[entity.RefAt(viffio.GitIssueRoot, "A", "repo")]; sm["issues"] != int64(2) {
 		t.Errorf("summary = %+v, want both issues counted", sm)
 	}
 }
@@ -370,11 +370,11 @@ func TestGitIssueKeyedLabels(t *testing.T) {
 		t.Fatalf("ReplaceTree: %v", err)
 	}
 
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	gi.AddRepo("A", dir)
 	got, _ := reflectIssues(t, gi, entity.Ref{})
 
-	c := got[entity.RefAt(verseio.GitIssueRoot, "A", "issue", clean)]
+	c := got[entity.RefAt(viffio.GitIssueRoot, "A", "issue", clean)]
 	if c == nil {
 		t.Fatal("the clean issue was not reflected")
 	}
@@ -389,7 +389,7 @@ func TestGitIssueKeyedLabels(t *testing.T) {
 		t.Errorf("multiValued = %v on an issue whose keys each hold one value", c["multiValued"])
 	}
 
-	r := got[entity.RefAt(verseio.GitIssueRoot, "A", "issue", raced)]
+	r := got[entity.RefAt(viffio.GitIssueRoot, "A", "issue", raced)]
 	if r == nil {
 		t.Fatal("the raced issue was not reflected")
 	}
@@ -408,7 +408,7 @@ func TestGitIssueKeyedLabels(t *testing.T) {
 	// An issue with no labels still answers the question: keys is there, and empty.
 	bare := fileIssue(t, dir, "a bare design", "", nil)
 	got, _ = reflectIssues(t, gi, entity.Ref{})
-	if b := got[entity.RefAt(verseio.GitIssueRoot, "A", "issue", bare)]; b["keys"] == nil {
+	if b := got[entity.RefAt(viffio.GitIssueRoot, "A", "issue", bare)]; b["keys"] == nil {
 		t.Errorf("keys absent on an issue with no labels; a rule referencing it would fail the firing")
 	}
 }
@@ -428,22 +428,22 @@ func TestGitIssueMirrorCarriesTheTracker(t *testing.T) {
 	closeIssue(t, origin, shut)
 
 	into := filepath.Join(t.TempDir(), "mirrors", "origin")
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	if _, err := gi.AddMirror(ctx, "up", origin, into); err != nil {
 		t.Fatalf("AddMirror: %v", err)
 	}
 	got, _ := reflectIssues(t, gi, entity.Ref{})
-	if p := got[entity.RefAt(verseio.GitIssueRoot, "up", "issue", open)]; p == nil || p["status"] != "open" {
+	if p := got[entity.RefAt(viffio.GitIssueRoot, "up", "issue", open)]; p == nil || p["status"] != "open" {
 		t.Errorf("mirror lost the open issue: %+v", p)
 	}
-	if p := got[entity.RefAt(verseio.GitIssueRoot, "up", "issue", shut)]; p == nil || p["status"] != "closed" {
+	if p := got[entity.RefAt(viffio.GitIssueRoot, "up", "issue", shut)]; p == nil || p["status"] != "closed" {
 		t.Errorf("mirror lost the closed issue: %+v", p)
 	}
 
 	// A pass FETCHES, so an issue filed after the clone arrives without a restart.
 	later := fileIssue(t, origin, "filed after the clone", "", nil)
 	got, _ = reflectIssues(t, gi, entity.Ref{})
-	if got[entity.RefAt(verseio.GitIssueRoot, "up", "issue", later)] == nil {
+	if got[entity.RefAt(viffio.GitIssueRoot, "up", "issue", later)] == nil {
 		t.Errorf("a later issue did not arrive on the next pass; got %d issues", len(got)-1)
 	}
 }
@@ -469,7 +469,7 @@ func TestGitMirrorHonoursARelativeState(t *testing.T) {
 	t.Chdir(work)
 	into := filepath.Join("state", "up")
 
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	if _, err := gi.AddMirror(ctx, "up", origin, into); err != nil {
 		t.Fatalf("AddMirror: %v", err)
 	}
@@ -480,7 +480,7 @@ func TestGitMirrorHonoursARelativeState(t *testing.T) {
 		t.Error("the state dir was resolved twice: mirror landed in <state>/<state>/<id>")
 	}
 	got, _ := reflectIssues(t, gi, entity.Ref{})
-	if got[entity.RefAt(verseio.GitIssueRoot, "up", "issue", id)] == nil {
+	if got[entity.RefAt(viffio.GitIssueRoot, "up", "issue", id)] == nil {
 		t.Errorf("reflect through a relative -state found nothing; got %+v", got)
 	}
 }
@@ -488,7 +488,7 @@ func TestGitMirrorHonoursARelativeState(t *testing.T) {
 // Ownership is one place per repository, with no glob in it: the place is what the install
 // takes an owner record at.
 func TestGitIssueOwns(t *testing.T) {
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	gi.AddRepo("A", t.TempDir())
 	want := map[string]bool{"git-issue.A": true}
 	got := gi.Owns()
@@ -505,7 +505,7 @@ func TestGitIssueOwns(t *testing.T) {
 // -root moves the whole slice, including what Owns claims and what RepoRef names — a hint at
 // git-issue.x reaches nothing when the source writes tracker.x.
 func TestGitIssueSystemMovesTheSlice(t *testing.T) {
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	if err := gi.SetRoot("tracker"); err != nil {
 		t.Fatal(err)
 	}
@@ -534,11 +534,11 @@ func TestGitIssueBodiesAreSeparable(t *testing.T) {
 	initRepo(t, dir)
 	id := fileIssue(t, dir, "a title", "a body nobody wants reflected", nil)
 
-	gi := verseio.NewGitIssue()
+	gi := viffio.NewGitIssue()
 	gi.SetBodies(false)
 	gi.AddRepo("A", dir)
 	got, _ := reflectIssues(t, gi, entity.Ref{})
-	p := got[entity.RefAt(verseio.GitIssueRoot, "A", "issue", id)]
+	p := got[entity.RefAt(viffio.GitIssueRoot, "A", "issue", id)]
 	if p == nil {
 		t.Fatalf("missing the issue; got %+v", got)
 	}

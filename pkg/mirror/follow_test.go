@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/entity/entitytest"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/entity/entitytest"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // leasedHandle is a handle of a task on a runner: each subscribe is a request the test's runner
@@ -175,10 +175,10 @@ func TestASlowStoreDoesNotHoldUpTheNextSubscribe(t *testing.T) {
 	waitFor(t, "three subscribes while the store takes no write", func() bool { return len(h.subscribes()) >= 3 })
 }
 
-// A VERSE THAT STOPS STOPS FOLLOWING ITS TASKS, and ends none of them: the verse that comes next
+// A VIFF THAT STOPS STOPS FOLLOWING ITS TASKS, and ends none of them: the viff that comes next
 // follows them again. Once Done closes, nothing more is asked of the runner, and the task is not
 // given up.
-func TestAFollowEndsWithTheVerseThatFollows(t *testing.T) {
+func TestAFollowEndsWithTheViffThatFollows(t *testing.T) {
 	h := &leasedHandle{}
 	done := make(chan struct{})
 	q := newFrames()
@@ -193,12 +193,12 @@ func TestAFollowEndsWithTheVerseThatFollows(t *testing.T) {
 	select {
 	case <-returned:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the follow went on after the verse stopped")
+		t.Fatal("the follow went on after the viff stopped")
 	}
 	asked := len(h.subscribes())
 	time.Sleep(300 * time.Millisecond) // three quarters of a lease: a follow still running asks again
 	if n := len(h.subscribes()); n != asked {
-		t.Fatalf("%d subscribes after the verse stopped", n-asked)
+		t.Fatalf("%d subscribes after the viff stopped", n-asked)
 	}
 	for {
 		it, ok := q.take()
@@ -206,7 +206,7 @@ func TestAFollowEndsWithTheVerseThatFollows(t *testing.T) {
 			break
 		}
 		if it.mark == markGaveUp {
-			t.Fatal("the follow gave the task up as the verse stopped")
+			t.Fatal("the follow gave the task up as the viff stopped")
 		}
 	}
 }

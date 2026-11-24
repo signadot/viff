@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // FOLLOWING A TASK is keeping a subscription to its stream until its terminal frame, on three
@@ -124,7 +124,7 @@ func subscribe(h task.Handle, first bool, since int64, lease time.Duration) (<-c
 // none is) and each one after it, and returns at the task's terminal frame, or when the wait
 // has run out (markGaveUp).
 //
-// It returns when done closes, ending nothing: the verse that follows the task is going away.
+// It returns when done closes, ending nothing: the viff that follows the task is going away.
 func follow(h task.Handle, q *frames, ch <-chan task.Event, unsub func(), lease time.Duration, done <-chan struct{}) {
 	defer q.close()
 	_, leased := h.(task.Accepting)

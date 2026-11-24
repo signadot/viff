@@ -1,35 +1,35 @@
-# The claude runner: the verse runner in its own image with Claude Code in it, offering the
+# The claude runner: the viff runner in its own image with Claude Code in it, offering the
 # claude agent (`agent: {name: claude}`), which it drives over Claude Code's stream protocol so
 # that every command, edit and question Claude proposes is decided by the task's autonomy
 # (docs/reference/runnerd.md, "Claude, gated inside the run").
 #
-# It is a THIRD runner beside verse-runner and codex-runner, not a change to either: its own
+# It is a THIRD runner beside viff-runner and codex-runner, not a change to either: its own
 # image, Deployment, Service, ConfigMap and credential, in the `runners` tier beside them with
 # `runner: claude` to select it alone, so it can be removed on its own and the runners the
-# charters name go on untouched. Verse learns about it the same way:
+# charters name go on untouched. Viff learns about it the same way:
 #
-#   verse runner add claude http://claude-runner:9802 --identity claude-runner \
-#     --subject system:serviceaccount:verse:claude-runner
+#   viff runner add claude http://claude-runner:9802 --identity claude-runner \
+#     --subject system:serviceaccount:viff:claude-runner
 #
 # Everything about the pod that is bubblewrap's — hostUsers, procMount, seccompProfile — is as
-# deploy/verse-runner/verse-runner.yaml has it, and explained there.
+# deploy/viff-runner/viff-runner.yaml has it, and explained there.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: claude-runner-config
-  labels: {app: verse, tier: runners, runner: claude}
+  labels: {app: viff, tier: runners, runner: claude}
 data:
-  verse-runner.tony: |
+  viff-runner.tony: |
     listen: ":9802"
-    # The one verse this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
-    # names it in the pod's environment, VERSE_URL and VERSE_ISSUER, from the `issuer` knob,
-    # since this file is every cluster's, and gives it its token (VERSE_TOKEN_FILE). The runner
+    # The one viff this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
+    # names it in the pod's environment, VIFF_URL and VIFF_ISSUER, from the `issuer` knob,
+    # since this file is every cluster's, and gives it its token (VIFF_TOKEN_FILE). The runner
     # does not start without both.
     # One bare mirror per repository, on the state volume, shared by the tasks. The forge is
-    # github.com, and the token is GITHUB_TOKEN (the verse-runner Secret, below).
+    # github.com, and the token is GITHUB_TOKEN (the viff-runner Secret, below).
     repos:
       mirrors: /state/mirrors
-    # The secret store, as deploy/verse-runner has it: the projected volume below, read by the
+    # The secret store, as deploy/viff-runner has it: the projected volume below, read by the
     # runner at each act and by no task. A deployment moves a system to it by naming its secret
     # (`systems: {slack: slack-bot, linear-issue: linear}`), and its variable is then not read.
     secrets: {dir: /secrets}
@@ -50,14 +50,14 @@ data:
     # spawn's environment may give, held at install, at launch and again at each act. A ceiling
     # lists what it allows and nothing else is allowed, so a system with no ceiling under a doer
     # is closed to it; a block naming no verb (`{}`) allows every verb of its system.
-    # The example org's repositories, and their branches under verse/; main of example/app, which
+    # The example org's repositories, and their branches under viff/; main of example/app, which
     # a merge rule lands on. Placeholders, closed until a deployment names its own
     # (`runnerConfig`). No network ceiling: tasks get what the sandbox builds. What a doer's
     # shell is given of the runner's environment is its `shellEnv`, by name: never a secret.
     # Claude alone: no `script:`, so this runner offers no scripts.
     agents:
       claude:
-        # How Claude runs here. The credential is ANTHROPIC_API_KEY (the verse-claude Secret,
+        # How Claude runs here. The credential is ANTHROPIC_API_KEY (the viff-claude Secret,
         # below), or CLAUDE_CODE_OAUTH_TOKEN where that is set; the task process puts it in the
         # claude process's environment under its own name, with a CLAUDE_CONFIG_DIR of the
         # task's own. Claude's API is reachable from a task whatever its network.
@@ -73,52 +73,52 @@ data:
               fetch: {}
               push:
               - {ref: refs/heads/main, force: false, delete: false}
-              - {ref: !regexp "^refs/heads/verse/"}
+              - {ref: !regexp "^refs/heads/viff/"}
             - repo: !regexp "^github\\.com/example/"
               fetch: {}
-              push: {ref: !regexp "^refs/heads/verse/"}
+              push: {ref: !regexp "^refs/heads/viff/"}
           git-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
           github: {ceiling: {repo: !regexp "^github\\.com/example/"}}
           github-issue: {ceiling: {repo: !regexp "^github\\.com/example/"}}
           # Linear and Slack, made with the credentials the iods hold (LINEAR_API_KEY from
-          # verse-linear, SLACK_BOT_TOKEN from verse-slack): a ceiling naming either is what makes
+          # viff-linear, SLACK_BOT_TOKEN from viff-slack): a ceiling naming either is what makes
           # the runner offer the system, and where its variable is unset the runner starts with it
-          # closed, and says so. TEAM stands for the team the Linear iod reflects, and `verse`
+          # closed, and says so. TEAM stands for the team the Linear iod reflects, and `viff`
           # for a channel the Slack bot is in. A Slack shape names one channel, so two channels
           # are two shapes.
           linear-issue: {ceiling: {create: {team: TEAM}, comment: {issue: !glob "TEAM-*"}, close: {issue: !glob "TEAM-*"}}}
           slack:
             ceiling:
-              read: [{channel: verse}]
-              post: [{channel: verse}]
-              reply: [{channel: verse}]
-              react: [{channel: verse}]
+              read: [{channel: viff}]
+              post: [{channel: viff}]
+              reply: [{channel: viff}]
+              react: [{channel: viff}]
           files: {ceiling: {}}
           commands: {ceiling: {}}
           question: {ceiling: {}}
-          verse: {ceiling: {}}
+          viff: {ceiling: {}}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: claude-runner
-  labels: {app: verse, tier: runners, runner: claude}
+  labels: {app: viff, tier: runners, runner: claude}
 spec:
   replicas: 1
   strategy: {type: Recreate}
   selector:
-    matchLabels: {app: verse, tier: runners, runner: claude}
+    matchLabels: {app: viff, tier: runners, runner: claude}
   template:
     metadata:
-      labels: {app: verse, tier: runners, runner: claude}
+      labels: {app: viff, tier: runners, runner: claude}
     spec:
       hostUsers: false
       containers:
       - name: claude-runner
-        image: signadot/verse-runner:claude
+        image: signadot/viff-runner:claude
         args:
         - -config
-        - /config/verse-runner.tony
+        - /config/viff-runner.tony
         - -sandbox
         - bwrap
         ports:
@@ -131,13 +131,13 @@ spec:
         # comes from the store entry `claudeSecretKey` names (deploy/README.md, Credentials),
         # and is made by hand only where that knob is empty:
         #
-        #   kubectl -n verse create secret generic verse-claude \
+        #   kubectl -n viff create secret generic viff-claude \
         #     --from-literal=ANTHROPIC_API_KEY=<key>
         #
         # Optional: a runner without it starts, and its first claude spawn fails, not logged in.
         envFrom:
         - secretRef:
-            name: verse-claude
+            name: viff-claude
             optional: true
         env:
         # Claude writes its state under $HOME when it is given no CLAUDE_CONFIG_DIR, and the
@@ -145,25 +145,25 @@ spec:
         # inside the sandbox, and /tmp is the one there is.
         - name: HOME
           value: /tmp
-        # What this runner pushes with: the same token verse-runner pushes with, held by a
+        # What this runner pushes with: the same token viff-runner pushes with, held by a
         # different process. The task never sees it.
         - name: GITHUB_TOKEN
           valueFrom:
-            secretKeyRef: {name: verse-runner, key: gitToken, optional: true}
+            secretKeyRef: {name: viff-runner, key: gitToken, optional: true}
         # Linear's and Slack's, for the tasks' linear-issue and slack calls: the keys the iods read
         # from the same Secrets. The runner makes each call itself, so a task never has them.
         - name: LINEAR_API_KEY
           valueFrom:
-            secretKeyRef: {name: verse-linear, key: LINEAR_API_KEY, optional: true}
+            secretKeyRef: {name: viff-linear, key: LINEAR_API_KEY, optional: true}
         - name: SLACK_BOT_TOKEN
           valueFrom:
-            secretKeyRef: {name: verse-slack, key: SLACK_BOT_TOKEN, optional: true}
+            secretKeyRef: {name: viff-slack, key: SLACK_BOT_TOKEN, optional: true}
         volumeMounts:
         - {name: config, mountPath: /config, readOnly: true}
         - {name: state, mountPath: /state}
         - {name: secrets, mountPath: /secrets, readOnly: true}
         readinessProbe:
-          # The server up, and nothing else (deploy/verse-runner, the same probe).
+          # The server up, and nothing else (deploy/viff-runner, the same probe).
           httpGet: {path: /ready, port: control}
           initialDelaySeconds: 2
           periodSeconds: 10
@@ -180,29 +180,29 @@ spec:
         configMap: {name: claude-runner-config}
       - name: state
         emptyDir: {}
-      # The secret store, as deploy/verse-runner has it and explains it: every source optional,
-      # the iods' keys under the store's names, verse-runner-secrets for the rest, no subPath.
+      # The secret store, as deploy/viff-runner has it and explains it: every source optional,
+      # the iods' keys under the store's names, viff-runner-secrets for the rest, no subPath.
       - name: secrets
         projected:
           sources:
           - secret:
-              name: verse-slack
+              name: viff-slack
               optional: true
               items: [{key: SLACK_BOT_TOKEN, path: slack-bot}]
           - secret:
-              name: verse-linear
+              name: viff-linear
               optional: true
               items: [{key: LINEAR_API_KEY, path: linear}]
           - secret:
-              name: verse-runner-secrets
+              name: viff-runner-secrets
               optional: true
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: claude-runner
-  labels: {app: verse, tier: runners, runner: claude}
+  labels: {app: viff, tier: runners, runner: claude}
 spec:
-  selector: {app: verse, tier: runners, runner: claude}
+  selector: {app: viff, tier: runners, runner: claude}
   ports:
   - {name: control, port: 9802, targetPort: control}

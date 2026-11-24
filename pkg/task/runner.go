@@ -2,9 +2,9 @@ package task
 
 import "time"
 
-// Runner runs and governs tasks on some substrate; verse (the engine) is its
+// Runner runs and governs tasks on some substrate; viff (the engine) is its
 // client. The only implementation today is the in-process local supervisor (a runnerd
-// wrapper); remote runners addressed by a base URL — k8s, lambda, another verse — come
+// wrapper); remote runners addressed by a base URL — k8s, lambda, another viff — come
 // later, all behind this same seam. See docs/task-control.md.
 //
 // Keeping even the local case behind the interface is deliberate: there is no privileged
@@ -14,7 +14,7 @@ import "time"
 // sends a runner.Launch).
 type Runner interface {
 	// Attach re-attaches to an already-running task by id — the resume path on
-	// restart, when the work outlived verse (a remote runner). Its handle's read plane
+	// restart, when the work outlived viff (a remote runner). Its handle's read plane
 	// replays from the start so the mirror re-derives current state. A local (in-process)
 	// runner has nothing to re-attach to after a restart and returns nil (the caller
 	// orphans).
@@ -40,7 +40,7 @@ type Runner interface {
 //
 // ListTasks: nil, nil is a runner with no tasks; a runner that did not answer is
 // ErrUnreachable and one with no such face is ErrUnsupported. Those are not the same fact, and
-// a caller that cannot tell them apart shows an operator a verse with less work in it than it
+// a caller that cannot tell them apart shows an operator a viff with less work in it than it
 // has.
 //
 // TaskSnapshot: ErrNoSuchTask is the far side answering that it has never heard of this
@@ -53,7 +53,7 @@ type Lister interface {
 	TaskSnapshot(id string) (Snapshot, error)
 }
 
-// Handle is verse's governing handle on one running task — the control plane
+// Handle is viff's governing handle on one running task — the control plane
 // (pause/resume/cancel/say/set-autonomy) plus the read plane (Subscribe). It hides whether
 // the task runs in-process or behind a URL, so the engine tracks handles, not the
 // concrete *Task. The local handle is *Task itself; a remote handle wraps an HTTP
@@ -108,7 +108,7 @@ var _ Handle = (*Task)(nil)
 // `task get`.
 //
 // It is here rather than in each caller because more than one caller has the need — a launch
-// whose POST did not go through, and verse's own spawns that never reached a runner — and a
+// whose POST did not go through, and viff's own spawns that never reached a runner — and a
 // Handle that lies about a task's status is exactly the thing not to reimplement per package.
 func FailedHandle(reason string) Handle { return failedHandle{reason} }
 

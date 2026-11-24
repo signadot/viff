@@ -2,7 +2,7 @@
 
 `entity.Op` has two values, `set` and `delete`. It does not have the three values create, update
 and delete. `Since` is a pure read. This page says why. It also says why these two choices let
-verse keep its data in any ordinary [store](glossary.md#store), and not only in an unusual one.
+viff keep its data in any ordinary [store](glossary.md#store), and not only in an unusual one.
 
 [The tutorial](tutorial/data.md#watch) shows the stream that this
 page describes. [reference/store.md](reference/store.md) describes the store that the stream
@@ -15,10 +15,10 @@ A change event must carry enough for a [rule](glossary.md#rule) to act on it. Th
 holds the earlier state in memory can give this shape easily. A durable, remote store pays a lot
 for it.
 
-Verse could build the rich shape over the logd-backed store. It would need a mutable `seen` set,
+Viff could build the rich shape over the logd-backed store. It would need a mutable `seen` set,
 passed through both the live watch and `Since`. That set has three faults:
 
-- The catch-up path, which is the one verse trusts, is no longer pure.
+- The catch-up path, which is the one viff trusts, is no longer pure.
 - A create inside a replay window gets the wrong label.
 - The store no longer matches its interface.
 
@@ -29,15 +29,15 @@ edges or to levels?
 ## What the watch actually delivers (measured)
 
 A watch on the root sends one event per [commit](glossary.md#commit). Each event carries the
-commit's `Patch`. The production path is verse → docd → logd. Through that path, a create, a full
+commit's `Patch`. The production path is viff → docd → logd. Through that path, a create, a full
 update, a partial update, a delete and a re-create give these events:
 
 ```
-CREATE   demo.pr.1         {verse:{demo:{pr:{"1":{stage:open,      x:1}}}}}
-UPDATE   demo.pr.1 (full)  {verse:{demo:{pr:{"1":{stage:reviewing, x:1}}}}}
-UPDATE   demo.pr.1 (deep)  {verse:{demo:{pr:{"1":{stage:done}}}}}
-DELETE   demo.pr.1         {verse:{demo:{pr:{"1":null}}}}
-RECREATE demo.pr.1         {verse:{demo:{pr:{"1":{stage:reopened}}}}}
+CREATE   demo.pr.1         {viff:{demo:{pr:{"1":{stage:open,      x:1}}}}}
+UPDATE   demo.pr.1 (full)  {viff:{demo:{pr:{"1":{stage:reviewing, x:1}}}}}
+UPDATE   demo.pr.1 (deep)  {viff:{demo:{pr:{"1":{stage:done}}}}}
+DELETE   demo.pr.1         {viff:{demo:{pr:{"1":null}}}}
+RECREATE demo.pr.1         {viff:{demo:{pr:{"1":{stage:reopened}}}}}
 ```
 
 docd adds nothing to these events, and this follows from its design. The client side of docd is
@@ -66,16 +66,16 @@ Two facts decide the design:
    delta. See "Consuming a delta" below.
 
 So the watch is already a stream of edges. One event per commit is one transition, and the delta
-*is* the edge. Verse does not need to react to levels only and lose short-lived states, because
+*is* the edge. Viff does not need to react to levels only and lose short-lived states, because
 logd gives it edges.
 
 A delta carries exactly two facts that a reader can get without the earlier state. A removal is a
 `Delete`, and any value is a `Set`. That is all of `Op`.
 
 A removal is the **`!delete` tag**, not a null. A patch has no absence to observe, so a delta must
-spell a removal. Verse writes the tag (`entity.Removed`), and `tony.Diff` emits it for a key that
+spell a removal. Viff writes the tag (`entity.Removed`), and `tony.Diff` emits it for a key that
 went away. A bare null in a delta is an ordinary value that is set. `payload: null` is a legal
-payload. If verse read a null as a removal, no entity could hold that payload (`pkg/entity/change.go`,
+payload. If viff read a null as a removal, no entity could hold that payload (`pkg/entity/change.go`,
 `mergeInto`).
 
 ## The decision
@@ -93,7 +93,7 @@ payload. If verse read a null as a removal, no entity could hold that payload (`
 
 ## Why `To` is level (and what the delta would answer instead)
 
-The delta is the writer's patch for the commit. It looks like the right value for `To`. If verse
+The delta is the writer's patch for the commit. It looks like the right value for `To`. If viff
 only ever writes whole entities, the delta *is* the entity. But a write can address one field,
 such as `demo.pr.1.stage`. Then the delta is not the entity, and a consumer that matches on `To`
 matches a fragment.
@@ -125,7 +125,7 @@ and each consumer does not have to.
 event reports the world as it was when it changed. A state that a later write has already replaced
 is still dispatched.
 
-A level read against the *current* state would be simpler. Verse does not use it, and for the same
+A level read against the *current* state would be simpler. Viff does not use it, and for the same
 reason it does not use the shape `Event{Ref, Op, Rev}` in which the consumer reads the state
 itself. A workflow engine that skips a step because the subject has moved on fails, and nobody
 sees the failure.
@@ -147,8 +147,8 @@ the commit did not touch.
 
 ## Consuming a delta: apply it, do not decode it
 
-Verse derives `Op` from a delta. But *how* a consumer reads the delta matters. The encoding varies,
-and logd decides it, not verse:
+Viff derives `Op` from a delta. But *how* a consumer reads the delta matters. The encoding varies,
+and logd decides it, not viff:
 
 | Watch | What its deltas are |
 |---|---|
@@ -170,7 +170,7 @@ carries:
 
 The watcher then reads entities out of the *rebuilt object*. It diffs against the last snapshot to
 get a `Set`/`Delete` per entity. tony owns the meaning of a patch: merge, `!replace`,
-`!delete`/`!insert`, and the order of fields. Verse applies patches. It never depends on how a
+`!delete`/`!insert`, and the order of fields. Viff applies patches. It never depends on how a
 diff looks on the wire.
 
 That diff compares payloads with `ir.Node.DeepEqual`, and it must. A node carries
@@ -193,7 +193,7 @@ with the document after it (`changesAt`). The commit's delta only prunes the wal
 the delta does not name is a branch that the commit did not change.
 
 **A State and a Patch are not rooted alike, and neither one says so.** A Patch is the commit's
-delta, rooted at the document (`verse.demo.pr.1: {…}`). A State carries the value *at the watched
+delta, rooted at the document (`viff.demo.pr.1: {…}`). A State carries the value *at the watched
 address*. logd extracts that value, and docd's composed read builds it relative to the address.
 
 If a watcher took a State verbatim, the State would seed a document whose first segments are
@@ -327,14 +327,14 @@ the replay and never signals that the replay is complete. So a `Since` over such
 returns `ok=true` with zero events, after its own timeout runs out. The engine's catch-up then
 looks successful but delivers too little. This is the worst form the failure could take.
 
-Verse mounts nothing, so no watch that verse opens is ever composed, and every place a rule
+Viff mounts nothing, so no watch that viff opens is ever composed, and every place a rule
 watches has the log behind it. That is the rule: **facts something reacts to are ordinary
 writes**, in the log, with a history. A program that serves bytes on request is not a place a
-rule can watch, and verse has none.
+rule can watch, and viff has none.
 
 ## Why this is the portable choice (not an exotic dependency)
 
-Verse needs an ordered, resumable change stream with revisions: a watch and `Since(cursor)`. This
+Viff needs an ordered, resumable change stream with revisions: a watch and `Since(cursor)`. This
 is the normal feature of a modern store, not something special to logd. These all provide it:
 
 - etcd watches
@@ -344,7 +344,7 @@ is the normal feature of a modern store, not something special to logd. These al
 - Postgres logical replication
 - a ring buffer in memory
 
-What *would* tie verse to a rare feature is create-vs-update or the earlier value in the
+What *would* tie viff to a rare feature is create-vs-update or the earlier value in the
 interface. etcd exposes these, as `CreateRevision` and `PrevKv`. Many stores do not, and logd does
 not either, as the events above show. So keeping create and update out of the contract is the
 portable choice. It is also the choice that the layer under the store can honour.
@@ -362,7 +362,7 @@ This is what a charter would use `Op` to say, and what it gets instead:
 |---|---|
 | **What stays exact** | `delete` is exact, because it is a tombstone. So teardown on removal still works. The delta is an edge, so "fire when a field *becomes* X" fires once per transition, at the commit that set it. It does not fire on every unrelated change. |
 | **The one real loss** | You cannot tell "created with `stage=open`" from "re-opened to `stage=open`". Both deltas set `stage=open`, and both fire. So you lose built-in suppression of re-entry: "act on the first entry into a state, never on re-entry". |
-| **What recovers it** | Express "once" as a latch on the state, not as an edge. Match a field that the action then advances. `stage=open` fires an action that sets `stage=reviewing`, and it cannot fire again. Verse's demo works this way: the subject's stage *is* the latch. This is cleaner than an implicit edge, and it is how systems that react to levels get "once". |
+| **What recovers it** | Express "once" as a latch on the state, not as an edge. Match a field that the action then advances. `stage=open` fires an action that sets `stage=reviewing`, and it cannot fire again. Viff's demo works this way: the subject's stage *is* the latch. This is cleaner than an implicit edge, and it is how systems that react to levels get "once". |
 | **The risk to know** | Take a non-idempotent *gated* or *spawning* action that matches a state the subject can really enter again: a real round trip such as `reviewed`→`open`→`reviewed`. It fires again on each real entry. A re-write to the *same* value does not fire, because an edge fires only on a real change. So a reactive re-write that touches its own cause does not loop (see "Consuming a delta" above). For a real re-entry you still need a latch. This is a rule for writing charters, not a limit of the engine. |
 
 The harm is small and local. You keep an exact delete, one firing per transition, and every flow
@@ -384,7 +384,7 @@ and then an error is worse than the error alone.
 
 libctl raises that terminal event as a `WatchEndedError`. So it reaches `Since` as
 `w.Err() != nil`, and `Since` turns it into `entity.ErrReplayTooOld`.
-`entity.TestSinceBelowReplayFloorResyncs` checks this through the production path, verse → docd →
+`entity.TestSinceBelowReplayFloorResyncs` checks this through the production path, viff → docd →
 logd: with the floor at 5, `Since(0)` fails as `ErrReplayTooOld` with zero commits.
 
 The separate code is the point. `replay_failed` reads as a failure that passes. A consumer told

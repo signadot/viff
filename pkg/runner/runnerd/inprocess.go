@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signadot/verse/pkg/codec"
-	"github.com/signadot/verse/pkg/runner"
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/codec"
+	"go.viff.dev/viff/pkg/runner"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // Builder constructs a hosted task from a launch the handler has checked (CheckLaunch), plus the
@@ -98,7 +98,7 @@ func (h *hosted) snapshot() task.Snapshot {
 	return task.Snapshot{
 		ID: h.task.ID, Prompt: h.prompt, Agent: h.doer, Status: status,
 		// The answer and the reason are read live from the task, not from a copy taken when Run
-		// returns: the terminal frame leaves from inside Run, and a reader it brings (versed's
+		// returns: the terminal frame leaves from inside Run, and a reader it brings (viffd's
 		// mirror) asks for the snapshot before Run has returned. The task has both before it
 		// ends; h.err is for a run that broke without recording one.
 		Err: cmp.Or(h.task.Err(), h.err), Orphaned: h.task.Orphaned(), Result: h.task.Result(), Pending: pending, Occurrence: h.occurrence, Settings: taskSettings(h.task),
@@ -183,8 +183,8 @@ func (d *InProcessHandler) Launch(l runner.Launch) (*task.Task, error) {
 //
 // A network named and not open is refused here. So is an absent one, which means none, but only
 // on a handler with no offers: with offers, an absent network is the offer's to refuse
-// (checkBuilds), as `verse up`'s does, since it builds open alone. An offer that claims to build
-// none on this handler would get past both; only test helpers such as versed's offeringAll write one.
+// (checkBuilds), as `viff up`'s does, since it builds open alone. An offer that claims to build
+// none on this handler would get past both; only test helpers such as viffd's offeringAll write one.
 func (d *InProcessHandler) check(l *runner.Launch) error {
 	if err := CheckLaunch(l, d.describe, d.owned.of(l)); err != nil {
 		return err
@@ -245,7 +245,7 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 		tk.Emit(task.Event{Kind: task.EventWithdrawn, ID: q.ID, Text: why})
 	})
 	reg.OnPost(func(p task.Pending) {
-		// Whom it asks crosses too: verse poses a remote task's question from this frame, and a
+		// Whom it asks crosses too: viff poses a remote task's question from this frame, and a
 		// turn or an ask naming $principal is the task's person's, not the docket's.
 		tk.Emit(task.Event{
 			Kind: task.EventPending, ID: p.Question.ID, Tool: p.Tool, Action: p.Action,
@@ -301,8 +301,8 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 		// on purpose, and overwriting the status with Failed threw away what the machine had
 		// just decided (exit(Cancelled), emitted as its terminal frame).
 		//
-		// It is not cosmetic: verse distinguishes the two everywhere it matters. A charter's
-		// onCancelled and onFailed are different actions, and verse-dev's merge train says
+		// It is not cosmetic: viff distinguishes the two everywhere it matters. A charter's
+		// onCancelled and onFailed are different actions, and viff-dev's merge train says
 		// why in its own words — a cancel decided nothing, so the gate is asked again,
 		// where a failed run must not re-ask anybody anything. With this, a cancelled run fired
 		// onFailed and the question was never re-posed.
@@ -453,7 +453,7 @@ func (d *InProcessHandler) events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Resolve answers a hosted task's pending decision by id — the Go entry versed's unified
+// Resolve answers a hosted task's pending decision by id — the Go entry viffd's unified
 // gate surface uses to resolve a task gate (write/shell/delegate) the same way it resolves
 // an engine gate. Reports whether the decision matched.
 func (d *InProcessHandler) Resolve(taskID, decisionID string, res task.Resolution) bool {

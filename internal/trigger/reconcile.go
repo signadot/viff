@@ -26,7 +26,7 @@ import (
 // The reconciler is what clears a cause: a pass over every pending rule, in the order they
 // were placed, vetting each again and arming the ones that pass. A pass runs when something
 // that could clear a cause happens — a rule placed, a stratum installed, a declaration set, a
-// suspension lifted, and what versed sees: a runner registered or gone — and once a minute
+// suspension lifted, and what viffd sees: a runner registered or gone — and once a minute
 // regardless (git-issue wv2pp5j0).
 
 // ErrNoOffer marks an offer check's refusal of a spawn no runner offers at all, as against one
@@ -38,7 +38,7 @@ var ErrNoOffer = errors.New("no runner offers it")
 // Runners is what a vet makes of a spawn no runner offers at all (ErrNoOffer).
 //
 // THE CALLER SAYS WHICH, so the answer depends on the call and never on when it is made: an
-// install made while verse is starting is refused as one made an hour later. The hold is the
+// install made while viff is starting is refused as one made an hour later. The hold is the
 // placing's: a record was accepted, and a restore places the records' rules before the runners
 // have been heard from, so a spawn no runner offers then may be one whose runner is still to
 // come. A rule held so arms at the pass a runner's registration kicks.
@@ -178,7 +178,7 @@ func (e *Engine) reconcile(ctx context.Context) {
 // pass tries every pending rule once, in the order they were placed.
 func (e *Engine) pass() {
 	if !e.isOpen() {
-		return // nothing arms ahead of what the last verse left (open), which kicks a pass
+		return // nothing arms ahead of what the last viff left (open), which kicks a pass
 	}
 	e.trigMu.Lock()
 	snap := make([]held, len(e.pending))
@@ -308,7 +308,7 @@ func (e *Engine) Pendings() []Pending {
 }
 
 // Arming is every armed rule whose watches are not all open, sorted by name, each with what
-// the store is doing for the first that is not (watching). Empty on a verse that is up.
+// the store is doing for the first that is not (watching). Empty on a viff that is up.
 func (e *Engine) Arming() []Pending {
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()

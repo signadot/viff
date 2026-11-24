@@ -14,14 +14,14 @@ import "testing"
 func TestAnAddressReadsBackAtAnyDepth(t *testing.T) {
 	for _, ref := range []Ref{
 		RefAt("demo", "pr", "1"),
-		RefAt("demo", "pr", "signadot/verse#42"),
+		RefAt("demo", "pr", "signadot/viff#42"),
 		// The three-segment id that holds colons — the case the colon form is arity-fixed for.
-		VerseRef("task", "instance", "review@demo.pr.1"),
-		RefAt("verse-dev", "drift", "head", "abc"),
+		ViffRef("task", "instance", "review@demo.pr.1"),
+		RefAt("viff-dev", "drift", "head", "abc"),
 		// THE ONE THAT BIT: four segments, and the id is itself an address.
-		RefAt("verse-dev", "drift", "head", "head-moved@git.head.verse"),
-		RefAt("verse-dev", "merge", "train", "train-cut@git.head.verse@4bb4464d"),
-		VerseRef("motion", "channel", "x", "y"),
+		RefAt("viff-dev", "drift", "head", "head-moved@git.head.viff"),
+		RefAt("viff-dev", "merge", "train", "train-cut@git.head.viff@4bb4464d"),
+		ViffRef("motion", "channel", "x", "y"),
 		RefAt("vote", "abc"),
 		RefAt("a", "b", "c", "d", "e"),
 	} {
@@ -46,10 +46,10 @@ func TestADottedIDIsStillAnID(t *testing.T) {
 	}{
 		{`demo.pr."a.b.c.d"`, []string{"demo", "pr", "a.b.c.d"}},
 		{`demo.pr."1"`, []string{"demo", "pr", "1"}},
-		{`verse.task.instance."x.y"`, []string{"verse", "task", "instance", "x.y"}},
-		{"verse-dev.drift.head.abc", []string{"verse-dev", "drift", "head", "abc"}},
-		{`verse-dev.drift.head."head-moved@git.head.verse"`,
-			[]string{"verse-dev", "drift", "head", "head-moved@git.head.verse"}},
+		{`mirror.task.instance."x.y"`, []string{"mirror", "task", "instance", "x.y"}},
+		{"viff-dev.drift.head.abc", []string{"viff-dev", "drift", "head", "abc"}},
+		{`viff-dev.drift.head."head-moved@git.head.viff"`,
+			[]string{"viff-dev", "drift", "head", "head-moved@git.head.viff"}},
 		// UNQUOTED, the dots are the delimiter — which is the other half of the same rule.
 		{"demo.pr.a.b.c.d", []string{"demo", "pr", "a", "b", "c", "d"}},
 	} {
@@ -78,7 +78,7 @@ func TestADottedIDIsStillAnID(t *testing.T) {
 // before the change reads as an address one segment deep, and is re-seeded rather than
 // translated. Nothing tries to guess which spelling a string is, because guessing is exactly
 // what the two grammars cost — a discriminator, stated in more than one place, that read
-// `verse-dev.drift.head."head-moved@git.head.verse"` as three segments with a mangled id and
+// `viff-dev.drift.head."head-moved@git.head.viff"` as three segments with a mangled id and
 // answered "nothing stands there".
 func TestTheColonFormIsJustAName(t *testing.T) {
 	const old = "demo" + ":" + "pr" + ":" + "1" // spelled in pieces: nothing may rewrite it here

@@ -3,7 +3,7 @@ package runnerd
 import (
 	"testing"
 
-	"github.com/signadot/verse/pkg/task"
+	"go.viff.dev/viff/pkg/task"
 )
 
 // A replay that would read across a hole, or begin before what is kept, starts with a gap

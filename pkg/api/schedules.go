@@ -1,10 +1,10 @@
 package api
 
-// ScheduleRow is one schedule as `verse schedule` lists it: its record's id (the declared name,
+// ScheduleRow is one schedule as `viff schedule` lists it: its record's id (the declared name,
 // `<address>:<name>` for a package's), its grid, the instant the daemon is armed against, and
 // the tick standing under it.
 //
-//tony:schemagen=verse-schedule-row,notag
+//tony:schemagen=viff-schedule-row,notag
 type ScheduleRow struct {
 	ID    string `tony:"field=id"`
 	Every string `tony:"field=every"`
@@ -20,9 +20,9 @@ type ScheduleRow struct {
 	By string `tony:"field=by,omitzero"`
 }
 
-// ScheduleTick is a backfill (`verse schedule tick`): the past instant to write the tick for.
+// ScheduleTick is a backfill (`viff schedule tick`): the past instant to write the tick for.
 //
-//tony:schemagen=verse-schedule-tick,notag
+//tony:schemagen=viff-schedule-tick,notag
 type ScheduleTick struct {
 	Due string `tony:"field=due"`
 }
@@ -30,7 +30,7 @@ type ScheduleTick struct {
 // Ticked is what `POST /schedules/{id}/tick` answers: the schedule, and the tick it backfilled,
 // by its key (schedule.Key).
 //
-//tony:schemagen=verse-ticked,notag
+//tony:schemagen=viff-ticked,notag
 type Ticked struct {
 	Schedule string `tony:"field=schedule"`
 	Tick     string `tony:"field=tick"`

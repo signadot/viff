@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/signadot/verse/pkg/entity"
+	"go.viff.dev/viff/pkg/entity"
 )
 
-// HOW AN ASK IS SHOWN to whoever asked it, by `verse ask`, verse_ask_get, verse_ask_list and the verse system's
-// verse-ask-get alike: found among the asker's asks (GET /asks) by its id or the name it was asked
+// HOW AN ASK IS SHOWN to whoever asked it, by `viff ask`, viff_ask_get, viff_ask_list and the viff system's
+// viff-ask-get alike: found among the asker's asks (GET /asks) by its id or the name it was asked
 // under (AskNamed), and shown as a row (AskShown).
 
 // AsksIn is the asks of a GET /asks answer, each at its address.
@@ -91,7 +91,7 @@ func AskRow(e entity.Entity) entity.Obj {
 	return row
 }
 
-// AskShown is one ask as `verse ask <name|id>` shows it: its row, and whom it waits on while it
+// AskShown is one ask as `viff ask <name|id>` shows it: its row, and whom it waits on while it
 // does, since the ask is the question on the docket.
 func AskShown(e entity.Entity) entity.Obj {
 	row := AskRow(e)

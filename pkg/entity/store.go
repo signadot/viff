@@ -5,7 +5,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
-// Store is the entity-verse as its consumers (engine, mirror, actions) see it:
+// Store is the entity-viff as its consumers (engine, mirror, actions) see it:
 // write changes, read state, observe the change stream, and catch up from a
 // revision cursor. It is deliberately minimal and transport-agnostic: the store it is
 // satisfied by today is logd/docd-backed, and a different durable backend could take its
@@ -63,7 +63,7 @@ type Store interface {
 	Observe(at ...*kpath.KPath) (<-chan Commit, func())
 	// Since returns retained commits with Rev > from, in order, with Changes answered at the
 	// patterns given as Observe answers them, read under the literal prefix they share — the
-	// whole verse when they share none, or when none are given. This is the cursor-based
+	// whole viff when they share none, or when none are given. This is the cursor-based
 	// catch-up (a docd query by revision).
 	//
 	// THE ERROR IS THE ONE THIS REPLAY FAILED WITH, and the commits are whatever it delivered
@@ -88,7 +88,7 @@ type Store interface {
 	// AsOf returns a Snapshot: a read-only view fixed at one revision, so every read of it
 	// answers as of that commit and no later write is visible to any of them.
 	//
-	// It is what makes a rule about the verse evaluable AT a change rather than merely after
+	// It is what makes a rule about the viff evaluable AT a change rather than merely after
 	// one. Asking "does this condition hold" and "which entities does this select" of the
 	// same snapshot makes them answers about one world; asking them of the live store makes
 	// them two reads with a window between, which a concurrent commit can slide through — so
@@ -99,8 +99,8 @@ type Store interface {
 	// Since reports an error rather than returning what it happens to still have.
 	//
 	// `within` narrows what the snapshot holds to the given (system, kind) subtrees — kind ""
-	// meaning a whole system, no arguments meaning the whole verse. It is not a filter for
-	// convenience: reading the whole verse costs more as the verse GROWS, so a caller
+	// meaning a whole system, no arguments meaning the whole viff. It is not a filter for
+	// convenience: reading the whole viff costs more as the viff GROWS, so a caller
 	// evaluating a rule at every commit pays for entities the rule cannot see. Pass the
 	// subtrees the predicates read and the cost stops depending on everything else.
 	AsOf(rev int64, within ...[]string) (Snapshot, error)
@@ -157,7 +157,7 @@ type Store interface {
 	//
 	// Unlike Observe it is LEVEL-TRIGGERED at the open: it first replays what already
 	// stands in the slice as Set events, then streams changes. A rule is a statement about
-	// the world, and a trigger installed over a populated verse should act on the entities
+	// the world, and a trigger installed over a populated viff should act on the entities
 	// that already match it rather than waiting for each to be re-touched.
 	//
 	// It is EDGE-FAITHFUL: one commit in, at most one commit out, never several folded
@@ -180,7 +180,7 @@ type Store interface {
 	Watch(prefix []string, at *kpath.KPath, opts WatchOptions) (*Watch, error)
 	// Scope returns a view of the store isolated to the named scope: writes land in
 	// the scope, reads and Observe/Since see the baseline layered with the scope.
-	// This is the seam for a sandbox: one party's work overlaid on the shared verse (see
+	// This is the seam for a sandbox: one party's work overlaid on the shared viff (see
 	// docs/deployment-and-steering.md). The docd/logd-backed store implements real
 	// copy-on-write scopes.
 	Scope(name string) Store

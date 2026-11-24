@@ -156,7 +156,7 @@ func TestSnapshotReadsBackPastAChange(t *testing.T) {
 }
 
 // A scoped store snapshots its own view: the scope's writes overlaid on the baseline, and
-// never the other way round. A snapshot is a view fixed in time, not a different verse.
+// never the other way round. A snapshot is a view fixed in time, not a different viff.
 func TestSnapshotOfAScopeSeesTheOverlay(t *testing.T) {
 	s := openStore(t)
 	base := RefAt("demo", "pr", "base")

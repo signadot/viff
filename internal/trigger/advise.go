@@ -3,9 +3,9 @@ package trigger
 import (
 	"fmt"
 
-	"github.com/signadot/verse/pkg/entity"
-	"github.com/signadot/verse/pkg/exprs"
-	"github.com/signadot/verse/pkg/mirror"
+	"go.viff.dev/viff/pkg/entity"
+	"go.viff.dev/viff/pkg/exprs"
+	"go.viff.dev/viff/pkg/mirror"
 )
 
 // advise returns the notes a charter earns without being wrong: shapes that install and run,

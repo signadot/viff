@@ -6,7 +6,7 @@ define:
   Name: .[string]
   Settings: .[object(string)]
 signature:
-  name: verse-runner-agent
+  name: viff-runner-agent
 ---
 context:
 - tony-format/context
@@ -15,16 +15,16 @@ define:
   form: .[string]
   values: .[array(string)]
 signature:
-  name: verse-runner-setting
+  name: viff-runner-setting
 ---
 context:
 - tony-format/context
 define:
   annotations: .[object(string)]
   name: .[string]
-  settings: .[object(verse-runner-setting)]
+  settings: .[object(viff-runner-setting)]
 signature:
-  name: verse-runner-agent-offer
+  name: viff-runner-agent-offer
 ---
 context:
 - tony-format/context
@@ -32,7 +32,7 @@ define:
   autonomy: !irtype {}
   by: .[string]
 signature:
-  name: verse-runner-autonomy
+  name: viff-runner-autonomy
 ---
 context:
 - tony-format/context
@@ -40,7 +40,7 @@ define:
   by: .[string]
   reason: .[string]
 signature:
-  name: verse-runner-cancel
+  name: viff-runner-cancel
 ---
 context:
 - tony-format/context
@@ -48,27 +48,27 @@ define:
   builds: !irtype {}
   ceiling: !irtype {}
 signature:
-  name: verse-runner-system
+  name: viff-runner-system
 ---
 context:
 - tony-format/context
 define:
-  agent: .[nullable(verse-runner-agent-offer)]
+  agent: .[nullable(viff-runner-agent-offer)]
   converse: .[bool]
   requires: .[array(string)]
   script: .[bool]
-  systems: .[object(verse-runner-system)]
+  systems: .[object(viff-runner-system)]
   version: .[string]
 signature:
-  name: verse-runner-offer
+  name: viff-runner-offer
 ---
 context:
 - tony-format/context
 define:
-  offers: .[array(verse-runner-offer)]
+  offers: .[array(viff-runner-offer)]
   version: .[int]
 signature:
-  name: verse-runner-description
+  name: viff-runner-description
 ---
 context:
 - tony-format/context
@@ -77,13 +77,13 @@ define:
   principal: .[string]
   subject: .[string]
 signature:
-  name: verse-runner-provenance
+  name: viff-runner-provenance
 ---
 context:
 - tony-format/context
 - tony-base: github.com/signadot/tony-format/go-tony/schema
 define:
-  agent: .[nullable(verse-runner-agent)]
+  agent: .[nullable(viff-runner-agent)]
   answer: .[tony-base:ir]
   autonomy: !irtype {}
   converse: .[bool]
@@ -94,11 +94,11 @@ define:
   occurrence: .[int]
   person: .[string]
   prompt: .[string]
-  provenance: !verse-runner-provenance null
+  provenance: !viff-runner-provenance null
   script: .[string]
   timeout: .[string]
 signature:
-  name: verse-runner-launch
+  name: viff-runner-launch
 ---
 context:
 - tony-format/context
@@ -106,14 +106,14 @@ define:
   allow: .[array(string)]
   mode: .[string]
 signature:
-  name: verse-runner-network
+  name: viff-runner-network
 ---
 context:
 - tony-format/context
 define:
   by: .[string]
 signature:
-  name: verse-runner-pause
+  name: viff-runner-pause
 ---
 context:
 - tony-format/context
@@ -121,7 +121,7 @@ define:
   from: .[string]
   repo: .[string]
 signature:
-  name: verse-runner-repo
+  name: viff-runner-repo
 ---
 context:
 - tony-format/context
@@ -131,14 +131,14 @@ define:
   id: .[string]
   say: .[array(string)]
 signature:
-  name: verse-runner-resolve
+  name: viff-runner-resolve
 ---
 context:
 - tony-format/context
 define:
   by: .[string]
 signature:
-  name: verse-runner-resume
+  name: viff-runner-resume
 ---
 context:
 - tony-format/context
@@ -147,11 +147,11 @@ define:
   by: .[string]
   instruction: .[string]
 signature:
-  name: verse-runner-say
+  name: viff-runner-say
 ---
 context:
 - tony-format/context
 define:
   repo: .[string]
 signature:
-  name: verse-runner-tracker
+  name: viff-runner-tracker
