@@ -1,5 +1,7 @@
 package task
 
+import "time"
+
 // Runner runs and governs tasks on some substrate; verse (the engine) is its
 // client. The only implementation today is the in-process local supervisor (a runnerd
 // wrapper); remote runners addressed by a base URL — k8s, lambda, another verse — come
@@ -93,8 +95,8 @@ type Handle interface {
 type Accepting interface {
 	// SubscribeAccepted is SubscribeSince, with an EventAccepted frame ahead of the runner's
 	// once the runner has accepted the subscribe. A stream that closes with no such frame was
-	// not accepted: the runner did not answer, or refused.
-	SubscribeAccepted(since int64) (<-chan Event, func())
+	// not accepted: the runner did not answer within the wait, or refused.
+	SubscribeAccepted(since int64, within time.Duration) (<-chan Event, func())
 }
 
 // *Task is the local Handle.

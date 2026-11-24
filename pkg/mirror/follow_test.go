@@ -15,20 +15,31 @@ import (
 type leasedHandle struct {
 	fakeHandle
 	mu       sync.Mutex
-	asked    []int64     // the cursor of each subscribe, in order
-	accepted []time.Time // when each accepted subscribe was accepted
-	refuse   bool        // the runner accepts no subscribe from here on
+	asked    []int64         // the cursor of each subscribe, in order
+	within   []time.Duration // how long each subscribe was waited for
+	closed   []bool          // whether each subscribe's stream was closed by its reader
+	accepted []time.Time     // when each accepted subscribe was accepted
+	refuse   bool            // the runner accepts no subscribe from here on
 	first    []task.Event
+	next     []task.Event // the frames of the next subscribe accepted, once
 }
 
-func (h *leasedHandle) SubscribeAccepted(since int64) (<-chan task.Event, func()) {
+func (h *leasedHandle) SubscribeAccepted(since int64, within time.Duration) (<-chan task.Event, func()) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.asked = append(h.asked, since)
+	h.within = append(h.within, within)
+	h.closed = append(h.closed, false)
+	i := len(h.closed) - 1
+	unsub := func() {
+		h.mu.Lock()
+		h.closed[i] = true
+		h.mu.Unlock()
+	}
 	ch := make(chan task.Event, 8)
 	if h.refuse {
 		close(ch)
-		return ch, func() {}
+		return ch, unsub
 	}
 	h.accepted = append(h.accepted, time.Now())
 	ch <- task.Event{Kind: task.EventAccepted}
@@ -37,7 +48,11 @@ func (h *leasedHandle) SubscribeAccepted(since int64) (<-chan task.Event, func()
 			ch <- ev
 		}
 	}
-	return ch, func() {}
+	for _, ev := range h.next {
+		ch <- ev
+	}
+	h.next = nil
+	return ch, unsub
 }
 
 func (h *leasedHandle) subscribes() []int64 {
@@ -153,7 +168,7 @@ func TestASlowStoreDoesNotHoldUpTheNextSubscribe(t *testing.T) {
 	t.Cleanup(func() { close(hold) })
 
 	q := newFrames()
-	ch, unsub := subscribe(h, true, 0)
+	ch, unsub := subscribe(h, true, 0, 400*time.Millisecond)
 	go follow(h, q, ch, unsub, 400*time.Millisecond, nil)
 	go record(store, "p", entity.Obj{"status": string(task.Running)}, Meta{Runner: "http://runner.invalid"}, h, q)
 
@@ -167,7 +182,7 @@ func TestAFollowEndsWithTheVerseThatFollows(t *testing.T) {
 	h := &leasedHandle{}
 	done := make(chan struct{})
 	q := newFrames()
-	ch, unsub := subscribe(h, true, 0)
+	ch, unsub := subscribe(h, true, 0, 400*time.Millisecond)
 	returned := make(chan struct{})
 	go func() {
 		follow(h, q, ch, unsub, 400*time.Millisecond, done)
@@ -232,5 +247,56 @@ func TestFramesQueuedTogetherAreOneWrite(t *testing.T) {
 	store.mu.Unlock()
 	if n > 5 {
 		t.Fatalf("%d writes of the record for 51 frames queued together", n)
+	}
+}
+
+// A SUBSCRIBE IS WAITED FOR A QUARTER LEASE AT MOST, the time to the next one, and THE STREAM IT
+// REPLACES IS CLOSED: an open connection renews nothing, and one left open is a stream the
+// runner keeps serving for nobody.
+func TestEachSubscribeIsWaitedForAQuarterLeaseAndReplacesTheLast(t *testing.T) {
+	store := entitytest.Store(t)
+	h := &leasedHandle{}
+	Reflect(store, "p", h, Meta{Runner: "http://runner.invalid", Lease: "400ms"})
+	waitFor(t, "four subscribes", func() bool { return len(h.subscribes()) >= 4 })
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i, w := range h.within {
+		if w != 100*time.Millisecond {
+			t.Fatalf("subscribe %d was waited for %s, want a quarter of the 400ms lease", i+1, w)
+		}
+	}
+	for i, closed := range h.closed[:len(h.closed)-1] {
+		if !closed {
+			t.Fatalf("subscribe %d's stream was left open when the next was asked for", i+1)
+		}
+	}
+}
+
+// A RUNNER REACHED AGAIN BEFORE THE WAIT IS OVER SAYS HOW THE TASK ENDED. Its subscribes go
+// unanswered for longer than the lease and less than the wait, and the runner ended the task at
+// its lease meanwhile: the record takes the runner's end, its reason the runner's, and not the
+// mirror's own account of a runner that did not answer.
+func TestAHealBeforeTheWaitTakesTheRunnersOwnEnd(t *testing.T) {
+	was := waitMargin
+	waitMargin = 2 * time.Second
+	t.Cleanup(func() { waitMargin = was })
+
+	store := entitytest.Store(t)
+	h := &leasedHandle{}
+	Reflect(store, "p", h, Meta{Runner: "http://runner.invalid", Lease: "400ms"})
+	waitFor(t, "a second subscribe", func() bool { return len(h.subscribes()) >= 2 })
+	h.mu.Lock()
+	h.refuse = true
+	h.mu.Unlock()
+	time.Sleep(600 * time.Millisecond) // past the lease, inside the wait
+	h.mu.Lock()
+	h.refuse = false
+	h.next = []task.Event{{Kind: task.EventStatus, Text: string(task.Failed), Orphaned: true, Err: "no reader for 400ms", Cursor: 9}}
+	h.mu.Unlock()
+
+	waitFor(t, "the task to end on its record", func() bool { return task.TerminalStatus(entity.Str(mustGet(t, store, "p"), "status")) })
+	got := entity.ToObj(mustGet(t, store, "p"))
+	if got["status"] != string(task.Failed) || got[OrphanedField] != true || got["err"] != "no reader for 400ms" {
+		t.Fatalf("record = %v, want the runner's own end", got)
 	}
 }

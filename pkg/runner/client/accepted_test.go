@@ -36,7 +36,7 @@ func TestAnAcceptedSubscribeSaysSo(t *testing.T) {
 	t.Cleanup(func() { close(release) })
 
 	h := client.HTTP(srv.URL).Attach("p")
-	ch, stop := h.(task.Accepting).SubscribeAccepted(0)
+	ch, stop := h.(task.Accepting).SubscribeAccepted(0, 0)
 	select {
 	case ev, ok := <-ch:
 		if !ok || ev.Kind != task.EventAccepted {
@@ -58,7 +58,7 @@ func TestAnAcceptedSubscribeSaysSo(t *testing.T) {
 	stop()
 
 	refuse.Store(true)
-	ch, stop = h.(task.Accepting).SubscribeAccepted(0)
+	ch, stop = h.(task.Accepting).SubscribeAccepted(0, 0)
 	defer stop()
 	select {
 	case ev, ok := <-ch:
@@ -79,7 +79,7 @@ func TestASubscribeAnsweredByAnotherServerIsNotAccepted(t *testing.T) {
 		_, _ = w.Write([]byte("<html>sign in</html>"))
 	}))
 	t.Cleanup(srv.Close)
-	ch, stop := client.HTTP(srv.URL).Attach("p").(task.Accepting).SubscribeAccepted(0)
+	ch, stop := client.HTTP(srv.URL).Attach("p").(task.Accepting).SubscribeAccepted(0, 0)
 	defer stop()
 	select {
 	case ev, ok := <-ch:
@@ -88,5 +88,24 @@ func TestASubscribeAnsweredByAnotherServerIsNotAccepted(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the stream stayed open on a page in the runner's place")
+	}
+}
+
+// A SUBSCRIBE IS WAITED FOR AS LONG AS ITS READER SAYS. A runner that takes the request and
+// answers nothing has the subscribe closed, not accepted, once the wait is over, and not at the
+// client's own bound on a request.
+func TestASubscribeUnansweredWithinItsWaitIsNotAccepted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done() // never answers
+	}))
+	t.Cleanup(srv.Close)
+	t0 := time.Now()
+	ch, stop := client.HTTP(srv.URL).Attach("p").(task.Accepting).SubscribeAccepted(0, 200*time.Millisecond)
+	defer stop()
+	for f := range ch {
+		t.Fatalf("frame %+v from a runner that never answered", f)
+	}
+	if took := time.Since(t0); took < 200*time.Millisecond || took > 5*time.Second {
+		t.Fatalf("the unanswered subscribe closed after %s, want the 200ms wait", took)
 	}
 }

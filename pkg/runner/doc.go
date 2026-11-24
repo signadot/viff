@@ -43,8 +43,10 @@
 //
 // A task runs only while somebody reads it. Its lease is the launch's (Launch.Lease, LeaseOf),
 // and counts from the launch and again from each GET /tasks/{id}/events the runner answers. A
+// launch of a running task joins it, and its lease is the joining launch's from then. A
 // runner answers that route at once, and ends a task whose lease runs out as failed and
-// orphaned, on its terminal frame and its snapshot (docs/runners.md).
+// orphaned, on its terminal frame, on every stream still open, and on its snapshot
+// (docs/runners.md).
 //
 // # Answers
 //

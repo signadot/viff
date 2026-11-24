@@ -213,21 +213,26 @@ func (h *remoteHandle) Subscribe() (<-chan task.Event, func()) {
 // asking for everything and discarding — the remote is the one that knows what it still has,
 // and it is the one that can say EventGap when the cursor is below its window.
 func (h *remoteHandle) SubscribeSince(since int64) (<-chan task.Event, func()) {
-	return h.subscribe(since, false)
+	return h.subscribe(since, 0)
 }
 
 // SubscribeAccepted is SubscribeSince, saying first that the runner accepted the subscribe
-// (task.Accepting): the runner answered the request, and with a stream.
-func (h *remoteHandle) SubscribeAccepted(since int64) (<-chan task.Event, func()) {
-	return h.subscribe(since, true)
+// (task.Accepting): the runner answered the request, and with a stream, within the wait, which
+// is ControlTimeout at most.
+func (h *remoteHandle) SubscribeAccepted(since int64, within time.Duration) (<-chan task.Event, func()) {
+	if within <= 0 || within > ControlTimeout {
+		within = ControlTimeout
+	}
+	return h.subscribe(since, within)
 }
 
-// subscribe opens the task's stream from a cursor. FOR A READER COUNTING ACCEPTED SUBSCRIBES, A
-// REQUEST THAT GETS NO ANSWER FAILS: the stream itself has no deadline, and its response does,
-// so a subscribe into a network that takes the request and answers nothing closes as one that
-// was refused does, for its reader to ask again. Any other reader waits for the answer as long
-// as it likes, and ends the wait itself.
-func (h *remoteHandle) subscribe(since int64, sayAccepted bool) (<-chan task.Event, func()) {
+// subscribe opens the task's stream from a cursor. FOR A READER COUNTING ACCEPTED SUBSCRIBES (a
+// wait, answered), A REQUEST THAT GETS NO ANSWER WITHIN THE WAIT FAILS: the stream itself has no
+// deadline, and its response does, so a subscribe into a network that takes the request and
+// answers nothing closes as one that was refused does, for its reader to ask again. Any other
+// reader waits for the answer as long as it likes, and ends the wait itself.
+func (h *remoteHandle) subscribe(since int64, answered time.Duration) (<-chan task.Event, func()) {
+	sayAccepted := answered > 0
 	ctx, cancel := context.WithCancel(context.Background())
 	out := make(chan task.Event, 256)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
@@ -243,7 +248,7 @@ func (h *remoteHandle) subscribe(since int64, sayAccepted bool) (<-chan task.Eve
 		return out, func() {}
 	}
 	if sayAccepted {
-		unanswered := time.AfterFunc(ControlTimeout, cancel)
+		unanswered := time.AfterFunc(answered, cancel)
 		defer unanswered.Stop()
 	}
 	resp, err := h.stream.Do(req)

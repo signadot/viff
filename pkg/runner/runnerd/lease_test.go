@@ -156,7 +156,7 @@ func TestASubscribeBeforeTheTaskIsHostedIsAnsweredAtOnce(t *testing.T) {
 	launchOK(t, rt, runner.Launch{ID: "starting", Agent: &runner.Agent{Name: "test"}, Environment: openNet, Prompt: "spec slow\n"})
 
 	t0 := time.Now()
-	frames, stop := rt.Attach("starting").(task.Accepting).SubscribeAccepted(0)
+	frames, stop := rt.Attach("starting").(task.Accepting).SubscribeAccepted(0, 0)
 	select {
 	case f, ok := <-frames:
 		if !ok || f.Kind != task.EventAccepted {
@@ -329,5 +329,70 @@ func TestASubscribeTheTaskNeverAnswersRenewsNothing(t *testing.T) {
 	}
 	if snap := snapshotOf(t, rt, "s"); !snap.Orphaned {
 		t.Fatalf("the task is %s after three leases of subscribes its process answered none of, not ended as orphaned", snap.Status)
+	}
+}
+
+// A STREAM OPEN WHEN THE LEASE RUNS OUT ENDS WITH THE RUNNER'S END. A reader holds one stream
+// open and asks again for nothing: an open stream renews nothing, so the lease runs out with it
+// open, and that stream ends as the snapshot says, failed and orphaned for want of a reader.
+func TestAStreamOpenWhenTheLeaseRunsOutEndsWithTheRunnersEnd(t *testing.T) {
+	const lease = 400 * time.Millisecond
+	for name, launch := range leased(t, lease) {
+		t.Run(name, func(t *testing.T) {
+			rt := launch("watched")
+			frames, stop := rt.Attach("watched").SubscribeSince(0)
+			defer stop()
+			var end task.Event
+			deadline := time.After(10 * time.Second)
+		read:
+			for {
+				select {
+				case f, ok := <-frames:
+					if !ok {
+						break read
+					}
+					if f.Kind == task.EventStatus && task.Status(f.Text).Terminal() {
+						end = f
+						break read
+					}
+				case <-deadline:
+					t.Fatal("the stream neither ended nor closed after the lease ran out")
+				}
+			}
+			snap := snapshotOf(t, rt, "watched")
+			if snap.Status != task.Failed || !snap.Orphaned {
+				t.Fatalf("snapshot = %s orphaned=%v, want the lease's end", snap.Status, snap.Orphaned)
+			}
+			if end.Text != string(snap.Status) || end.Orphaned != snap.Orphaned || end.Err != snap.Err {
+				t.Fatalf("the open stream ended with %+v and the snapshot says %s orphaned=%v err=%q", end, snap.Status, snap.Orphaned, snap.Err)
+			}
+		})
+	}
+}
+
+// A LAUNCH THAT JOINS A RUNNING TASK RENEWS ITS LEASE. A launcher that asks again for a task it
+// launched, and subscribes to nothing, keeps the task for as long as it asks: the run it launched
+// first, and not one of a launch after that run's lease ran out.
+func TestALaunchThatJoinsATaskRenewsItsLease(t *testing.T) {
+	const lease = 400 * time.Millisecond
+	for name, launch := range leased(t, lease) {
+		t.Run(name, func(t *testing.T) {
+			rt := launch("joined")
+			prompt := "wait"
+			if strings.Contains(name, "own") {
+				prompt = "spec wait\n"
+			}
+			for until := time.Now().Add(3 * lease); time.Now().Before(until); {
+				time.Sleep(lease / 4)
+				launchOK(t, rt, runner.Launch{ID: "joined", Agent: &runner.Agent{Name: "test"}, Environment: openNet, Prompt: prompt, Occurrence: 7})
+			}
+			snap := snapshotOf(t, rt, "joined")
+			if snap.Status.Terminal() {
+				t.Fatalf("the task ended (%s: %s) while it was launched again four times a lease", snap.Status, snap.Err)
+			}
+			if snap.Occurrence == 7 {
+				t.Fatal("the run launched first ended at its lease, and a later launch ran the id again")
+			}
+		})
 	}
 }

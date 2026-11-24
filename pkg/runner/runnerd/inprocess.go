@@ -199,6 +199,14 @@ func (d *InProcessHandler) check(l *runner.Launch) error {
 	return nil
 }
 
+// joined is a live task a launch of its id joins: its lease is the joining launch's from now.
+func (d *InProcessHandler) joined(h *hosted, l runner.Launch) *hosted {
+	if h.lease != nil {
+		h.lease.join(&l, d.lease)
+	}
+	return h
+}
+
 // host builds, registers, wires the read plane, and runs a task. Shared
 // by Launch and POST /tasks. The bool reports whether it BUILT one; false means
 // the id was already hosted and that task is what came back.
@@ -215,7 +223,7 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 	d.mu.Lock()
 	if h, ok := d.tasks[l.ID]; ok && !h.done() {
 		d.mu.Unlock()
-		return h, false
+		return d.joined(h, l), false
 	}
 	d.mu.Unlock()
 
@@ -264,7 +272,7 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 	d.mu.Lock()
 	if existing, ok := d.tasks[l.ID]; ok && !existing.done() {
 		d.mu.Unlock()
-		return existing, false
+		return d.joined(existing, l), false
 	}
 	if !d.taskProcess {
 		h.lease = newLease(&l, d.lease)

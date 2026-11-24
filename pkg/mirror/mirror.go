@@ -271,7 +271,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	var ch <-chan task.Event
 	var unsub func()
 	if _, leased := h.(task.Accepting); !leased {
-		ch, unsub = subscribe(h, true, 0)
+		ch, unsub = subscribe(h, true, 0, 0) // not leased: no subscribe is waited on
 	}
 	// WHEN, and only twice: `started` here, `ended` at the terminal status below. A record
 	// stamped on every update would be an entity that changes whenever anything narrates,
@@ -1114,9 +1114,12 @@ func Orphaned(why string) entity.Obj {
 // one, so a terminal that did not land is a task that never ends.
 //
 // A store that did not answer is asked again, with the reflect loop's backoff, for as long as
-// the store is open. A store that REFUSED is asked as the mirror itself (system): the record is
-// written as the party working the task, and that party's hold on it can be taken away while the
-// task runs, which says nothing about whether the task ended. And a document the store's own
+// the store is open. That is said when it begins, again when the reason changes (once a minute
+// at most) and every sayAgain while it does not, and once more when the end lands: a task whose
+// end is not on its record holds its subject, and the log is where an operator learns why. A
+// store that REFUSED is asked as the mirror itself (system): the record is written as the party
+// working the task, and that party's hold on it can be taken away while the task runs, which
+// says nothing about whether the task ended. And a document the store's own
 // check will not take (entity.CheckPatchable) goes without `data`, the one part of the record
 // that is whatever a task answered: how the task ended is owed, and what it said stays readable
 // as `result`.
@@ -1138,13 +1141,17 @@ func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
 	}
 	started, _ := st["started"].(string)
 	var when []entity.Require
-	asSystem, said := false, false
+	asSystem := false
+	said, saidAt := "", time.Time{}
 	for attempt := 0; ; attempt++ {
 		if attempt > 0 {
 			time.Sleep(backoff(attempt - 1))
 		}
 		committed, _, err := store.Write(entity.Write{At: at.At(), Value: entity.Raw(st.Payload()), When: when})
 		if err == nil && committed {
+			if said != "" {
+				fmt.Fprintf(os.Stderr, "verse: task %s: its end is on its record, after %d attempts\n", id, attempt+1)
+			}
 			return
 		}
 		if errors.Is(err, context.Canceled) {
@@ -1153,9 +1160,9 @@ func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
 		if errors.Is(err, entity.ErrForbidden) && !asSystem {
 			store, asSystem = system, true
 		}
-		if err != nil && !said {
-			said = true
-			fmt.Fprintf(os.Stderr, "verse: task %s: its end is not on its record yet, and is being written again: %v\n", id, err)
+		if since := time.Since(saidAt); err != nil && (said == "" || since >= sayAgain || err.Error() != said && since >= time.Minute) {
+			said, saidAt = err.Error(), time.Now()
+			fmt.Fprintf(os.Stderr, "verse: task %s: its end is not on its record yet, and is being written again (attempt %d): %v\n", id, attempt+1, err)
 		}
 		// What stands there now decides what the next attempt may replace.
 		ent, ok, rerr := system.Get(at)
@@ -1172,12 +1179,18 @@ func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
 			entity.Str(ent.Payload, "started") == started && OccurrenceOf(ent.Payload) > OccurrenceOf(st.Payload()):
 			return // another run's record: one that started later, or within the same second of a later firing
 		case entity.Str(ent.Payload, "started") == started && task.TerminalStatus(entity.Str(ent.Payload, "status")):
+			if said != "" {
+				fmt.Fprintf(os.Stderr, "verse: task %s: its end is on its record\n", id)
+			}
 			return // it landed
 		default:
 			when = []entity.Require{{Pattern: entity.Unchanged(ent.Payload)}}
 		}
 	}
 }
+
+// sayAgain is how often an end that does not land is said again while its reason stays the same.
+const sayAgain = 5 * time.Minute
 
 // ParseResult is the structured face of a driver's final answer: the answer document
 // projected beside the text as `data` so a charter can read into it (`.[data.severity]`)

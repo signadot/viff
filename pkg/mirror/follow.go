@@ -105,9 +105,14 @@ func (q *frames) take() (item, bool) {
 
 // subscribe asks for the task's stream, saying when the runner accepted where the handle can:
 // the first subscribe of a task, or one after it, from the cursor the last one reached.
-func subscribe(h task.Handle, first bool, since int64) (<-chan task.Event, func()) {
+//
+// A SUBSCRIBE IS WAITED FOR A QUARTER LEASE AT MOST, the time to the next one: one answered
+// later is as good as missed, and a wait longer than that spends the lease on few of them. At
+// the 1m floor a runner that does not answer costs 15s a subscribe, so three can be missed
+// before the lease runs out.
+func subscribe(h task.Handle, first bool, since int64, lease time.Duration) (<-chan task.Event, func()) {
 	if acc, ok := h.(task.Accepting); ok {
-		return acc.SubscribeAccepted(since)
+		return acc.SubscribeAccepted(since, lease/4)
 	}
 	if first {
 		return h.Subscribe()
@@ -129,7 +134,7 @@ func follow(h task.Handle, q *frames, ch <-chan task.Event, unsub func(), lease 
 	accepted := time.Now()
 	var cursor int64
 	if ch == nil {
-		ch, unsub = subscribe(h, true, 0)
+		ch, unsub = subscribe(h, true, 0, lease)
 	}
 	for attempt := 0; ; {
 		var again <-chan time.Time
@@ -215,6 +220,6 @@ func follow(h task.Handle, q *frames, ch <-chan task.Event, unsub func(), lease 
 			}
 			attempt++
 		}
-		ch, unsub = subscribe(h, false, cursor)
+		ch, unsub = subscribe(h, false, cursor, lease)
 	}
 }

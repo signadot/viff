@@ -19,21 +19,41 @@ import (
 
 // lease is one task's lease, as its runner keeps it.
 type lease struct {
-	length time.Duration
-
 	mu      sync.Mutex
+	length  time.Duration
 	renewed time.Time
 	over    bool
+	// changed wakes keep when a join sets the length, which may shorten it.
+	changed chan struct{}
 }
 
 // newLease is the lease of a launch, counting from now. fixed, where set, is its length
 // whatever the launch says: a test's.
 func newLease(l *runner.Launch, fixed time.Duration) *lease {
-	length := runner.LeaseOf(l.Lease)
+	return &lease{length: leaseLength(l, fixed), renewed: time.Now(), changed: make(chan struct{}, 1)}
+}
+
+func leaseLength(l *runner.Launch, fixed time.Duration) time.Duration {
 	if fixed > 0 {
-		length = fixed
+		return fixed
 	}
-	return &lease{length: length, renewed: time.Now()}
+	return runner.LeaseOf(l.Lease)
+}
+
+// join counts a launch that joins the task as the launch it is: the lease is the joining
+// launch's from now, which is the one its launcher waits by. Nothing, once the lease has run
+// out.
+func (l *lease) join(by *runner.Launch, fixed time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.over {
+		return
+	}
+	l.length, l.renewed = leaseLength(by, fixed), time.Now()
+	select {
+	case l.changed <- struct{}{}:
+	default:
+	}
 }
 
 // renew counts a subscribe the runner accepted, and reports whether it renewed the lease: false
@@ -67,6 +87,8 @@ func (l *lease) keep(ended <-chan struct{}, expire func()) {
 		case <-ended:
 			t.Stop()
 			return
+		case <-l.changed:
+			t.Stop()
 		case <-t.C:
 		}
 	}
@@ -74,8 +96,11 @@ func (l *lease) keep(ended <-chan struct{}, expire func()) {
 
 // noReader is why a task whose lease ran out ended.
 func (l *lease) noReader() string {
+	l.mu.Lock()
+	length := l.length
+	l.mu.Unlock()
 	// A duration as it is written: 4m, and not 4m0s.
-	s := l.length.String()
+	s := length.String()
 	if strings.HasSuffix(s, "m0s") {
 		s = strings.TrimSuffix(s, "0s")
 	}

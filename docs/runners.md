@@ -265,7 +265,10 @@ This is the runner's part of the contract:
 - **A subscribe is answered at once**, whatever state the task is in. A task whose repositories
   are still being cloned has a stream that is open and has no frames yet.
 - **A subscribe that comes after the lease ran out renews nothing.** It is answered with the
-  task's end. A launch of the same id after that starts the work again.
+  task's end, and so is a stream still open when the lease runs out. A launch of the same id
+  after that starts the work again.
+- **A launch of a task that is running joins it**, and renews its lease: from then the lease is
+  the one the joining launch names, which is the one verse waits by.
 - **Every answer the runner itself gives carries `Verse-Runner`**, refusals included; a door in
   front of it, such as its auth, need not. Anything can answer HTTP between verse and a runner:
   an ingress's default backend, a route not yet set up, a login page. Verse takes a subscribe as
@@ -273,8 +276,9 @@ This is the runner's part of the contract:
   such task, which ends the task, only where the stream's `404` and the task's both carry it. An
   answer without it is taken as no answer.
 
-Verse's part is to ask. It subscribes to each running task again four times within the lease, and
-stops waiting a minute after the lease has gone by with no subscribe the runner accepted. It then
+Verse's part is to ask. It subscribes to each running task again four times within the lease,
+waits a quarter of the lease at most for each answer, and stops waiting a minute after the lease
+has gone by with no subscribe the runner accepted. It then
 ends the task on its record, also as `failed` with `orphaned: true`. The lease runs out first, so
 by the time verse ends a task for a runner it cannot reach, the runner has ended it too.
 

@@ -66,22 +66,23 @@ func TestASubscribeAnsweredAfterTheLeaseRanOutIsTheRunnersEnd(t *testing.T) {
 	h.tasks["t"] = p
 
 	// The task's process answers the subscribe as the lease runs out, and says done.
-	child := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	child := httptest.NewServer(asRunner(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.lease.mu.Lock()
 		p.lease.over = true
 		p.lease.mu.Unlock()
 		sse, _ := codec.NewSSE(w, r)
 		_ = sse.Send(task.Event{Kind: task.EventStatus, Task: "t", Text: string(task.Done), Cursor: 2})
 		sse.Flush()
-	}))
+	})))
 	defer child.Close()
 	target, _ := url.Parse(child.URL)
+	p.rt = client.HTTP(child.URL)
 	p.prox = httputil.NewSingleHostReverseProxy(target)
 	p.prox.FlushInterval = -1
 	front := httptest.NewServer(h.HTTPHandler())
 	defer front.Close()
 
-	ch, stop := client.HTTP(front.URL).Attach("t").(task.Accepting).SubscribeAccepted(1)
+	ch, stop := client.HTTP(front.URL).Attach("t").(task.Accepting).SubscribeAccepted(1, 0)
 	defer stop()
 	var end task.Event
 	for ev := range ch {
