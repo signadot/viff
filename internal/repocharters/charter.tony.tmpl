@@ -64,7 +64,7 @@
 # is installed; its question stands either way. A no closes it with the commit status failed.
 #
 # THE CHECK is apart from the decision and from the install: each candidate tree is checked against
-# what runs by the viff's charter check, which installs nothing, and its verdict is a status of
+# what runs by the viff instance's charter check, which installs nothing, and its verdict is a status of
 # its own on either pull request (`viff/check`); while main's tree would be refused an issue says
 # so, and it closes when main's tree passes.
 #
@@ -85,7 +85,7 @@
 # passes. An install the io refuses is a GitHub issue, closed by the next install that succeeds,
 # and the commit status fails. A tree on viff/live nobody answered yes to is not installed.
 #
-# A REFUSED INSTALL IS ASKED AGAIN when the viff moves, not only when the repository does: what
+# A REFUSED INSTALL IS ASKED AGAIN when the viff instance moves, not only when the repository does: what
 # refused it may have been the viff's (no runner offering a spawn yet, a build behind the
 # charters, an io not registered), and the minute's check of viff/live finds when the tree would
 # install. Each time that check's verdict begins to be `installs` for an entry of viff/live, the
@@ -250,7 +250,7 @@ rules:
     - path: "repo-charters.{{.Repo}}.pull"
       id: .[subject.value.number]
       value: {pr: .[subject.value.number], head: .[subject.value.headSha], tree: ""}
-# THE CHECK, apart from the decision: the git io asks the viff's charter check what an install
+# THE CHECK, apart from the decision: the git io asks the viff instance's charter check what an install
 # of a tree would do (iod reference, the out half of git), and its verdict is written onto the
 # candidate, where the pull requests' `viff/check` statuses are drawn from. The check input
 # carries the commit the tree was seen at (`sha`), so a new commit asks again: a pull request's
@@ -699,9 +699,9 @@ rules:
     - path: "repo-charters.{{.Repo}}.out.github"
       id: install-failed
       value: {closed: true}
-# An install the io refused for good is an issue in the repository, saying what the viff said,
+# An install the io refused for good is an issue in the repository, saying what the viff instance said,
 # and the commit status on main's commit fails. The issue and the status stand until an install
-# succeeds: a fix on main is a new tree, a new candidate and a new question, and a viff that has
+# succeeds: a fix on main is a new tree, a new candidate and a new question, and a viff instance that has
 # moved under the tree is the install asked again (install-again).
 - name: install-failed
   stratum: install
@@ -761,7 +761,7 @@ rules:
       id: main-denied
       value: {closed: true}
 # EVERY MINUTE, viff/live against what is installed: the git io reads the record in its own copy
-# and asks the viff's charter check what installing its tree would change (iod reference, the
+# and asks the viff instance's charter check what installing its tree would change (iod reference, the
 # check of a record). Only once viff/live has stood: before the first install there is nothing
 # to compare.
 - name: live-check
@@ -780,7 +780,7 @@ rules:
       value: {to: "check.{{.InstallAt}}", record: live, round: .[subject.value.due]}
 # A REFUSED INSTALL ASKED AGAIN: each time the minute's check finds that what an entry of
 # viff/live holds would install, where it did not find so before, the install of that tree is
-# asked again, once. What refused it may have been the viff's and not the tree's: no runner
+# asked again, once. What refused it may have been the viff instance's and not the tree's: no runner
 # offering a spawn yet, a build behind the charters, an io not registered. The io says since when
 # the verdict has held at the entry (`verdictSince`), which is the same round after round while it
 # holds and begins again at a new entry, so the install's input changes once each time the verdict

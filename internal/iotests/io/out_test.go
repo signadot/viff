@@ -150,7 +150,7 @@ func TestAnInputIsFoundAtAnyDepth(t *testing.T) {
 	if in.To != "user:ana@example.com" || in.Name != "user:ana@example.com" {
 		t.Errorf("the sink was handed %+v, want whom it is for and what it is called", in)
 	}
-	if want := "demo.out.gate-ask.viff.ask"; !strings.Contains(in.At.String(), want) {
+	if want := "demo.out.gate-ask.mirror.ask"; !strings.Contains(in.At.String(), want) {
 		t.Errorf("at %s, want the address it was written at", in.At)
 	}
 	// And its status stands beside it, at that same depth.
