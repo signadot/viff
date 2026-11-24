@@ -14,7 +14,8 @@ import (
 //
 //	1. the package is locked: nothing of it is launched, and its charter is not changed
 //	2. its tasks are cancelled, each asked until it takes the cancel, and each one's end is
-//	   taken as any end is: its onCancelled runs, its claim comes off, its sequence ends
+//	   taken as any end is: its onCancelled runs, its claim comes off, its sequence ends. A hook
+//	   that would launch is refused whole, its patch too (trigger.Engine.Close)
 //	3. its rules, levels, schedules and records are removed, and its engine
 //	4. the lock comes off
 //

@@ -277,8 +277,8 @@ An install adds and replaces by name, so a rule missing from the directory stays
 `--prune` makes the directory the whole truth under an address:
 
 - A package with no file is uninstalled first, as `verse c -R` uninstalls it: its tasks are
-  cancelled and their hooks run before anything of the directory is installed. The install waits
-  for as long as those tasks take to end.
+  cancelled and their hooks run, except a hook that would start work, before anything of the
+  directory is installed. The install waits for as long as those tasks take to end.
 - Then the directory is installed, and a rule, level or schedule missing from a file is removed.
 - Rules the directory keeps go on running. They are not stopped and started again.
 - Every file must be at or under the address.

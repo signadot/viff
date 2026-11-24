@@ -19,7 +19,8 @@ import (
 // stands at and under the root afterwards is what the request holds, and nothing else.
 //
 // A PACKAGE THE REQUEST DOES NOT HOLD IS UNINSTALLED, FIRST, as `-R` uninstalls it (uninstall.go):
-// locked, its tasks cancelled and their hooks run, then removed. Each is asked about before any
+// locked, its tasks cancelled and their hooks run (those that start nothing: trigger.Engine.Close),
+// then removed. Each is asked about before any
 // is touched (mayUninstall), all are locked at once, under the charter lock, and uninstalled
 // together, and the install begins once every one is gone: nothing of the request is installed
 // beside what it replaces, and nothing is installed meanwhile where it is taking down. An

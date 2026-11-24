@@ -871,7 +871,8 @@ runs: no rule is there to say what its end owes. The package's claims come off o
 record says it ended, and a cancel that does not reach the task is asked again until then.
 Where verse could not read which packages there are, the task and its claim are left as they
 stand. A package [removed](charter.md#a-charter-can-be-installed-at-an-address) while verse is
-up is different: its rules are still there, so its tasks' hooks run.
+up is different: its rules are still there, so its tasks' hooks run, except a hook that would
+start work, which the package's removal refuses whole.
 
 A task on a runner is attached again at a restart, and what its runner says of it ends it. A
 runner that has no such task ends it `failed`, `orphaned: true`, and its `onFailed` runs. So does
