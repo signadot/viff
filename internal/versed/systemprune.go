@@ -91,19 +91,27 @@ func (s *Server) dropSystemCharters(gone []string) {
 }
 
 // dropSystemAddress removes what stands at a system package's address, which is its own only
-// while no package stands at or under it: asked under the charter lock, which an install holds.
+// while no package stands at or under it: asked under the charter lock, which an install holds,
+// and of a listing that was read. A listing that was not read is no answer, and nothing is
+// removed: the address may hold a package's data.
 func (s *Server) dropSystemAddress(ctx context.Context, store entity.Store, at string) error {
 	release, err := s.lockCharter(ctx)
 	if err != nil {
 		return err
 	}
 	defer release()
-	if s.packagesSeenAt(at) || len(s.packagesUnder(at)) > 0 {
-		return nil
-	}
 	segs, err := entity.PathSegs(at)
 	if err != nil {
 		return err
+	}
+	seen, err := s.packagesSeenErr()
+	if err != nil {
+		return fmt.Errorf("which charters stand at and under it could not be read: %w", err)
+	}
+	for _, other := range seen {
+		if o, err := entity.PathSegs(other); err == nil && entity.Under(segs, o, entity.Literal) {
+			return nil // a package stands there, and what is at the address is its own
+		}
 	}
 	_, _, err = store.Write(entity.Write{At: entity.RefAt(segs...).At(), Value: entity.Removed()})
 	return err

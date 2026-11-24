@@ -75,3 +75,23 @@ rules:
 		t.Error("the charter installed beside it was taken down with it")
 	}
 }
+
+// WHAT A DROPPED SYSTEM CHARTER KEPT AT ITS ADDRESS STAYS WHERE THE CHARTERS CANNOT BE LISTED: a
+// listing that was not read says nothing about what is installed there, and a package's data
+// may be under the address.
+func TestADroppedSystemAddressStaysWhereTheChartersCannotBeListed(t *testing.T) {
+	store := &failCharterListing{Store: entitytest.Store(t)}
+	srv := serverWith(t, runnerdtest.Scripted, store)
+	srv.Start(t.Context())
+	kept := entity.RefAt("sys", "thing", "pkg", "data")
+	entitytest.Set(t, srv.Store, kept, entity.Obj{"n": 1}.Payload())
+	store.on.Store(true)
+	err := srv.dropSystemAddress(t.Context(), entity.As(srv.Store, entity.SystemCharter), "sys.thing")
+	store.on.Store(false)
+	if err == nil {
+		t.Fatal("the address was dropped on a listing that was not read")
+	}
+	if _, ok, _ := srv.Store.Get(kept); !ok {
+		t.Fatal("what stood under the address was removed on a listing that was not read")
+	}
+}
