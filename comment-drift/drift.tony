@@ -1,11 +1,11 @@
-# THE VERSE-DEV DRIVE: the charter staging runs.
+# THE VIFF-DEV DRIVE: the charter staging runs.
 #
 # Two halves, six strata and twelve rules, in one directory because they are one program: the
 # REVIEW (this file) reads what has landed since it last looked, against the tree as it stands
 # now, and remembers what it found; and the MERGE GATE (merge.tony) turns what the review's fixes
 # deliver into a proposal somebody decides. Install it whole —
 #
-#     verse charter -a -d .verse/charters/comment-drift
+#     viff charter -a -d .viff/charters/comment-drift
 #
 # — which installs both as one step, and within each the strata first whatever order they
 # appear in, so the ordering is in force before a rule names it.
@@ -47,18 +47,18 @@
 #
 # The cursor needs somewhere to stand, and where it stands is what the first range starts from:
 #
-#     verse data repos.verse.drift.at --put '{sha: <main's tip>, stage: idle}'
+#     viff data repos.viff.drift.at --put '{sha: <main's tip>, stage: idle}'
 #
 # Nothing fires until main moves, so a first install has no backlog whatever the source's window
 # holds — which is the storm answered by construction rather than by a knob.
 #
-# ON A VERSE THAT RAN THE OLDER CHARTER there is one more step, and skipping it loses the ledger:
+# ON A VIFF THAT RAN THE OLDER CHARTER there is one more step, and skipping it loses the ledger:
 # findings written before this were addressed under (rule, subject, key) and the ones written
 # after are addressed by symbol, so the old rows can never be closed by a verdict and would be
 # gathered forever. Copy each open one to its symbol and remove the original:
 #
-#     verse data repos.verse.drift.finding.<symbol> --put '<its payload>'
-#     verse data repos.verse.drift.finding.<old composed id> --rm
+#     viff data repos.viff.drift.finding.<symbol> --put '<its payload>'
+#     viff data repos.viff.drift.finding.<old composed id> --rm
 
 # ── THE REVIEW ──────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@
 # rule in this half has a git entity as its SUBJECT. The tip is read — by a condition, which is
 # what wakes these rules when it moves — and everything acted on belongs to this package. The
 # gate half (merge.tony) still owns one, because a delivered branch is a git ref and that is its subject.
-at: repos.verse.drift
+at: repos.viff.drift
 reads: [git]
 strata:
 # The cursor is one entity: where the review has got to. It BOUNCES — idle → claimed → idle —
@@ -79,7 +79,7 @@ strata:
 - name: cursor
   level: 10
   match:
-    path: "repos.verse.drift.at"
+    path: "repos.viff.drift.at"
 
 # One entity per range, keyed by the commit it covers — its FAR end, and not the near one. The
 # chain is serial, so `to` determines `from` and an id carrying both would be a separator
@@ -88,18 +88,18 @@ strata:
 # payload for whoever wants the span.
 #
 # It is also what gives each review its own TASK ID: a task's id is (rule, subject), so with the cursor as the subject every review would be
-# `review-range@repos.verse.drift.at` — and a spawn on an id that already completed comes back
+# `review-range@repos.viff.drift.at` — and a spawn on an id that already completed comes back
 # instantly carrying the OLD answer, so the range is never looked at and the cursor advances past
 # it (git issue 6j911yhzh12kswgjgsn0, found by watching exactly that happen).
 - name: range
   level: 20
   match:
-    path: "repos.verse.drift.range"
+    path: "repos.viff.drift.range"
 
 - name: ledger
   level: 30
   match:
-    path: "repos.verse.drift.finding"
+    path: "repos.viff.drift.finding"
 rules:
 # 1. THE CLAIM, and it is the whole race.
 #
@@ -110,17 +110,17 @@ rules:
 #
 # `sha: !not .[tip]` is condread.go's own example inverted — fire while the cursor is not
 # standing on the tip — and the read joins this trigger's reads, so main moving is what wakes it.
-# No `on:` clause: an `on` is a formula over the whole verse, and "a git head exists" rises once
+# No `on:` clause: an `on` is a formula over the whole viff instance, and "a git head exists" rises once
 # and then stands, which is a level rather than an edge and never fires again (internal/trigger/edge.go).
 - name: claim
   stratum: cursor
   condition:
     subject:
-      path: "repos.verse.drift.at"
+      path: "repos.viff.drift.at"
       value: !let
         let:
         - tip: !get-path
-            at: "git.verse.head"
+            at: "git.viff.head"
             path: sha
         in:
           stage: idle
@@ -129,19 +129,19 @@ rules:
     patch:
       stage: claimed
       covering: !get-path
-        at: "git.verse.head"
+        at: "git.viff.head"
         path: sha
 # 2. …and the range it claimed becomes an entity, so the review has a subject of its own.
 - name: open-range
   stratum: cursor
   condition:
     subject:
-      path: "repos.verse.drift.at"
+      path: "repos.viff.drift.at"
       value:
         stage: claimed
   action:
     derive:
-    - path: "repos.verse.drift.range"
+    - path: "repos.viff.drift.range"
       id: .[subject.value.covering]
       value:
         from: .[subject.value.sha]
@@ -171,13 +171,13 @@ rules:
   stratum: range
   condition:
     subject:
-      path: "repos.verse.drift.range.*"
+      path: "repos.viff.drift.range.*"
       value: !not.has-path stage
   action:
     patch:
       stage: gathered
       outstanding: !list-paths
-        at: "repos.verse.drift.finding.*"
+        at: "repos.viff.drift.finding.*"
         value:
           status: open
 # 4. …and the range is reviewed, once, against what is already known.
@@ -189,23 +189,23 @@ rules:
   stratum: range
   condition:
     subject:
-      path: "repos.verse.drift.range.*"
+      path: "repos.viff.drift.range.*"
       value:
         stage: gathered
   action:
     spawn:
       # The repository, and what this task may push to it: ONLY a proposal branch of its own,
-      # `verse/auto/<task>`, so the deliverable is a diff rather than prose about a diff, and
+      # `viff/auto/<task>`, so the deliverable is a diff rather than prose about a diff, and
       # `main` is deliberately refused. A fixing task's work is a PROPOSAL — that is the whole
       # shape of the deliverable — and somewhere with a consequence is merge.tony's spawn, which
       # exists so that reaching it is a different charter rather than a rule somebody remembers.
       # The agent commits and pushes itself; a run that changed nothing pushes nothing and leaves
       # no branch. "Its own" is two rows, on facts the runner fills: a branch not at the forge
-      # (`exists`), and one whose tip this task made (`own`). Another task's `verse/auto/*` is
+      # (`exists`), and one whose tip this task made (`own`). Another task's `viff/auto/*` is
       # neither, so a fast-forward onto it is refused with the rest.
       autonomy:
-      - {match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*", exists: false, force: false, delete: false}, then: allow}
-      - {match: {system: git, verb: push, ref: !glob "refs/heads/verse/auto/*", own: true, force: false, delete: false}, then: allow}
+      - {match: {system: git, verb: push, ref: !glob "refs/heads/viff/auto/*", exists: false, force: false, delete: false}, then: allow}
+      - {match: {system: git, verb: push, ref: !glob "refs/heads/viff/auto/*", own: true, force: false, delete: false}, then: allow}
       - {match: {system: git, verb: push}, then: deny}
       - {match: {system: git, verb: fetch}, then: allow}
       - {match: {system: files}, then: allow}
@@ -213,17 +213,17 @@ rules:
       - {match: {system: agent}, then: allow}
       - {match: {system: question}, then: allow}
       - {then: allow}
-      agent: {name: verse}
+      agent: {name: viff}
       environment:
         systems:
           network: {mode: open}
           git:
-          - repo: signadot/verse
+          - repo: signadot/viff
             from: main
             fetch: {}
             push:
-            - {ref: !glob "refs/heads/verse/auto/*", exists: false, force: false, delete: false}
-            - {ref: !glob "refs/heads/verse/auto/*", own: true, force: false, delete: false}
+            - {ref: !glob "refs/heads/viff/auto/*", exists: false, force: false, delete: false}
+            - {ref: !glob "refs/heads/viff/auto/*", own: true, force: false, delete: false}
           files: {}
           commands: {}
           agent: {}
@@ -237,7 +237,7 @@ rules:
         files: !irtype 0
         findings: !irtype []
       prompt: |
-        The verse repository is checked out at ./verse with its full history, at $[to].
+        The viff repository is checked out at ./viff with its full history, at $[to].
 
         Review the RANGE $[from]..$[to] — everything that has landed since the last review — and
         answer with `at: $[to]`. The range is what you review; $[to] is the commit the tree stands
@@ -260,11 +260,11 @@ rules:
 
         WHAT CHANGED. The Go files the range touched:
 
-            git -C verse diff --name-only $[from]..$[to] -- '*.go'
+            git -C viff diff --name-only $[from]..$[to] -- '*.go'
 
         For each of those files, read what changed in it:
 
-            git -C verse diff $[from]..$[to] -- <path>
+            git -C viff diff $[from]..$[to] -- <path>
 
         and judge the comments on the declarations that changed, plus any comment the change
         made wrong elsewhere in the same file. A comment is STALE when it DISAGREES with the
@@ -345,7 +345,7 @@ rules:
             }
     onDone:
       derive:
-      - path: "repos.verse.drift.finding"
+      - path: "repos.viff.drift.finding"
         value: !each
           over: .[data.findings]
           id: .[item.symbol]
@@ -375,17 +375,17 @@ rules:
 # address cannot be read from a condition — a condition read may not name the subject, since the
 # subject is what it selects — so this asks whether what we claimed is among the shas that have
 # been reviewed. A failed review leaves `status: failed`, so it is not in that set: the chain
-# stops where it broke, visibly, and `verse data repos.verse.drift.at --put '{stage: idle}'` is the
+# stops where it broke, visibly, and `viff data repos.viff.drift.at --put '{stage: idle}'` is the
 # retry, which by then covers everything since.
 - name: advance
   stratum: cursor
   condition:
     subject:
-      path: "repos.verse.drift.at"
+      path: "repos.viff.drift.at"
       value: !let
         let:
         - done: !list-paths
-            at: "repos.verse.drift.range.*"
+            at: "repos.viff.drift.range.*"
             value:
               status: done
             path: to

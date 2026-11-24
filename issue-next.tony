@@ -1,21 +1,21 @@
-# ISSUE-NEXT: every three hours, every open issue in verse's tracker carries a proposal for its
+# ISSUE-NEXT: every three hours, every open issue in viff's tracker carries a proposal for its
 # next step.
 #
-# A _proposal_ is one entity per issue, `repos.verse.git-issue.next-proposal.<id>`. It says who acts
+# A _proposal_ is one entity per issue, `repos.viff.git-issue.next-proposal.<id>`. It says who acts
 # next and what they do, as the label the issue should carry:
 #
-#     verse-next=<who>:<step>
-#         who   verse | world
+#     viff-next=<who>:<step>
+#         who   viff | world
 #         step  analyze | design | plan | build | push-build | report-build
 #
-# `verse` means verse proposes to take the step itself; `world` means it waits on somebody else.
+# `viff` means viff proposes to take the step itself; `world` means it waits on somebody else.
 #
 # THIS IS THE STUB. It writes the proposal and its label and nothing more: every issue it has
-# not seen before is proposed `verse:analyze`, and no task runs, so it costs no tokens. Two
+# not seen before is proposed `viff:analyze`, and no task runs, so it costs no tokens. Two
 # things come after it, and both read what this writes:
 #
 #   - the git-issue io's out half, which puts the proposal's label on the issue;
-#   - the processing task, one verse-runner checkout per sweep, which takes each issue that
+#   - the processing task, one viff-runner checkout per sweep, which takes each issue that
 #     changed to its proposed step and writes the step after it.
 #
 # ── A SWEEP, NOT A REACTION ──────────────────────────────────────────────────────────────
@@ -25,12 +25,12 @@
 # costs nothing until the next tick, installing over a backlog costs one sweep, and the work a
 # tick causes is bounded by the open issues rather than by the activity on them.
 #
-#     verse schedule tick sweep --at repos.verse.git-issue --due <instant>     # a sweep now
+#     viff schedule tick sweep --at repos.viff.git-issue --due <instant>     # a sweep now
 #
-# The sweep record (`repos.verse.git-issue.sweep`) is what carries the open set from the tick to
+# The sweep record (`repos.viff.git-issue.sweep`) is what carries the open set from the tick to
 # the fan-out: a fan-out walks a list a reference names, and a path read is not a reference.
-at: repos.verse.git-issue
-reads: [git-issue, verse.schedule]
+at: repos.viff.git-issue
+reads: [git-issue, mirror.schedule]
 schedules:
 - name: sweep
   every: 3h
@@ -45,15 +45,15 @@ strata:
 - name: ticks
   level: 5
   match:
-    path: 'verse.schedule."repos.verse.git-issue:sweep".tick'
+    path: 'mirror.schedule."repos.viff.git-issue:sweep".tick'
 - name: sweep
   level: 10
   match:
-    path: "repos.verse.git-issue.sweep"
+    path: "repos.viff.git-issue.sweep"
 - name: proposals
   level: 20
   match:
-    path: "repos.verse.git-issue.next-proposal"
+    path: "repos.viff.git-issue.next-proposal"
 rules:
 # 1. At each tick, the open issues are listed onto the sweep record.
 #
@@ -64,15 +64,15 @@ rules:
   stratum: ticks
   condition:
     subject:
-      path: 'verse.schedule."repos.verse.git-issue:sweep".tick.*'
+      path: 'mirror.schedule."repos.viff.git-issue:sweep".tick.*'
   action:
     derive:
-    - path: "repos.verse.git-issue"
+    - path: "repos.viff.git-issue"
       id: sweep
       value:
         due: .[subject.value.due]
         open: !list-paths
-          at: "git-issue.verse.issue.*"
+          at: "git-issue.viff.issue.*"
           value:
             status: open
           path: id
@@ -89,22 +89,22 @@ rules:
   stratum: sweep
   condition:
     subject:
-      path: "repos.verse.git-issue.sweep"
+      path: "repos.viff.git-issue.sweep"
   action:
     derive:
-    - path: "repos.verse.git-issue.next-proposal"
+    - path: "repos.viff.git-issue.next-proposal"
       value: !each
         over: .[subject.value.open]
         id: .[item]
         value:
           issue: .[item]
           title: !get-path
-            at: [git-issue, verse, issue, .[item]]
+            at: [git-issue, viff, issue, .[item]]
             path: title
           updatedAt: !get-path
-            at: [git-issue, verse, issue, .[item]]
+            at: [git-issue, viff, issue, .[item]]
             path: updatedAt
-# 3. A proposal record with no proposal gets the stub: verse analyzes it next.
+# 3. A proposal record with no proposal gets the stub: viff analyzes it next.
 #
 # A separate rule, latched on the absence of `next`, so that the derive above never writes over
 # a proposal. Whatever writes the next one, the processing task or a person, owns `next` and
@@ -113,9 +113,9 @@ rules:
   stratum: proposals
   condition:
     subject:
-      path: "repos.verse.git-issue.next-proposal.*"
+      path: "repos.viff.git-issue.next-proposal.*"
       value: !not.has-path next
   action:
     patch:
-      next: "verse:analyze"
-      label: "verse-next=verse:analyze"
+      next: "viff:analyze"
+      label: "viff-next=viff:analyze"

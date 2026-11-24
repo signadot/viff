@@ -9,14 +9,14 @@ Five entities carry the whole flow, and each field that changes is written by ex
 
 | entity | what it holds |
 |---|---|
-| `repos.verse.drift.at` | the cursor — where the review has got to, and what it has claimed |
-| `repos.verse.drift.range.<to>` | one review, of `from..to`: its standing set, its report, its state. Addressed by its FAR end — see below |
-| `repos.verse.drift.finding.<symbol>` | the ledger — one row per symbol, open or resolved |
-| `repos.verse.merge.proposal.*` | a delivered branch, the base it was cut from, and what became of it |
-| `repos.verse.merge.train.<tip>` | the batch somebody is asked about, one per tip of main |
+| `repos.viff.drift.at` | the cursor — where the review has got to, and what it has claimed |
+| `repos.viff.drift.range.<to>` | one review, of `from..to`: its standing set, its report, its state. Addressed by its FAR end — see below |
+| `repos.viff.drift.finding.<symbol>` | the ledger — one row per symbol, open or resolved |
+| `repos.viff.merge.proposal.*` | a delivered branch, the base it was cut from, and what became of it |
+| `repos.viff.merge.train.<tip>` | the batch somebody is asked about, one per tip of main |
 
 The first three belong to the review half and the last two to the merge gate, which are separate
-packages: the review may not read `repos.verse.merge.*` at all, and that is what keeps the graph between them
+packages: the review may not read `repos.viff.merge.*` at all, and that is what keeps the graph between them
 a chain rather than a loop.
 
 That is the property worth holding on to while reading: **a state is a fact somebody wrote**, so
@@ -50,7 +50,7 @@ sequenceDiagram
     participant git as the repo
     participant cur as the cursor
     participant rng as the range
-    participant run as the verse runner
+    participant run as the viff runner
     participant led as the ledger
 
     git->>cur: a new tip is reflected
@@ -65,7 +65,7 @@ sequenceDiagram
     rng->>cur: advance steps the cursor on
 ```
 
-1. The git source polls and writes `git.verse.head`. `claim` reads that address in its CONDITION,
+1. The git source polls and writes `git.viff.head`. `claim` reads that address in its CONDITION,
    so the write re-evaluates it — no `on:` clause anywhere.
 2. `claim` patches the cursor: `stage: claimed`, and `covering` = the tip **read at this moment**.
    That single read is the race: everything downstream is about the commit named here.
@@ -78,8 +78,8 @@ sequenceDiagram
    the next rule fire, and the reason gathering and spawning are two rules rather than one: a
    spawn's strings bind against the payload that FIRED it, so one action doing both would hand
    the task the payload from before its own write.
-6. `review-range` spawns the llm task on the verse runner, the range's two ends in its prompt.
-7. The runner delivers `verse/auto/<sha>/<task>` at the END of the task, and only if the working
+6. `review-range` spawns the llm task on the viff runner, the range's two ends in its prompt.
+7. The runner delivers `viff/auto/<sha>/<task>` at the END of the task, and only if the working
    tree changed. A review that found nothing leaves no branch.
 8. The answer comes back: `onDone` writes `report`, `status: done`, `stage: reviewed`.
 9. The same hook writes the ledger through `!each` with `id: .[item.symbol]`, so a verdict lands ON
@@ -113,8 +113,8 @@ sequenceDiagram
 13. `train-run` opens the gate: one motion per tip, `!until [!quorum 1, !deadline "24h"]`.
     That spelling is dead: `!until`, `!quorum` and `!deadline` are refused by name at the root
     of a gate now, and a gate carries `mode: ask` with `deadline: {within, default}`.
-14. The question is put to #verse-dev, one message there (its `slack` label), and anyone whose
-    Slack account is a verse user answers it in that message's thread, or with `verse question
+14. The question is put to #viff-dev, one message there (its `slack` label), and anyone whose
+    Slack account is a viff user answers it in that message's thread, or with `viff question
     approve <id>`. A deny, or the deadline, writes `decided` without landing anything.
 15. The landing task rebases each car onto the tip and fast-forwards it in, then pushes main. The
     rebase is what makes a batch of siblings land as a batch rather than as its first car.
@@ -133,7 +133,7 @@ not.
 
 ## The cursor: where the review has got to
 
-One entity, `repos.verse.drift.at`, and it bounces. A patch is what moves it, because a derive's
+One entity, `repos.viff.drift.at`, and it bounces. A patch is what moves it, because a derive's
 address is a function of (rule, subject) and its content may not carry state — a single slot
 everybody overwrites is precisely what that rule forbids.
 
@@ -159,18 +159,18 @@ Standing still, it is two fields — and the absence of `covering` is what says 
 flight:
 
 ```tony
-# verse data repos verse drift at
+# viff data repos viff drift at
 sha: 07c4d164220836aec5c04afd0cb53a39067f90e4
 stage: idle
 ```
 
 `advance` asks whether `covering` is among the shas of ranges that are `done`, so a failed review
-is not in that set and the cursor stops where it broke. `verse data repos verse drift at --put
+is not in that set and the cursor stops where it broke. `viff data repos viff drift at --put
 '{stage: idle}'` is the retry, and by then the range covers everything since.
 
 ## The range: one review, with a subject of its own
 
-`repos.verse.drift.range.<to>`, derived by `open-range`. It exists so the review has an entity to
+`repos.viff.drift.range.<to>`, derived by `open-range`. It exists so the review has an entity to
 be about — a task's id is (rule, subject), and with the cursor as the subject every review would
 share one id.
 
@@ -203,7 +203,7 @@ stateDiagram-v2
 A range that has been through, on a push carrying no Go at all — `files: 0` is a real answer:
 
 ```tony
-# verse data repos verse drift range
+# viff data repos viff drift range
 07c4d164220836aec5c04afd0cb53a39067f90e4:
   from: 643602e878685ad1fc4c2c2c799b2b13cd36dd8f
   outstanding: []
@@ -213,14 +213,14 @@ A range that has been through, on a push carrying no Go at all — `files: 0` is
   stage: reviewed
   status: done
   to: 07c4d164220836aec5c04afd0cb53a39067f90e4
-  verse:
+  @sys:
     meta:
       derivedFrom:
         rule: open-range
-        subject: repos.verse.drift.at
+        subject: repos.viff.drift.at
 ```
 
-`verse.meta.derivedFrom` is the engine's, on every derived entity: it names the rule that wrote
+`@sys.meta.derivedFrom` is the engine's, on every derived entity: it names the rule that wrote
 the address and the subject it was about, which is how a reader gets from an entity back to the
 charter without guessing.
 
@@ -230,7 +230,7 @@ from before its own write.
 
 ## The finding: a claim about main, keyed by symbol
 
-`repos.verse.drift.finding.<symbol>`, written by the review's `onDone` through `!each` with `id:`.
+`repos.viff.drift.finding.<symbol>`, written by the review's `onDone` through `!each` with `id:`.
 The address is the symbol alone, so a later verdict lands **on** the row rather than beside it.
 
 ```mermaid
@@ -250,22 +250,22 @@ One row, after the fix landed and the review that followed confirmed it — `at`
 confirmed, `proposedAt` where the fix was proposed:
 
 ```tony
-# verse data repos verse drift finding entity.JoinSegs
+# viff data repos viff drift finding entity.JoinSegs
 at: 643602e878685ad1fc4c2c2c799b2b13cd36dd8f
 proposedAt: fc3175a731930673cbc03065f2359e92614133a5
 says: "the comment claims JoinSegs joins segments with a `/` and drops any that are empty, but the code joins with `.` and does not skip empty segments"
 status: resolved
 symbol: entity.JoinSegs
-verse:
+@sys:
   meta:
     derivedFrom:
       rule: review-range.onDone
-      subject: repos.verse.drift.range.643602e878685ad1fc4c2c2c799b2b13cd36dd8f
+      subject: repos.viff.drift.range.643602e878685ad1fc4c2c2c799b2b13cd36dd8f
 ```
 
-Read as STEPS — `verse data repos verse drift finding entity.JoinSegs` — the id needs no quoting
+Read as STEPS — `viff data repos viff drift finding entity.JoinSegs` — the id needs no quoting
 at all, because a segment handed over as its own word is never re-split. As one token the same
-address is `'repos.verse.drift.finding."entity.JoinSegs"'`, quotes and all, since a Go symbol
+address is `'repos.viff.drift.finding."entity.JoinSegs"'`, quotes and all, since a Go symbol
 carries dots and a kinded path would otherwise read them as delimiters. Both name the entity;
 the steps form is the one a person can type.
 
@@ -276,7 +276,7 @@ ledger rather than lost with the branch.
 
 ## The proposal and the train: what a person answers
 
-A delivered branch becomes `repos.verse.merge.proposal.*`; the batch is `repos.verse.merge.train.<tip>`,
+A delivered branch becomes `repos.viff.merge.proposal.*`; the batch is `repos.viff.merge.train.<tip>`,
 one per tip so a new main is a new question.
 
 ```mermaid
@@ -302,19 +302,19 @@ as `says` so the docket can ask a real question, and is `stale` now because main
 base it was cut from:
 
 ```tony
-# verse data repos verse merge proposal
-"verse/auto/fc3175a7/review-range_…-962ad9e6":
+# viff data repos viff merge proposal
+"viff/auto/fc3175a7/review-range_…-962ad9e6":
   base: fc3175a731930673cbc03065f2359e92614133a5
-  branch: verse/auto/fc3175a7/review-range_…-962ad9e6
-  repo: verse
+  branch: viff/auto/fc3175a7/review-range_…-962ad9e6
+  repo: viff
   says: {files: 1, findings: [{symbol: entity.JoinSegs, status: open, …}]}
   sha: 610e3325e67393617fdb9596664f773e317a9634
   state: stale
 
-# verse data repos verse merge train
+# viff data repos viff merge train
 fc3175a731930673cbc03065f2359e92614133a5:
   branches:
-  - verse/auto/fc3175a7/review-range_…-962ad9e6
+  - viff/auto/fc3175a7/review-range_…-962ad9e6
   decided: landed
   says: {files: 1, findings: [{symbol: entity.JoinSegs, status: open, …}]}
   sha: fc3175a731930673cbc03065f2359e92614133a5
@@ -349,7 +349,7 @@ field" is unsayable in a plain condition. `!let` binds a read and substitutes it
 ```tony
 value: !let
   let:
-  - tip: !get-path {at: "git.verse.head", path: sha}
+  - tip: !get-path {at: "git.viff.head", path: sha}
   in:
     stage: idle
     sha: !not .[tip]
@@ -388,7 +388,7 @@ something to say about one symbol. `id:` makes the address the place plus the va
 
 ```tony
 derive:
-- path: [repos, verse, drift, finding]
+- path: [repos, viff, drift, finding]
   value: !each
     over: .[data.findings]
     id: .[item.symbol]          # `key:` here would be one row per (review, symbol)
@@ -426,7 +426,7 @@ fixed it reads the reviewed shas in the condition and asks whether this tip is a
 
 ### Absence is `!not.has-path`, never a null
 
-`!not {reviewed: null}` is the documented spelling of "no such field" and verse cannot store one:
+`!not {reviewed: null}` is the documented spelling of "no such field" and viff cannot store one:
 absence is written as a bare null and every bare null is hidden on read, so the durable rule comes
 back as `!not {}` and selects nothing. A charter written that way works until the first restart
 and then silently stops.
@@ -435,10 +435,10 @@ and then silently stops.
 selects on an absence, across a restart — because the failure is invisible until the process comes
 back.
 
-### `on:` is a formula over the verse, not an edge on an entity
+### `on:` is a formula over the viff instance, not an edge on an entity
 
-`on:` is evaluated over the whole verse and fires on the EDGE — false at the previous commit, true
-at this one. So `on: {path: "git.verse.commit.*"}` means "a git commit exists", which rises once,
+`on:` is evaluated over the whole viff instance and fires on the EDGE — false at the previous commit, true
+at this one. So `on: {path: "git.viff.commit.*"}` means "a git commit exists", which rises once,
 the first time one ever does, and then stands forever. It is a level, not an edge, and the rule
 never fires again.
 
@@ -447,7 +447,7 @@ own subject changing or a condition read, and both are edges by construction.
 
 ## Where this is not the whole truth
 
-- The landing task iterates the `verse/auto/*` refs it finds in the clone rather than the
+- The landing task iterates the `viff/auto/*` refs it finds in the clone rather than the
   branches the train listed, so the set a person approves and the set that lands are not the same
   set (`a6c8pxh7h12ksbhtgsn0`). The diagram draws the intent; the issue holds the gap.
 - `stage: failed` on a range has no arrow out of it, and that is honest rather than an omission:
