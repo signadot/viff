@@ -50,8 +50,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 go build -o "$BIN" ./cmd/viff || die "go build ./cmd/viff failed"
+# `viff up` starts a runnerd beside itself, and a build from a checkout is no release it could
+# install one of, so the runner and the tool it gives its tasks are built beside the CLI.
+go build -o "$tmp" ./cmd/runnerd ./cmd/viff-call-tool || die "go build runnerd failed"
 go build -o "$tmp/o" github.com/signadot/tony-format/go-tony/cmd/o || die "go build o failed"
-ok "built viff + o"
+ok "built viff + runnerd + o"
 
 # ── the listen address: an ephemeral port, from the kernel ───────────────────
 # Reserve-and-release, the same trick cmd/viff/docd.go plays for the daemons: bind :0, read
@@ -430,7 +433,8 @@ for _ in $(seq 1 100); do
 	sleep 0.2
 done
 [ -n "$QID" ] || die "the threshold gate never reached the docket"
-has "$(v question --all)" 'demo.motion."1"' || die "the docket does not say what is being decided"
+# Read as tony, as the id above is: yaml escapes the quotes of the address (demo.motion.\"1\").
+has "$(v question --all -o tony)" 'demo.motion."1"' || die "the docket does not say what is being decided"
 ok "the question is on the docket as $QID, about demo.motion.1"
 out=$(v question y "$QID" --as user:alice) || die "the first ballot was refused"
 has "$out" "1 of 2" || die "the answerer was not told where the tally stands: $out"
@@ -779,7 +783,7 @@ dref=$(v data --paths --depth 4 smokesd feature | tail -1)
 # shellcheck disable=SC2086
 haskv "$(v data $dref)" priority urgent || die "the derived entity lost its literal content"
 # shellcheck disable=SC2086
-has "$(v data $dref)" 'smokegh.issue."1"' || die "unquoted steps did not reach the same entity"
+has "$(v data $dref -o tony)" 'smokegh.issue."1"' || die "unquoted steps did not reach the same entity"
 ok "the address carries its provenance: $dref"
 
 # And the level above acted on it, which is the whole point of the ordering.
