@@ -1,0 +1,15 @@
+# What viff.dev serves: the mkdocs site built from docs/ (mkdocs.yml says which pages).
+#
+# The go-import page at go.viff.dev is a second Netlify site on this repository, and this file
+# is not its config: that site's base directory is deploy/go-import, where Netlify looks for a
+# netlify.toml and finds none, so it publishes the directory as it stands.
+[build]
+  command = "pip install -r docs/requirements.txt && mkdocs build --strict"
+  publish = "site"
+  # Most commits touch no page. A build runs only when something the site is made from changed;
+  # the hooks are scripts/mkdocs_*.py, and the theme and its pins are under docs/.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- docs/ mkdocs.yml scripts/mkdocs_repo_links.py scripts/mkdocs_heading_links.py netlify.toml"
+
+[build.environment]
+  # docs/requirements.txt pins every package but the interpreter; this pins that.
+  PYTHON_VERSION = "3.13"

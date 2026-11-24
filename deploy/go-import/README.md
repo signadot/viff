@@ -7,8 +7,10 @@ What `go.viff.dev` serves: the page that tells the go command where the module
 - `_redirects` (Netlify's) answers every path under `/viff/` with that page, since the go
   command asks at the path of whichever package it is resolving.
 
-To publish: a Netlify site whose publish directory is this one, with `go.viff.dev` as a custom
-domain, and a CNAME `go` at the domain's DNS pointing at the site's `<name>.netlify.app`.
+To publish: a Netlify site whose base directory is this one, with no build command and
+`go.viff.dev` as a custom domain. The base directory is what keeps the repository's root
+`netlify.toml`, the docs site's, from applying here. Then a CNAME `go` at the domain's DNS
+pointing at the site's `<name>.netlify.app`.
 
 To check:
 
