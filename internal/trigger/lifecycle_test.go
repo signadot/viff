@@ -73,7 +73,7 @@ func TestReaperIsAnOrdinaryTrigger(t *testing.T) {
 	if err := eng.AddTrigger(Trigger{
 		Name: "reap",
 		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"),
-			"value": map[string]any{"viff": map[string]any{"meta": map[string]any{"vanishing": nil}}}}},
+			"value": map[string]any{"@sys": map[string]any{"meta": map[string]any{"vanishing": nil}}}}},
 		Action: Action{Patch: entity.Removed()}, // `!delete null` at the root removes the entity
 	}); err != nil {
 		t.Fatalf("AddTrigger: %v", err)
@@ -114,7 +114,7 @@ func TestVanishingIsARisingEdge(t *testing.T) {
 		Name: "note-departures",
 		Condition: Condition{
 			On: MatchWhen(Match{"path": pathOf("demo", "pr", "*"),
-				"value": map[string]any{"viff": map[string]any{"meta": map[string]any{"vanishing": nil}}}}),
+				"value": map[string]any{"@sys": map[string]any{"meta": map[string]any{"vanishing": nil}}}}),
 			Subject: mm(audit.String()),
 		},
 		Action: Action{Patch: entity.Obj{"saw": "a departure"}.Payload()},
@@ -178,7 +178,7 @@ func TestARuleCannotResurrectWhatIsLeaving(t *testing.T) {
 		Name: "farewell",
 		Condition: Condition{
 			On: MatchWhen(Match{"path": pathOf("demo", "pr", "*"),
-				"value": map[string]any{"viff": map[string]any{"meta": map[string]any{"vanishing": nil}}}}),
+				"value": map[string]any{"@sys": map[string]any{"meta": map[string]any{"vanishing": nil}}}}),
 			Subject: mm(ref.String()), // named — and leaving
 		},
 		Action: Action{Patch: entity.Obj{"farewell": "noted"}.Payload()},

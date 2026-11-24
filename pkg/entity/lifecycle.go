@@ -9,7 +9,7 @@ import (
 // The reserved payload namespace: everything viff itself records about an entity, kept out
 // of the author's own document under ONE key.
 //
-//	viff:
+//	@sys:
 //	  charter:               what the engine records about rules acting on this entity
 //	    review:              …by trigger name
 //	      step:  2
@@ -23,14 +23,16 @@ import (
 // them collide: a trigger NAMED `vanishing` would have written its progress exactly where the
 // lifecycle marker lives.
 //
-// The name is plain `viff`, and that is not settled. A sigil would say "reserved" at a glance
-// and free the word for authors; `@viff`, `~viff` and `$viff` all parse unquoted, address
-// through kpath, and round-trip through the yaml renderer. `.viff` does NOT and is the one to
-// avoid: kpath parses `.@sys.meta.vanishing` back as `@sys.meta.vanishing`, silently dropping
-// the sigil rather than refusing it.
+// The name is `@sys`: a sigil says "reserved" at a glance and leaves every plain word to the
+// author, and it does not carry the product's name, so renaming the product touches no stored
+// payload. `@sys` parses unquoted as a key, addresses through kpath, round-trips through the
+// yaml renderer, and is a plain word to a shell, so it can be typed as a step on the command
+// line. `~sys` is not: a shell reads it as a user's home directory. A leading dot is the other
+// one to avoid: kpath parses `.x.meta.vanishing` back as `x.meta.vanishing`, silently dropping
+// the dot rather than refusing it.
 const (
 	// ReservedRoot is the one payload key that is not the author's.
-	ReservedRoot = "viff"
+	ReservedRoot = "@sys"
 	// CharterKey holds per-trigger bookkeeping, keyed by trigger name.
 	CharterKey = "charter"
 	// MetaKey holds what viff records about the entity itself.
@@ -43,7 +45,7 @@ const (
 // It exists so that a DISAPPEARANCE can be observed the way an appearance is. A trigger's cause
 // is the rising edge of a store predicate — "something matching this now exists" — and there is
 // no way to say the negative: a match asks what is there. Writing the intent down first turns
-// the negative into a positive, so `on: {…, value: {viff: {meta: {vanishing: null}}}}` is an
+// the negative into a positive, so `on: {…, value: {@sys: {meta: {vanishing: null}}}}` is an
 // ordinary predicate rising, and the model stays existence-positive throughout.
 //
 // The actual removal is then INERT, correctly: when the entity finally goes, a predicate over

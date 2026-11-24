@@ -989,7 +989,7 @@ its position. Without it, the breadth axis could not observe the depth axis at a
 writes the position on the subject, under one reserved `viff` root, as each element completes:
 
 ```tony
-viff:
+@sys:
   charter:             # what the engine records about rules acting on this record
     review:            # keyed by trigger
       step:  2         # how many elements have completed
@@ -1046,7 +1046,7 @@ to ask a person when `fix`'s hook was lost:
 subject:
   path: "demo.pr.*"
   value:
-    viff:
+    @sys:
       charter:
         fix: { hook: { chain: fix.onDone } }
 ```
@@ -1057,7 +1057,7 @@ A join reads the position at whatever depth it needs:
 subject:
   path: "demo.pr.*"
   value:
-    viff:
+    @sys:
       charter:
         review: { done: true }
 ```

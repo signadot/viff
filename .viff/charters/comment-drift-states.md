@@ -213,7 +213,7 @@ A range that has been through, on a push carrying no Go at all — `files: 0` is
   stage: reviewed
   status: done
   to: 07c4d164220836aec5c04afd0cb53a39067f90e4
-  viff:
+  @sys:
     meta:
       derivedFrom:
         rule: open-range
@@ -256,7 +256,7 @@ proposedAt: fc3175a731930673cbc03065f2359e92614133a5
 says: "the comment claims JoinSegs joins segments with a `/` and drops any that are empty, but the code joins with `.` and does not skip empty segments"
 status: resolved
 symbol: entity.JoinSegs
-viff:
+@sys:
   meta:
     derivedFrom:
       rule: review-range.onDone

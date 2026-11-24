@@ -26,7 +26,7 @@ import (
 // Everything lands under the reserved root on the subject, in its charter half, keyed by
 // trigger:
 //
-//	viff:
+//	@sys:
 //	  charter:
 //	    review:
 //	      step:  2         elements completed

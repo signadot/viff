@@ -1,4 +1,18 @@
 // Builds the Viff "Halo V" logo files from the same geometry as the canvas artboard.
+//
+// To regenerate docs/images (nothing it needs is in the repository):
+//   npm install playwright opentype.js@1.3.4 && npx playwright install chromium
+//     (opentype.js 2 dropped loadSync, which this uses)
+//   mkdir scripts/fontdl, and save Space Grotesk at weight 600 there as SpaceGrotesk-600.ttf: the
+//     `src: url(...)` of https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600 fetched
+//     with a client that takes truetype (curl does)
+//   node scripts/build-logo.js docs/images, then delete docs/images/favicon-48.png
+// The PNG renders fetch the same fonts from fonts.googleapis.com.
+//
+// ONE FILE IS NOT THIS SCRIPT'S OUTPUT AS IT STANDS: viff-logo-navbar.svg carries three gradients
+// (ls-l, ls-r, ls-ring) tuned by hand for the navbar's blue. After a regeneration, put those
+// three <linearGradient> elements back from the committed file; everything else in it, the
+// wordmark included, is what this script writes.
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');

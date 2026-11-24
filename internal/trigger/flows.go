@@ -427,7 +427,7 @@ const hookTrouble = "hook"
 // recordHookTrouble writes a completion hook's failure onto the SUBJECT, under the rule's own
 // bookkeeping:
 //
-//	viff:
+//	@sys:
 //	  charter:
 //	    fix:
 //	      hook: {chain: fix.onDone, task: fix@…, occurrence: 4480, err: "…"}

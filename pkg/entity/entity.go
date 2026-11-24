@@ -67,7 +67,7 @@ const Sep = sep
 // beside them holding the machinery — and a WRITER can be refused: the entity routes turn away
 // a write under this segment (viffd.reservedWrite), where before, anyone who could reach the
 // store could write a rule, a task record or somebody else's answer.
-const ViffRoot = "viff"
+const ViffRoot = "mirror"
 
 // RefAt builds the ref standing at these segments, at whatever depth there are.
 //

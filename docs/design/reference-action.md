@@ -80,18 +80,19 @@ because rule names use `-` too, and a `-` join could not be decoded back.
 
 The progress facts use one reserved name, not a family. Flat keys for each rule, like
 `review.step`, would reserve an open set of names out of a payload that is the author's own
-document. A single `viff` root reserves one name, and documents it once, as `flow` is one
+document. A single `@sys` root reserves one name, and documents it once, as `flow` is one
 reserved key on task entities. Nested predicates keep it readable.
 
 The two halves under it are separate because they grow differently. `charter` gains a key for
 each rule. `meta` gains a field for each concern of the lifecycle. Flat, they would collide: a
 rule *named* `vanishing` would write its progress exactly where the marker of the lifecycle goes.
 
-The name is plain `viff`, and that is not settled. A sigil would say "reserved" at a glance, and
-give the word back to authors. `@viff`, `~viff` and `$viff` all parse unquoted, address through
-kpath, and round-trip through the yaml renderer. `.viff` does not, and is the one to avoid:
-kpath reads `.@sys.meta.vanishing` back as `@sys.meta.vanishing`, and drops the sigil without a
-word instead of refusing it.
+The name is `@sys`. The sigil says "reserved" at a glance and leaves every plain word to authors,
+and the name does not carry the product's, so renaming the product touches no stored payload.
+`@sys` parses unquoted as a key, addresses through kpath, round-trips through the yaml renderer,
+and is a plain word to a shell. `~sys` is not, since a shell reads it as a user's home directory.
+A leading dot is the other one to avoid: kpath reads `.x.meta.vanishing` back as
+`x.meta.vanishing`, and drops the dot without a word instead of refusing it.
 
 ## `done` and `ended` are published
 

@@ -293,7 +293,7 @@ an ordinary rising edge:
     on:
       path: "demo.pr.*"
       value:
-        viff:
+        @sys:
           meta:
             vanishing: null
     subject: audit.record.latest
@@ -342,7 +342,7 @@ removes it. `!delete null` is the removal, at the root as at a field:
     subject:
       path: "demo.pr.*"
       value:
-        viff:
+        @sys:
           meta:
             vanishing: null
   action:

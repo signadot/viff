@@ -160,7 +160,7 @@ the firing's to write beside its spawn ([Bindings](reference/action.md#bindings)
 $ viff data derived feature raise gh issue 1
 priority: urgent
 what: gh.issue.1
-viff:
+@sys:
   meta:
     derivedFrom:
       rule: raise
