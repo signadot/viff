@@ -21,7 +21,7 @@ does not prove it has its description removed, and takes no spawn until a check 
 itself. The handshake is made again before every launch, so `described` is the last launch's
 result at the latest. A registration an older viff wrote may hold `verified` or `unverified`
 beside it; viff removes both at the next describe. One an older viff wrote with no `subject`
-is a registration this viff can't read: `viff runner` lists it with why, it is no runner at the
+is a registration this viff instance can't read: `viff runner` lists it with why, it is no runner at the
 door and takes no spawn, and `viff runner add` under its name, with its `subject`, replaces it.
 
 A listing row (`viff runner`) also says `offers`, the names of the doers the runner described,
@@ -79,9 +79,9 @@ viff task run -f <spawn>                 run a spawn there: its `runner:` names 
 
 `reach` is one of `a runner`, `not a runner`, `unreachable`, or `not verified`: it answered
 as a runner and did not prove it is its registration's `subject`,
-which is also what a viff that presented no token of its own gets, since the runner answers
-its token to the viff it verified alone. A runner that refused the token viff presented (it
-serves another viff) is `unreachable`, since the deployment fixes it. Viff writes nothing about `reach` to the
+which is also what a viff instance that presented no token of its own gets, since the runner answers
+its token to the viff instance it verified alone. A runner that refused the token viff presented (it
+serves another viff instance) is `unreachable`, since the deployment fixes it. Viff writes nothing about `reach` to the
 store. Viff answers it live and then discards it, so a column of reachability
 is always as of now.
 

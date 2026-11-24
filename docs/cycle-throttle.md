@@ -222,6 +222,6 @@ report can come up short, and the report says so.
   delta. So a commit has exactly one cause. logd has transactions. A write of several paths in
   one atomic step would let one commit carry several chains. The reader would then need a rule
   to merge them. The obvious rule is the maximum, which errs toward throttling.
-- **The depth is not observable.** By construction, it is internal to the engine. A viff that
+- **The depth is not observable.** By construction, it is internal to the engine. A viff instance that
   could answer "which chains are deep right now" would show a runaway as it develops, before it
   trips. Everything else about a firing is already a fact in the store.

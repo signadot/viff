@@ -14,7 +14,7 @@ carries what a rule writes back out to the system: a comment, a tag, a message.
 [Runners](../runners.md) do the work of tasks. An operator installs iods and runners for you.
 The charters are yours.
 
-Every command in the tutorial runs on a viff on your own machine. It stands in for the shared viff
+Every command in the tutorial runs on a viff instance on your own machine. It stands in for the shared viff
 a team runs: there, the people an ask names are your colleagues, they answer from their own machines
 or from Slack, and what you start they can see and steer. Here you are everyone, and `--as` lets you
 answer as them. Each page sets up the data it reads. The few runs that go to an agent need a model
@@ -35,7 +35,7 @@ viff up                          # engine + task runtime + store, in one process
 Leave `viff up` running. Every other subcommand is a client. Open a second terminal at the
 root of the checkout, with the same `PATH` and `VIFF_ADDR`.
 
-On a viff on your own machine, the CLI acts as `user:<login>@localhost`, and that user owns
+On a viff instance on your own machine, the CLI acts as `user:<login>@localhost`, and that user owns
 what you write. [The permissions walk](../perms-guide.md#before-the-first-step-who-you-are) shows
 how to name yourself.
 

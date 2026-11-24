@@ -2,7 +2,7 @@
 
 `viff ask` asks somebody something. The ask goes to the people you name, with a date if you
 give one. Their answer is written back on your ask, and what you said should follow that answer
-runs for you. Every viff can ask: nothing has to be installed for it.
+runs for you. Every viff instance can ask: nothing has to be installed for it.
 
 An ask is how anything in viff waits for a person. You raise one with `viff ask`. A rule's
 gate raises one when it stops for a person. A task raises one with its `question-ask` tool and
@@ -336,7 +336,7 @@ the questions no rule's gate posed, and a line for each charter whose tasks have
 Another `tab` puts the tasks running, and those that ended in the last half hour, on one
 timeline.
 
-The Data section browses the viff an address at a time, and knows no charter. It lists what
+The Data section browses the viff instance an address at a time, and knows no charter. It lists what
 is under an address (the root, or `--at <address>`); `⏎` opens a place into what is under it,
 and `u` goes back up. The place under the cursor shows its record, the rule and subject it was
 derived from where a rule derived it, and the questions and tasks about it. `tab` shows those

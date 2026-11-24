@@ -94,4 +94,4 @@ The pieces can be split into separate services behind the interfaces that they u
 So a split is a change of deployment, not a new design.
 
 Next: [the reference](reference/README.md#commands) for the commands of this design, and
-[scopes](reference/scopes.md) for how a developer works beside a running viff without touching it.
+[scopes](reference/scopes.md) for how a developer works beside a running viff instance without touching it.

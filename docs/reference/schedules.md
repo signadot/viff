@@ -59,10 +59,10 @@ The tick carries these fields.
 | Field | What it holds |
 |---|---|
 | `due` | the instant at which the tick is due |
-| `missed` | how many instants before it went unticked. A viff that was down ticks once when it comes up, and `missed` says how late. |
+| `missed` | how many instants before it went unticked. A viff instance that was down ticks once when it comes up, and `missed` says how late. |
 | `date`, `time`, `year`, `month`, `day`, `weekday`, `timezone` | the calendar of the due instant, in the daemon's zone (`TZ`) |
 
-**The calendar takes the place of a cron line.** Every viff installs a charter of its own when it
+**The calendar takes the place of a cron line.** Every viff instance installs a charter of its own when it
 starts ([internal/viffd/system.tony](../../internal/viffd/system.tony)). It has four schedules and two rules.
 
 The four schedules are `minutely`, `hourly`, `daily` and `weekly`. Their phase is a Monday at
@@ -89,7 +89,7 @@ A rule whose `on` names a calendar fact rises when the fact becomes true:
 
 **Downtime has two readings.** A rule says which reading it means by what it reads.
 
-Take a viff that is down from 08:30 to 10:30. It writes the 10:00 hourly tick with
+Take a viff instance that is down from 08:30 to 10:30. It writes the 10:00 hourly tick with
 `missed: 1`, and the 10:30 minutely tick with `missed: 119`. `time` goes from `08:30` to
 `10:30`, and `09:05` never rises.
 

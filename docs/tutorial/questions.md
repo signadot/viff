@@ -15,7 +15,7 @@ There are four ways to ask:
 All four make the same record, and every pending ask is on one list, the
 [docket](../glossary.md#docket).
 
-This page needs [a viff running](README.md#start), and nothing else.
+This page needs [a viff instance running](README.md#start), and nothing else.
 
 ## Ask
 

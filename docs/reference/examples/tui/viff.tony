@@ -3,7 +3,7 @@
 # (--every, --at) overrides the field it names. `viff tui --config` prints what is in force,
 # every key included; `viff tui --commands` lists every command and action.
 tui:
-  # Read the viff every 5s rather than every 2s.
+  # Read the viff instance every 5s rather than every 2s.
   every: 5s
   # Open on the data, at the place this team works in.
   start: data

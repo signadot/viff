@@ -53,11 +53,11 @@ outcomes, and only one of them refuses the install:
 |---|---|---|
 | *a runner* | the URL answered `200`, with a description that decodes | installed |
 | *not a runner* | the URL answered *that it does not describe itself*: a status other than those below, such as `404`, or a description that does not decode | the install is **refused** |
-| *unreachable* | nothing answered; or the URL answered `401` or `403`, refusing this viff; or `500`, `502`, `503` or `504`, failing without saying what it is | **installed, with a warning** |
+| *unreachable* | nothing answered; or the URL answered `401` or `403`, refusing this viff instance; or `500`, `502`, `503` or `504`, failing without saying what it is | **installed, with a warning** |
 
 **A runner that answers 500 is *unreachable*, not *not a runner***. So viff installs it with
-a warning, and does not refuse it. A runner that refuses this viff's token is a runner that
-serves another viff, which the deployment fixes. Only an answer that the route is not there, or
+a warning, and does not refuse it. A runner that refuses this viff instance's token is a runner that
+serves another viff instance, which the deployment fixes. Only an answer that the route is not there, or
 a description that does not decode, is an answer about what is at the URL.
 
 ### Who the runner is
@@ -74,11 +74,11 @@ viff runner add viff-runner http://viff-runner:9802 -subject system:serviceaccou
 - **At the describe.** Viff presents a token it signs itself, as the issuer `auth.issuer`
   makes it, on every call it makes to a registered runner. The token
   is minted for that runner alone, its subject the audience, so a copy taken at one runner opens
-  no other's door. A runner whose configuration names its viff (`viff:` in
+  no other's door. A runner whose configuration names its viff instance (`viff:` in
   [runnerd.md](reference/runnerd.md#configuration)) reads viff's keys where it reaches viff,
   holds every bearer to viff's issuer name, its own audience and the subject `viff`, and
   refuses every other caller's launch. The
-  description itself is public: anyone may ask what the runner offers. To the viff it
+  description itself is public: anyone may ask what the runner offers. To the viff instance it
   verified, and to nobody else, the runner answers `GET /describe` with its own token, and
   viff checks the token's subject against the registration before it records what the runner
   offers. A registration is described or it is not: a description is one the runner proved.
@@ -91,7 +91,7 @@ viff runner add viff-runner http://viff-runner:9802 -subject system:serviceaccou
 - **At viff's door.** When the runner calls viff, its token makes it `runner:<identity>`
   ([runners at the door](reference/perms.md#runners-at-the-door)), and its name alone is refused.
 
-The runner's first call is to say it is here. A runner whose configuration names its viff's
+The runner's first call is to say it is here. A runner whose configuration names its viff instance's
 url announces itself at start, `POST /runners/hello` with its token, in a loop until viff
 has described it, and viff describes it then and there, so a pod that comes up after its registration,
 or comes back after a restart, is verified within seconds and nobody runs `viff runner check`.
@@ -243,7 +243,7 @@ when one runner is down, you lose live detail and not rows.
 `mirror.task.instance` records both the resolved **URL** and the **name** of the registration the
 spawn went to.
 
-- A restart rebuilds the runner from the URL. So work outlives the viff that started it, and
+- A restart rebuilds the runner from the URL. So work outlives the viff instance that started it, and
   it *also* outlives the registration that named its runner. Removing a runner's registration cannot orphan
   work by making it impossible to rebuild.
 - A person reads the name, and `viff ps -runner` selects on it.
@@ -268,7 +268,7 @@ This is the runner's part of the contract:
   task's end, and so is a stream still open when the lease runs out. A launch of the same id
   after that starts the work again.
 - **A launch of a task that is running joins it**, and renews its lease: from then the lease is
-  the one the joining launch names, which is the one viff waits by.
+  the one the joining launch names, which is the one viff instance waits by.
 - **Every answer the runner itself gives carries `Viff-Runner`**, refusals included; a door in
   front of it, such as its auth, need not. Anything can answer HTTP between viff and a runner:
   an ingress's default backend, a route not yet set up, a login page. Viff takes a subscribe as
@@ -385,7 +385,7 @@ Two cases are open:
 
 ### Why viff routes each spawn
 
-A runner that every spawn must go to is a whole second viff, with its own store, engine and
+A runner that every spawn must go to is a whole second viff instance, with its own store, engine and
 data. The drive's work is then somewhere else entirely. That is the opposite of running
 the drive in the deployment it works on. So each spawn goes where its doer is offered, and a
 deployment says which doers run where by what each runner offers.

@@ -39,7 +39,7 @@ one segment of an address. So it may not contain `:`, `/` or `.`. A name may not
 because a name is a segment of the route that serves the iod.
 
 **The convention is to name an iod after its connector**, such as `git`, `git-issue` or `slack`.
-Most viffs run one iod of each kind. A name that says no more than `root` says would be a second
+Most viff instances run one iod of each kind. A name that says no more than `root` says would be a second
 word for one fact. The name is still free. A second iod on one connector is where a name of its
 own is useful (`git` beside `git-buildhost`).
 
@@ -142,7 +142,7 @@ A `<ref>` is `mirror.iods.laptop` or `laptop`: the whole address or the bare nam
 their health.
 
 The list is in `viff status` because it is the one line that says whether anything is
-*arriving*. Every other counter moves on what viff already has. So a viff whose last iod was
+*arriving*. Every other counter moves on what viff already has. So a viff instance whose last iod was
 removed looks the same as a healthy, quiet viff, until that list is empty.
 
 Every command takes the global `-scope`. A scoped iod is installed, listed and removed in the

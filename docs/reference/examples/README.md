@@ -24,11 +24,11 @@ openssl rand -hex 32 > runner.token
 go run ./docs/reference/examples/runner -addr :9800 -token-file runner.token
 ```
 
-The runner proves itself to its viff with that token, and the registration names it by its
+The runner proves itself to its viff instance with that token, and the registration names it by its
 hash. `-viff-url` says which viff the runner serves, `http://localhost:9797` by default, and is
 spelled the way `viff up` prints its issuer: `localhost`, not `127.0.0.1`.
 
-Then run these commands against a viff:
+Then run these commands against a viff instance:
 
 ```sh
 viff runner add gpu http://localhost:9800 -token-file runner.token

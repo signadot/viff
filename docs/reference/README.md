@@ -2,7 +2,7 @@
 
 This page has every command, how to select by what the data says, and the scripts that seed a
 viff. What a charter says is in [the charter reference](../trigger-model.md), and the
-[tutorial](../tutorial/README.md) walks through all of it. Running a viff, runners, iods and
+[tutorial](../tutorial/README.md) walks through all of it. Running a viff instance, runners, iods and
 resolvers are in [the platform docs](../platform.md), in the repository. For the map of all
 the docs, see [the docs index](../README.md).
 
@@ -28,7 +28,7 @@ works. A `<who>` is a [principal](../glossary.md#principal) in the
 [grammar](../perms.md#principals-and-grantees): `user:<email>` or the bare email,
 `agent:<name>`, or `runner:<identity>`.
 
-The commands that start and stop a viff, and that install runners, iods and resolvers, are
+The commands that start and stop a viff instance, and that install runners, iods and resolvers, are
 for somebody who runs viff. They are in [commands.md](../platform/commands.md), in the
 repository.
 
@@ -67,7 +67,7 @@ Comments need no flag: viff reads and writes them everywhere.
 
 | Command | What it does |
 |---|---|
-| `status` | the engine and the store, now. `restoring:` names the parts of a start that are still waiting on the store; `arming:` under a charter names armed rules whose watch the store is still opening, with what it is doing for each — in line, opening it, opening it again after a drop, or refused and asking again — and `pending:` the rules held for something else — a stratum, a runner — with what each waits for. All are absent on a viff that is up. |
+| `status` | the engine and the store, now. `restoring:` names the parts of a start that are still waiting on the store; `arming:` under a charter names armed rules whose watch the store is still opening, with what it is doing for each — in line, opening it, opening it again after a drop, or refused and asking again — and `pending:` the rules held for something else — a stratum, a runner — with what each waits for. All are absent on a viff instance that is up. |
 | `schema [<name>]` | the whole schema: the root, by top-level path, then every shape it names. A name prints that one definition. |
 
 ### data (d)
@@ -83,14 +83,14 @@ flag, so its positional is always a path. The path is given as **steps**, one pl
 | `demo pr '*'` | any one segment |
 | `demo pr 1 '"[0]"'` | the field named `[0]` |
 | `demo pr '"*"'` | the name that is `*` |
-| (none) | the whole viff |
+| (none) | the whole viff instance |
 
 A path nothing stands at is a non-zero exit. An empty `{}` with exit 0 means the path stands
 and `-if` kept none of it.
 
 | Form | What it does |
 |---|---|
-| `data <step>…` | the viff at that address |
+| `data <step>…` | the store at that address |
 | `data -at <path>` | the same, as one kinded path: `demo.pr.1`, `'demo.pr.*.stage'` |
 | `data … -if <pat> [-if-at <path>]` | only the data whose payload matches |
 | `data … -paths [-depth <n>]` | every address under the one asked for, one per line, as steps. `-depth` walks at most `<n>` levels beneath the address: `0` is the address alone (default: no limit). |
@@ -218,14 +218,14 @@ nothing.
 
 | Form | What it does |
 |---|---|
-| `schedule` | the schedules the viff ticks on: period, next, the tick standing. `minutely`, `hourly`, `daily` and `weekly` come with it. |
+| `schedule` | the schedules the viff instance ticks on: period, next, the tick standing. `minutely`, `hourly`, `daily` and `weekly` come with it. |
 | `schedule tick <name> -due <instant> [-at <address>]` | write the tick for a past instant, as the schedule would have. A rule about it fires as it would have. |
 
 ### Global flags
 
 | Flag | What it does |
 |---|---|
-| `-addr <host:port>` | the viff to talk to |
+| `-addr <host:port>` | the viff instance to talk to |
 | `-scope <name>` | work in a copy-on-write scope |
 | `-ofmt`, `-o <tony\|yaml>` | output format (default tony; viff renders no JSON) |
 | `-ifmt`, `-i <tony\|json\|yaml>` | input format for stdin and files with no extension |
@@ -275,7 +275,7 @@ A precondition on a write is a different flag: `-create`, `-update` or `-expect`
 
 ## The scripts
 
-Four scripts write into a viff that you already run. Each one prints what to type next. They
+Four scripts write into a viff instance that you already run. Each one prints what to type next. They
 are for reading as much as for running: each is a worked example of the surface it seeds.
 
 | | |

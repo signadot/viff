@@ -146,7 +146,7 @@ That read costs nothing when the commit changed the subject, which is the usual 
 about the entity that changed. A member of a fan-out that the commit did not touch is read at
 that [revision](glossary.md#revision), and the store answers it by replaying its log.
 
-A completion [hook](glossary.md#hook) reads at the head: the viff **as it is when its task
+A completion [hook](glossary.md#hook) reads at the head: the viff instance **as it is when its task
 ends**. So a `derive` in an `onDone` can name what the run was about, as the firing left it.
 "Derive a release note from what shipped" needs this. A value from the firing's own moment is
 the firing's to write beside its spawn ([Bindings](reference/action.md#bindings)).

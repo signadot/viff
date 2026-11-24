@@ -374,7 +374,7 @@ Both mark their records, so a restore takes only its own.
 Installing a rule writes it into the store as the data at `mirror.trigger.rule.<name>`. For a
 package the address is `mirror.trigger.rule.<package>:<name>`, so two packages may use one name.
 Removing a rule removes the data at that address. A start reads the rules back before anything
-else runs. So a viff comes back running the program it stopped with.
+else runs. So a viff instance comes back running the program it stopped with.
 
 The record holds the rule as `spec`. It also holds the `scope` and the package address `at`
 that the rule was installed in, when it has them.
@@ -397,7 +397,7 @@ Everything else that a restart needs is durable in the same way.
 | an open selection | a channel, with its ballots beside it |
 
 At a restart, viff poses each open question again. From these records it also restores the
-hooks of a chain and the awaiter of a selection. The rules must be durable too, or a viff
+hooks of a chain and the awaiter of a selection. The rules must be durable too, or a viff instance
 would come back with its work in progress and nothing to react to it.
 
 **There is one record for each rule.** An install writes one record, a removal removes one, and

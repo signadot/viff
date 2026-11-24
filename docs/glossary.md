@@ -10,8 +10,8 @@ name means several things, each meaning has its own entry, with a qualifier in p
 
 ### store
 
-The store is the one tree in which a viff keeps its data. It is durable, and it can be
-watched. One store is shared by everyone in the viff, people and agents, and every commit to it
+The store is the one tree in which a viff instance keeps its data. It is durable, and it can be
+watched. One store is shared by everyone in the viff instance, people and agents, and every commit to it
 names who made it.
 
 Also written: entity store, entity-viff, the viff.
@@ -852,7 +852,7 @@ See [Iods (reference)](reference/io.md#what-is-asked-and-what-became-of-it).
 
 A principal is who acts. It is a name with its kind in front, such as `user:ana@example.com`.
 Every write names one. A principal is the name that the request gives, or the person that the
-request's token proves where the viff names an identity provider.
+request's token proves where the viff instance names an identity provider.
 
 See [Permissions](perms.md#principals-and-grantees).
 
@@ -867,15 +867,15 @@ See [Permissions reference](reference/perms.md#the-grammar).
 ### local user
 
 The local user is the principal `user:<login>@localhost`. The CLI acts as the local user
-toward a viff on the same machine, when no user is configured.
+toward a viff instance on the same machine, when no user is configured.
 
 See [Permissions, walked](perms-guide.md#before-the-first-step-who-you-are).
 
 ### identity provider
 
-An identity provider is a party that signs a statement of who a person is, and the viff
+An identity provider is a party that signs a statement of who a person is, and the viff instance
 accepts that statement. It is an OpenID Connect issuer that the deployment names under
-`auth.principal.providers`. `viff account login` logs in there, and the viff verifies the
+`auth.principal.providers`. `viff account login` logs in there, and the viff instance verifies the
 token. The deployment's own iods are verified
 the same way against their workload issuer (`auth.iod`), and so is a runner whose registration
 names its token's subject. Slack and GitHub are not identity providers here; their accounts are
@@ -897,7 +897,7 @@ See [Accounts in other systems](reference/perms.md#accounts-in-other-systems).
 
 The claimant of an account binding is how the person who proved it was authenticated: the
 identity provider that verified them, or `asserted` for a person who was whoever their request
-said. It is what lets a reader, and a viff that verifies people, tell the two kinds of binding
+said. It is what lets a reader, and a viff instance that verifies people, tell the two kinds of binding
 apart.
 
 See [Accounts in other systems](reference/perms.md#accounts-in-other-systems).

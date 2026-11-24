@@ -66,7 +66,7 @@ withdrawn questions are asked again — and only then is it removed and every ru
 again, its watermark first moved below the head, the path an install and a restart take. So a rule
 acts on the world as it stands when the suspension lifts, and nothing that happened meanwhile is
 replayed: a level rule still matching acts once, one whose condition came and went does nothing,
-and an `on` edge that rose during the suspension is not seen, as an install over a viff where the
+and an `on` edge that rose during the suspension is not seen, as an install over a viff instance where the
 predicate already holds sees none.
 
 **Whose it is.** Each scope's suspensions are one table in memory, written only by the route that

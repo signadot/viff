@@ -31,12 +31,12 @@ flowchart LR
   wh["Slack · Linear · GitHub"]
   hook["git hook<br/>reference-transaction"]
 
-  subgraph host["the viff"]
+  subgraph host["the viff instance"]
     viffd["viffd<br/>:9797 operator API"]
     docd["logd + docd"]
   end
 
-  remote["remote runner<br/>another viff / runnerd"]
+  remote["remote runner<br/>another viff instance / runnerd"]
   src["iod<br/>:9801"]
   llm["model provider"]
 
@@ -132,7 +132,7 @@ beside viff finds docd without guessing the ephemeral port `viff up` chose.
 
 ## 4. Task control, dialled out
 
-`client.HTTP(base)` drives another viff, a `runnerd`, or any program that serves the same
+`client.HTTP(base)` drives another viff instance, a `runnerd`, or any program that serves the same
 contract:
 
 ```

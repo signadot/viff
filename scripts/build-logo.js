@@ -181,7 +181,7 @@ fs.writeFileSync(path.join(OUT, 'viff-mark-navbar.svg'), svgDoc(mS.defs + '\n' +
 <rect width="1280" height="640" fill="#111317"/>
 <g transform="translate(300 170) scale(4.6875)">${soc.body}</g>
 <text x="640" y="400" font-family="'Space Grotesk', Arial, sans-serif" font-weight="600" font-size="200" letter-spacing="-8" fill="#F4F5F7">viff</text>
-<text x="640" y="470" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="28" fill="#A7ADB8">signadot.github.io/viff</text>
+<text x="640" y="470" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="28" fill="#A7ADB8">viff.dev</text>
 </svg>`;
   await page.setViewportSize({ width: 1280, height: 640 });
   await page.setContent(`<!doctype html><html><head>

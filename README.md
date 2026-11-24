@@ -1,7 +1,7 @@
 # viff
 
 Viff is a small runtime. It governs software delivery work across systems that you do not
-own, and you choose how much of that work agents do without asking. One viff is shared by a
+own, and you choose how much of that work agents do without asking. One viff instance is shared by a
 team: everyone in it, and every agent, acts under their own name, and whoever holds the
 permission sees and steers the work.
 
@@ -70,7 +70,7 @@ durable from the first run. `up` finds the `o` binary that hosts them by itself.
 `~/.viff/bin` ([the reference](docs/reference/up.md#the-o-binary)). So `up` works in any
 directory, and not only in a checkout.
 
-You need no configuration to start. Toward a viff on your own machine the CLI acts as
+You need no configuration to start. Toward a viff instance on your own machine the CLI acts as
 `user:<login>@localhost`, where `<login>` is your login name.
 
 `scripts/seed-demo.sh` fills the empty viff. It writes two rules and some data. When it
@@ -94,7 +94,7 @@ second page of charters.
 
 Three tiers of package. Public by intent is what the two documented examples import: a runner
 is built on `pkg/runner`, `pkg/runner/runnerd`, `pkg/systems` and `pkg/task`; an iod on
-`pkg/entity`, `pkg/io` and `pkg/io/iod`; a program that drives a viff on `pkg/client`. The rest
+`pkg/entity`, `pkg/io` and `pkg/io/iod`; a program that drives a viff instance on `pkg/client`. The rest
 of `pkg/` is public because Go makes it so, being what those pull in, and nothing in it is
 promised yet. `internal/` is viffd's own, until a documented need moves something out: opening
 a package is free, closing one breaks whoever imported it. `internal/iotests` holds the shipped

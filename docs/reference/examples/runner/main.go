@@ -48,17 +48,17 @@ import (
 
 func main() {
 	addr := flag.String("addr", ":9800", "address to serve the task-control contract on")
-	// A runner is never taken at its word: it proves itself to the one viff it serves with a
+	// A runner is never taken at its word: it proves itself to the one viff instance it serves with a
 	// token, here a static one, which its registration names by hash (`viff runner add
-	// -token-file`). The viff's url is also the name its tokens are issued under, so spell it
+	// -token-file`). The viff instance's url is also the name its tokens are issued under, so spell it
 	// as `viff up` prints its issuer: localhost, not 127.0.0.1.
 	viffURL := flag.String("viff-url", envOr("VIFF_URL", "http://localhost:9797"),
-		"the viff this runner serves, as its issuer is spelled (VIFF_URL)")
+		"the viff instance this runner serves, as its issuer is spelled (VIFF_URL)")
 	tokenFile := flag.String("token-file", os.Getenv("VIFF_TOKEN_FILE"),
 		"the file holding this runner's static token, `openssl rand -hex 32`; required (VIFF_TOKEN_FILE)")
 	flag.Parse()
 	if *tokenFile == "" {
-		log.Fatal(errors.New("runner: no -token-file: a runner proves itself to its viff with a token " +
+		log.Fatal(errors.New("runner: no -token-file: a runner proves itself to its viff instance with a token " +
 			"(`openssl rand -hex 32 > runner.token`, and `viff runner add -token-file runner.token`)"))
 	}
 	guard, err := runnerd.NewGuard(runnerd.Viff{URL: *viffURL}, *tokenFile)
@@ -85,7 +85,7 @@ func main() {
 	}}})
 	log.Printf("runner listening on %s — install it with: viff runner add <name> http://<host>%s -token-file %s",
 		*addr, *addr, *tokenFile)
-	// The hello: the viff describes this runner as soon as the runner tells it it is here, and
+	// The hello: the viff instance describes this runner as soon as the runner tells it it is here, and
 	// until a registration names it, the runner keeps telling it.
 	go guard.Announce(context.Background(), log.Printf)
 	if err := http.ListenAndServe(*addr, guard.Wrap(d.HTTPHandler())); err != nil {

@@ -1,9 +1,9 @@
-# A viff on your machine, with Claude
+# A viff instance on your machine, with Claude
 
-This page sets up a viff on your own machine the way a cluster deployment is laid out: the store, viffd and a
+This page sets up a viff instance on your own machine the way a cluster deployment is laid out: the store, viffd and a
 runner, each a process of its own, run by [pitchfork](https://pitchfork.jdx.dev). The runner offers
 scripts and the `claude` agent, so a spawn with `agent: {name: claude}` runs Claude Code, one step
-at a time, under the autonomy you give it. Claude Code reaches the same viff through
+at a time, under the autonomy you give it. Claude Code reaches the same viff instance through
 [`viff mcp`](../reference/mcp.md).
 
 For a first try of viff, a bare `viff up` is enough ([the README](../../README.md#quick-start)).
@@ -25,7 +25,7 @@ Every address and path they use is a setting. The settings and their defaults ar
 `~/.config/viff-local.env`, which is read after it, in the same `NAME="value"` form:
 
 ```sh
-# ~/.config/viff-local.env: a second local viff beside the first, keeping patches for a week
+# ~/.config/viff-local.env: a second local viff instance beside the first, keeping patches for a week
 VIFF_LOCAL_ADDR="localhost:19797"
 VIFF_LOCAL_DATA="$HOME/.viff/localhost_19797"
 VIFF_LOCAL_COMPACTION_CUTOFF="1w"
@@ -41,12 +41,12 @@ defaults:
 |---|---|---|
 | `~/.viff/local/local.env` | | the settings, rendered: what the run lines source |
 | `~/.viff/local/bin` | `VIFF_LOCAL_BIN` | `viff`, `runnerd`, `viff-call-tool`, `viff-secret-exec`, and the `o` this tree pins |
-| `~/.viff/local/config.tony` | `VIFF_LOCAL_CONFIG` | the viff's config: who you are, its address, the issuer it signs as |
+| `~/.viff/local/config.tony` | `VIFF_LOCAL_CONFIG` | the viff instance's config: who you are, its address, the issuer it signs as |
 | `~/.viff/local/data` | `VIFF_LOCAL_DATA` | the data dir: the store, the issuer's key (`issuer.pem`) and logd's config |
 | `~/.viff/local/runner` | `VIFF_LOCAL_RUNNER_DIR` | the runner's `runner.tony`, its `token` (0600) and its credentials, `env` (0600) |
 
 It is a dir of its own so that nothing else shares it. A plain `viff up` keeps its store in
-`~/.viff/<host>_<port>`, and two viffs on one store would be one viff to a runner, with one
+`~/.viff/<host>_<port>`, and two viff instances on one store would be one viff instance to a runner, with one
 issuer and one set of registrations. The binaries are not put on your `PATH`, so a `viff` you
 installed there stays as it is: the commands below name this one.
 
@@ -56,9 +56,9 @@ whose task ran longer than the cutoff is lost. `setup` writes the cutoff into th
 `logd.viff.tony`, which says where it came from; the store reads it when it starts.
 
 Your `~/.config/viff.tony`, the config of whichever viff the CLI reaches by default, is not
-touched: the local viff is reached with `VIFF_CONFIG=~/.viff/local/config.tony`.
+touched: the local viff instance is reached with `VIFF_CONFIG=~/.viff/local/config.tony`.
 
-A local viff set up before these defaults is in `~/.viff/localhost_9797`, `~/.viff/runner` and
+A local viff instance set up before these defaults is in `~/.viff/localhost_9797`, `~/.viff/runner` and
 `~/.config/viff-local.tony`. `setup` finds it, and stops with the three lines that keep it where
 it is, in `~/.config/viff-local.env`, or with how to move it.
 
@@ -142,7 +142,7 @@ pitchfork restart runner                   # after editing runner.tony or env
 pitchfork disable runner                   # keep it down, e.g. to run it by hand; `enable` undoes it
 ```
 
-With the local `viff` first on your `PATH` and its config named, the CLI reaches the local viff:
+With the local `viff` first on your `PATH` and its config named, the CLI reaches the local viff instance:
 
 ```sh
 export PATH=~/.viff/local/bin:$PATH VIFF_CONFIG=~/.viff/local/config.tony
@@ -198,9 +198,9 @@ no network is refused for it. `setup` and the runner choose this by themselves; 
 | `pitchfork: command not found` | pitchfork is not installed, or not on your `PATH`: [its instructions](https://pitchfork.jdx.dev/installation) |
 | a daemon's log: `viff-local: no ~/.viff/local/local.env` | the settings are not rendered yet: `scripts/viff-local.sh setup` |
 | `setup`: `… does not say addr: …, which VIFF_LOCAL_ADDR does` | a setting changed, and the config or `runner.tony` that names it was written before: edit the line it names |
-| `setup`: `a local viff set up before ~/.viff/local is in …` | an older setup's viff: keep it with the three lines `setup` prints, or move it as it says |
-| `setup`: `… names no issuer` or `… issuer key is not …` | the config is another viff's, or was moved without its key: add or change the line it names |
-| viffd's log: `the runnerd at … is built from viff …, and this viff from …` | only for a `viff up` that starts its own runner; here, run `setup`, which builds both |
+| `setup`: `a local viff instance set up before ~/.viff/local is in …` | an older setup's viff: keep it with the three lines `setup` prints, or move it as it says |
+| `setup`: `… names no issuer` or `… issuer key is not …` | the config is another viff instance's, or was moved without its key: add or change the line it names |
+| viffd's log: `the runnerd at … is built from viff …, and this viff instance from …` | only for a `viff up` that starts its own runner; here, run `setup`, which builds both |
 | the runner's log: `sandbox bwrap: … Failed RTM_NEWADDR: Operation not permitted` | bubblewrap is not let make namespaces: the AppArmor profile above, or `VIFF_SANDBOX=none` |
 | the runner's log: `announcing to …: 401 Unauthorized … none names this one` | it is not registered yet: `scripts/viff-local.sh setup` with viffd up |
 | a task fails: `exec: "claude": executable file not found` | `claude` is not on the `PATH` the runner starts with; `pitchfork.toml` puts the bin dir and `~/.local/bin` first |

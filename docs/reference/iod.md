@@ -51,14 +51,14 @@ Every subcommand accepts these flags.
 | `-min-interval` | | off | a window of time. When viff asks again inside the window, the iod answers from its last reflection. |
 | `-hint-url` | `VIFF_HINT_URL` | none | the hint route of viff for this installed iod: `http://viff:9797/iods/<name>/hint` |
 | `-root` | | the name of the subcommand | the [root](../glossary.md#root-of-an-iod) of the iod: the first segment of every [address](../glossary.md#address) that it writes |
-| `-viff-addr` | `VIFF_ADDR` | the host of `-hint-url` | the viff that the out half reads and writes, as `host:port` |
+| `-viff-addr` | `VIFF_ADDR` | the host of `-hint-url` | the viff instance that the out half reads and writes, as `host:port` |
 | `-as` | | `agent:<root>-iod`, such as `agent:slack-iod` | the [principal](../glossary.md#principal) that the out half reads and writes as. The Slack out half reads the asks in a message to a person as that person, since a person's ask is read by whom it asks. |
 | `-out-every` | | `5s` | how often the out half reads what is asked of it |
 | `-token-file` | `VIFF_TOKEN_FILE` | none | the file holding the iod's own credential toward viff: on Kubernetes, the pod's projected service-account token, which viff's `auth.iod` names the iod by ([iods at the door](perms.md#iods-at-the-door)). Read on every request, since the kubelet rotates it. Without it, the iod is whoever `-as` says. |
 
 With `-token-file`, every request the iod makes carries the token, and one it makes as a person
 (the Slack out half reading their ask, a reply in a thread answering it) carries the person and
-their Slack account beside it, `slack:<user id>`, so that a viff which verifies people admits
+their Slack account beside it, `slack:<user id>`, so that a viff instance which verifies people admits
 it through the account's binding and the ballot says which iod it came through
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)).
 
@@ -238,8 +238,8 @@ an **input** under the repository's out place, `git.<repo>.out`, and the iod ans
 | `{to: branch.<name>, sha}` | moves the branch to the commit, forward or back | `ref, sha, at`, and `was`, the sha it stood at |
 | `{to: branch.<name>, sha, create: true}` | makes the branch at the commit where there is none, and leaves one that stands alone; a tag takes `create` too | `ref, sha, at`, and `kept: true` where it stood already |
 | `{to: record.<name>, tree, from}` | appends an entry holding the tree to the [record](#a-record) `refs/viff/<name>`, where its last entry holds another tree; `from`, optional, is the commit the tree was taken from; `create: true` makes the record where there is none and leaves one that stands alone | `ref, sha, tree, at`, and `was`, the entry before; `kept: true` where it stood already |
-| `{to: install.<address>, tree, sha, from}` | installs the charters in the tree object into the viff at the address, as `viff c -a <address> -d <dir> --prune` would, from the iod's own copy of the repository; `sha` is the commit it is installed for, and `from`, optional, the commit the tree came from | `tree, sha, from, address, at`, and `charters`, how many |
-| `{to: check.<address>, tree}` | asks the viff's charter check what an install of the tree at the address would do, and installs nothing | `tree, address, checkedAt`, and the check's `verdict` (`installs` or `refused`), `refusal`, `packages` and `pruned` |
+| `{to: install.<address>, tree, sha, from}` | installs the charters in the tree object into the viff instance at the address, as `viff c -a <address> -d <dir> --prune` would, from the iod's own copy of the repository; `sha` is the commit it is installed for, and `from`, optional, the commit the tree came from | `tree, sha, from, address, at`, and `charters`, how many |
+| `{to: check.<address>, tree}` | asks the viff instance's charter check what an install of the tree at the address would do, and installs nothing | `tree, address, checkedAt`, and the check's `verdict` (`installs` or `refused`), `refusal`, `packages` and `pruned` |
 | `{to: check.<address>, ref, of, round}` | the same check for the tree a ref holds now in the iod's own copy (`of` names the `-tree` directory, and may be left out where there is one), made again whenever `round` changes | as above, with `ref`, `sha` and `round`; `changes`, how many charters the install would add, change, remove or prune (0 is in step with what runs); `differingFor`, the rounds in a row it has differed at one commit; `verdictSince`, the round from which the verdict has been what it is at that commit; a ref the repository lacks is the verdict `missing` |
 | `{to: check.<address>, record, round}` | the same, for the tree a record's last entry holds | as above, with `record` in place of `ref` |
 | `{to: obsolete, prefix, keep, before}` | answers `obsolete`, as the iod, every pending question waiting on it whose id begins with `prefix`, whose key (the id after the prefix, up to `~`) is none of the strings under `keep`, posed by `before`, and offering `obsolete` | `obsoleted`, the ids answered; `sweptAt`, `before` |
@@ -258,7 +258,7 @@ viff data git viff out livecheck -put '{to: check.repos.viff, record: live, roun
   it: a verdict, and per package what it adds, changes, removes and holds. A verdict of
   `refused`, a file that does not parse among them, is an answer on the status and not a failed
   input; a tree the repository lacks is asked about again on the next pass, since a pull request's
-  tree can be asked about before this iod has fetched it, and a viff that cannot be reached is
+  tree can be asked about before this iod has fetched it, and a viff instance that cannot be reached is
   tried again. A tree checked already costs nothing. Checked by `record` with a `round`, it is
   the repo-charters reconciler's minute check that `refs/viff/live` is what is installed.
 - **An obsolete sweep settles what nothing proposes.** The charter that asked decides what is
@@ -272,7 +272,7 @@ viff data git viff out livecheck -put '{to: check.repos.viff, record: live, roun
   charter file, the empty tree among them, removes every charter at the address. So the iod has to own
   the address, or hold `child-owner` above it (`viff perms repos --grants '[{child-owner:
   [agent:git-iod]}]'` on a deployment). A tree the repository lacks, a file that does not parse, or
-  a charter the viff refuses is refused for good until the input changes; a viff that cannot be
+  a charter the viff instance refuses is refused for good until the input changes; a viff instance that cannot be
   reached is tried again. A tree already installed for the same commit costs nothing. It is how
   the repo-charters reconciler installs what the team said yes to (git-issue dzxn44gw).
 
@@ -456,7 +456,7 @@ iod slack -workspace <name>    the id prefix (default: the team name the token b
               -users               reflect the people (default true; needs users:read)
               -out                 also say in Slack what is written under slack.<ws>.out, and answer
                                    the questions those messages ask (see below)
-              -viff-addr <addr>   the viff the out half reads and writes (VIFF_ADDR; default: -hint-url's host)
+              -viff-addr <addr>   the viff instance the out half reads and writes (VIFF_ADDR; default: -hint-url's host)
               -as <principal>      who the out half reads and writes as (default agent:slack-iod)
               -out-every <d>       how often the out half reads what is asked (default 5s)
 ```
@@ -677,7 +677,7 @@ channel, everyone sees the verdict and who gave it, and not only the person who 
 
 With `SLACK_APP_TOKEN` set, a reply in the thread of a message answers the question, when the
 reply says one of the options of the question. The iod connects to Slack in Socket Mode. So
-the app needs no public url, and the viff needs no Ingress. The reply arrives as an ordinary
+the app needs no public url, and the viff instance needs no Ingress. The reply arrives as an ordinary
 message event.
 
 The iod decides two things, and it decides them separately.
@@ -733,16 +733,16 @@ the person looks at it.
 #### Linking: `/viff link <nonce>`
 
 A person who is a viff user proves to the app which one they are by saying, from their Slack
-account, a nonce their viff gave them: `viff account -link slack` prints `/viff link <nonce>`.
+account, a nonce their viff instance gave them: `viff account -link slack` prints `/viff link <nonce>`.
 Said as a slash command (the app registers `/viff`), typed in a DM to the app, or at the bot
-(`@viff link <nonce>`), the iod reports to the viff, as itself, that this account said it
-(`POST /accounts/slack/heard`), and the viff binds the account to whoever claimed the nonce
+(`@viff link <nonce>`), the iod reports to the viff instance, as itself, that this account said it
+(`POST /accounts/slack/heard`), and the viff instance binds the account to whoever claimed the nonce
 ([accounts in other systems](perms.md#accounts-in-other-systems)). The person alone is told what
 became of it. From then on a reply of theirs is relayed through the binding, which is the only
 way in where the provider names no `domains`.
 
 The Slack id is the word of Slack, on a connection that the app token opened. What the iod
-tells the viff is that id, as the person's account, beside its own token; the viff admits the
+tells the viff instance is that id, as the person's account, beside its own token; the viff instance admits the
 request as the person only through the account's binding, and never on the iod's say-so alone
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)).
 
@@ -1022,13 +1022,13 @@ its own, with any words after the option kept as what the answerer said. Each pa
 replies after the iod's own comment, as the iod itself reflects them under the pull request, and
 answers one **as its author**: the author's GitHub account
 is looked up for who they are ([accounts in other systems](perms.md#accounts-in-other-systems)),
-and the answer is made as that person with the account beside it, which a viff that verifies
+and the answer is made as that person with the account beside it, which a viff instance that verifies
 people admits through the binding and records on the ballot
 ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)). It is never
 made as the iod. An author viff does not know, or a command naming no option the question
 offers, is told so in one reply and not again. A reply that says `/viff link <nonce>` on a line
 of its own is the author proving the account is theirs (`viff account -link github -account
-<login>` printed it): the iod reports to the viff, as itself, that this account said it
+<login>` printed it): the iod reports to the viff instance, as itself, that this account said it
 (`POST /accounts/github/heard`), and tells the author what became of it, once. The same line said
 anywhere else in a reflected repository is read by viff itself, when `viff account -link github`
 asks it to (`POST /accounts/github/verify`). The comment is redrawn as the question settles.

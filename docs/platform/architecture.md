@@ -120,7 +120,7 @@ Three implementations stand behind the seam.
 | Implementation | What it is |
 |---|---|
 | local | the `runnerd` daemon embedded in the viff process, reached by a Go call |
-| remote | `client.HTTP(baseURL)`. It drives another viff or host over HTTP: `GET /tasks`, `GET /tasks/{id}/events?since=N`, and control POSTs. |
+| remote | `client.HTTP(baseURL)`. It drives another viff instance or host over HTTP: `GET /tasks`, `GET /tasks/{id}/events?since=N`, and control POSTs. |
 
 The seam is the same for both. So `viff task get/attach/cancel/say/approve` works for a
 local and a remote task. See [task control](../task-control.md).
@@ -182,7 +182,7 @@ later report changes nothing.
 | Point | What you supply |
 |---|---|
 | Driver | how a task decides what to do next: the viff agent, a script, or your own `Next` |
-| Task control | where and how a task runs: a Kubernetes Job, a lambda, another viff |
+| Task control | where and how a task runs: a Kubernetes Job, a lambda, another viff instance |
 | Store | logd and docd, or anything that implements the `Store` interface |
 | Iod | a program that reflects an external system into a place it owns in the store. You deploy it and install it ([iods](../io.md)). |
 

@@ -308,7 +308,7 @@ A token is checked before the name is read:
 |---|---|
 | a token that passes | as the principal its account is bound to |
 | a token that fails any check above | 401, saying which. It never falls back to the name beside it. |
-| a token, at a viff that names no provider or whose mode is `off` | 401 |
+| a token, at a viff instance that names no provider or whose mode is `off` | 401 |
 | a token whose provider cannot be reached | 503. Requests with no token are still served. |
 | a token that passes, and a `Viff-Principal` naming somebody else | 403 |
 | an iod's token | as the iod, under every mode |
@@ -325,7 +325,7 @@ A token is checked before the name is read:
 | no token and an `agent:` name, under `required` | as that name |
 | no token and no name, under `required` | as nobody: it reads what `*` holds, and writes nothing |
 
-`auth.principal.mode` says how strictly the viff requires a token.
+`auth.principal.mode` says how strictly the viff instance requires a token.
 
 | mode | a person is |
 |---|---|
@@ -357,8 +357,8 @@ names it. A request that names nobody is answered `{}`.
 | `viff account` | lists the accounts in other systems that are bound to you |
 | `viff account login [<provider>]` | logs in to an identity provider in the CLI's config, and keeps the tokens. The provider may be left off when the config names one. |
 | `viff account -link <provider>` | binds an account in another system to who you are. At an identity provider, it logs in there and presents the token as evidence; the login in use does not change. At a provider whose accounts an iod proves (`slack`, `github`), it claims the account and prints the words to say from it; `-account <login>` names a GitHub login. For GitHub it then waits, asking `verify` until viff has read the words in a comment, and ends when the account is bound or the claim expires; a login already bound to you is said so, and not claimed. |
-| `viff whoami` | prints who the viff takes you for, and how: `user:ana@example.com (google)`, or `(asserted)` |
-| `viff account logout [<provider>]` | drops the login toward this viff: every provider's, or the one named |
+| `viff whoami` | prints who the viff instance takes you for, and how: `user:ana@example.com (google)`, or `(asserted)` |
+| `viff account logout [<provider>]` | drops the login toward this viff instance: every provider's, or the one named |
 
 - **How it logs in.** Where the provider offers the device authorization grant (RFC 8628), the
   CLI prints a URL and a code, and waits while you confirm the code in any browser. Otherwise it
@@ -366,7 +366,7 @@ names it. A request that names nobody is answered `{}`.
   (authorization code with PKCE). It asks for the scopes `openid` and `email`, and for
   `offline_access` where the provider lists it.
 - **What is kept.** The id_token, when it expires, the refresh token if the provider gave one,
-  and the principal the viff answered. There is one entry for each viff address and provider.
+  and the principal the viff instance answered. There is one entry for each viff address and provider.
 - **What is sent.** After a login, every request carries the id_token and no `Viff-Principal`.
   The login comes before `user` in the config.
 - **When the CLI acts as somebody else.** With `-as`, or with `agent` in the config, the CLI
@@ -375,7 +375,7 @@ names it. A request that names nobody is answered `{}`.
   is sent. Where it cannot be renewed, the command fails and says to log in again. It is not
   sent under the config's `user` instead. A provider that does not answer within 30 seconds
   fails the command too.
-- **A login the viff refuses is not kept.** `viff account login` asks the viff who the token
+- **A login the viff instance refuses is not kept.** `viff account login` asks the viff instance who the token
   proves before it reports success. That is also when a first sight is bound.
 
 ### Iods at the door
@@ -426,7 +426,7 @@ the task, or the owner of the charter whose rule spawned it, or the person a rul
 `as: subject` acts for. `whoami` says `by: runner` and `via: runner:<identity>`. A runner
 carries what the [viff system](../systems/viff.md)'s tools do on viff, raising an ask
 (`POST /asks`, `viff-ask-create`), reading the owner's asks (`GET /asks`, `viff-ask-get` and `viff-ask-list`), reading,
-writing and removing the viff at an address (`GET /state`, `POST /entity`, `DELETE /entity`;
+writing and removing the store at an address (`GET /state`, `POST /entity`, `DELETE /entity`;
 `viff-data-get`, `-put`, `-rm`), reading the charters, checking an install, installing and
 removing them (`GET /charter`, `POST /charter/check`, `POST /charter`, `DELETE /charter`;
 `viff-charter-get`, `-check`, `-install`, `-remove`), and `whoami`; any other route named with
@@ -442,7 +442,7 @@ registered runner, and carries its tasks' acts this way too.
 **A runner is never taken at its word.** A request naming a `runner:` with no token that
 proves it is refused with `401`, whatever the mode, on the name alone and without reading the
 registrations: the runner presents its token, and a request made as it by hand cannot. Every
-registration names a `subject`, so every runner has a token to present. A viff's embedded
+registration names a `subject`, so every runner has a token to present. A viff instance's embedded
 runner is no registration, and never calls viff's door.
 
 **A static token proves a runner off Kubernetes.** A bearer that is not a JWT, and is no iod's
@@ -527,7 +527,7 @@ rewrite what they own.
 | `POST /accounts/<provider> {login}` | the person | claims an account under a provider whose accounts an iod proves (`github` with the login; `slack` with nothing), and answers `{nonce, expires, say}`. The nonce stands for an hour. |
 | `POST /accounts/github/verify {nonce}` | the person | binds the GitHub account, once the account has said `/viff link <nonce>` in a comment a trusted iod reflects |
 | `POST /accounts/<provider>/heard {nonce, account, login}` | a trusted iod, verified | binds the claimed account from the iod's word that it said the nonce: the Slack iod hearing it from a member, the github iod reading it in a comment. Where the claim names a login, the `login` that said it must be that one. |
-| `POST /accounts/<provider>/link {idToken}` | the person, verified | binds the account that the id_token names, at an identity provider the viff names |
+| `POST /accounts/<provider>/link {idToken}` | the person, verified | binds the account that the id_token names, at an identity provider the viff instance names |
 | `GET /accounts` | anyone | the caller's bindings, under every provider |
 | `GET /accounts/<provider>/who?sub=…` or `?login=…` | an iod | the binding of that account: `{provider, principal, iss, sub, login, claimant, proof}` |
 | `DELETE /accounts/<provider>/{sub}` | the person | revokes their own binding |
@@ -640,7 +640,7 @@ closing the place closes what is already in it.
 | `refused` | refusals, by level |
 | `unreadable` | checks that the mirror could not answer |
 | `hidden` | what listings withheld |
-| `unparsed` | grantee names on a record that the grammar does not read. Each admits nobody, and viffd logs each once per record. On a viff whose records were all written under the grammar, `unparsed` is zero. |
+| `unparsed` | grantee names on a record that the grammar does not read. Each admits nobody, and viffd logs each once per record. On a viff instance whose records were all written under the grammar, `unparsed` is zero. |
 
 <a id="suspending"></a>
 ## Suspending

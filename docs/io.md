@@ -344,7 +344,7 @@ Viff writes `lastReflect` and `lastError` on the registration.
 | `lastReflect` | only when a pass **wrote** something. It is the poll cursor. |
 
 Suppose viff stamped `lastReflect` on every pass. It would write to `mirror.iods.*` once per
-resync interval, forever. A rule that watches those addresses would fire on a viff where
+resync interval, forever. A rule that watches those addresses would fire on a viff instance where
 nothing happens.
 
 `lastReflect` cannot show a source that is *wedged*: alive and answering, and reflecting
@@ -574,7 +574,7 @@ one principal per request. Three invariants hold for every connector:
 
 An answer recorded as the iod's own principal would be an answer that nobody gave.
 
-Where the viff verifies people, the connector presents its own token and names the account the
+Where the viff instance verifies people, the connector presents its own token and names the account the
 person is, and viff admits the request as the person through that account's binding, from a
 connector the deployment trusts for the provider
 ([a person relayed by a trusted iod](reference/perms.md#a-person-relayed-by-a-trusted-iod)). The
@@ -685,7 +685,7 @@ only when the external system has such a state.
 ### Why a scope has its own reflections
 
 One could argue that a reflection is a fact about the outside world, so every scope should read
-the same one. That argument is wrong. A viff whose reflections
+the same one. That argument is wrong. A viff instance whose reflections
 are all shared cannot say "in here, the repository looks like this". A sandbox exists to answer
 that question. Shadowing is the feature, and for this reason the ownership check is per scope.
 

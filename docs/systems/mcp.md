@@ -148,7 +148,7 @@ the arguments; the binding holds whatever a person is shown.
 ## The runner's configuration
 
 The runner names its servers under `mcp.servers`, and a doer's `mcp` ceiling names the servers
-its tasks may call, one to a block, with the `call` shapes ([the viff
+its tasks may call, one to a block, with the `call` shapes ([the viff instance
 runner](../reference/runnerd.md#configuration)):
 
 ```tony

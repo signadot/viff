@@ -1,6 +1,6 @@
 # Permissions on the platform
 
-This page is the part of permissions that somebody who runs or extends a viff needs: the
+This page is the part of permissions that somebody who runs or extends a viff instance needs: the
 `system:` parts, the root and the config, the seed, and how installed things get their records.
 The model is [perms.md](../perms.md), and the detail is [reference/perms.md](../reference/perms.md).
 
@@ -56,7 +56,7 @@ the root's line `child-owner: [group:admin]`. What an admin creates is recorded 
 who acted.
 
 The list **only seeds** the group. After the seed, `user:admin@viff` changes the membership
-live with `viff group`. So an edit to the list on a running viff changes nothing. At start,
+live with `viff group`. So an edit to the list on a running viff instance changes nothing. At start,
 viffd says when the root's record is not what the config would write.
 
 `--reseed-perms` is the one start that rewrites the top from the config. It replaces the root,
@@ -87,7 +87,7 @@ Two `child-grants` stand beside the rows:
 | at | `child-grants` | effect |
 |---|---|---|
 | `mirror.ask` | `{read: ["*"], read-write: [user:*, agent:*]}` | copied onto each ask a gate or a task raises, when it is posed. A person's ask is written by `viff ask` with its own. A private viff narrows it to close the docket. |
-| `mirror.schedule` | `{read: ["*"]}`, whatever the root's says | schedules, their ticks and the derived calendar are readable in a viff that holds out nothing else |
+| `mirror.schedule` | `{read: ["*"]}`, whatever the root's says | schedules, their ticks and the derived calendar are readable in a viff instance that holds out nothing else |
 
 ## Installed things and their records
 
@@ -279,7 +279,7 @@ viff perms mirror ask 'mirror.trigger.train-run.merge-to-main~adaa5e99' \
   -grants '[{read: ["*"], read-write: [user:you@example.com]}]'
 ```
 
-**To close the docket for a whole viff,** narrow the `child-grants` on `mirror.ask`. Viff gives
+**To close the docket for a whole viff instance,** narrow the `child-grants` on `mirror.ask`. Viff gives
 it to the record of each ask a gate or a task raises, when it is posed. A private viff sets it to
 `{read: ["*"]}` or less. After that, only co-owners, named answerers and the resolvers they
 grant answer anything.

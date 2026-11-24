@@ -123,7 +123,7 @@ Every external kind declares its boundaries. A boundary is a safe point where co
 The boundary is where steering lands, for every kind. How far apart the boundaries are sets the
 latency of control.
 
-## The two shapes, and the one viff runs
+## The two shapes, and the one viff instance runs
 
 **A, in-process external leaf.** An executor runs a command, streams stdout and stderr as
 events, and turns the exit into a step result. A driver makes an RPC to a model host. Shape A

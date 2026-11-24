@@ -15,7 +15,7 @@
 # installer, and a person's ask is read only by whom it asks and who may read what it is about
 # (docs/asking.md): installed by anybody else, the rule would not see the asks put to people.
 
-# The docket's own stratum is the system's, `asks` (internal/viffd/system.tony), which every viff has; the
+# The docket's own stratum is the system's, `asks` (internal/viffd/system.tony), which every viff instance has; the
 # messages go strictly above it.
 strata:
 - name: gate-asked

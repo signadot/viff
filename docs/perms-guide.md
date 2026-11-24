@@ -4,7 +4,7 @@ This page shows the permissions model by example, in the order you meet it. The 
 [perms.md](perms.md): one owner for each node, grants on the records, and one check on every
 write and read. The detail is in [reference/perms.md](reference/perms.md).
 
-Most of what you own in a viff, you never wrote by hand: a task record that the runtime
+Most of what you own in a viff instance, you never wrote by hand: a task record that the runtime
 mirrored, a question that a [rule](glossary.md#rule) posed, a branch that an
 [iod](glossary.md#iod) reflected. The permissions on those things follow from who asked for the
 work, not from who typed. This surprises people, so the page walks it in five steps:
@@ -41,14 +41,14 @@ user: "you@example.com"
 |---|---|
 | `VIFF_USER` in the environment | the file, for one shell |
 | `-as` | both, on the commands that take it. Use it to act as somebody else for one command and see what they see. |
-| `VIFF_CONFIG=<file>` | both file layers, outright. So a second viff gets a second file, and not a second identity in one file. |
+| `VIFF_CONFIG=<file>` | both file layers, outright. So a second viff instance gets a second file, and not a second identity in one file. |
 
-With no `user` anywhere, who the CLI acts as depends on where the viff is:
+With no `user` anywhere, who the CLI acts as depends on where the viff instance is:
 
-- **A viff on this machine** (`localhost`, `127.0.0.1`, `::1`): the CLI acts as the
+- **A viff instance on this machine** (`localhost`, `127.0.0.1`, `::1`): the CLI acts as the
   [local user](glossary.md#local-user), `user:<login>@localhost`. `<login>` is your login name.
   This is who you are in the [tutorial](tutorial/README.md) before you configure anything.
-- **Any other viff:** the request names nobody. It reads what `*` may read, and it writes
+- **Any other viff instance:** the request names nobody. It reads what `*` may read, and it writes
   nothing. Viff refuses every request that is not a read with
   `400 Viff-Principal is required`, because a write by nobody would be recorded as the
   system's.
@@ -94,11 +94,11 @@ viff has read your comment. Either way, viff binds the account to you. From then
 count as you. The ballot records that you answered through Slack or GitHub, and through which
 iod. Nobody but you can make the binding: a nonce said by anyone else binds nothing.
 
-**A viff can verify a person instead of taking their word.** Where its config names an
+**A viff instance can verify a person instead of taking their word.** Where its config names an
 identity provider, `viff account login` logs you in there. The CLI then sends the token it got
 in place of a name. Viff checks the token, and acts as the person it proves. `viff whoami`
 says how viff knows you: the provider's name, or `asserted` for a name it took as given. `-as`,
-and `agent:` in the config, still send a bare name. A viff with `mode: required` refuses a
+and `agent:` in the config, still send a bare name. A viff instance with `mode: required` refuses a
 person who carries no token, with `401` and a line that says to log in. People are verified, and
 so are the deployment's own iods, which present their own tokens, and a runner whose
 registration names the subject of its token, which every registration does. An agent is not

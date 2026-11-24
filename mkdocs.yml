@@ -2,7 +2,7 @@ site_name: Viff
 site_description: A shared space where a team's software delivery work runs, under rules the team writes.
 # Where the site is served. What makes a page's address absolute: the canonical link on each
 # page, and the card image a link to the site unfurls with (docs/overrides/main.html).
-site_url: https://signadot.github.io/viff/
+site_url: https://viff.dev/
 # The repository, linked with its icon from the header of every page, as tony-format's site
 # does. edit_uri is empty so the link is to the repository rather than a per-page "Edit on
 # GitHub".

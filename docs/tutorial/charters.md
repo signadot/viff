@@ -19,7 +19,7 @@ viff charter                    # every charter, the baseline one first
 This page goes in four steps, each one on from the last. The first rule changes data. The
 second asks first. The third starts a task and writes its answer back into the data. The fourth
 derives data of its own, which keeps its lineage, and one more rule reacts to it. Each is
-installed from the text shown, on [a viff running](README.md#start), so what you read is what
+installed from the text shown, on [a viff instance running](README.md#start), so what you read is what
 runs. [Charters, continued](charters-2.md) has the rest of what a rule can say.
 
 ## 1. A rule that changes data
@@ -261,7 +261,7 @@ steps.
 ## Your own charters
 
 You have the four parts now. A charter of your own is made of the same kinds of rule, over your own
-data. On real systems the shapes stay the same, and the viff is shared: a charter you install acts
+data. On real systems the shapes stay the same, and the viff instance is shared: a charter you install acts
 under your name, its gates reach the colleagues they name wherever they are, and the tasks it starts
 are on the task list of everyone who may read them. [Iods](../io.md) connect viff to a repository,
 a forge or a chat workspace: they write the data, and they carry what a rule writes back out to

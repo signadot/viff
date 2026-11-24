@@ -1,7 +1,7 @@
 # Viff
 
 Viff is a shared space where a team's software delivery work runs: agents, scripts and people
-in one viff, and the team decides how much of the work runs without asking.
+in one viff instance, and the team decides how much of the work runs without asking.
 
 Viff watches the systems the work lives in: a git repository, GitHub, Slack, Linear, an issue
 tracker. When something there changes, viff does what your rules say. It starts an agent on a
@@ -12,7 +12,7 @@ Viff is not a programming language, and it is not an agent. It is a small runtim
 coordinates the agents and tools you already have, under rules you write, and it keeps a record
 of every decision. The rules are the same for one agent or for many.
 
-One viff is shared by a team or an organization. Everything in it is done under a name, a
+One viff instance is shared by a team or an organization. Everything in it is done under a name, a
 person's, an agent's or a runner's: a write, a task, an answer, each says who. A question goes
 to the people it names, and they answer from wherever they are: the CLI, Slack, a pull request.
 A task one person started is visible to everyone who may read it, and whoever holds control over
@@ -26,7 +26,7 @@ them. Read this first.
 ## [Tutorial](tutorial/README.md)
 
 The four parts of viff, a page each: data, questions, tasks, and the charters that put them
-together. It runs on a viff on your own machine, standing in for the shared one.
+together. It runs on a viff instance on your own machine, standing in for the shared one.
 
 ## [Viff as groundskeeper](groundskeeper.md)
 

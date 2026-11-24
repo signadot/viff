@@ -1,17 +1,17 @@
 # Platform docs
 
-These pages are for somebody who runs a viff, extends it, or changes it. They are read in the
+These pages are for somebody who runs a viff instance, extends it, or changes it. They are read in the
 repository, and the site does not publish them. Somebody who uses viff (writes charters, runs
 tasks, answers gates) starts at [the docs index](README.md).
 
-## Run a viff
+## Run a viff instance
 
 - [What a deployment is](platform/deployment.md): the store, viffd, the runners and the iods,
   and the knob or setting each kind of deployment, Kubernetes or local, fills them in with.
 - [Starting a viff](reference/up.md): `viff up`, its flags, and the config file.
 - [Platform commands](platform/commands.md): `up`, `down`, `runner`, `io` and `resolver`,
   and the smoke test.
-- [A viff on your machine, with Claude](platform/local-viff.md): the store, viffd and a runner
+- [A viff instance on your machine, with Claude](platform/local-viff.md): the store, viffd and a runner
   offering claude, as pitchfork daemons, with Claude Code reaching it over MCP; Linux and macOS.
 - [Runners](runners.md): where work runs, and what removing a runner does to the work on it.
   The surface is [reference/runners.md](reference/runners.md).

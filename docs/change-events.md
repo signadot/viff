@@ -18,7 +18,7 @@ for it.
 Viff could build the rich shape over the logd-backed store. It would need a mutable `seen` set,
 passed through both the live watch and `Since`. That set has three faults:
 
-- The catch-up path, which is the one viff trusts, is no longer pure.
+- The catch-up path, which is the one viff instance trusts, is no longer pure.
 - A create inside a replay window gets the wrong label.
 - The store no longer matches its interface.
 

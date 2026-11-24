@@ -9,7 +9,7 @@ Two kinds exist, beside a plain `viff up`, which is no kind (see the end of this
 - **Kubernetes**, in [`deploy/`](../../deploy/README.md): one `o build`, rendered with a profile
   (`deploy/profiles/<name>.tony`) and knobs (`build.tony`'s `env`, or `-e knob=value`), and
   applied with `make deploy PROFILE=<name>`. eks and minikube are its profiles.
-- **Local**, in [A viff on your machine](local-viff.md): pitchfork daemons
+- **Local**, in [A viff instance on your machine](local-viff.md): pitchfork daemons
   ([`pitchfork.toml`](../../pitchfork.toml)), from settings
   ([`scripts/viff-local.env`](../../scripts/viff-local.env), with yours in
   `~/.config/viff-local.env`) that `scripts/viff-local.sh setup` renders.

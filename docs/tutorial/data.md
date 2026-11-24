@@ -8,7 +8,7 @@ On the command line you type the segments of an address as separate words:
 `viff-tutorial pr 1`. In a document the same address is one path: `viff-tutorial.pr."1"`.
 [Addressing](../reference/entities.md#addressing) has the whole grammar.
 
-This page needs [a viff running](README.md#start). Seed some data to read. It goes under
+This page needs [a viff instance running](README.md#start). Seed some data to read. It goes under
 `viff-tutorial`, where everything the tutorial makes lives:
 
 ```sh
@@ -21,7 +21,7 @@ The address narrows a read by *where* the data lives. `-if` narrows it by *what 
 says*, with a [tony match](https://signadot.github.io/tony-format/) against the payload.
 
 ```sh
-viff data                                                          # the whole viff, one document
+viff data                                                          # the whole viff instance, one document
 viff data viff-tutorial pr '*'                                    # by where it lives
 viff data viff-tutorial pr 1                                      # one pull request, whole
 viff data viff-tutorial pr '*' -if '{stage: open}'                # by what it says

@@ -59,7 +59,7 @@ a scheduler.
 | **runner** | runs tasks, on a machine of your choosing. It holds the credentials, and makes each call a task asks for within its ceiling. A task holds no credential. |
 | **principal** | whoever acts: a person, a runner, an agent, or viff itself. |
 
-**Everyone acts under their own name.** One viff is shared by a team. Each write, task and
+**Everyone acts under their own name.** One viff instance is shared by a team. Each write, task and
 answer records who made it. Each place in the data has one owner, and anybody else acts on it by
 a grant the owner writes. A charter acts as the person who installed it, and reads only what they
 may read ([permissions](perms.md)).

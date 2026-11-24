@@ -2,7 +2,7 @@
 
 This page has two recipes for a developer who extends viff: a runner and an iod.
 
-Each recipe needs a viff on your own machine, started as
+Each recipe needs a viff instance on your own machine, started as
 [Before you start](../build.md#before-you-start) says.
 
 ## Write a runner
@@ -60,7 +60,7 @@ func (echoExecutor) Execute(_ context.Context, tu task.ToolUse) (task.StepResult
 
 | Part | What it does |
 |---|---|
-| `runnerd.NewGuard(…)`, `guard.Wrap`, `guard.Announce` | proves the runner to the one viff it serves, with the token in `-token-file`: it answers the token on `GET /describe` to that viff, takes only that viff's tokens on every other route, and tells the viff it is here. The registration names the token by its hash (`viff runner add -token-file`). A runner is never taken at its word, so a runner without one cannot be registered. |
+| `runnerd.NewGuard(…)`, `guard.Wrap`, `guard.Announce` | proves the runner to the one viff instance it serves, with the token in `-token-file`: it answers the token on `GET /describe` to that viff, takes only that viff's tokens on every other route, and tells the viff instance it is here. The registration names the token by its hash (`viff runner add -token-file`). A runner is never taken at its word, so a runner without one cannot be registered. |
 | `runnerd.NewInProcessHandler(build)` | makes a task handler that runs tasks in this program's process, with no sandbox. It calls `build` once for each spawn. (`runnerd` uses a `runnerd.SubprocessHandler` instead, which runs each task in a sandboxed process of its own.) |
 | `d.Describe(…)` | what the runner offers, which `GET /describe` answers, in `version: 2`: one agent, `sample`, taking no settings. Each offer says which networks it builds, under its network's `builds`. The sample runs its tasks unconfined, so it builds only `open`. Viff does not install a runner that offers nothing, or whose offer leaves out what network it builds. |
 | `d.HTTPHandler()` | the HTTP routes of the contract, and `GET /describe` |
@@ -130,7 +130,7 @@ and [the bodies](../task-control.md#the-bodies) describes each field of a launch
 ### Install it and run a task
 
 Start the sample in a terminal of its own, with a static token it proves itself with.
-`-viff-url` names the viff it serves, `http://localhost:9797` by default, spelled as `viff up`
+`-viff-url` names the viff instance it serves, `http://localhost:9797` by default, spelled as `viff up`
 prints its issuer: a runner told `127.0.0.1` refuses every token a `localhost` viff signs.
 
 ```sh
@@ -229,8 +229,8 @@ on both ways.
    does not build), and one missing a step its doer requires. `GET /describe` says what it has.
 9. **A failure sets `err`, and not `result`.** `result` is the answer of a task that ended
    with `done`.
-10. **The runner proves itself to its viff.** On `GET /describe` from its viff it answers its
-   own token in `Viff-Runner-Token`; on every other route it takes only a bearer its viff
+10. **The runner proves itself to its viff.** On `GET /describe` from its viff instance it answers its
+   own token in `Viff-Runner-Token`; on every other route it takes only a bearer its viff instance
    signed for it; and its requests to viff carry its token. Viff refuses a registration that
    names no `subject`, so a runner that cannot prove itself is never registered
    ([who the runner is](../runners.md#who-the-runner-is)).

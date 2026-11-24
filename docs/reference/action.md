@@ -459,7 +459,7 @@ firing, as any absent path does.
 **A completion hook reads the subject as it is when the task ends.** A task that finishes wakes
 the hook, and no write does. So the hook has no cause of its own, and no commit of its own to
 read at. It reads at the head: `subject.value`, `subject.commit`, `!get-path`, `!list-paths`, a
-derive and the strings of a hook's spawn all read the viff as it stands when the task ends, in
+derive and the strings of a hook's spawn all read the store as it stands when the task ends, in
 one snapshot, so a hook that reads twice reads one world. The head is always there to read. The
 store keeps history for its compaction cutoff only, and a hook that read at the commit its rule
 fired at lost that commit whenever its task ran longer than the cutoff. A hook also survives a
@@ -1037,7 +1037,7 @@ commit that writes under the rule's own `@sys.charter.<rule>` on a subject. A su
 whole, so that is every write of a subject the rule has a record on: every write of a subject
 partway through the rule's sequence, and every write of a subject with a failed `hook` standing,
 until a clean hook removes it. A write of a subject where the rule has written nothing costs
-nothing more, whether viffd watches the whole viff or each rule's subtrees.
+nothing more, whether viffd watches the whole viff instance or each rule's subtrees.
 
 A charter can match on `hook`, for example
 to ask a person when `fix`'s hook was lost:

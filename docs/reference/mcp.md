@@ -72,7 +72,7 @@ claude mcp add viff-read -- viff mcp -read-only
 | `viff_charter_check` | `viff charter --check` | says whether charters would install at an address, and what would change |
 | `viff_charter_install` | `viff charter -a` | installs a charter, a rule or a list of them at an address, or several charters each at its own `at:`; with `prune`, what they leave out at and under the address goes; with `wait`, the answer is held that long for the rules to arm |
 | `viff_charter_remove` | `viff charter -r` | removes a package, or one rule, level or schedule of one |
-| `viff_status` | `viff status` | says what the viff is running, and what went wrong at its firings |
+| `viff_status` | `viff status` | says what the viff instance is running, and what went wrong at its firings |
 | `viff_schema` | `viff schema` | prints the schema, or one definition of it |
 
 Every tool's parameters are described in its schema, which the host shows the agent.
@@ -124,5 +124,5 @@ ended, after which nothing follows. A stream that closes while the task still ru
 and the next call from the cursor goes on.
 
 Only these two watch, and each is narrow: your own asks and questions, or one task. There is no
-tool that watches all tasks or the data, since a watch that wide costs the viff more than one
+tool that watches all tasks or the data, since a watch that wide costs the viff instance more than one
 agent's session is worth.

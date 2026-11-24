@@ -5,7 +5,7 @@ the work, on a runner. You can watch a task, tell it something while it runs, an
 asks a [question](questions.md) before it does what it may not do alone. What it says last is its
 **answer**.
 
-This page needs [a viff running](README.md#start). The runs that go to an agent need a model
+This page needs [a viff instance running](README.md#start). The runs that go to an agent need a model
 key, and every other run here is a script. Every run on the page helps triage one bug report
 from the users of `acme/app`: the login page fails after a password reset.
 

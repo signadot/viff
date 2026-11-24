@@ -1,4 +1,4 @@
-# Starting a viff
+# Starting a viff instance
 
 `viff up` runs the engine and the task runtime, and it brings up the
 [store](../glossary.md#store). Every other subcommand is a client of `viff up`.
@@ -6,13 +6,13 @@
 defaults are, and what to give instead.
 
 ```sh
-export VIFF_ADDR=localhost:9797   # where clients reach the viff (this is the default)
+export VIFF_ADDR=localhost:9797   # where clients reach the viff instance (this is the default)
 viff up
 ```
 
 To point a client at another address, `export VIFF_ADDR=host:port`, or pass
-`-addr host:port` to any command. `viff down` stops the viff on `-addr`, and it stops the
-daemons that the viff started.
+`-addr host:port` to any command. `viff down` stops the viff instance on `-addr`, and it stops the
+daemons that the viff instance started.
 
 ```sh
 VIFF_LOG=debug viff up            # the engine's trace: which rule fired, on what, and why not
@@ -85,7 +85,7 @@ session connects again. It does not fail the caller.
 
 **The readiness probe answers from this process alone.** `/healthz` reports three things:
 `ok`, whether the engine is restored, and the head revision this process has. It reads
-nothing from the store. `/healthz` answers `503` until the engine is restored. A viff that is
+nothing from the store. `/healthz` answers `503` until the engine is restored. A viff instance that is
 restoring is not stuck: viffd serves requests before the restore finishes. So the probe that
 says "no traffic yet" also says which of the two cases it is. `/status` reads the store, and it
 is not a probe.
@@ -152,7 +152,7 @@ host's network alone where it is unconfined, so a spawn it runs says `network: {
 **How it proves itself.** `up` makes a static token on the first run on a data dir
 (`local-runner.token`, 0600, 64 hex digits) and keeps it; the registration names it by its hash,
 and the runner reads it ([who the runner is](../runners.md#who-the-runner-is)). Its
-configuration, `local-runner.tony`, is rewritten on every `up`: the viff it serves, at this
+configuration, `local-runner.tony`, is rewritten on every `up`: the viff instance it serves, at this
 run's `--addr`, and the port it listens on, the one the last run recorded unless something else
 holds it. The runner says hello when it starts, and is described within seconds. Rotating the
 token means removing the file and restarting `up`: a runner holding the old one fails its
@@ -160,7 +160,7 @@ handshake, and is passed over until it is restarted on the new.
 
 **Which `runnerd`.** `up` looks beside the `viff` executable first (`make bin` puts both
 there), then in `~/.viff/bin/<version>/`, which counts once it holds both `runnerd` and
-`viff-call-tool`, then on `PATH`; where none is found and this viff
+`viff-call-tool`, then on `PATH`; where none is found and this viff instance
 is a release, it installs `runnerd` and `viff-call-tool` of that release into
 `~/.viff/bin/<version>/` with `go install`, as it installs `o`. A `viff` built from a checkout
 is no release: Go stamps it a pseudo-version, which names a commit, with `+dirty` where the tree
@@ -169,7 +169,7 @@ beside it. `--runnerd-bin` names one.
 
 A `runnerd` found beside `viff` or on `PATH` has to be the same build as `viff`: the same
 release, or built from the same commit of the same tree. One of another build is refused, with
-both builds named, since it may describe itself in a form this viff refuses, and the runner
+both builds named, since it may describe itself in a form this viff instance refuses, and the runner
 would then fail to register a step away from the cause. Build both together (`make bin`, or
 `go build -o <dir> ./cmd/viff ./cmd/runnerd ./cmd/viff-call-tool`). A `runnerd` that
 `--runnerd-bin` names is used whatever its build, and `up` says so when it is another.
@@ -179,13 +179,13 @@ answers at the recorded port and proves this data dir's token is used as it stan
 with it, and is asked every 30 seconds whether it still answers, so one is started in its place
 when it does not; nothing answers, or something else does, and a runner is started, and `up` says
 why it did not use what answered. A runner left serving another `--addr` on the same `--data`
-does not prove itself to this viff, takes no stop from it, and runs on until it is stopped by
+does not prove itself to this viff instance, takes no stop from it, and runs on until it is stopped by
 hand. The store pair is found
 the same way, at the docd address the last run recorded in the data dir (`docd.addr`). A runner
 that exits while `up` runs is started again, waiting longer each time it exits quickly.
 
 **When it stops.** `viff down`, or ctrl-c, asks the runner to stop (`POST /stop`, which the
-runner takes from its viff alone), waits for it, and removes its registration (a runner this run
+runner takes from its viff instance alone), waits for it, and removes its registration (a runner this run
 did not start is waited on by dialing, and its process can outlive `viff down` by a few seconds
 while it drains its connections); logd and docd
 are stopped with it. A store pair `up` found running rather than started is left running, and
@@ -207,7 +207,7 @@ the config says another.
 
 ## The issuer
 
-A registered runner takes this viff's calls by the tokens it signs as an issuer
+A registered runner takes this viff instance's calls by the tokens it signs as an issuer
 (`auth.issuer`, below), each minted for that runner alone
 ([who the runner is](../runners.md#who-the-runner-is)). So `viff up` is always an issuer:
 where its config names no `auth.issuer`, it is one at its own address (`http://<--addr>`, with
@@ -265,12 +265,12 @@ that the request makes. It checks each write and each read against what the
 `user:<email>`. A runner's identity is `runner:<identity>`. Viff refuses a bare word.
 
 Viff takes `user` as given. `-as` overrides it on the commands that take `-as`. When the
-config names a user, those commands do not require `-as`. Where the viff names an identity
+config names a user, those commands do not require `-as`. Where the viff instance names an identity
 provider, `viff account login` proves who you are instead, and the CLI then acts as that person
 whatever `user` says ([your account](perms.md#your-account)).
 
 With no `user` and no `agent`, the CLI acts as the local user, `user:<login>@localhost`,
-toward a viff on this machine (`localhost`, `127.0.0.1`, `::1`). Toward any other viff, it
+toward a viff instance on this machine (`localhost`, `127.0.0.1`, `::1`). Toward any other viff instance, it
 names nobody.
 
 **`agent`** names an operator agent instead of a user. An operator agent is a harness that
@@ -343,12 +343,12 @@ auth:
   the deployment gives it. The name is where its accounts are bound (`mirror.identity.<name>`),
   so it is one plain word, and `iod` is the iods'. A provider is one of two kinds:
     - **An issuer**, with `issuer`, the OpenID Connect issuer's URL, and `clientId`, the OAuth
-      client registered there for this viff: a public client. Quote a `clientId` that starts
-      with a digit. The viff accepts its id_tokens. `clientSecret` is for an issuer that hands
+      client registered there for this viff instance: a public client. Quote a `clientId` that starts
+      with a digit. The viff instance accepts its id_tokens. `clientSecret` is for an issuer that hands
       a public client a secret and wants it back at its token endpoint, as Google's device flow
       does; it is not confidential (every copy of the CLI carries it), the CLI sends it where it
       is set, and the server never reads it.
-    - **Iods**, with `iods`, the installed iods the viff trusts for the provider's accounts, by the
+    - **Iods**, with `iods`, the installed iods the viff instance trusts for the provider's accounts, by the
       name each is installed under. `github`'s iods reflect the comments that prove a GitHub
       account, and `slack`'s iod relays the member who typed
       ([a person relayed by a trusted iod](perms.md#a-person-relayed-by-a-trusted-iod)). GitHub
@@ -393,9 +393,9 @@ auth:
   name it is installed under, which is how a provider's `iods` names it. An iod that relays nobody
   needs no `iod`. The accounts are written at start, never at first sight.
 - `static` is the iods of a deployment with no issuer, a laptop or CI: the path of a file holding
-  the token each presents, read at start. The viff keeps the hash and never the token.
+  the token each presents, read at start. The viff instance keeps the hash and never the token.
 
-**`auth: {issuer: {url, key}}`** makes the viff an issuer of its own tokens. The server reads
+**`auth: {issuer: {url, key}}`** makes the viff instance an issuer of its own tokens. The server reads
 it.
 
 ```tony
@@ -405,28 +405,28 @@ auth:
     key: /etc/viff/issuer.pem
 ```
 
-- `url` is the viff as a system outside it reaches it. It is the `iss` of every token the viff
-  signs. The viff serves its discovery document at `<url>/.well-known/openid-configuration` and
+- `url` is the viff instance as a system outside it reaches it. It is the `iss` of every token the viff instance
+  signs. The viff instance serves its discovery document at `<url>/.well-known/openid-configuration` and
   its public keys at `<url>/.well-known/jwks.json`. Both are JSON, and are read without naming
   anybody.
 - `key` is the path of the signing key: an RSA private key of 2048 bits or more, in PEM (PKCS#1
   or PKCS#8). `openssl genrsa -out issuer.pem 2048` makes one. `viff up` refuses to start on a
   key it cannot read.
 
-Without the block, the viff signs nothing and answers 404 at both addresses. What it signs is
+Without the block, the viff instance signs nothing and answers 404 at both addresses. What it signs is
 [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through),
 and the token it presents to each registered runner, minted for that runner
 alone ([who the runner is](../runners.md#who-the-runner-is)); the runners read the keys at the
-url they reach the viff at, and hold the tokens to `url` as the issuer's name.
+url they reach the viff instance at, and hold the tokens to `url` as the issuer's name.
 
 **`perms: {child-grants: {…}}`** is read by the server. It is the `child-grants` of the
 [root](../glossary.md#root-of-the-store): what a node that is created with no record above it
-holds out. Unset, it is `{read: ["*"]}`. Set it to `{}` for a viff where what anybody creates
+holds out. Unset, it is `{read: ["*"]}`. Set it to `{}` for a viff instance where what anybody creates
 belongs to that creator alone.
 
 **`perms: {admins: […]}`** lists who may take a **top-level** address. Its entries are
 [grantees](../glossary.md#grantee), and a bare email reads as `user:`. Viff puts them in the
-`admin` group, and the root names that group in its `child-owner` line. Unset, the viff is
+`admin` group, and the root names that group in its `child-owner` line. Unset, the viff instance is
 open: anybody may take a top-level address.
 
 Viff writes `child-grants` and `admins` into the root's record at start, under a precondition
@@ -450,7 +450,7 @@ Every key, and the variable that sets it:
 
 | Key | Variable | Read by | What it is |
 |---|---|---|---|
-| `addr` | `VIFF_ADDR` | every command | the viff to talk to |
+| `addr` | `VIFF_ADDR` | every command | the viff instance to talk to |
 | `scope` | `VIFF_SCOPE` | every command | the scope to act in |
 | `user` | `VIFF_USER` | every command | who the CLI acts as |
 | `agent` | `VIFF_AGENT` | every command | the operator agent the CLI acts as, in place of `user` |
@@ -461,7 +461,7 @@ Every key, and the variable that sets it:
 | `repoCharters: [{repo, github, branch, at, tree, answerers}]` | | `viff up` | the repo-charters reconciler, installed as the system for each repository named |
 | `auth: {principal: {mode, providers}}` | | `viff up`, `viff account login` | the identity providers whose tokens say who a request is from |
 | `auth: {iod: {issuer, audience, accounts, static}}` | | `viff up` | the issuer of the iods' workload tokens, and which iod each is |
-| `auth: {issuer: {url, key}}` | | `viff up` | the address and signing key the viff issues its own tokens with |
+| `auth: {issuer: {url, key}}` | | `viff up` | the address and signing key the viff instance issues its own tokens with |
 | `perms: {child-grants, admins}` | `VIFF_PERMS_ADMINS` for `admins`, comma-separated | `viff up` | what the root holds out, and who may take a top-level place |
 | `compactionCutoff` | `VIFF_COMPACTION_CUTOFF` | `viff up` | how long the store `up` starts keeps every patch ([the store](#the-store)); `--compaction-cutoff` overrides it. `1d` by default |
 | `tripDuration` | | `viff up` | how long a firing waits when the [cycle throttle](../cycle-throttle.md) trips. A duration, `1s` by default; `0` refuses the firing |

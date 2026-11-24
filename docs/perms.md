@@ -48,7 +48,7 @@ Every request names who makes it. The CLI sends the `user:` or `agent:` in its c
 commands that take it, the flag `-as` names somebody else. Viff refuses a request that writes
 and names nobody.
 
-**A principal is what the request says, unless the viff verifies it.** By default, viff
+**A principal is what the request says, unless the viff instance verifies it.** By default, viff
 trusts a name as much as it trusts `-as`, and no more. A deployment can name the identity
 providers its people sign in with. A request that carries a token from one of them is then made
 as the person the token proves. Viff refuses a token that proves nobody. The rest of the model

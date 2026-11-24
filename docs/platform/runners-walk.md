@@ -1,6 +1,6 @@
 # Where a task runs, walked
 
-This page walks through running a task away from the viff you started, on a runner you
+This page walks through running a task away from the viff instance you started, on a runner you
 install. It continues [the tasks page of the tutorial](../tutorial/tasks.md).
 
 A task need not run on this viff. Install a [runner](../glossary.md#runner) that offers an agent,

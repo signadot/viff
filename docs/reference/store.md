@@ -23,7 +23,7 @@ directory. It points the store at the client face of docd. The store flags chang
 | `-data <dir>` | uses a durable directory |
 | `-docd-addr` | attach to a docd that is already running |
 | `-docd-advertise-addr` | publish a different address on `/status`. Use it when a store client beside viff reaches docd at another address than viff does. |
-| `-logd-config <file>` | the logd configuration, in tony, for the daemons that `up` starts, in place of the one viff writes. Viff refuses it beside `-docd-addr`, which starts nothing. |
+| `-logd-config <file>` | the logd configuration, in tony, for the daemons that `up` starts, in place of the one viff instance writes. Viff refuses it beside `-docd-addr`, which starts nothing. |
 
 See [up.md](up.md#the-store).
 

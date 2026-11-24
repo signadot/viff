@@ -435,9 +435,9 @@ and then silently stops.
 selects on an absence, across a restart — because the failure is invisible until the process comes
 back.
 
-### `on:` is a formula over the viff, not an edge on an entity
+### `on:` is a formula over the viff instance, not an edge on an entity
 
-`on:` is evaluated over the whole viff and fires on the EDGE — false at the previous commit, true
+`on:` is evaluated over the whole viff instance and fires on the EDGE — false at the previous commit, true
 at this one. So `on: {path: "git.viff.commit.*"}` means "a git commit exists", which rises once,
 the first time one ever does, and then stands forever. It is a level, not an edge, and the rule
 never fires again.

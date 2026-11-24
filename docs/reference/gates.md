@@ -288,7 +288,7 @@ Do not write `within` and `atFrom` together. `at` is the instant the engine work
 wrote; a rule never writes it. An `ask` row of a task's autonomy has `within` only, because there
 is no record for it to read a date from.
 
-### A question outlives the viff that asked it
+### A question outlives the viff instance that asked it
 
 The question's record, its options and every ballot are data in the store. So a restart finds
 the question exactly where it stood.
@@ -376,8 +376,8 @@ rule whose gate passed. You set up the outside system to accept such a token and
 The runner checks out `acme/app`, and the script builds it and syncs the build to S3. AWS takes
 the token from the file and the role from `AWS_ROLE_ARN`.
 
-**The viff is an issuer.** Its config names the address and the signing key
-([`auth.issuer`](up.md#configuration)). The outside system reads the viff's public keys from
+**The viff instance is an issuer.** Its config names the address and the signing key
+([`auth.issuer`](up.md#configuration)). The outside system reads the viff instance's public keys from
 that address, and checks each token's signature for itself.
 
 **The audience is a system outside viff.** A credential whose audience is a registered runner's
@@ -433,7 +433,7 @@ system only what that is safe for.
 
 | Claim | What it holds |
 |---|---|
-| `iss` | the viff's address as an issuer |
+| `iss` | the viff instance's address as an issuer |
 | `aud` | the `audience` that the spawn declared |
 | `iat`, `nbf`, `exp` | when it was signed, and when it stops being good: ten minutes later |
 | `jti` | an id of this token alone |
@@ -465,7 +465,7 @@ spawn where it cannot. Either way it says why.
   to be one, and `mode: auto` is one.
 - A completion hook's spawn, or a step of a `seq`. They start after the answer was given. Make
   that step a rule of its own, with its own gate.
-- A viff with no `auth.issuer`.
+- A viff instance with no `auth.issuer`.
 - An `audience` with an expression in it. The audience is declared in the charter, and the
   subject's text cannot choose it.
 

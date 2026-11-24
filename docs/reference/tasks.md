@@ -601,10 +601,10 @@ may answer at once:
 A `404` usually means a typo. A `409` means somebody else answered first.
 
 At a restart, a question that a task raised survives exactly as its task does. A question that a
-firing raised is settled `orphaned`, because what waited on its answer was inside the viff
+firing raised is settled `orphaned`, because what waited on its answer was inside the viff instance
 process ([task control](../task-control.md)). If its rule still selects the subject, the
 reinstalled charter poses it again under the same id, with the ballots already cast
-([a question outlives the viff that asked it](gates.md#a-question-outlives-the-viff-that-asked-it)).
+([a question outlives the viff instance that asked it](gates.md#a-question-outlives-the-viff-that-asked-it)).
 If not, it stays orphaned.
 
 **`status: done` means that the task *stopped*, not that the work succeeded.** A hook that moves

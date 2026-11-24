@@ -3,7 +3,7 @@
 [The charters page](charters.md) has the four kinds of rule. This page has the rest of what a
 rule can say. It also keeps a charter in a file, and finds out why a rule did nothing. Each
 shape is installed and fired from the text shown, in the same charter at `viff-tutorial`. The
-page needs [a viff running](README.md#start) and nothing else. You do not need the pages
+page needs [a viff instance running](README.md#start) and nothing else. You do not need the pages
 before it.
 
 The rules on this page carry one team's work on `acme/app` from a user's report to a deploy:
@@ -288,7 +288,7 @@ viff charter viff-tutorial > charter.tony      # keep it, edit it, install it ag
 viff charter -a viff-tutorial -f charter.tony
 ```
 
-A charter is durable: each rule and each stratum is data in the store, and a viff that restarts has
+A charter is durable: each rule and each stratum is data in the store, and a viff instance that restarts has
 them ([the charter is durable](../reference/charter.md#the-charter-is-durable)).
 
 When you are done with the tutorial, take its charter away. What the charter wrote stays, and

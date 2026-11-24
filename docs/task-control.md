@@ -3,7 +3,7 @@
 This page is the contract behind a runner viff routes a spawn to. It is
 the [seam](glossary.md#seam) between viff and where a task runs. It builds on
 [external tasks](external-tasks.md), where it is the attached shape, and it makes concrete what
-that page calls "wrapping and enforcing the viff invariants".
+that page calls "wrapping and enforcing the viff instance invariants".
 
 In short, the task-control interface is the `runnerd` HTTP contract behind a base URL, made
 resumable.
@@ -147,7 +147,7 @@ work outlived the daemon, and orphans only what died with it.
 
 The work outlives the daemon only within the task's [lease](runners.md#a-tasks-lease). A runner
 stops a task that nobody has asked about for that long, and ends it `failed`,
-`orphaned: true`. A viff that comes back later attaches again all the same, and what it
+`orphaned: true`. A viff instance that comes back later attaches again all the same, and what it
 reads is that end.
 
 The reconcile reads baseline's tasks. A task that a rule in a [scope](glossary.md#scope) started
@@ -208,8 +208,8 @@ seam, `task.ErrUnreachable` and the errors like it carry it.
 
 ```
 GET    /describe                   what the runner offers: its agents, scripts, and what each takes
-       Viff-Runner-Token: <its workload token>, to a viff the runner verified as its own (docs/runners.md, "Who the runner is")
-GET    /ready                      200 as soon as the runner serves, for a readiness probe; whether its viff has heard it is the registration's to say
+       Viff-Runner-Token: <its workload token>, to a viff instance the runner verified as its own (docs/runners.md, "Who the runner is")
+GET    /ready                      200 as soon as the runner serves, for a readiness probe; whether its viff instance has heard it is the registration's to say
 GET    /tasks                      every task the runner hosts, as snapshots
 GET    /tasks/{id}                 level truth: current snapshot
 GET    /tasks/{id}/events?since=N  edge stream (SSE): replay cursor>N, then live
@@ -361,7 +361,7 @@ An index that looks confident while it is only stale is worse than one that says
 The terminal is a `status` event: `done|failed|cancelled`, and `err` where it failed. Viff
 reads the result from the snapshot, and CAS-writes both once. `?since=<terminal cursor>`
 replays the terminal and closes. The `/events` of a finished task is a finite record that a
-reader can replay. So a viff that restarts *after* completion still learns the outcome. A
+reader can replay. So a viff instance that restarts *after* completion still learns the outcome. A
 reader that has seen the terminal should stop connecting again, because there is nothing left
 to connect to.
 
@@ -436,9 +436,9 @@ For each task, an implementation must:
 
 - assign gapless cursors per task;
 - serve `GET /describe` with what it offers, and refuse a launch outside it;
-- verify its viff's bearer on every call but a bare
+- verify its viff instance's bearer on every call but a bare
   `GET /describe`, which is public, and answer the describe with its own workload token in
-  `Viff-Runner-Token` to the viff it verified, and to nobody else
+  `Viff-Runner-Token` to the viff instance it verified, and to nobody else
   ([who the runner is](runners.md#who-the-runner-is)); announce itself at start with
   `POST /runners/hello` and that token, in a loop until viff answers 2xx, again after a `401` at
   viff's door and never after a `403`; and serve `GET /ready` as 200 as soon as it serves;

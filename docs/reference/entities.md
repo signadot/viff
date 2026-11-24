@@ -339,7 +339,7 @@ the calendar under `mirror.schedule`.
 
 ## Reading
 
-A viff is one document, a tree, and `viff data` answers it at an address. The address is a
+A viff instance's store is one document, a tree, and `viff data` answers it at an address. The address is a
 [kinded path](https://pkg.go.dev/github.com/signadot/tony-format/go-tony/ir/kpath) in any of
 the spellings [above](#addressing). It is the same address at every length: whatever node stands
 there, including a place inside a payload.
@@ -400,7 +400,7 @@ A `*` opens one position. `..` opens every depth beneath where it stands, includ
 stands at. It asks a question with no depth at all:
 
 ```sh
-viff data '..'                              # the whole viff, walked
+viff data '..'                              # the whole viff instance, walked
 viff data demo '..'                         # demo and everything under it
 viff data demo '..' -if '{stage: open}'     # every node that says it is open, at any depth
 viff data demo '..' stage                   # every `stage` beneath demo
@@ -428,7 +428,7 @@ however long the address is. `demo.pr.nosuch` is not there, and neither is `nosu
 
     viff data nosuch            in your view, nothing stands at nosuch
     viff data demo pr nosuch    in your view, nothing stands at demo.pr."nosuch"
-    viff data                   in your view, the viff is empty: nothing has been written yet
+    viff data                   in your view, the viff instance is empty: nothing has been written yet
 
 A watch of such an address is refused in the same way. `viff watch -wait-if-absent` waits for a
 value to arrive there instead.
@@ -707,7 +707,7 @@ history. The refusal says which of two things happened:
 | The store could not answer. | The cursor is still valid, and the same request is worth repeating. |
 
 A catch-up costs what the watched address holds, so a watch of one address costs less than a
-watch of the whole viff, in the replay as in the stream.
+watch of the whole viff instance, in the replay as in the stream.
 
 The same property makes an installed rule act on the backlog: a rule is a statement about the
 world, not about what happens next. For the same reason, a long hold costs a cursor and not a
