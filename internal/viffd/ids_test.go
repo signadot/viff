@@ -68,8 +68,8 @@ func TestSameNamedRulesInThreeEnginesAskThreeQuestions(t *testing.T) {
 	sort.Strings(ids)
 	want := []string{
 		"me::mirror.trigger.review.ok~",
-		"notes:mirror.trigger.review.ok~",
 		"mirror.trigger.review.ok~",
+		"notes:mirror.trigger.review.ok~",
 	}
 	for i, id := range ids {
 		if !strings.HasPrefix(id, want[i]) {

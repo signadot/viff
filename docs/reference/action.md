@@ -986,7 +986,7 @@ For this reason the name of a rule may not contain `:`, as it may not contain `@
 
 A parallel branch is woken by a condition, and a condition matches facts. So a sequence publishes
 its position. Without it, the breadth axis could not observe the depth axis at all. The engine
-writes the position on the subject, under one reserved `viff` root, as each element completes:
+writes the position on the subject, under one reserved `@sys` root, as each element completes:
 
 ```tony
 @sys:

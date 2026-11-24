@@ -293,7 +293,7 @@ func (s *Server) getEntity(w http.ResponseWriter, r *http.Request) {
 // The entity routes are the GENERIC write, and before the boundary had a name anyone who could
 // reach them could write a rule, stamp a task record, or answer a question on viff's behalf —
 // with no route saying no, because there was nothing in an address to say no about. Now there
-// is: everything under `viff` is what it writes about its own running, and it is written by the engine,
+// is: everything under `mirror` is what it writes about its own running, and it is written by the engine,
 // not through here.
 //
 // It is not a lock on the DATA. A reader still reads it (that is the point of it being

@@ -25,7 +25,7 @@ func mustParse(t *testing.T, src string) entity.Payload {
 // readable is refused where it is written.
 func TestParseGrants(t *testing.T) {
 	gs, err := entity.ParseGrants(nil, mustParse(t, `{grants: [
-	  {at: [viff, task, instance], child-owner: ["*"]},
+	  {at: [mirror, task, instance], child-owner: ["*"]},
 	  {at: 'spaces."walter@example.com".shared', read-write: [ana@example.com, "user:*"]},
 	  {at: mirror.task.instance.t1, read-write: [runner:bot], control: [runner:bot]},
 	]}`))
@@ -58,7 +58,7 @@ func TestParseGrants(t *testing.T) {
 	own, err := entity.ParseGrants(node, mustParse(t, `{grants: [
 	  {read-write: [runner:bot], control: [runner:bot]},
 	  {below: true, read: [user:ana@example.com]},
-	  {at: [viff, task, instance, t1], read: ["*"]},
+	  {at: [mirror, task, instance, t1], read: ["*"]},
 	]}`))
 	if err != nil {
 		t.Fatal(err)

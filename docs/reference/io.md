@@ -43,9 +43,9 @@ Most viff instances run one iod of each kind. A name that says no more than `roo
 word for one fact. The name is still free. A second iod on one connector is where a name of its
 own is useful (`git` beside `git-buildhost`).
 
-An iod reflects the world outside viff. It never reflects what viff keeps under `viff`:
+An iod reflects the world outside viff. It never reflects what viff keeps under `mirror`:
 
-- Viff refuses a reflection that names an address under `viff.`.
+- Viff refuses a reflection that names an address under `mirror.`.
 - Viff refuses, at install, a claim that names such an address.
 - No claim reaches there, however wide it is written. `*` claims every address but `viff`.
 

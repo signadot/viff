@@ -167,7 +167,7 @@ A withdrawn grant stops future acts. It changes nothing that exists.
 The store also knows who wrote every commit. How it keeps the author is in
 [perms.md](platform/perms.md#the-author-of-a-commit), in the repository.
 
-**What is not yours to write.** Viff refuses `viff data -put` under `viff.`, whatever you
+**What is not yours to write.** Viff refuses `viff data -put` under `mirror.`, whatever you
 hold. You write there through the verbs that own it: `viff c -a`, `viff task run`,
 `viff question approve`, `viff perms`. Under each verb, the store checks the write against its
 place. So nothing that reaches the store can make a task or answer a question for you.

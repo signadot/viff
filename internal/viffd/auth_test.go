@@ -603,8 +603,8 @@ func TestRequiredAdmitsAPersonOnlyFromAToken(t *testing.T) {
 func TestOnlyATrustedIosReflectionIsEvidence(t *testing.T) {
 	srv, ts := identityServer(t)
 	resp := installIO(t, ts, idBo, map[string]any{
-		"name": "mirror", "root": "mirror", "url": "http://mirror-iod:9801",
-		"owns": []any{map[string]any{"at": "mirror.signadot"}},
+		"name": "replica", "root": "replica", "url": "http://replica-iod:9801",
+		"owns": []any{map[string]any{"at": "replica.signadot"}},
 	})
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
@@ -612,7 +612,7 @@ func TestOnlyATrustedIosReflectionIsEvidence(t *testing.T) {
 	}
 	// Bo's io reflects a comment that says ana's nonce, under its own root.
 	nonce := claim(t, ts, idAna, "ana-gh")
-	forged := entity.RefAt("mirror", "signadot", "viff", "comment", "42", "1")
+	forged := entity.RefAt("replica", "signadot", "viff", "comment", "42", "1")
 	if _, _, err := srv.Store.Write(entity.Write{At: forged.At(), Value: entity.Obj{
 		"author": "ana-gh", "authorId": 101, "body": "/viff link " + nonce,
 		"url": "https://github.com/signadot/viff/pull/42#issuecomment-1",
@@ -629,7 +629,7 @@ func TestOnlyATrustedIosReflectionIsEvidence(t *testing.T) {
 	}
 
 	// Trusting both, the same comment is evidence; the config at the next start says which.
-	if err := srv.SetAuth(Auth{Providers: map[string]AuthProvider{githubProvider: {IOs: []string{"gh", "mirror"}}}}); err != nil {
+	if err := srv.SetAuth(Auth{Providers: map[string]AuthProvider{githubProvider: {IOs: []string{"gh", "replica"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	if code, _ := verify(t, ts, idAna, nonce); code != http.StatusCreated {

@@ -3998,7 +3998,7 @@ func (a *attributed) created(ref Ref, principal, who string) ([]Ref, error) {
 		return nil, nil // the node itself is the top; record lands where it always would
 	}
 	// NOT IN VIFF'S HALF, where the structure is the system's rather than anybody's
-	// contribution: the kinds under `viff` are seeded, the rows beneath them are held out by
+	// contribution: the kinds under `mirror` are seeded, the rows beneath them are held out by
 	// the seed, and a task's record belongs at the task. Spawning the first one would otherwise
 	// make its requester the owner of `mirror.task` — and of every task anybody ran after.
 	if ref.Reserved() {

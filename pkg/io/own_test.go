@@ -337,20 +337,20 @@ func mustRef(t *testing.T, s string) entity.Ref {
 // way it breaks is one of them forgetting.
 func TestASourcesSystemIsTheOperatorsToChoose(t *testing.T) {
 	g := viffio.NewGit()
-	if err := g.SetRoot("mirror"); err != nil {
+	if err := g.SetRoot("replica"); err != nil {
 		t.Fatal(err)
 	}
 	g.AddRepo("viff", t.TempDir())
-	if g.Root() != "mirror" {
+	if g.Root() != "replica" {
 		t.Fatalf("git System() = %q", g.Root())
 	}
 	for _, o := range g.Owns() {
-		if !strings.HasPrefix(o.At, "mirror.") {
+		if !strings.HasPrefix(o.At, "replica.") {
 			t.Fatalf("a git claim outside the chosen system: %s", o.At)
 		}
 	}
 	// The hook a git source installs hints in its own system, or the hint reaches nothing.
-	if got := g.RepoRef("viff").String(); got != "mirror.viff" {
+	if got := g.RepoRef("viff").String(); got != "replica.viff" {
 		t.Fatalf("git RepoRef = %q", got)
 	}
 	// And two systems are provably disjoint with nothing else said.

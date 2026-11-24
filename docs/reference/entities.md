@@ -226,7 +226,7 @@ subject: 'demo."..".x'          # the name that is two dots, where a bare `..` d
 
 ### `viff` at the front
 
-Everything viff keeps about its own running is under `viff`
+Everything viff keeps about its own running is under `mirror`
 ([below](#two-halves-one-tree)). `viff` is a segment like any other in every spelling, and it
 counts like any other:
 
@@ -255,7 +255,7 @@ access (`'[0]'`) and a `*` step.
 ## viff's own records, and the world's, in one tree
 
 The top of the tree has one reserved key: `viff`. Everything viff writes about its own running
-is under `viff`. Everything the world is about is beside it, at whatever address a writer
+is under `mirror`. Everything the world is about is beside it, at whatever address a writer
 chooses.
 
 ```
@@ -264,7 +264,7 @@ mirror.task.instance.run-a1b2       viff's own
 mirror.trigger.rule.review
 ```
 
-These are under `viff`:
+These are under `mirror`:
 
 | Address | What it holds |
 |---|---|
@@ -313,9 +313,9 @@ The root's record, whose address is the empty path, stands beside the mirror at 
 Only viffd writes the mirror, and only the system reads it. Who owns a node, and what a write
 or a read is checked against, is in [perms.md](../perms.md).
 
-You read what is under `viff` like anything else. Only the verbs that own it write it.
+You read what is under `mirror` like anything else. Only the verbs that own it write it.
 `viff data mirror trigger rule review` reads a rule. Viff refuses `viff data -put` at any
-address under `viff`, and says which verb to use instead: `viff c -a`, `viff resolver add`,
+address under `mirror`, and says which verb to use instead: `viff c -a`, `viff resolver add`,
 `viff runner add`, `viff iod add`, `viff question approve`.
 
 Each verb makes its own checks: what a rule may read, what a runner is, whether the claim of an
@@ -326,7 +326,7 @@ task record or answer a question for somebody else.
 A charter that reacts to the state of viff names `viff` first
 ([what a match can say](condition.md#what-a-match-can-say)).
 
-A rule reads what is under `viff`, and does not write it. A `patch` of a subject under
+A rule reads what is under `mirror`, and does not write it. A `patch` of a subject under
 `viff`, or a `derive` into it, is the same write the API refuses, by another route. Viff
 refuses it the same way:
 

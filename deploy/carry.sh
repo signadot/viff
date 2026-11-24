@@ -27,7 +27,7 @@
 #   a place with another principal's record beneath it: the data is written as the place's owner in
 #                one write, which cannot write into somebody else's place. Name the places so each
 #                is one owner's.
-#   viff's own half, `viff.*`: bindings, groups, questions, tasks, flows. Only viff writes there,
+#   viff's own half, `mirror.*`: bindings, groups, questions, tasks, flows. Only viff writes there,
 #                and linking an account again after a wipe is the cost.
 #
 # An iod's reflection is not listed either: the iod fills it again on its own.

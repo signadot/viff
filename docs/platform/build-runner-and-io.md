@@ -414,7 +414,7 @@ reflection on the wire.
 | a cover whose first segment is `*` or an operator | the cover claims every place |
 | a cover whose first segment is not the root of the iod | an iod may not remove what another iod wrote |
 | a cover with an `op` | a cover selects stored entities, and they have no `op` |
-| an entity under `viff` | no iod reflects the records that viff keeps about itself |
+| an entity under `mirror` | no iod reflects the records that viff keeps about itself |
 | an entity outside the root of the iod | the iod does not own that place |
 | an entity whose address is the root alone | a reflection writes into the place of the iod, and not over it |
 

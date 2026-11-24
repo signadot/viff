@@ -123,7 +123,7 @@ func TestACharterPackageMayNotBeInstalledInViffsHalf(t *testing.T) {
 	if code == 201 {
 		t.Fatal("a charter installed itself into viff's own half")
 	}
-	if !strings.Contains(msg, "viff") {
+	if !strings.Contains(msg, "mirror") {
 		t.Errorf("the refusal does not say why: %s", msg)
 	}
 }

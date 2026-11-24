@@ -14,7 +14,7 @@ import (
 )
 
 // VIFF'S HALF IS NOT A RULE'S TO WRITE, unless the rule is the system's. The api refuses a
-// generic write under `viff`, and a firing's patch or derive is that write by another door:
+// generic write under `mirror`, and a firing's patch or derive is that write by another door:
 // the rows there hold `child-owner` out to everyone, so a person's rule deriving a name the
 // system has not used yet — `mirror.schedule.date`, before the base charter first derives it —
 // made the node, owned it, and the system then wrote into what was theirs.

@@ -86,7 +86,7 @@ carries what a rule writes back out to the system.
 
 ### The state of viff is in the same store
 
-Rules, tasks, questions, iods, runners and permissions are all in the store, under `viff.*`.
+Rules, tasks, questions, iods, runners and permissions are all in the store, under `mirror.*`.
 So you read them, watch them and write rules over them as you do any other data.
 
 ### Gates are questions

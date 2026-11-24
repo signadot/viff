@@ -95,7 +95,7 @@ func TestTheRootsGrantStopsAtViffsHalf(t *testing.T) {
 			if holds(t, store, who, entity.Read, mirror) {
 				t.Errorf("admins=%v: %s reads the mirror", p.Admins, who)
 			}
-			// …while the rows the seed writes beneath `viff` still decide viff's half: a
+			// …while the rows the seed writes beneath `mirror` still decide viff's half: a
 			// task is anybody's to create, which is what runs the flows.
 			if !mayCreate(t, store, who, entity.ViffRef("task", "instance", "run-1")) {
 				t.Errorf("admins=%v: %s cannot create a task", p.Admins, who)

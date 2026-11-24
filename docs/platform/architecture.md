@@ -137,7 +137,7 @@ local and a remote task. See [task control](../task-control.md).
 | `demo.pr` | the node that holds the pull requests |
 | `demo.pr.*` | the pull requests |
 
-The segment `viff` at the front of viff's own records is a segment like any other.
+The segment `mirror` at the front of viff's own records is a segment like any other.
 [Entities](../reference/entities.md#addressing) gives the grammar, in both of its spellings.
 
 A revision of the store always grows, and the numbers have gaps. Viff treats a revision as an

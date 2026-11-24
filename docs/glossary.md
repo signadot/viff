@@ -102,7 +102,7 @@ See [Permissions](perms.md#the-top-of-the-tree).
 
 ### viff's own half
 
-Viff's own half is the part of the store under the first segment `viff`, such as
+Viff's own half is the part of the store under the first segment `mirror`, such as
 `mirror.task.instance.review-1`. Viff keeps its own records there.
 
 See [Permissions](perms.md#viffs-own-half).

@@ -11,7 +11,7 @@ import (
 )
 
 // THE REFUSAL AT THE WRITE, which is the one every charter-authored write passes: a person's
-// rule writes nothing under `viff`, whatever the address it arrived at, and the system's own
+// rule writes nothing under `mirror`, whatever the address it arrived at, and the system's own
 // does. Alice is given the right to create where her rule would write, so that what refuses it
 // is this and not the perms check beneath.
 func TestAPersonsRuleIsRefusedUnderViffAtTheWrite(t *testing.T) {

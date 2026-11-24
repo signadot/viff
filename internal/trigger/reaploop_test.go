@@ -12,7 +12,7 @@ import (
 
 // THE REAP WATCHES WHERE TASK RECORDS ARE WRITTEN. A scoped engine retires a task when its
 // record reaches a terminal status, seen on its own watch of the mirror. The record is the only
-// way a task is retired, and a watch opened anywhere but under `viff` never sees it.
+// way a task is retired, and a watch opened anywhere but under `mirror` never sees it.
 func TestAScopedEngineReapsFromTheTaskRecord(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})

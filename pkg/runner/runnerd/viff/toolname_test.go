@@ -15,7 +15,7 @@ func TestEveryDoerTakesAToolByTheOneBound(t *testing.T) {
 		{"codex", "a tool", "a tool", "codex takes a tool's name of letters, digits, `_` and `-`"},
 		{"codex", long, long, "codex takes a tool's name of 64 characters at most"},
 		{"claude", prefixed, "mcp__viff__" + prefixed,
-			"claude reads the tool as mcp__viff__" + prefixed + ", 66 characters, and takes a name of 64 at most"},
+			"claude reads the tool as mcp__viff__" + prefixed + ", 65 characters, and takes a name of 64 at most"},
 		{"the viff agent", "fine_tool-1", "fine_tool-1", ""},
 	} {
 		err := TakesToolNamed(c.doer, c.name, c.reads)

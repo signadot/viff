@@ -133,7 +133,7 @@ func TestUncausedFiringStartsAFreshChain(t *testing.T) {
 
 // A CHANGE IN VIFF'S OWN HALF IS FOUND IN THE COMMIT THAT CARRIED IT, whichever stream delivered
 // it. A subtree watch — what a scoped engine observes — delivers commits with no delta, and
-// changedIn must still see a subject under `viff` in one; otherwise every firing about such a
+// changedIn must still see a subject under `mirror` in one; otherwise every firing about such a
 // subject has no parent, begins a fresh chain, and the throttle has no loop to see.
 func TestChangedInFindsAViffHalfSubjectWithoutADelta(t *testing.T) {
 	s := entitytest.Store(t)

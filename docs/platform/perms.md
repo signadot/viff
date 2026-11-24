@@ -104,7 +104,7 @@ viff's built-in clock and calendar) is installed as the system and acts as the s
   repo-charters reconciler for each repository under `repoCharters`, rendered at start and
   installed once the iods are restored, since its outboxes name their places
   ([up](../reference/up.md)).
-- **What the system makes under `viff` carries the system's record.** Examples are a task that
+- **What the system makes under `mirror` carries the system's record.** Examples are a task that
   a system rule spawns, and the clock and calendar that the base charter derives. The record
   stops the row's `child-owner` line from reaching inside the node.
 - **An iod takes the nodes its claims name** for its installer, at install. A claim names its

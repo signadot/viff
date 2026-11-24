@@ -115,7 +115,7 @@ func (s Subtree) String() string {
 // A subject that NAMES one entity is checked the same way a selecting one is — the containment
 // question is about the address, and naming does not make it somebody else's to write.
 // VIFF'S HALF IS WRITTEN BY THE VERBS THAT OWN IT, and a rule's action is not one of them. The
-// api refuses a generic write under `viff` for that reason (a rule is installed by `charter -a`,
+// api refuses a generic write under `mirror` for that reason (a rule is installed by `charter -a`,
 // a runner by `runner add`, a question answered by `question approve`), and a firing's patch or
 // derive is the same generic write arriving by another door. Left open, it is how a name the
 // system has not used yet is taken: the rows there hold `child-owner` out to everyone, so a
@@ -134,7 +134,7 @@ var errReservedWrite = fmt.Errorf("%w: what stands under %s is written by the ve
 	"derive; a rule may read it, select it as a subject and spawn about it", entity.ErrForbidden, entity.ViffRoot)
 
 // checkReserved refuses, at install, a rule of anybody's but the system's that names an address
-// under `viff` to write: a subject it patches, or a derive's target.
+// under `mirror` to write: a subject it patches, or a derive's target.
 func (e *Engine) checkReserved(t Trigger, as string) error {
 	if entity.PolicyOf(e.store) == nil || entity.IsSystem(e.installer(as)) {
 		return nil

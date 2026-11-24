@@ -425,7 +425,7 @@ func (e *Engine) shapeMatches(chain string, subj entity.Ref, want string) bool {
 
 // publishSeq patches progress under the reserved root. It goes through the same patch path an
 // action's own write does, which is exactly why `patch` had to replace `set`: a shallow
-// overlay here would replace the whole `viff` key and erase a sibling trigger's progress.
+// overlay here would replace the whole `@sys` key and erase a sibling trigger's progress.
 //
 // It carries the firing's causal chain for the same reason (see causal.go): progress lands on
 // the SUBJECT, under a root a charter can match on — `viff.review.done` is a documented thing

@@ -178,7 +178,7 @@ func TestTheMCPToolsAreTheServersListAsTheDoerTakesIt(t *testing.T) {
 		"mcp: linear: the tool with_ref is left out: its schema has a `$ref`",
 		"mcp: linear: the tool top_oneof is left out: its schema has a `oneOf` at the top",
 		`mcp: linear: the tool a tool is left out: "a tool" is no tool's name`,
-		"mcp: linear: the tool a_tool_whose_name_is_longer_than_claude_takes_once is left out: claude reads the tool as mcp__viff__mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once, 73 characters, and takes a name of 64 at most",
+		"mcp: linear: the tool a_tool_whose_name_is_longer_than_claude_takes_once is left out: claude reads the tool as mcp__viff__mcp-linear-a_tool_whose_name_is_longer_than_claude_takes_once, 72 characters, and takes a name of 64 at most",
 	} {
 		if !strings.Contains(log.String(), want) {
 			t.Errorf("the log:\n%s\nwant %q", log.String(), want)

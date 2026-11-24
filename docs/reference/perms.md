@@ -208,13 +208,13 @@ fall back to the owner above, because above is viff's own half, which is the sys
 - **Whose a rule is, is said on its record and nowhere else.** A rule's own data carries no
   installer.
 - **The deployment's charter** is installed as the system, and fires as the system.
-- **No rule but the system's writes under `viff`.** Viff refuses a `patch` of a subject there,
+- **No rule but the system's writes under `mirror`.** Viff refuses a `patch` of a subject there,
   or a `derive` into it, with 403. It refuses at install where the rule names the address, and at
   the write. A rule may select a subject there and spawn about it.
 - **A charter package takes the address it is installed at** for its installer. An iod takes
   the nodes its claims name in the same way.
 
-How each installed thing gets its record, and what the system makes under `viff`, is in
+How each installed thing gets its record, and what the system makes under `mirror`, is in
 [installed things and their records](../platform/perms.md#installed-things-and-their-records),
 in the repository.
 

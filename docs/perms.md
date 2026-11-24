@@ -157,12 +157,12 @@ that an admin opens to them
 
 ## Viff's own half
 
-Everything under `viff` belongs to the system: rules, tasks, runners, iods, resolvers,
+Everything under `mirror` belongs to the system: rules, tasks, runners, iods, resolvers,
 schedules, open questions, and the records themselves. You do not write there directly. You
 make things with the verbs that own them (`charter -a`, `task run`, `iod add`,
 `question approve`). What a verb makes for you is yours.
 
-In an open viff, anybody may use those verbs. Anybody may read what stands under `viff`,
+In an open viff, anybody may use those verbs. Anybody may read what stands under `mirror`,
 except the records, which you read with `viff perms`. A rule may watch viff's own half and
 react to it. A rule may not write into it.
 
