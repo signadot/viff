@@ -301,7 +301,7 @@ check-docs: ## fail if the docs do not build (skips if mkdocs is absent)
 		echo "mkdocs absent — skipping the docs build (pip install -r docs/requirements.txt)"; \
 	fi
 
-# pkg/ is what a program outside the viff imports; internal/ is viffd's own. The compiler does
+# pkg/ is what a program outside the viff instance imports; internal/ is viffd's own. The compiler does
 # not stop one from importing the other inside the module, so this does: the dependency closure
 # of pkg/ must hold nothing from internal/. Anchored on the module path, because stdlib and
 # third-party packages have internal/ directories of their own. -test holds the tests to it as
@@ -321,15 +321,15 @@ smoke: ## end-to-end smoke of the core surfaces (isolated in-memory server on an
 	@./test/smoke.sh
 
 # Note the difference from smoke: smoke builds its own binaries and its own server and
-# reaps both; this one writes into YOUR running viff and leaves it there to play with.
+# reaps both; this one writes into YOUR running viff instance and leaves it there to play with.
 .PHONY: seed-demo
-seed-demo: ## seed a RUNNING viff with a demo charter + entities (./scripts/seed-demo.sh --help)
+seed-demo: ## seed a RUNNING viff instance with a demo charter + entities (./scripts/seed-demo.sh --help)
 	@./scripts/seed-demo.sh
 
 # The two the tutorial drives, split so each section seeds only what it is about: a world of
 # entities with nothing reacting to them, and the rules that react, one shape at a time.
 .PHONY: seed-entities
-seed-entities: ## seed a RUNNING viff with a world of entities and no charter (the tutorial's data page)
+seed-entities: ## seed a RUNNING viff instance with a world of entities and no charter (the tutorial's data page)
 	@./scripts/seed-entities.sh
 
 .PHONY: shapes
@@ -339,7 +339,7 @@ shapes: ## list the charter shapes (./scripts/charter-shapes.sh run <shape> to i
 # Correlation across systems, run rather than argued: three id schemes, the derived link the
 # engine names f(rule, subject), and the set read that reassembles the chain.
 .PHONY: lineage
-lineage: ## seed a RUNNING viff with a commit → PR → release chain (./scripts/lineage.sh --help)
+lineage: ## seed a RUNNING viff instance with a commit → PR → release chain (./scripts/lineage.sh --help)
 	@./scripts/lineage.sh
 
 # The representation is a DEFAULT, not a fixture: tony out of the box, JSON when asked for.

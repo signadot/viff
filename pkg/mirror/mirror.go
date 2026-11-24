@@ -1,7 +1,7 @@
 // Package mirror reflects a running Task's state into the entity-viff as a
 // task:instance:<id> entity — one-way, index-not-warehouse. This is what makes
 // "observe another task" the same act as "observe an entity": once a task
-// is in the viff, a trigger can match on its state like any other entity.
+// is in the viff instance, a trigger can match on its state like any other entity.
 //
 // Reflected entities live in the "task" system, which the trigger engine keeps
 // OUT of the default match set — meta-observation is opt-in, so the loop cannot
@@ -120,7 +120,7 @@ type Meta struct {
 	// restart can decide resume-or-orphan.
 	Runner string
 	// RunnerName is the runner ENTITY a spawn named — `mirror.runners.<name>` — when it named
-	// one. Empty for a spawn that took the viff's default.
+	// one. Empty for a spawn that took the viff instance's default.
 	//
 	// It is stamped BESIDE Runner rather than instead of it, and that split is the one place
 	// this design can go quietly wrong. Runner is what a restart can act on with nothing else
@@ -138,8 +138,8 @@ type Meta struct {
 	// The mirror subscribes again four times within it, and stops waiting on the runner a
 	// minute after it (follow.go). On the record as `lease`, so a re-attach carries it back.
 	Lease string
-	// Done closes when the viff mirroring the task stops: the runner is asked nothing more, the
-	// frames already read are written, and the record stands so, for the viff that comes next
+	// Done closes when the viff instance mirroring the task stops: the runner is asked nothing more, the
+	// frames already read are written, and the record stands so, for the viff instance that comes next
 	// to follow it again. Nil is never.
 	Done <-chan struct{}
 	// StartedAt is when the task began, RFC3339. Empty on a fresh spawn — Reflect stamps
@@ -297,7 +297,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.RunnerSubject != "" {
 		st["runnerSubject"] = m.RunnerSubject
 	}
-	// The lease its spawn named, so a viff that restarts while it runs keeps the same clocks
+	// The lease its spawn named, so a viff instance that restarts while it runs keeps the same clocks
 	// for it. One that named none says none, and has the default.
 	if m.Lease != "" {
 		st["lease"] = m.Lease
@@ -305,7 +305,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	// When this task began, so `viff runner` can say when a runner was last used and a
 	// runner nobody names is visible as such. Written once, at the first reflection, and
 	// carried across a re-attach rather than re-stamped — a resumed task did not start
-	// again, and a clock that restarts on every restart measures the viff, not the work.
+	// again, and a clock that restarts on every restart measures the viff instance, not the work.
 	if m.StartedAt != "" {
 		st["startedAt"] = m.StartedAt
 	} else {
@@ -352,7 +352,7 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 		st["virtualKey"] = m.VirtualKey
 	}
 	// The task's autonomy, viff's part with it (what silence settles on, the labels): on the
-	// record so that a viff that restarts while the task runs elsewhere still poses its
+	// record so that a viff instance that restarts while the task runs elsewhere still poses its
 	// questions under it (PolicyOf), and so a reader sees what the run asks about.
 	if p := m.autonomy(); len(p) > 0 {
 		st["autonomy"] = p
@@ -434,7 +434,7 @@ func (m Meta) autonomy() task.Autonomy {
 	return m.Autonomy
 }
 
-// AutonomyOf reads a task's autonomy back off its record, for a viff that restarts while the task
+// AutonomyOf reads a task's autonomy back off its record, for a viff instance that restarts while the task
 // runs elsewhere: what it poses the task's questions under from then on.
 func AutonomyOf(p entity.Payload) task.Autonomy {
 	n := entity.Get(p, "autonomy")
@@ -498,7 +498,7 @@ func resolved(h task.Handle, st entity.Obj) {
 }
 
 // CredentialOf is what a task's record says of the credential minted for it (Meta.Credential),
-// read back for a viff that re-attaches to it after a restart; nil where it says none.
+// read back for a viff instance that re-attaches to it after a restart; nil where it says none.
 func CredentialOf(p entity.Payload) *Minted {
 	c := entity.Get(p, "credential")
 	if c == nil {
@@ -508,7 +508,7 @@ func CredentialOf(p entity.Payload) *Minted {
 		JTI: entity.Str(c, "jti"), Expires: entity.Str(c, "expires")}
 }
 
-// GitOf is the repositories a task's record says it works in (Meta.Git), read back for a viff
+// GitOf is the repositories a task's record says it works in (Meta.Git), read back for a viff instance
 // that re-attaches to it after a restart.
 func GitOf(p entity.Payload) []runner.Repo {
 	n := entity.Get(p, "git")

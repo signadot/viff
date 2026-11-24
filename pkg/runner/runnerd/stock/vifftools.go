@@ -31,7 +31,7 @@ var askGetTool = systems.Tool("viff", verbs.AskGet.Name)
 // askListTool is `viff ask`, viff_ask_list: all of that person's asks.
 var askListTool = systems.Tool("viff", verbs.AskList.Name)
 
-// viffTools are the viff system's ask tools, where the runner reaches its viff with a token of
+// viffTools are the viff system's ask tools, where the runner reaches its viff instance with a token of
 // its own.
 func viffTools(cl *delivery.Client) []viff.Tool {
 	return []viff.Tool{

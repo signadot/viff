@@ -12,7 +12,7 @@ import (
 	"github.com/scott-cotton/cli"
 )
 
-// `viff tui` is the viff at a glance, in one terminal: the questions waiting on you, the tasks
+// `viff tui` is the viff instance at a glance, in one terminal: the questions waiting on you, the tasks
 // running and just run, the data, the charters installed over it, and the runners. It answers
 // what it shows: a question proceeds or is denied with a reason, a task is cancelled.
 //
@@ -32,7 +32,7 @@ import (
 // place in the data. Rounds may then overlap, and the one asked last is the one drawn (seq). Each
 // request is bounded (readTimeout), and a section whose read fails keeps its rows and says why.
 //
-// THE DATA is the viff's own tree, browsed an address at a time: an address's children, and
+// THE DATA is the viff instance's own tree, browsed an address at a time: an address's children, and
 // the one under the cursor as it stands — its record, what it was derived from (the engine's
 // @sys.meta.derivedFrom), the questions and tasks about it. Nothing in it knows any charter:
 // what a charter keeps is data like any other, read where it stands.
@@ -44,7 +44,7 @@ import (
 type tuiConfig struct {
 	*cli.Command
 	At       string `cli:"name=at desc='the address the Data section opens at (tui.at in the config; the root when neither says); VIFF_TUI_AT when left off'"`
-	Every    string `cli:"name=every desc='how often to read the viff again, as a duration (tui.every in the config; 2s when neither says)'"`
+	Every    string `cli:"name=every desc='how often to read the viff instance again, as a duration (tui.every in the config; 2s when neither says)'"`
 	All      bool   `cli:"name=all desc='list every task the runtime holds, not only those running and the most recent'"`
 	Config   bool   `cli:"name=config desc='print the tui section of the config as in force, every key included, ready to paste into ~/.config/viff.tony'"`
 	Commands bool   `cli:"name=commands desc='print every command and every key, and what each does'"`
@@ -57,7 +57,7 @@ func tuiCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "tui").
-		WithSynopsis("tui — the viff at a glance: questions waiting on you, tasks, the data, charters and runners, answered and cancelled in place [--at <address>] [--every 2s] [--config] [--commands]").
+		WithSynopsis("tui — the viff instance at a glance: questions waiting on you, tasks, the data, charters and runners, answered and cancelled in place [--at <address>] [--every 2s] [--config] [--commands]").
 		WithOpts(opts...).
 		WithRun(cfg.run)
 }

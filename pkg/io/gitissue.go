@@ -467,7 +467,7 @@ func addStrings(p entity.Obj, key string, v []string) {
 // exactly one ref and its namespace IS its status.
 //
 // A MIRROR is not that repository. `git issue push` writes the new ref and does not delete
-// the one it moved from, so a mirror accumulates both — 12 of 17 closed issues on the viff
+// the one it moved from, so a mirror accumulates both — 12 of 17 closed issues on the viff instance
 // tracker carry a stale open ref alongside their closed one. Read naively that is one
 // issue reflected twice, once open and once closed, with nothing deciding which lands: nine
 // closed issues were reading `status: open` on staging, and one entity could say `status:

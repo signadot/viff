@@ -317,7 +317,7 @@ func (s *Server) relay(io IodAccount, presented, account string, a act) (princip
 	}
 	p := n.byName[pname]
 	if p == nil || len(p.IOs) == 0 {
-		return "", "", "", turnAway(http.StatusForbidden, "%s is no provider of this viff that "+
+		return "", "", "", turnAway(http.StatusForbidden, "%s is no provider of this viff instance that "+
 			"trusts iods (auth.principal.providers.<name>.iods)", pname)
 	}
 	trusted := false
@@ -327,7 +327,7 @@ func (s *Server) relay(io IodAccount, presented, account string, a act) (princip
 		}
 	}
 	if !trusted {
-		return "", "", "", turnAway(http.StatusForbidden, "%s is not an io this viff trusts for %s "+
+		return "", "", "", turnAway(http.StatusForbidden, "%s is not an io this viff instance trusts for %s "+
 			"accounts (auth.principal.providers.%s.iods names %s)", io.Principal, pname, pname,
 			strings.Join(p.IOs, ", "))
 	}

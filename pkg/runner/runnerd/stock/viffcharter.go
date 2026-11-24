@@ -51,7 +51,7 @@ func viffCharterTools(cl *delivery.Client) []viff.Tool {
 			}
 			node, err := codec.ParseNode([]byte(rep.Out), codec.Tony)
 			if err != nil {
-				return "", false, fmt.Errorf("the viff's answer does not read: %w", err)
+				return "", false, fmt.Errorf("the viff instance's answer does not read: %w", err)
 			}
 			// As viff_charter answers it: a listing one kinded path per line, a reach into a
 			// charter as it stands, and a charter as its file with the notes after it.
@@ -123,7 +123,7 @@ func viffCharterTools(cl *delivery.Client) []viff.Tool {
 		}, func(_ verbs.Args, rep delivery.Reply) (string, bool, error) {
 			node, err := codec.ParseNode([]byte(rep.Out), codec.Tony)
 			if err != nil {
-				return "", false, fmt.Errorf("the viff's answer does not read: %w", err)
+				return "", false, fmt.Errorf("the viff instance's answer does not read: %w", err)
 			}
 			// A task's install is baseline's, as all its acts on viff are (delivery refuses a
 			// scope), so the report names none.

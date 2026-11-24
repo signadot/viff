@@ -18,7 +18,7 @@ var frames = []string{
 }
 
 // watchServer serves /watch with the frames above. `hold` decides what happens after the last
-// one: holding the connection open is the live viff — a watch ends when the watcher stops
+// one: holding the connection open is the live viff instance — a watch ends when the watcher stops
 // caring — while closing is a store that has finished talking.
 func watchServer(t *testing.T, hold bool) *httptest.Server {
 	t.Helper()

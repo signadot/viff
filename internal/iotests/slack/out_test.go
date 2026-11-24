@@ -17,7 +17,7 @@ import (
 )
 
 // outRig is a real viff over a real store, a fake Slack, and the out half between them, reading
-// and writing the viff over HTTP as its own principal.
+// and writing the viff instance over HTTP as its own principal.
 type outRig struct {
 	store entity.Store
 	fake  *fakeSlack

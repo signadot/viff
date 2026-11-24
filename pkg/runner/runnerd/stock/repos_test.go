@@ -116,7 +116,7 @@ func serveConfigured(t *testing.T, c Config, sec Secrets, tokens Tokens) client.
 	return serveRaising(t, c, sec, tokens, nil)
 }
 
-// serveRaising is serveConfigured for a runner that carries its tasks' requests to a viff with
+// serveRaising is serveConfigured for a runner that carries its tasks' requests to a viff instance with
 // toViff.
 func serveRaising(t *testing.T, c Config, sec Secrets, tokens Tokens, toViff delivery.Viff) client.Launcher {
 	t.Helper()

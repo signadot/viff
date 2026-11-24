@@ -117,7 +117,7 @@ func TestControlWritesActOnTheirOwnScope(t *testing.T) {
 // A charter removal is a control write like the others: from a scope it reaches the scope's
 // own rules and is refused at an inherited one, naming baseline; from baseline it is refused
 // at a scope's, naming the scope. Neither is "no such rule", which the asking engine could
-// say truthfully and the viff could not.
+// say truthfully and the viff instance could not.
 func TestCharterRemovalActsOnItsOwnScope(t *testing.T) {
 	srv := testServer(t)
 	srv.Start(t.Context())

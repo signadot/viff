@@ -22,7 +22,7 @@ env:
   iodTokens: true
   issuerDiscoveryOpen: true
   # A runner turned on here (`-e runner=true`) proves itself by its pod's token, as the iods do,
-  # and serves this viff alone by the tokens viffd signs for it. The signing key is a Secret
+  # and serves this viff instance alone by the tokens viffd signs for it. The signing key is a Secret
   # made by hand, since no secret store is here:
   #   kubectl -n viff create secret generic viff-issuer --from-file=issuer.pem=<(openssl genrsa 2048)
   runnerTokens: true

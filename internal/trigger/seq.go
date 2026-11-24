@@ -132,7 +132,7 @@ func (e *Engine) clearConclusion(chain string, subj entity.Ref) {
 //
 // resumed says the elements run off a task's completion (resumeSeq) rather than off a firing
 // (startSeq). There an element is a completion hook in all but name — it reads the task's facts,
-// and the viff as it is when the task ended — and a failure is one too: see failResumed.
+// and the viff instance as it is when the task ended — and a failure is one too: see failResumed.
 func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, subj entity.Ref, src refSource, resumed bool) {
 	for ; i < len(carrier.Seq); i++ {
 		el := carrier.Seq[i]
@@ -290,7 +290,7 @@ func (e *Engine) stopSeq(chain string, subj entity.Ref, status task.Status) {
 // chain does not address a sequence element, in which case the ordinary hook path applies.
 func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 	// oc is the completion's occasion, built by applyHook: the finished task's event for its
-	// references, and the head for reads at a revision — the viff as it is now that the task
+	// references, and the head for reads at a revision — the viff instance as it is now that the task
 	// has ended, so an element sees what the elements before it wrote. A resumed element begins
 	// a fresh causal chain (oc.parent is 0).
 	carrierChain, idx, ok := seqIndexOf(chain)
@@ -587,7 +587,7 @@ func (e *Engine) claimRun(chain string, subj entity.Ref, more entity.Obj) bool {
 // It is tried here, so that a caller finds the claim gone when this returns, which is the
 // ordinary case and what the result reports. Where the store did not take it, it is asked again
 // in the background for as long as the engine runs, and late runs once it has landed: nothing
-// else removes a claim of this viff's while it is up, so a release that was dropped is a subject the rule
+// else removes a claim of this viff instance's while it is up, so a release that was dropped is a subject the rule
 // never fires about again.
 func (e *Engine) releaseRun(chain string, subj entity.Ref, late ...func()) bool {
 	ref := mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj))

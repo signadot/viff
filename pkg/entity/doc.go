@@ -1,6 +1,6 @@
 package entity
 
-// The viff as ONE DOCUMENT, addressed by one kinded path.
+// The viff instance as ONE DOCUMENT, addressed by one kinded path.
 //
 // The store holds a tree. A read names a path into it — `demo`, `demo.pr.1`,
 // `demo.pr.*.stage`, the empty path for the root — and answers the node standing there, with
@@ -16,7 +16,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 )
 
-// Doc is the viff's state at a path: the subtree standing there, verbatim.
+// Doc is the viff instance's state at a path: the subtree standing there, verbatim.
 //
 // It wraps a node rather than being one because it is a WIRE TYPE — the body of a read — and
 // naming it is what lets the schema say what the route answers.
@@ -600,7 +600,7 @@ func (d *Doc) FromTonyIR(node *ir.Node, opts ...gomap.UnmapOption) error {
 }
 
 // ParseAt parses the positional path a read is addressed by. The empty string is the empty
-// path — the whole viff — which is what a bare `viff data` asks for.
+// path — the whole viff instance — which is what a bare `viff data` asks for.
 func ParseAt(s string) (*kpath.KPath, error) {
 	at, err := kpath.Parse(s)
 	if err != nil {
@@ -655,7 +655,7 @@ func BelowErr(r Reader, pred func(Ref) bool, levels int, at ...string) ([]Entity
 // THIS read failed with rather than with whatever the store last remembered.
 //
 // A LISTING CANNOT SAY SO IN ITS SIGNATURE — List answers a slice, so a read that did not happen
-// and a viff holding nothing are the same value — and ReadFailed below was the answer to that
+// and a viff instance holding nothing are the same value — and ReadFailed below was the answer to that
 // for a while. It asks the STORE, which keeps one error for every reader sharing it, so what a
 // caller gets back depends on who else read in between: a neighbour's success hides this read's
 // failure, and a neighbour's failure condemns a read that was fine. A request that could not
@@ -690,7 +690,7 @@ func ListAtErr(r Reader, at []string, depth int, pred func(Ref) bool) ([]Entity,
 // nil BOTH when a slice holds nothing and when the read did not happen, and the difference is
 // the whole question at startup: a charter that restored nothing because there is nothing, and
 // one that restored nothing because the store was busy, are the same value and opposite facts.
-// The second silently brings a viff back running no rules.
+// The second silently brings a viff instance back running no rules.
 //
 // IT ASKS ABOUT THE STORE, not about one read, and the difference matters wherever several
 // readers share one: use ListErr and friends above when the question is "did MY read happen".
@@ -723,7 +723,7 @@ func Unread(err error) error {
 //
 // It is the question a restore asks: a rule that will not parse is reported and skipped, and a
 // listing the store did not answer is waited for and asked again — because the second says
-// nothing about the charter, and a viff that took it as empty came back running no rules.
+// nothing about the charter, and a viff instance that took it as empty came back running no rules.
 func IsUnread(err error) bool {
 	var u unread
 	return errors.As(err, &u)

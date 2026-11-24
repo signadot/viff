@@ -222,7 +222,7 @@ func TestAYesRaisesTheNextAskAndItsYesAnswers(t *testing.T) {
 	}
 }
 
-// A NESTED ASK IS CHECKED WHERE THE FIRST IS ASKED, as far as the viff can say now.
+// A NESTED ASK IS CHECKED WHERE THE FIRST IS ASKED, as far as the viff instance can say now.
 func TestAThenThatAsksIsCheckedWhereItIsAsked(t *testing.T) {
 	_, ts := asking(t)
 	for then, want := range map[string]int{

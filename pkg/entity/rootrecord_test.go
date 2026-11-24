@@ -35,7 +35,7 @@ func grant(level entity.Level, to ...string) entity.Grant {
 func TestTheRootsRecordDecidesBeneathIt(t *testing.T) {
 	inner := entitytest.Store(t)
 	system := entity.As(inner, entity.SystemDefault)
-	// alice owns the root and holds `read` out to everyone beneath it — the shape of a viff
+	// alice owns the root and holds `read` out to everyone beneath it — the shape of a viff instance
 	// whose top is administered rather than open.
 	seedRoot(t, system, "user:alice@example.com", grant(entity.Read, entity.Everyone))
 
@@ -57,7 +57,7 @@ func TestTheRootsRecordDecidesBeneathIt(t *testing.T) {
 }
 
 // A STORE NOBODY SEEDED ADMITS NOBODY. Openness is a deployment's policy — the root record its
-// seed writes — and not something the check supplies when it finds no record: a viff whose seed
+// seed writes — and not something the check supplies when it finds no record: a viff instance whose seed
 // failed refuses rather than standing wide open, which is the safe way for that to be wrong.
 // The system still holds everything, since it owns the root whichever part of it writes.
 func TestWithNoRootRecordNobodyButTheSystemHolds(t *testing.T) {

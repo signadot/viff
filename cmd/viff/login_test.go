@@ -29,12 +29,12 @@ import (
 	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// `viff account login` proves who is at the keyboard to the viff's identity provider, and from then on
+// `viff account login` proves who is at the keyboard to the viff instance's identity provider, and from then on
 // the CLI's requests carry the token it was given, in place of a name.
 
 const loginClient = "viff-cli"
 
-// serveLogin stands up a viff that takes tokens from a fake IdP named `corp`, and a config that
+// serveLogin stands up a viff instance that takes tokens from a fake IdP named `corp`, and a config that
 // names the same provider, so the CLI can log in to it. The account that logs in is ana's.
 func serveLogin(t *testing.T, device bool) (entity.Store, *idptest.Logins) {
 	return serveLoginWith(t, device, false)
@@ -270,12 +270,12 @@ func TestALoginThatCannotBeRenewedFailsTheRequest(t *testing.T) {
 	}
 }
 
-// A token the viff does not take is no login: nothing is kept of it.
+// A token the viff instance does not take is no login: nothing is kept of it.
 func TestALoginTheViffRefusesIsNotKept(t *testing.T) {
 	_, l := serveLogin(t, true)
 	l.Claims = map[string]any{"email": "ana@elsewhere.org", "email_verified": true}
 	if _, err := runCLI(t, "account", "login"); err == nil || !strings.Contains(err.Error(), "in none of them") {
-		t.Fatalf("a login from a domain the viff does not admit: %v", err)
+		t.Fatalf("a login from a domain the viff instance does not admit: %v", err)
 	}
 	if out, err := runCLI(t, "whoami"); err != nil || strings.TrimSpace(out) != tester+" (asserted)" {
 		t.Errorf("whoami after a refused login = %q, %v", out, err)
@@ -372,7 +372,7 @@ func TestAQuietProviderFailsTheRenewalAndDoesNotHangIt(t *testing.T) {
 }
 
 // `viff account -link` at a provider whose accounts an io proves claims the account and prints the
-// words to say; the viff binds it when the io hears them, so no login is needed first.
+// words to say; the viff instance binds it when the io hears them, so no login is needed first.
 func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	store := entitytest.Store(t)
 	srv := viffdtest.Server(t, runnerdtest.Scripted, store)
@@ -401,7 +401,7 @@ func TestLoginLinkClaimsAnAccountAnIoProves(t *testing.T) {
 	if err != nil || !ok || entity.Str(rec.Payload, "principal") != tester || entity.Str(rec.Payload, "claimant") != "asserted" {
 		t.Fatalf("the claim = principal %q claimant %q, want %q asserted (ok=%v err=%v)", entity.Str(rec.Payload, "principal"), entity.Str(rec.Payload, "claimant"), tester, ok, err)
 	}
-	// GitHub names the login; without one the viff says so.
+	// GitHub names the login; without one the viff instance says so.
 	if _, err := runLogin(t, "account", "--link", "github"); err == nil || !strings.Contains(err.Error(), "names the GitHub login") {
 		t.Errorf("account -link github without --account: %v", err)
 	}
@@ -528,7 +528,7 @@ func TestALoginSendsTheClientSecretTheIssuerWants(t *testing.T) {
 }
 
 // A LONG-LIVED PROCESS KEEPS NOBODY ELSE'S LOGINS OUT: what another process wrote to the tokens
-// file after this one read it — a login toward another viff — survives this one renewing its own,
+// file after this one read it — a login toward another viff instance — survives this one renewing its own,
 // since the file is read again at the request and again before the renewal is written.
 func TestARenewalKeepsWhatAnotherProcessWrote(t *testing.T) {
 	_, l := serveLogin(t, true)

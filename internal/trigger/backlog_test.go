@@ -51,7 +51,7 @@ func echoTrigger(name string) Trigger {
 func TestTriggerFiresOnTheBacklogAtInstall(t *testing.T) {
 	store := entitytest.Store(t)
 
-	// The viff is already populated: two tasks match, one does not.
+	// The viff instance is already populated: two tasks match, one does not.
 	ready1 := entity.RefAt("demo", "task", "t1")
 	ready2 := entity.RefAt("demo", "task", "t2")
 	queued := entity.RefAt("demo", "task", "t3")

@@ -67,7 +67,7 @@ func (e Runner) Description() runner.Description {
 	return *e.Described
 }
 
-// Current is whether the registration holds a description this viff reads: one there is, and
+// Current is whether the registration holds a description this viff instance reads: one there is, and
 // that passes Check. Otherwise the runner is asked again, and what it says replaces it.
 func (e Runner) Current() bool {
 	return e.Described != nil && e.Described.Check() == nil
@@ -157,7 +157,7 @@ type RunnerRow struct {
 	Why       string   `tony:"field=why,omitzero"`
 	Warning   string   `tony:"field=warning,omitzero"`
 	Offers    []string `tony:"field=offers"`
-	// Unreadable is why the stored registration does not decode as this viff reads it. Nothing
+	// Unreadable is why the stored registration does not decode as this viff instance reads it. Nothing
 	// else on such a row is read from the record: the row is there so the registration can be
 	// seen and removed by its name.
 	Unreadable string `tony:"field=unreadable,omitzero"`

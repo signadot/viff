@@ -198,7 +198,7 @@ build:
     runnerStoreKey: ""
     # Comma-separated grantees who may take a top-level place (`walter@example.com,agent:ops`).
     # "" is the open viff. See the patch below for how it reaches viffd, and what changing it
-    # on a running viff takes.
+    # on a running viff instance takes.
     permsAdmins: ""
     # The model id, when the driver's default (gpt-4o) is not what the credential routes to.
     # A Portkey virtual key resolves to ONE provider, so the model has to be one that provider
@@ -240,7 +240,7 @@ build:
     claudeRunnerImage: "signadot/viff-runner:claude"
     claudeRunnerConfig: ""  # as runnerConfig, for the claude runner
 
-    # ── Sources: what reflects an external system into the viff ──────────────
+    # ── Sources: what reflects an external system into the viff instance ──────────────
     #
     # Each is off by default and independent of the others, because each costs something
     # different to turn on: the git one costs a clone, the other two cost a credential in the
@@ -365,9 +365,9 @@ build:
     # system:serviceaccount:viff:viff-runner`, as a deployment's repopulate script does); the cluster is the issuer,
     # as for the iods. Viffd proves itself the other way: it is an issuer of its own (the auth
     # file's `auth.issuer`, signing with the viff-issuer Secret this mounts into it), and presents
-    # to each runner a token minted for that runner alone, so a runner serves this viff and no
+    # to each runner a token minted for that runner alone, so a runner serves this viff instance and no
     # other, and a token taken at one runner opens no other's door. On by default, since a
-    # deployed runner needs it (`runnerd` does not start without the viff it serves and its
+    # deployed runner needs it (`runnerd` does not start without the viff instance it serves and its
     # token), and so viffd needs the viff-issuer Secret (`issuerSecretKey`, or made by hand).
     runnerTokens: true
     # The name viffd's tokens are issued under, `auth.issuer.url` in the auth file, which each
@@ -647,7 +647,7 @@ build:
   #
   # IT SEEDS the admin group, once. After that membership is changed live, by
   # `user:admin@viff` with `viff group add admin …`, as any group's is — so editing this on a
-  # running viff changes nothing, by design, and viffd does not call a list that differs from
+  # running viff instance changes nothing, by design, and viffd does not call a list that differs from
   # the group drift. What it does say at every start is when the FORM of its top (open, or held
   # out to the admin group) is not what this says. `--reseed-perms`, or VIFF_RESEED_PERMS=true
   # for one roll and unset after, rewrites the top from here — live membership edits included.
@@ -1328,7 +1328,7 @@ build:
   # Service itself changes for in-cluster callers.
   #
   # The hostname is the tailnet device name, i.e. what somebody types (`viff:9797`). It
-  # tracks the namespace rather than being fixed, so two viffs on one tailnet are two names
+  # tracks the namespace rather than being fixed, so two viff instances on one tailnet are two names
   # instead of a name and a name-1 the operator picked.
   - if: '.[tailscaleExpose]'
     match:
@@ -1501,8 +1501,8 @@ build:
                 secretName: viff-issuer
 
   # Each runner's own token (runnerTokens): its ServiceAccount, and a projected token with the
-  # audience `viff`, answered on the describe to the viff the runner verified and presented at
-  # viffd's door. `runnerd` reads VIFF_TOKEN_FILE as `iod` does. And the viff the runner
+  # audience `viff`, answered on the describe to the viff instance the runner verified and presented at
+  # viffd's door. `runnerd` reads VIFF_TOKEN_FILE as `iod` does. And the viff instance the runner
   # serves, which its configuration leaves to the deployment: where it reaches viffd and reads
   # its keys (VIFF_URL), and the name viffd's tokens are issued under (VIFF_ISSUER, the
   # `issuer` knob). The audience the runner takes them for is its own token's subject.

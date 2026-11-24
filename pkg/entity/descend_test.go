@@ -125,7 +125,7 @@ func TestCreateNoLongerClobbersTheContainer(t *testing.T) {
 }
 
 // A WRITE AT AN ADDRESS IS UNTOUCHED: creating what is not there is what a put at an address
-// means, and only descending PAST one asks the question. The first entity of a kind, on a viff
+// means, and only descending PAST one asks the question. The first entity of a kind, on a viff instance
 // where neither the system nor the kind stands, is the case that would break if it did.
 func TestAWriteAtAnAddressStillCreates(t *testing.T) {
 	st := entitytest.OpenStore(t)

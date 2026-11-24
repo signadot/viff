@@ -83,7 +83,7 @@ type Entity struct {
 //
 // It exists so that an install is ONE act. Before it, standing up an out half meant a flag naming
 // a principal, a place hardcoded in the connector, and four `viff perms` lines an operator had to
-// know and get right — and a viff that knew none of it, so `viff iod` could show a healthy io
+// know and get right — and a viff instance that knew none of it, so `viff iod` could show a healthy io
 // whose out half had been refused for an hour.
 //
 //tony:schemagen=viff-iod-out,notag
@@ -457,7 +457,7 @@ func List(r entity.Reader) []Entity {
 func ListErr(r entity.Reader) ([]Entity, error) {
 	var out []Entity
 	// At the subtree — see viffd's installedRunners for why a List(pred) is the wrong read here: it is a
-	// Match on the root, so listing the sources read the whole viff, sources' own output
+	// Match on the root, so listing the sources read the whole viff instance, sources' own output
 	// included.
 	registry := []string{entity.ViffRoot, System}
 	ents, err := entity.ListAtErr(r, registry, len(registry)+1, IsRegistration)

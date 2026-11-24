@@ -55,7 +55,7 @@ var tuiActions = []tuiAction{
 	{"clear", "clear the filter, else go back to the explorer", []string{"esc"}},
 	{"command", "a command by name", []string{":"}},
 	{"help", "every command and key", []string{"?"}},
-	{"refresh", "read the viff again", []string{"r"}},
+	{"refresh", "read the viff instance again", []string{"r"}},
 	{"quit", "leave", []string{"q", "ctrl+c"}},
 }
 

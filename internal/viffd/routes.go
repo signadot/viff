@@ -98,10 +98,10 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 	writeOut(w, r, http.StatusOK, api.Routes{Routes: s.routes})
 }
 
-// serveSchema publishes the schema, whole: the root — what a viff looks like, by top-level
+// serveSchema publishes the schema, whole: the root — what a viff instance looks like, by top-level
 // path — and every definition it names. The server does not build it. It is assembled from the
 // generated and curated parts in package schema, with no route table involved, so the same
-// document is obtainable without a running viff; this route is one way to ask for it, not
+// document is obtainable without a running viff instance; this route is one way to ask for it, not
 // where it lives.
 func (s *Server) serveSchema(w http.ResponseWriter, r *http.Request) {
 	doc, err := schema.Global()

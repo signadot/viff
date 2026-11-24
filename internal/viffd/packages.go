@@ -18,18 +18,18 @@ import (
 // own levels, and one guarantee — it may write only inside that address (internal/trigger/confine.go).
 //
 // It is what the state-ergonomics note asks for when it says different groups cannot work in
-// isolation today. Two teams installing rules into one viff are isolated when neither can
+// isolation today. Two teams installing rules into one viff instance are isolated when neither can
 // write where the other reads, and a package is where that stops being a convention: the
 // address is on the install, the confinement is on the engine, and a rule reaching past it does
 // not install.
 //
 // It is the SAME SHAPE as a scope's engine one axis over, deliberately. A scope says whose copy
-// of the viff a charter acts in; a package says which part of the viff it acts on. Both are a
+// of the viff instance a charter acts in; a package says which part of the viff instance it acts on. Both are a
 // second engine over the same store with its own watches, both stamp their records so a restore
 // takes only its own, and both are created on demand — so `scopeEngine` below is the thing to
 // read for how this works, and this file is that with an address in place of a scope.
 //
-// READS ARE NOT NARROWED. A package's rules see the whole viff, because reacting to what
+// READS ARE NOT NARROWED. A package's rules see the whole viff instance, because reacting to what
 // happened elsewhere is most of what a rule does; what is confined is what MOVES.
 
 // packageEngine returns the engine for the charter package at an address, creating and starting
@@ -100,7 +100,7 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree, reads []trigger.Su
 
 // packageEngineIfRunning is the engine at an address, or nil when none is running there.
 //
-// LOOKUP RATHER THAN packageEngine, which CREATES one: a read that describes the viff must not
+// LOOKUP RATHER THAN packageEngine, which CREATES one: a read that describes the viff instance must not
 // change it. An address with records and no engine is a real state — a package whose install
 // was refused, or one seen before its restore — and the honest answer about it is that nothing
 // is running, not a fresh engine holding nothing.
@@ -134,7 +134,7 @@ func (s *Server) packageEngines() []*trigger.Engine {
 	return out
 }
 
-// kickEngines asks every engine this viff runs — baseline's, each package's, each scope's —
+// kickEngines asks every engine this viff instance runs — baseline's, each package's, each scope's —
 // for a pass over its pending rules (trigger.Engine.Kick): something that could clear a cause
 // happened that no engine sees for itself, a runner registered or removed.
 func (s *Server) kickEngines() {
@@ -263,7 +263,7 @@ func (s *Server) packagesSeenErr() ([]string, error) {
 	// charter is installed" about a charter whose records were sitting in the store.
 	//
 	// ONE READ AT THE SUBTREE, not three at the root. All three kinds live under
-	// `mirror.trigger.*`, and List(pred) is a Match on the ROOT — the whole viff across the
+	// `mirror.trigger.*`, and List(pred) is a Match on the ROOT — the whole viff instance across the
 	// wire, filtered here — so this cost three full reads, on a function `viff charter` calls
 	// on every request and installs call again. On staging that was the difference between an
 	// answer and a timeout.
@@ -325,7 +325,7 @@ func logPackage(format string, a ...any) {
 //
 // THREE CHECKS, in the order that gives the most specific answer first:
 //
-//  1. the addresses parse, and none of them is the whole viff;
+//  1. the addresses parse, and none of them is the whole viff instance;
 //  2. the graph over packages stays ACYCLIC with this declaration in it — the check the whole
 //     feature exists for, and the one no single charter's author could make;
 //  3. every rule ALREADY installed in this package is still within the declaration, because
@@ -517,7 +517,7 @@ func (s *Server) removePackage(ctx context.Context, store entity.Store, at strin
 	if stamp == "" {
 		return fmt.Errorf("uninstall wants the address of a charter package; baseline has none " +
 			"— its rules go one at a time (`viff c -r rules <name>`), which is what keeps " +
-			"`rm` from being a way to delete a whole viff's charter by mistyping it")
+			"`rm` from being a way to delete a whole viff instance's charter by mistyping it")
 	}
 	under := s.packagesUnder(stamp)
 	if len(under) > 0 && !recurse {

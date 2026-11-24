@@ -10,7 +10,7 @@
 # installs from a repository is installed for the person behind the change. `required` waits on
 # an issuer for people, the team's identity provider.
 auth:
-  # This viff issues tokens of its own: the credential a gate mints for a task, and the token it
+  # This viff instance issues tokens of its own: the credential a gate mints for a task, and the token it
   # presents to each runner, minted for that runner alone (docs/runners.md, "Who the runner is").
   # The key is the viff-issuer Secret (deploy/build.tony's runnerTokens patch), and the url is
   # the name the runners hold the tokens to (the `issuer` knob): in-cluster, since nothing outside

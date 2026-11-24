@@ -51,7 +51,7 @@ const (
 // was slow until each had a line.
 //
 // A READ THAT DID NOT HAPPEN IS NOT AN EMPTY ANSWER. Each phase lists a slice of the store and
-// acts on what it finds, and a listing that hit its deadline finds nothing — a viff that took
+// acts on what it finds, and a listing that hit its deadline finds nothing — a viff instance that took
 // that as the answer came back with its sources registered and none running, and stayed that
 // way until the next restart. So a phase that reports its read did not happen (entity.IsUnread)
 // is asked again, with a growing pause, until it answers or the server stops. It is asked in

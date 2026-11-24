@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# seed-entities.sh — put a WORLD into a running viff: a dozen entities, all under viff-tutorial,
+# seed-entities.sh — put a WORLD into a running viff instance: a dozen entities, all under viff-tutorial,
 # with enough variety in their payloads that selecting over them says something.
 #
 # No charter, deliberately. This is the half of viff you can hold before any rule exists:
@@ -12,7 +12,7 @@
 #   ./scripts/seed-entities.sh --scope me      # …into a copy-on-write scope instead of baseline
 #   ./scripts/seed-entities.sh --clean         # remove what a previous run seeded
 #
-# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff to
+# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff instance to
 # seed, default: viff's own default).
 set -euo pipefail
 
@@ -60,7 +60,7 @@ if [ -z "$BIN" ]; then
 	fi
 fi
 
-# THE BINARY HAS TO SPEAK `state`. These scripts read the viff as one document at a kinded
+# THE BINARY HAS TO SPEAK `state`. These scripts read the viff instance as one document at a kinded
 # path, and a CLI from before that has `entity` instead — whose failure is a usage error and
 # the whole command tree, which says nothing about why. The trap is a STALE `./viff` in the
 # working directory: it is preferred over $PATH above, so a checkout that built one months ago
@@ -136,7 +136,7 @@ cat <<EOF
 
 seeded. Now select over it:
 
-  $BIN$scope_note data                                                              the whole viff, one document
+  $BIN$scope_note data                                                              the whole viff instance, one document
   $BIN$scope_note data viff-tutorial pr                                            by where it lives
   $BIN$scope_note data viff-tutorial pr 1                                          one of them
   $BIN$scope_note data --at 'viff-tutorial.pr.*.stage'                             one field of each, keyed by id

@@ -42,7 +42,7 @@ func mcpCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "mcp").
-		WithSynopsis("mcp — serve this viff to an agent's host over MCP on stdin/stdout, as you").
+		WithSynopsis("mcp — serve this viff instance to an agent's host over MCP on stdin/stdout, as you").
 		WithOpts(opts...).WithRun(cfg.run)
 }
 
@@ -65,7 +65,7 @@ func (cfg *mcpConfig) run(cc *cli.Context, args []string) error {
 	return newMCPServer(cc.Go, mcpClient(me, lockedBearer), out, me, cfg.ReadOnly).Run(cc.Go, &mcp.StdioTransport{})
 }
 
-// mcpClient is the client the server calls the viff through, built once from the flags and the
+// mcpClient is the client the server calls the viff instance through, built once from the flags and the
 // config as this invocation resolved them: the CLI's, with who it acts as fixed when the server
 // starts rather than asked of the config on each request, and bearer, the login's, proving it.
 func mcpClient(me string, bearer client.BearerFunc) *client.Client {
@@ -77,7 +77,7 @@ func mcpClient(me string, bearer client.BearerFunc) *client.Client {
 	return c
 }
 
-// mcpServer is what every tool has: the viff it calls, the format it answers in, and who it acts
+// mcpServer is what every tool has: the viff instance it calls, the format it answers in, and who it acts
 // as. ctx is the server's life, which the wait's watch lives for.
 type mcpServer struct {
 	ctx context.Context
@@ -102,7 +102,7 @@ const mcpIn = codec.Tony
 var mcpAnswerMax = 64 << 10
 
 // newMCPServer is the server with every tool registered, or with readOnly every tool that reads,
-// calling the viff through c as me, for as long as ctx lasts.
+// calling the viff instance through c as me, for as long as ctx lasts.
 func newMCPServer(ctx context.Context, c *client.Client, out codec.Format, me string, readOnly bool) *mcp.Server {
 	m := &mcpServer{ctx: ctx, c: c, out: out, me: me, readOnly: readOnly, log: newWaitLog()}
 	s := mcp.NewServer(&mcp.Implementation{Name: "viff", Version: api.Version()}, nil)

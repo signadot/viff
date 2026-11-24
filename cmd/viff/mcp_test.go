@@ -12,7 +12,7 @@ import (
 	"go.viff.dev/viff/pkg/verbs"
 )
 
-// mcpSession is a client connected to `viff mcp` toward the viff the test started, acting as
+// mcpSession is a client connected to `viff mcp` toward the viff instance the test started, acting as
 // the package's tester.
 func mcpSession(t *testing.T) *mcp.ClientSession {
 	t.Helper()

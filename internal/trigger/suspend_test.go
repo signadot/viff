@@ -746,7 +746,7 @@ func parking(t *testing.T, spawn func(*spawned) Spawner) (*Engine, *Suspensions,
 }
 
 // deploying is an engine with a suspension table holding shapes, a rule and a spawner, observing
-// a store: one viff over it. The func it answers ends it.
+// a store: one viff instance over it. The func it answers ends it.
 func deploying(t *testing.T, store entity.Store, rule Trigger, spawn func(*spawned) Spawner, shapes ...[3]string) (*Engine, *Suspensions, *spawned, func()) {
 	t.Helper()
 	eng, tbl := suspending(t, store, "user:tester", shapes...)

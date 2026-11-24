@@ -10,11 +10,11 @@
 // container nobody execs into as that user. go-tony's daemons have had this face since
 // v0.0.120 (system/admin) and viff's had none of it.
 //
-// THE DEFAULT ADDRESS IS DERIVED from the daemon's own, one port up: a viff serving on :9797
+// THE DEFAULT ADDRESS IS DERIVED from the daemon's own, one port up: a viff instance serving on :9797
 // has its admin face on :9798, a sourced on :9801 on :9802. `o` gives each of its daemons a
 // fixed default instead, and viff cannot copy that: `viff up` runs several times on one
 // laptop — a smoke run beside a dev server, two worktrees — and each run already carries a
-// distinct listen address, so deriving from it is what keeps two viffs off one port. The
+// distinct listen address, so deriving from it is what keeps two viff instances off one port. The
 // failure is not hypothetical; a fixed default is exactly why the `o` that viff spawns is
 // handed an ephemeral --admin-addr (cmd/viff/docd.go).
 //

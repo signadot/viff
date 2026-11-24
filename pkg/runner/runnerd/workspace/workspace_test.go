@@ -86,7 +86,7 @@ func TestCheckoutPerTaskAndDelivery(t *testing.T) {
 	if out := commitAt(t, origin, "refs/heads/viff/auto/p1"); out == "" {
 		t.Fatal("origin has no viff/auto/p1")
 	} else {
-		// The trailers are the whole attribution channel out of the viff: a push under a
+		// The trailers are the whole attribution channel out of the viff instance: a push under a
 		// shared credential says nothing at the far end about who it was for.
 		for _, want := range []string{
 			"fixed the flaky test",

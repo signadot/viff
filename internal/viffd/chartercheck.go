@@ -34,7 +34,7 @@ import (
 //
 // `?runners=to-come` asks for the vet a restore places a rule with: a spawn no runner offers at
 // all is held, "waiting for a runner", where the install refuses it — for a charter checked
-// against a viff whose runners are not up yet. Without it, or with `checked`, the check vets as
+// against a viff instance whose runners are not up yet. Without it, or with `checked`, the check vets as
 // the install does, whenever it is asked.
 func (s *Server) checkCharter(w http.ResponseWriter, r *http.Request) {
 	docs, err := codec.ReadNodes(r)
@@ -218,7 +218,7 @@ func (s *Server) standingPackage(confine trigger.Subtree) (*trigger.Engine, bool
 // at install until a restart, and after one it is parsed from its stored spec, and the store
 // gives an object's keys back sorted. Compared as written, every rule whose values were not
 // written in sorted order changed at the restart, and the reconciler's minute check opened an
-// issue saying viff/live is not what runs over a viff that was running exactly it. Keys are
+// issue saying viff/live is not what runs over a viff instance that was running exactly it. Keys are
 // sorted at every depth before the bytes are taken, and comments dropped: a comment is not a
 // rule's meaning, and it is not what an install changes.
 func encoded(v any) []byte {

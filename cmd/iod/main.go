@@ -76,7 +76,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `iod serves one external system as a viff Source.
+	fmt.Fprint(os.Stderr, `iod serves one external system as a viff instance Source.
 
   iod git       [flags]   a git repository, or a mirror of a remote one
   iod git-issue [flags]   the issues `+"`git issue`"+` keeps inside one
@@ -127,7 +127,7 @@ func (c *common) bind(fs *flag.FlagSet) {
 		"viff's hint route for THIS registration (http://viff:9797/iods/<name>/hint); "+
 			"without it, deliveries are received and dropped and only the resync net converges")
 	fs.StringVar(&c.viffAddr, "viff-addr", os.Getenv("VIFF_ADDR"),
-		"the viff the out half reads and writes, host:port (default: the host of -hint-url)")
+		"the viff instance the out half reads and writes, host:port (default: the host of -hint-url)")
 	fs.StringVar(&c.as, "as", "", "the principal the out half reads and writes as "+
 		"(default: agent:<root>-iod, as `viff iod add` grants)")
 	fs.DurationVar(&c.every, "out-every", 5*time.Second,
@@ -205,7 +205,7 @@ func (c *common) registration() string {
 func (c *common) outHalf(ctx context.Context, root string, sink viffio.Sink, places []entity.Ref, viff *client.Client) ([]*viffio.Out, error) {
 	addr := c.viff()
 	if addr == "" {
-		return nil, fmt.Errorf("-out needs the viff it reads and writes: -viff-addr, VIFF_ADDR or -hint-url")
+		return nil, fmt.Errorf("-out needs the viff instance it reads and writes: -viff-addr, VIFF_ADDR or -hint-url")
 	}
 	if viff == nil {
 		viff = c.outClient(root)
@@ -221,8 +221,8 @@ func (c *common) outHalf(ctx context.Context, root string, sink viffio.Sink, pla
 	return outs, nil
 }
 
-// outClient is the client the out half reads and writes the viff with, as this iod: its bearer
-// where it has one (-token-file), its name otherwise. One per process; a sink that reads the viff
+// outClient is the client the out half reads and writes the viff instance with, as this iod: its bearer
+// where it has one (-token-file), its name otherwise. One per process; a sink that reads the viff instance
 // itself is handed the same one.
 func (c *common) outClient(root string) *client.Client {
 	return client.NewAs(c.viff(), c.principal(root), c.bearer())

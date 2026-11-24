@@ -137,7 +137,7 @@ func TestOnIsGuardedByWhen(t *testing.T) {
 	waitStage(t, store, one, "shipped")
 }
 
-// An `on` trigger does NOT act on the backlog. Installed over a viff where its predicate
+// An `on` trigger does NOT act on the backlog. Installed over a viff instance where its predicate
 // already holds, there is no rising edge to observe — which is exactly the opposite of a
 // subject-dispatched trigger, whose level-triggered seed acts on everything already standing.
 // Both readings are defensible; the difference is what `on` MEANS, and it is worth pinning.

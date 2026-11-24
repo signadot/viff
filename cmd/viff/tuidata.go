@@ -20,7 +20,7 @@ import (
 	"go.viff.dev/viff/pkg/task"
 )
 
-// tuiSource is what the tui reads and does: the viff over HTTP, or a fake in the tests.
+// tuiSource is what the tui reads and does: the viff instance over HTTP, or a fake in the tests.
 type tuiSource interface {
 	// snapshot is one round of reads of the sections in reads, the Data section's listing of
 	// dataAt among them.
@@ -34,7 +34,7 @@ type tuiSource interface {
 	transcript(ctx context.Context, id string, fn func(task.Event)) error
 }
 
-// tuiSnapshot is the viff as one round of reads found it. A read that failed leaves its
+// tuiSnapshot is the viff instance as one round of reads found it. A read that failed leaves its
 // collection as it was and says why in errs, so one refusal does not blank the others.
 type tuiSnapshot struct {
 	questions []tuiQuestion
@@ -101,7 +101,7 @@ type subjectRead struct {
 }
 
 const (
-	// readTimeout bounds every request: a viff that stops answering shows as an error, not as
+	// readTimeout bounds every request: a viff instance that stops answering shows as an error, not as
 	// a screen that stops moving.
 	readTimeout  = 15 * time.Second
 	subjectFresh = 30 * time.Second

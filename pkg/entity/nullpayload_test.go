@@ -110,7 +110,7 @@ func TestCreateOverANullPayloadIsRefused(t *testing.T) {
 //
 // This is the one answer a value read cannot settle by itself: with no document to resolve
 // through, logd answers every path under the root with a bare null rather than not_found — the
-// same answer an entity holding null gives. Reading that as a payload made a fresh viff claim
+// same answer an entity holding null gives. Reading that as a payload made a fresh viff instance claim
 // an entity at every address anyone asked about, which took a refused update for an existing
 // entity (its precondition never held) and Modify's create loop (which never terminated) with
 // it.
@@ -324,7 +324,7 @@ func awaitEvent(t *testing.T, commits <-chan Commit, ref Ref) Event {
 // a rule still SELECTS the entity, and then every field read of it comes back empty.
 //
 // Viff does not write comments, so this is about what somebody else wrote: a store is not
-// viff's alone, and a document put there by `o` or by hand is one viff still has to read.
+// viff's alone, and a document put there by `o` or by hand is one viff instance still has to read.
 func TestACommentedPayloadIsStillReadable(t *testing.T) {
 	s := openStore(t)
 	ref := RefAt("demo", "pr", "1")

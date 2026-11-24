@@ -60,7 +60,7 @@ const credentialLife = 10 * time.Minute
 // task's record says of it.
 func (s *Server) mintCredential(store entity.Store, eng *trigger.Engine, id string, spec launch.Spec, by string) (string, *mirror.Minted, error) {
 	if s.issuer == nil {
-		return "", nil, fmt.Errorf("the spawn asks for a credential, and this viff issues none: its " +
+		return "", nil, fmt.Errorf("the spawn asks for a credential, and this viff instance issues none: its " +
 			"config names no issuer (auth.issuer)")
 	}
 	aud := strings.TrimSpace(spec.Credential.Audience)

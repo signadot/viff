@@ -22,7 +22,7 @@ const (
 	alice    = "user:alice@example.com"
 )
 
-// outboxServer is a viff whose root holds nothing out, with an io whose out half reads
+// outboxServer is a viff instance whose root holds nothing out, with an io whose out half reads
 // slack.ws.out as agent:slack-iod. Its registration is written straight into the store: what is
 // tested here is what a package's declaration does with it, not how an io is installed.
 func outboxServer(t *testing.T) (*Server, *httptest.Server) {

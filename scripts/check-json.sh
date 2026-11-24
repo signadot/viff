@@ -41,7 +41,7 @@ cd "$(cd "$(dirname "$0")/.." && pwd)"
 #                              structure (ir.Node) and text, which delivery reads.
 #   pkg/idptest/idp.go
 #                            — OpenID Connect's wire format, served: the identity provider the
-#                              tests point a viff and a CLI at. Discovery documents, key sets
+#                              tests point a viff instance and a CLI at. Discovery documents, key sets
 #                              and tokens are JSON by specification, and the JSON stops at that
 #                              file: a test holds a token as a string and claims as a map.
 #   internal/viffd/issuer.go        — the same wire format, issued: viff's own discovery document, key

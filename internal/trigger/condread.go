@@ -15,7 +15,7 @@ import (
 //
 // `!get-path` and `!list-paths` already reach an entity the firing is not about — but only from
 // an ACTION, which is where a value gets copied. A condition could NAME another entity (`when`
-// and `on` are matches over the whole viff) and could not compare against one: a match tests a
+// and `on` are matches over the whole viff instance) and could not compare against one: a match tests a
 // field against a literal or an operator, so "this field differs from that entity's field" was
 // unsayable. The predicate that wants it is not exotic. It is the ordinary shape of one thing
 // being stale with respect to another:

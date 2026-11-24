@@ -44,11 +44,11 @@ type upConfig struct {
 	// something true and useless.
 	DocdAdvertiseAddr string `cli:"name=docd-advertise-addr desc='publish this client-face address on /status instead of --docd-addr (for clients that cannot reach it)'"`
 	Data              string `cli:"name=data desc='data dir; viff ups logd+docd here via o sys up, and keeps the local runner here. default: ~/.viff/<addr> ($VIFF_HOME/<addr>)'"`
-	LogdConfig        string `cli:"name=logd-config desc='logd configuration file (tony) for the spawned daemons, replacing the one viff writes (see docd.go)'"`
+	LogdConfig        string `cli:"name=logd-config desc='logd configuration file (tony) for the spawned daemons, replacing the one viff instance writes (see docd.go)'"`
 	// CompactionCutoff is the config's compactionCutoff, for this run (see docd.go).
 	CompactionCutoff string `cli:"name=compaction-cutoff desc='how far back the store viff up starts keeps every patch, as logd reads a duration (1d, 36h); default: the config, else 1d'"`
 	OBin             string `cli:"name=o-bin desc='path to the o binary for spawning daemons; default: go run the pinned go-tony cmd/o'"`
-	// LocalRunner false is a viff whose own runner hosts nothing: every spawn goes to a registered
+	// LocalRunner false is a viff instance whose own runner hosts nothing: every spawn goes to a registered
 	// runner. Unset is the config's `localRunner`, true by default. A string, since unset is not
 	// false and the flag library takes a bool by value alone.
 	LocalRunner string `cli:"name=local-runner desc='true or false: whether viff up starts a local runner beside itself (default: the config, true); false routes every spawn to a registered runner'"`
@@ -136,7 +136,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// can do, and the tool for it was built and not connected.
 	//
 	// An env var rather than a flag: it is a property of the RUN, wanted mid-investigation and
-	// often on a viff somebody else started, and `VIFF_LOG=debug viff up` needs no charter,
+	// often on a viff instance somebody else started, and `VIFF_LOG=debug viff up` needs no charter,
 	// no restart argument and no config edit.
 	if lvl := os.Getenv("VIFF_LOG"); lvl != "" {
 		var l slog.Level
@@ -171,7 +171,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 
 	// The local runner: the viff agent when a model credential is configured (so agents are real
 	// out of the box), and scripts either way; what a task's shell inherits from it, which holds
-	// the model credentials. Resolved before anything starts, so a viff that could not start its
+	// the model credentials. Resolved before anything starts, so a viff instance that could not start its
 	// runner says so first.
 	shellEnv := appCfg.ShellEnv
 	if len(shellEnv) == 0 {
@@ -215,7 +215,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	}
 	defer store.Close()
 	// The permission policy this deployment set, read and REFUSED HERE rather than seeded
-	// wrong: a viff holding out something nobody asked for is what these settings exist to
+	// wrong: a viff instance holding out something nobody asked for is what these settings exist to
 	// prevent, and the seed runs inside the constructor below.
 	perms, err := permsPolicy(appCfg.Perms)
 	if err != nil {
@@ -242,7 +242,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	// that could not write it would refuse every request from every person — which reads as a
 	// viff that lost its data, and is worth failing loudly at the start instead.
 	if err := srv.SeedError(); err != nil {
-		return fmt.Errorf("viff up: the permission seed did not land, so this viff would "+
+		return fmt.Errorf("viff up: the permission seed did not land, so this viff instance would "+
 			"admit nobody: %w", err)
 	}
 	// Publish docd's client face on /status — as a CLIENT should reach it, which is not
@@ -265,7 +265,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	)
 
 	srv.AdminAddr = adm.Addr()    // published on /status: a derived port is knowable, not guessed
-	srv.Addr = g.Addr             // this viff's operator API listen address, for /status discovery
+	srv.Addr = g.Addr             // this viff instance's operator API listen address, for /status discovery
 	srv.LLM = appCfg.LLM.Status() // secrets-safe agent-creds summary, for /status
 	srv.SystemCharter = appCfg.SystemCharter
 	// The charters viff ships at the system level, rendered for this deployment's repositories.
@@ -281,13 +281,13 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		srv.SystemCharters = append(srv.SystemCharters, viffd.SystemCharter{Name: "repo-charters " + rc.Repo, Text: text})
 	}
 	// How people are authenticated at the door. Refused at startup where it cannot be served, as
-	// the pace below is: a viff believed to verify its callers and not doing so is the worse one.
+	// the pace below is: a viff instance believed to verify its callers and not doing so is the worse one.
 	if err := srv.SetAuth(authOf(appCfg.Auth)); err != nil {
 		return err
 	}
-	// And this viff as an issuer of its own tokens, which is what it proves itself to a
-	// registered runner with: every runner is held to its registration, so every viff issues.
-	// A key that does not read is a viff that does not start, rather than one whose runners and
+	// And this viff instance as an issuer of its own tokens, which is what it proves itself to a
+	// registered runner with: every runner is held to its registration, so every viff instance issues.
+	// A key that does not read is a viff instance that does not start, rather than one whose runners and
 	// tasks find out at their first call. Where the config names no issuer, viff up is one at its
 	// own address, with a key it keeps in its data dir, or for this process alone where it has
 	// none (--docd-addr).
@@ -325,7 +325,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		srv.SetTripPace(d)
 	}
 	// Where a spawn runs is viff's to say (viffd route.go): the agent a prompt naming none is
-	// for, and whether this viff's own runner is among the runners it routes to.
+	// for, and whether this viff instance's own runner is among the runners it routes to.
 	srv.DefaultAgent = appCfg.DefaultAgent
 
 	// Catch SIGTERM as well as SIGINT so `viff down` (which signals us) triggers the
@@ -350,9 +350,9 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 	}
 
 	httpSrv := &http.Server{Handler: srv.Handler()}
-	// THE LOCAL RUNNER, once this viff serves: the runner fetches this viff's keys to take its
+	// THE LOCAL RUNNER, once this viff instance serves: the runner fetches this viff instance's keys to take its
 	// calls, and is asked to prove itself, so it is started (or found) behind the listener. A
-	// runner that cannot be had stops the viff, as a store that cannot be opened does.
+	// runner that cannot be had stops the viff instance, as a store that cannot be opened does.
 	var lrMu sync.Mutex
 	var lr *localRunner
 	var lrErr error
@@ -379,7 +379,7 @@ func (cfg *upConfig) run(cc *cli.Context, args []string) error {
 		running := lr
 		lrMu.Unlock()
 		if running != nil {
-			running.stop() // before the listener closes: the runner checks the stop against this viff's keys
+			running.stop() // before the listener closes: the runner checks the stop against this viff instance's keys
 		}
 		_ = httpSrv.Shutdown(context.Background())
 	}()
@@ -443,7 +443,7 @@ func advertised(dialled, advertise string) string {
 //
 // Every value is parsed HERE, at startup, and a bad one is an error rather than an autonomy nobody
 // meant. An admin that does not parse is the whole point of refusing: a grantee the grammar
-// cannot read admits nobody, so a viff seeded with one would stand with a top no living person
+// cannot read admits nobody, so a viff instance seeded with one would stand with a top no living person
 // can create beneath.
 func permsPolicy(c config.PermsConfig) (viffd.Perms, error) {
 	var p viffd.Perms
@@ -516,7 +516,7 @@ func localRunnerOffers(llm config.LLMConfig, shellEnv []string) (stock.Config, s
 	return c, stock.Secrets{PortkeyAPIKey: llm.APIKey, PortkeyBaseURL: llm.BaseURL}
 }
 
-// issuerURLOf is the issuer url of a viff up listening at addr: its own address, with a host a
+// issuerURLOf is the issuer url of a viff instance up listening at addr: its own address, with a host a
 // runner beside it can dial where addr binds every interface (`:9797`, `0.0.0.0:9797`).
 func issuerURLOf(addr string) string {
 	host, port, err := net.SplitHostPort(addr)

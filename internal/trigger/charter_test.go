@@ -111,7 +111,7 @@ func TestARulesTaskSurvivesARestart(t *testing.T) {
 	}
 }
 
-// A restored trigger acts on the backlog standing in the viff — the same level-triggered
+// A restored trigger acts on the backlog standing in the viff instance — the same level-triggered
 // replay a fresh install has (docs/change-events.md). So a change that arrived while viff
 // was down is not lost: the rule that comes back finds it waiting.
 func TestRestoredTriggerActsOnWhatArrivedWhileDown(t *testing.T) {

@@ -101,7 +101,7 @@ func (s selector) matchEvent(ev entity.Event) bool {
 // storeUnreadable reports the store's last failed read, or nil.
 //
 // A LISTING CANNOT SAY THIS ITSELF: `Store.List` answers a slice, so a store that cannot be read
-// answers the empty one, indistinguishable from a viff holding nothing. That is how a store
+// answers the empty one, indistinguishable from a viff instance holding nothing. That is how a store
 // with an unreplayable patch in its log presents — `viff data` empty, `viff charter` a
 // charter of no rules, every write still reporting success. Asking the store turns it into an
 // answer somebody can act on.
@@ -114,7 +114,7 @@ func storeUnreadable(st entity.Reader) error {
 
 // unreadable answers 503 when THIS request's read did not happen, and reports whether it did.
 //
-// 503 rather than 500: the request is fine and the viff may be fine again in a moment — what
+// 503 rather than 500: the request is fine and the viff instance may be fine again in a moment — what
 // failed is this server's ability to read its own store, which is what Service Unavailable
 // says. The body names the cause, because "cannot read the store" with no cause sends an
 // operator back to the log-reading this exists to replace.
@@ -128,7 +128,7 @@ func storeUnreadable(st entity.Reader) error {
 // read as `--paths` disagreeing with the document form rather than as a race.
 // notFoundAt says nothing stands at the address asked for, in the address the caller wrote —
 // which is the whole point of answering it rather than an empty document: a reader learns their
-// path is wrong instead of that the viff is empty.
+// path is wrong instead of that the viff instance is empty.
 //
 // IN THE ASKER'S VIEW, and it says so: what a read answers is what its reader may read, so
 // "nothing stands" is a statement about that and not about the store (view.go).
@@ -138,9 +138,9 @@ func notFoundAt(w http.ResponseWriter, r *http.Request, at *kpath.KPath) {
 		spelled = at.String()
 	}
 	if spelled == "" {
-		// The whole viff, on a viff nobody has written to. Naming the address would name
-		// nothing, and "the viff is empty" is the fact a reader wants on their first read.
-		codec.HTTPError(w, r, http.StatusNotFound, "in your view, the viff is empty: nothing has been written yet")
+		// The whole viff instance, on a viff instance nobody has written to. Naming the address would name
+		// nothing, and "the viff instance is empty" is the fact a reader wants on their first read.
+		codec.HTTPError(w, r, http.StatusNotFound, "in your view, the viff instance is empty: nothing has been written yet")
 		return
 	}
 	codec.HTTPError(w, r, http.StatusNotFound, nothingStands(spelled))
@@ -162,7 +162,7 @@ func unreadable(w http.ResponseWriter, r *http.Request, err error) bool {
 	return true
 }
 
-// state answers the viff AT A PATH: the node the path reaches in the store, with everything
+// state answers the viff instance AT A PATH: the node the path reaches in the store, with everything
 // beneath it. It is narrowed by the same selector /watch
 // streams, so a read and a stream never disagree about what a filter names.
 //
@@ -183,7 +183,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// AT THE LITERAL PREFIX, which is what the substrate routes on: a read of one registration
-	// costs what that registration holds, not what the viff does. The rest of the path — from
+	// costs what that registration holds, not what the viff instance does. The rest of the path — from
 	// its first wildcard, index or key — is answered over the node that came back.
 	prefix, rest := entity.LiteralPrefix(sel.at)
 	// A LISTING IS ANSWERED BY THE STORE, which knows the names without reading the nodes: it

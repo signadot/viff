@@ -10,7 +10,7 @@ import (
 	"go.viff.dev/viff/pkg/entity"
 )
 
-// The config's `user:` is who the CLI acts as: what it writes is theirs, and the viff lists
+// The config's `user:` is who the CLI acts as: what it writes is theirs, and the viff instance lists
 // them as a user. VIFF_USER is the environment's spelling of the same line.
 func TestTheConfiguredUserOwnsWhatTheyPut(t *testing.T) {
 	store := serve(t)

@@ -98,7 +98,7 @@ func doerOf(l *runner.Launch) string {
 }
 
 // candidates is step 1: the runners that offer the launch's doer, read in viff's own view, and
-// the registrations passed over, for having no description or for being none this viff reads
+// the registrations passed over, for having no description or for being none this viff instance reads
 // (each as the refusal names it). on, where set, holds the launch to one runner, by the address a
 // task's record names it by.
 func (s *Server) candidates(l *runner.Launch, on *string) (offer []candidate, passed []string, err error) {

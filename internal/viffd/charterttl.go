@@ -65,7 +65,7 @@ func charterTTL(v *ir.Node) (time.Duration, error) {
 func ttlInScope(g charterGroup, scope string) error {
 	if g.ttl > 0 && scope != "" {
 		return errors.New("ttl: a scope's charter has none: it goes " +
-			"with its scope, and a ttl is for a package in the viff")
+			"with its scope, and a ttl is for a package in the viff instance")
 	}
 	return nil
 }

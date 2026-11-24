@@ -49,7 +49,7 @@ const (
 	repoChartersAt = "repos.viff"
 )
 
-// EVERY DEPLOYED CHARTER INSTALLS, into one viff, in the order a deployment installs them: the
+// EVERY DEPLOYED CHARTER INSTALLS, into one viff instance, in the order a deployment installs them: the
 // examples a deployment copies, then the repository's own charters, which the git io installs at
 // repos.viff when the reconciler asks. A charter in the tree is what a newcomer copies and what
 // a deployment runs, and a check added at install is a check these files have to pass: a file

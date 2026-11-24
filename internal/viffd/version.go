@@ -6,7 +6,7 @@ import (
 	"go.viff.dev/viff/pkg/api"
 )
 
-// versioned stamps this viff's version on every response and refuses a request from a client
+// versioned stamps this viff instance's version on every response and refuses a request from a client
 // that cannot be talking to it.
 //
 // It wraps the WHOLE surface rather than living in writeOut, because the header has to be on

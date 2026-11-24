@@ -25,7 +25,7 @@ import (
 // — a cloud's IAM, Vault, Kubernetes — can be told to accept only work a gate let through, and
 // checks that for itself against the keys published here.
 //
-// THE TWO DOCUMENTS ARE READS THAT NAME NOBODY. A relying party is no principal of this viff:
+// THE TWO DOCUMENTS ARE READS THAT NAME NOBODY. A relying party is no principal of this viff instance:
 // it fetches `<url>/.well-known/openid-configuration`, follows `jwks_uri`, and verifies a
 // signature. Both are OIDC's wire format, which is JSON by specification, and the JSON stops at
 // this file.
@@ -38,7 +38,7 @@ const (
 	issuerKeysPath      = "/.well-known/jwks.json"
 )
 
-// issuer signs tokens as this viff and publishes what verifies them.
+// issuer signs tokens as this viff instance and publishes what verifies them.
 type issuer struct {
 	// url is the issuer as its relying parties reach it: every token's `iss`, and where the
 	// discovery document is found.
@@ -49,9 +49,9 @@ type issuer struct {
 	from string
 }
 
-// SetIssuer makes this viff an issuer at url, signing with key, which is from where from says
-// (api.Issuer.Key). It is called before the server serves. url is the viff's address as a
-// relying party reaches it, which is the deployment's to say: a viff behind a proxy does not
+// SetIssuer makes this viff instance an issuer at url, signing with key, which is from where from says
+// (api.Issuer.Key). It is called before the server serves. url is the viff instance's address as a
+// relying party reaches it, which is the deployment's to say: a viff instance behind a proxy does not
 // know it.
 func (s *Server) SetIssuer(issuerURL string, key *rsa.PrivateKey, from string) error {
 	u, err := url.Parse(issuerURL)
@@ -159,7 +159,7 @@ func (i *issuer) sign(claims map[string]any) (string, error) {
 func (s *Server) serveIssuerDiscovery(w http.ResponseWriter, r *http.Request) {
 	i := s.issuer
 	if i == nil {
-		http.Error(w, "this viff issues no tokens", http.StatusNotFound)
+		http.Error(w, "this viff instance issues no tokens", http.StatusNotFound)
 		return
 	}
 	writeJSON(w, map[string]any{
@@ -175,7 +175,7 @@ func (s *Server) serveIssuerDiscovery(w http.ResponseWriter, r *http.Request) {
 func (s *Server) serveIssuerKeys(w http.ResponseWriter, r *http.Request) {
 	i := s.issuer
 	if i == nil {
-		http.Error(w, "this viff issues no tokens", http.StatusNotFound)
+		http.Error(w, "this viff instance issues no tokens", http.StatusNotFound)
 		return
 	}
 	e, n := jwkNumbers(&i.key.PublicKey)

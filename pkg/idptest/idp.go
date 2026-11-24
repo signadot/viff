@@ -1,7 +1,7 @@
 // Package idptest is an OpenID Connect identity provider for tests: discovery, a JWKS, and
 // id_tokens minted with whatever claims a test asks for, signed with a key it generates.
 //
-// It is the IdP a test points a viff at (viffd's `auth.principal` providers) and logs a CLI in to,
+// It is the IdP a test points a viff instance at (viffd's `auth.principal` providers) and logs a CLI in to,
 // and the relying party's side of the same documents is what a test of viffd as an issuer reads.
 // Everything it serves is OIDC's wire format, which is JSON by specification, and the JSON stops
 // here: a test holds a token as a string and claims as a map.

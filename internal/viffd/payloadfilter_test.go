@@ -453,7 +453,7 @@ func TestWatchRefusesACursorItCannotAnswer(t *testing.T) {
 // A STORE THAT CANNOT BE REACHED IS NOT A CURSOR PROBLEM, and the two answers differ.
 //
 // Both arrived as one bit for a while, and the handler read that bit as "your cursor is too
-// old" — so a person whose viff was unreachable was told to change their cursor, and the
+// old" — so a person whose viff instance was unreachable was told to change their cursor, and the
 // retry made it worse (the diagnosis cost a full-history replay). The store says which failure
 // it had now, so this one is a 503 about the store, and repeating the same request is the right
 // advice rather than the wrong one (git-issue 3qf2z59dh12ksdazg9n0).

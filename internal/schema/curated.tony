@@ -47,7 +47,7 @@ define:
 signature:
   name: viff-match
 ---
-# trigger.Formula — a match asked of the viff as it moves: `on` at two revisions, `when`
+# trigger.Formula — a match asked of the viff instance as it moves: `on` at two revisions, `when`
 # at one. It emits the MATCH, unwrapped, so a condition reads back the way it was written;
 # codegen published it as `{op, req}`, the Go struct behind the codec, a shape that never
 # appears on the wire. The match signature is what a reader of the schema should follow.
@@ -101,9 +101,9 @@ define:
 signature:
   name: viff-stratum
 ---
-# entity.Doc — the viff's state at a path, and the one signature whose `define` is empty
+# entity.Doc — the viff instance's state at a path, and the one signature whose `define` is empty
 # because the SHAPE is the answer rather than a record with fields. The document is one tree,
-# its keys whatever the viff happens to hold, and a path into it answers with the node standing
+# its keys whatever the viff instance happens to hold, and a path into it answers with the node standing
 # there — an object, an array, a scalar, a null. None of that is enumerable here.
 #
 # codec=custom for the same reason: the Go type wraps a node so the schema can NAME what a read

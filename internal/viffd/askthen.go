@@ -102,7 +102,7 @@ func thenAskOf(v entity.Payload, now time.Time) (api.Ask, error) {
 	return body, nil
 }
 
-// checkThen checks what a `then` that answers or asks names against the viff as it stands, as
+// checkThen checks what a `then` that answers or asks names against the viff instance as it stands, as
 // asker, where the asker is present to hear what is wrong, and fills in the edit an answer
 // consents to. self is the ask the `then` is on, where it has an id yet. It recurses through the
 // rows of an ask's own `on`.

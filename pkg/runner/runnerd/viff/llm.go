@@ -479,7 +479,7 @@ func resultContent(prev task.StepResult) string {
 	case prev.Blocked:
 		// DENIED, and NOT "by supervisor gate". The gate is one thing that refuses an action
 		// and it stopped being the only one the moment a runtime's tool could reach an
-		// authority outside the viff — a remote enforcing its own rules about its own history
+		// authority outside the viff instance — a remote enforcing its own rules about its own history
 		// refuses, and telling the model a supervisor did it names the wrong party and points
 		// its next attempt at the wrong repair. The reason says who; the word stays, because
 		// the frame is written against it.

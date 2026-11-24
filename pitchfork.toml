@@ -1,6 +1,6 @@
 #:schema https://pitchfork.jdx.dev/schema.json
 #
-# A viff on this machine, as pitchfork daemons (https://pitchfork.jdx.dev), laid out as staging is:
+# A viff instance on this machine, as pitchfork daemons (https://pitchfork.jdx.dev), laid out as staging is:
 # the store, viffd, and a runner, each a process of its own (docs/platform/local-viff.md). The one-time setup first (binaries,
 # configs, keys and token, Claude Code's MCP server, the runner's registration):
 #

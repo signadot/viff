@@ -100,7 +100,7 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	if err != nil {
 		return resp, err
 	}
-	// A server that says nothing is not a server that disagrees. It may be a viff older than the
+	// A server that says nothing is not a server that disagrees. It may be a viff instance older than the
 	// check, a runner, or a proxy, and none of those is a version to compare against. The
 	// check is between two things that both speak this contract.
 	theirs := resp.Header.Get(api.VersionHeader)

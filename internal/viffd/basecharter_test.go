@@ -13,7 +13,7 @@ import (
 	"go.viff.dev/viff/pkg/schedule"
 )
 
-// Every viff stands on the base charter: the standard schedules are records the moment it
+// Every viff instance stands on the base charter: the standard schedules are records the moment it
 // starts, and the calendar is derived from the hourly tick, one entity per fact, so a fact
 // commits only when it changes.
 

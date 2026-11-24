@@ -17,7 +17,7 @@ import (
 	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// ── sources: what reflects an external system into the viff ─────────────────
+// ── sources: what reflects an external system into the viff instance ─────────────────
 //
 // A source is installed at `mirror.iods.<name>` carrying one way in, and it is the single
 // writer of the tree under its `root`. The root is a question viff asks of every registration
@@ -246,7 +246,7 @@ func (s *Server) addIO(w http.ResponseWriter, r *http.Request) {
 	if e.Out != nil {
 		s.grantOutboxesTo(e.Out.Places, e.Out.As)
 		// And a system charter refused at start for want of an io to send to, which this may be
-		// (Server.installSystemCharters): a viff whose iods were registered after its start (a
+		// (Server.installSystemCharters): a viff instance whose iods were registered after its start (a
 		// wipe, then repopulate) gets it now rather than at the next restart.
 		s.installWaitingSystemCharters()
 	}
@@ -503,7 +503,7 @@ func (s *Server) listIOs(w http.ResponseWriter, r *http.Request) {
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `viff iod` answered `[]` on a viff holding three sources, which is the one shape an
+	// `viff iod` answered `[]` on a viff instance holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason. THIS
 	// read's error, not the store's last one — see unreadable.
 	if unreadable(w, r, readErr) {
@@ -579,7 +579,7 @@ func (s *Server) getIO(w http.ResponseWriter, r *http.Request) {
 	}
 	var e viffio.Entity
 	if err := codec.FromNode(ent.Payload, &e); err != nil {
-		http.Error(w, fmt.Sprintf("io %s is stored in a shape this viff can't read: %v", ent.Ref, err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("io %s is stored in a shape this viff instance can't read: %v", ent.Ref, err), http.StatusInternalServerError)
 		return
 	}
 	writeOut(w, r, http.StatusOK, e)
@@ -613,7 +613,7 @@ func (s *Server) checkIO(w http.ResponseWriter, r *http.Request) {
 // slice nobody reflects any more is a slice nothing can correct, and a charter would go on
 // believing in a branch of a repo viff has stopped watching — so `--forget` is usually what
 // an operator means. But MOVING A REPO TO ANOTHER HOST is a remove and an add of the same
-// physical truth, and tombstoning it fires every branch-deleted trigger in the viff and then
+// physical truth, and tombstoning it fires every branch-deleted trigger in the viff instance and then
 // every branch-created one behind it: a bookkeeping change destroying and re-creating live
 // facts. That is the runner's rename case in a different costume, and it gets the runner's
 // resolution — removal with a non-empty reflected slice is REFUSED until told which.
@@ -627,7 +627,7 @@ func (s *Server) removeIO(w http.ResponseWriter, r *http.Request) {
 	ref := viffio.Ref(name)
 	e, ok, err := viffio.FindErr(store, entity.JoinSegs([]string{name}))
 	if !ok && err == nil {
-		// A registration this viff can't read is still removed by its name: what it claimed is
+		// A registration this viff instance can't read is still removed by its name: what it claimed is
 		// not known, so there is nothing to forget or keep, and only the registration goes.
 		_, ok, err = store.Get(ref)
 		e = viffio.Entity{Name: name}
@@ -986,9 +986,9 @@ func (s *Server) stopAllIOs() {
 //   - `lastError` is written on TRANSITION only. A source failing every minute writes once, and
 //     the write that clears it is the one that says it recovered.
 //   - `lastReflect` is written only when a pass actually WROTE something. It is the poll
-//     cursor: when viff last changed the viff because of this source. Stamping it every pass
+//     cursor: when viff last changed the viff instance because of this source. Stamping it every pass
 //     would put a write on `io:*` once per resync interval forever, and anything watching
-//     that slice would fire on a viff where nothing is happening.
+//     that slice would fire on a viff instance where nothing is happening.
 //
 // What that costs is stated in docs/io.md: the cursor cannot catch a source
 // that has wedged, since a healthy quiet one looks the same. That is what the in-memory
@@ -997,7 +997,7 @@ func (s *Server) recordPass(ctx context.Context, store entity.Store, ref entity.
 	// A cancelled pass is a SHUTDOWN, not a fault, and recording it would be a lie that
 	// outlives the task: every source would come back from a clean stop carrying
 	// "context canceled" as its last error, and an operator reading the listing after a
-	// restart would see a viff full of broken sources that are all fine.
+	// restart would see a viff instance full of broken sources that are all fine.
 	if errors.Is(p.Err, context.Canceled) {
 		return
 	}
@@ -1100,7 +1100,7 @@ func stillInstalled(ref entity.Ref) entity.Require {
 	return entity.Require{At: ref.At("name"), Pattern: entity.Present()}
 }
 
-// restoreSources starts a reflector for every registration standing in the viff, so the
+// restoreSources starts a reflector for every registration standing in the viff instance, so the
 // program a restart comes back to is the one it went down with.
 //
 // It runs AFTER the charter, and that ordering is load-bearing: a reflection is a write that
@@ -1115,7 +1115,7 @@ func stillInstalled(ref entity.Ref) entity.Require {
 // created on demand by whatever owns it — a session's client, a sandbox for its own
 // lifetime — so the thing that made the scope is the thing that can install into it again.
 //
-// A failed read is not "no sources installed", and taking it as one brought a viff back
+// A failed read is not "no sources installed", and taking it as one brought a viff instance back
 // reflecting NOTHING with no sign of it but `running: false` on each registration. Reported as
 // the read it is (entity.IsUnread), so the phase asks again until the listing happens and the
 // sources start — a restart is not what it should take.
@@ -1159,7 +1159,7 @@ func (s *Server) hintIO(w http.ResponseWriter, r *http.Request) {
 	ref := viffio.Ref(name)
 	// Looked up as the system, in the request's scope. A hint names nobody — it is a hook's
 	// nudge, and what is reflected is reflected as the source — so looked up as its sender, a
-	// registration in a viff that holds out no read was not found by the hook it installed.
+	// registration in a viff instance that holds out no read was not found by the hook it installed.
 	_, ok, err := viffio.FindErr(entity.As(s.scopedStore(r), entity.SystemDefault), entity.JoinSegs([]string{name}))
 	if !installed(w, r, fmt.Sprintf("io %q", name), ok, err) {
 		return

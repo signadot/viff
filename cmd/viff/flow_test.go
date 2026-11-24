@@ -16,7 +16,7 @@ import (
 	"go.viff.dev/viff/pkg/codec"
 )
 
-// flowServer is a viff that records the flow verbs it is sent and answers the listing with rows.
+// flowServer is a viff instance that records the flow verbs it is sent and answers the listing with rows.
 func flowServer(t *testing.T, rows []api.FlowRow) (got func() (string, api.FlowSelect, string), query func() string) {
 	t.Helper()
 	var path, as, q string

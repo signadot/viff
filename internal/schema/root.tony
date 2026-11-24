@@ -1,4 +1,4 @@
-# THE ROOT — what a viff looks like, by top-level path.
+# THE ROOT — what a viff instance looks like, by top-level path.
 #
 # This is the one part of the schema that no Go type declares. Every other definition is the
 # wire shape of a struct somewhere (generated) or a correction to one (curated.tony); this one
@@ -6,7 +6,7 @@
 #
 # It is HAND-WRITTEN, and that is the trade. It used to be derived from viffd's route table,
 # which made it unable to lie and also made the whole schema unobtainable without a server —
-# you could not read what a viff looks like without running one. Now the schema stands alone
+# you could not read what a viff instance looks like without running one. Now the schema stands alone
 # and the API is what has to agree with it, which is a test (TestTheRootIsTheServedSurface)
 # rather than a construction.
 #
@@ -19,14 +19,14 @@
 #             the WIRE form of the stream is not described yet; that is worth adding, and this
 #             is where it goes when it is.
 #   schema  — this document's own shape, which is likewise not a named type.
-#   charter — the installed charter, addressed like the viff itself and answering the same
+#   charter — the installed charter, addressed like the viff instance itself and answering the same
 #             shape at every node (writes/reads/triggers/strata/children). It is a document
 #             this server BUILDS rather than a struct's wire form, so there is no generated
 #             type to point at; it belongs here the day one exists. `viff-trigger` and
 #             `viff-stratum` still describe what is INSIDE it, and GET /charter/{name}
 #             answers one of them.
 #
-# The control plane is absent by construction: POST /flow/suspend is something you DO to a viff,
+# The control plane is absent by construction: POST /flow/suspend is something you DO to a viff instance,
 # not part of what one looks like.
 context:
 - tony-format/context

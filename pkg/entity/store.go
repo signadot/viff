@@ -63,7 +63,7 @@ type Store interface {
 	Observe(at ...*kpath.KPath) (<-chan Commit, func())
 	// Since returns retained commits with Rev > from, in order, with Changes answered at the
 	// patterns given as Observe answers them, read under the literal prefix they share — the
-	// whole viff when they share none, or when none are given. This is the cursor-based
+	// whole viff instance when they share none, or when none are given. This is the cursor-based
 	// catch-up (a docd query by revision).
 	//
 	// THE ERROR IS THE ONE THIS REPLAY FAILED WITH, and the commits are whatever it delivered
@@ -88,7 +88,7 @@ type Store interface {
 	// AsOf returns a Snapshot: a read-only view fixed at one revision, so every read of it
 	// answers as of that commit and no later write is visible to any of them.
 	//
-	// It is what makes a rule about the viff evaluable AT a change rather than merely after
+	// It is what makes a rule about the viff instance evaluable AT a change rather than merely after
 	// one. Asking "does this condition hold" and "which entities does this select" of the
 	// same snapshot makes them answers about one world; asking them of the live store makes
 	// them two reads with a window between, which a concurrent commit can slide through — so
@@ -100,7 +100,7 @@ type Store interface {
 	//
 	// `within` narrows what the snapshot holds to the given (system, kind) subtrees — kind ""
 	// meaning a whole system, no arguments meaning the whole viff. It is not a filter for
-	// convenience: reading the whole viff costs more as the viff GROWS, so a caller
+	// convenience: reading the whole viff instance costs more as the viff instance GROWS, so a caller
 	// evaluating a rule at every commit pays for entities the rule cannot see. Pass the
 	// subtrees the predicates read and the cost stops depending on everything else.
 	AsOf(rev int64, within ...[]string) (Snapshot, error)

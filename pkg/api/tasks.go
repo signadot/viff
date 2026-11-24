@@ -32,7 +32,7 @@ type Spawn struct {
 	Converse bool `tony:"field=converse,omitzero"`
 	// Principal is who is answerable for this run. Self-asserted — the same standing `--as`
 	// has everywhere else, and for the same reason: verifying a caller is authority's
-	// subject, not this field's. It is carried so a runner whose effects LEAVE the viff can
+	// subject, not this field's. It is carried so a runner whose effects LEAVE the viff instance can
 	// write an externally checkable link back.
 	//
 	// A charter firing has no equivalent yet, and deliberately no default here: an empty

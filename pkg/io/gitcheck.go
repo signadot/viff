@@ -35,7 +35,7 @@ import (
 //	round:  2026-10-04T21:00:00Z
 //
 // This reads the tree's charter files out of the repository, as the install input does, and asks
-// the viff's charter check (`POST /charter/check`) what an install of them at the address would
+// the viff instance's charter check (`POST /charter/check`) what an install of them at the address would
 // do. The status answers `tree`, `address`, `checkedAt`, and the check's own answer: `verdict`
 // (`installs` or `refused`), `refusal`, `packages` (each with what it would add, change, remove,
 // and hold) and `pruned`; and `changes`, how many charters the install would add, change, remove
@@ -53,7 +53,7 @@ import (
 // status carries the refusal for a reader to act on. A file in the tree that does not parse is
 // such a verdict too, said in the same place, since it is the tree's fault and an install would
 // be refused for it. What fails the input is not getting an answer: a tree the repository lacks
-// (for good), or a viff that cannot be reached (tried again).
+// (for good), or a viff instance that cannot be reached (tried again).
 //
 // IT IS NOT THE INSTALL. The check and the install are two inputs, two routes and two answers;
 // nothing here installs, and nothing in the install checks on this one's behalf.

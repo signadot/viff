@@ -24,7 +24,7 @@ import (
 // runnerFace is a real runner for the client to install: a runnerd handler, as every runner is, so
 // the install probe has something truthful to find.
 //
-// It serves the viff serve started, behind the door runnerd puts in front of a runner, and
+// It serves the viff instance serve started, behind the door runnerd puts in front of a runner, and
 // holds a static token: tokenFile is where, for `viff runner add -token-file`.
 func runnerFace(t *testing.T) (face *httptest.Server, tokenFile string) {
 	t.Helper()

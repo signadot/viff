@@ -205,7 +205,7 @@ func TestARecordGivingNoDateIsAskedWithNoClock(t *testing.T) {
 	}
 }
 
-// A MOVED DATE HOLDS ACROSS A RESTART: the second viff settles the question at the date it was
+// A MOVED DATE HOLDS ACROSS A RESTART: the second viff instance settles the question at the date it was
 // moved to, not the one it was first posed with.
 func TestAMovedDeadlineHoldsAcrossARestart(t *testing.T) {
 	addr := entitytest.Addr(t)

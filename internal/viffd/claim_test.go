@@ -83,7 +83,7 @@ func TestTheClaimSettlesAQuestion(t *testing.T) {
 
 // A CRASH BETWEEN THE CLAIM AND THE DELIVERY LOSES NOTHING. bob's yes claimed alice's ask and the
 // viff went down before anything ran or was delivered. The next viff, waiting on the ask again,
-// delivers the claimed yes, runs its `then`, and the ask settles as bob answered it; a viff after
+// delivers the claimed yes, runs its `then`, and the ask settles as bob answered it; a viff instance after
 // that runs nothing more.
 func TestARestartFinishesAClaimedSettle(t *testing.T) {
 	raw := entitytest.Store(t)
@@ -97,7 +97,7 @@ func TestARestartFinishesAClaimedSettle(t *testing.T) {
 	posed(t, first, ref)
 	claimAsk(t, first, ref, task.Choose(task.Proceed, bob))
 	// ... and the delivery had failed once before the crash, which the record says.
-	first.undelivered(first.Store, id, errors.New("the viff went down"))
+	first.undelivered(first.Store, id, errors.New("the viff instance went down"))
 	ts.Close()
 	first.stopAllIOs()
 

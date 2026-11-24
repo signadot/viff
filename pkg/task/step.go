@@ -175,7 +175,7 @@ var (
 	StepViffAskGet = systems.Step("viff", "ask-get")
 	// All of that person's asks, `viff ask`'s listing.
 	StepViffAskList = systems.Step("viff", "ask-list")
-	// The viff at an address, `viff data`'s: read, written, or removed, as that person.
+	// The store at an address, `viff data`'s: read, written, or removed, as that person.
 	StepViffDataGet = systems.Step("viff", "data-get", "path")
 	StepViffDataPut = systems.Step("viff", "data-put", "path", "value")
 	StepViffDataRm  = systems.Step("viff", "data-rm", "path")
@@ -215,7 +215,7 @@ func (s Step) String() string {
 	return b.String()
 }
 
-// StepOf is the step an action is, for the tools every viff driver proposes: `write_file` writes
+// StepOf is the step an action is, for the tools every viff instance driver proposes: `write_file` writes
 // a file, `run_bash` runs a command, and a delegation delegates. Anything else is no step.
 func StepOf(tu ToolUse) (Step, bool) {
 	if tu.CallAgent != nil {

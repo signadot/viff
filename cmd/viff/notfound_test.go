@@ -52,7 +52,7 @@ func TestAReadOfWhatStandsStillAnswers(t *testing.T) {
 	}{
 		{"the entity", []string{"data", "demo", "pr", "1"}},
 		{"its slice", []string{"data", "demo", "pr"}},
-		// The root always stands: a viff nobody has written to already carries what the
+		// The root always stands: a viff instance nobody has written to already carries what the
 		// system holds out (viffd.seedPerms), so the root reads before anyone writes.
 		{"the root", []string{"data"}},
 	} {
@@ -71,7 +71,7 @@ func TestAReadOfWhatStandsStillAnswers(t *testing.T) {
 //
 // It required two things. `viff watch` observed the ROOT and filtered, so it never asked the
 // store about the address a person typed — it asks at the path now, which also stops every commit
-// in the viff crossing for a watch on one slice. And the refusal had to arrive before the stream
+// in the viff instance crossing for a watch on one slice. And the refusal had to arrive before the stream
 // was confirmed: go-tony v0.0.202 asks before confirming, where v0.0.201 failed the watch a moment
 // after, by which time an SSE endpoint has committed its status code and cannot go back and say
 // 404 (git-issue 7e5gv3n9h12krd10jhn0).
@@ -105,7 +105,7 @@ func TestAWatchCanAskToWait(t *testing.T) {
 }
 
 // A FRAME TOO LONG TO READ IS SAID, not taken for a quiet stream: a node's opening state is one
-// frame, and `viff watch mirror task instance` on a viff with a few hundred tasks printed
+// frame, and `viff watch mirror task instance` on a viff instance with a few hundred tasks printed
 // nothing and exited 0 (git-issue cmk9g2t4h12ksz7zxsn0).
 func TestAWatchSaysWhenAFrameIsTooLong(t *testing.T) {
 	defer func(n int) { watchFrameMax = n }(watchFrameMax)

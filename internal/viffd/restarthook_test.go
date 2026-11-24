@@ -35,7 +35,7 @@ func TestATaskResumedAcrossARestartRunsItsHook(t *testing.T) {
 	for _, c := range []struct {
 		at   string
 		down bool // the task ends while viff is down
-		late bool // the charter is not read until the task has ended, on a viff that is back
+		late bool // the charter is not read until the task has ended, on a viff instance that is back
 	}{{"", false, false}, {"demo", false, false}, {"", true, false}, {"demo", true, false}, {"", false, true}, {"demo", false, true}} {
 		at := c.at
 		name := "a rule in the package at " + at
@@ -142,7 +142,7 @@ func TestATaskResumedAcrossARestartRunsItsHook(t *testing.T) {
 	}
 }
 
-// runningPackage is a viff with a package installed at demo whose rule has a task running on a
+// runningPackage is a viff instance with a package installed at demo whose rule has a task running on a
 // runner about demo.pr.1: the server, its url, and the task's id. While deaf is set the runner
 // answers no cancel.
 func runningPackage(t *testing.T, rule string, deaf *atomic.Bool) (*Server, string, string) {

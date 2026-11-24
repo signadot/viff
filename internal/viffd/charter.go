@@ -28,7 +28,7 @@ import (
 // twice and assembled by whoever asked — and it meant `viff charter` and `viff charter` each
 // answered a slice of a charter with no way to see the charter.
 //
-// So: one document, addressed like the viff itself, with the same shape at every node.
+// So: one document, addressed like the viff instance itself, with the same shape at every node.
 //
 //	writes: anywhere               # baseline: no address, so it may write anywhere
 //	rules: [ … ]
@@ -291,7 +291,7 @@ func (s *Server) getCharter(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// A SCOPE IS A CHARTER TOO, and it is not in the tree: a scope's rules are its own
-	// copy of the viff rather than a place in this one. Asked for by name, answered whole.
+	// copy of the viff instance rather than a place in this one. Asked for by name, answered whole.
 	if scope := r.URL.Query().Get("scope"); scope != "" {
 		eng := s.engFor(scope)
 		if eng == nil {
@@ -1465,7 +1465,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 	if kind == "schedules" {
 		// The daemon's record rather than the engine's, and not a scope's.
 		if r.URL.Query().Get("scope") != "" {
-			http.Error(w, "a schedule is not a scope's: it ticks for the viff", http.StatusBadRequest)
+			http.Error(w, "a schedule is not a scope's: it ticks for the viff instance", http.StatusBadRequest)
 			return
 		}
 		removed, err := s.removeScheduleNamed(s.scopedStore(r), at, name)
@@ -1486,7 +1486,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// Not in this charter: at an address, that is the package's not-found; at the viff itself,
+	// Not in this charter: at an address, that is the package's not-found; at the viff instance itself,
 	// it may be another scope's to remove (owns.go), and is said to be.
 	notHere := func() {
 		notFound := func() { http.Error(w, s.charterPathNotFound(at, rest), http.StatusNotFound) }
@@ -1531,7 +1531,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 }
 
 // engineAt is the engine holding the charter at an address — a scope's when one is asked for,
-// since a scope's charter is its own copy of the viff rather than a place in this one.
+// since a scope's charter is its own copy of the viff instance rather than a place in this one.
 func (s *Server) engineAt(r *http.Request, at string) (*trigger.Engine, error) {
 	if at == "" {
 		return s.engFor(r.URL.Query().Get("scope")), nil

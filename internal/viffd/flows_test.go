@@ -149,7 +149,7 @@ func TestFlowsAreEveryEnginesOnBothSurfaces(t *testing.T) {
 	}
 
 	if got := flowRows(t, ts, "", api.FlowSelect{}); len(got) != 0 {
-		t.Fatalf("flows = %+v, want none on a viff with no live work", got)
+		t.Fatalf("flows = %+v, want none on a viff instance with no live work", got)
 	}
 
 	// A package, and nothing in baseline: the deployment this is about. Installing the charter
@@ -179,7 +179,7 @@ func TestFlowsAreEveryEnginesOnBothSurfaces(t *testing.T) {
 	}
 	got := flowRows(t, ts, "", api.FlowSelect{})
 	if len(got) != 1 || got[0].Task != "note-the-head-run" || got[0].Subject != subject || got[0].Charter != "notes:note-the-head" {
-		t.Fatalf("flows = %+v, want the package's task, named by its charter — a package's live work is this viff's", got)
+		t.Fatalf("flows = %+v, want the package's task, named by its charter — a package's live work is this viff instance's", got)
 	}
 	if n := statusFlows(""); n != (api.FlowCount{Tasks: 1, Subjects: 1}) {
 		t.Fatalf("status flows = %+v over a listing of one task", n)

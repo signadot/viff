@@ -12,7 +12,7 @@ verbs:
 - name: ask-list
   description: "List the asks of the person the task runs for, as `viff ask` and viff_ask_list do: each with its id, question, who is asked, its due, its `status`, and its `answer`, `pending` until it settles."
 - name: data-get
-  description: "Read the viff at an address as the person the task runs for, as `viff data` and viff_data do: the document stored there, or with paths the addresses beneath it, chosen by an if pattern and trimmed to what a trim names."
+  description: "Read the store at an address as the person the task runs for, as `viff data` and viff_data do: the document stored there, or with paths the addresses beneath it, chosen by an if pattern and trimmed to what a trim names."
   fields:
   - {name: path, form: path, description: "the address read, and everything under it: a row that allows holds all of it within its pattern, and one that denies or asks matches where it touches any of it. `[scratch]` is every address under scratch"}
 - name: data-put

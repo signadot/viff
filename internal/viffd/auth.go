@@ -27,9 +27,9 @@ import (
 // VIFF IS A RELYING PARTY. A deployment names the OpenID Connect providers its people sign in
 // with (Auth), and a request carrying `Authorization: Bearer <id_token>` from one of them is
 // verified at the door, ahead of the Viff-Principal header: the signature against the provider's
-// published keys, that the token was issued for this viff's client (`aud`), and that it is in
+// published keys, that the token was issued for this viff instance's client (`aud`), and that it is in
 // date (`exp`, `nbf`). It is the id_token and not an access token because an id_token's audience
-// is the viff's own client, and a provider's access token is often opaque.
+// is the viff instance's own client, and a provider's access token is often opaque.
 //
 // THE PRINCIPAL IS THE BINDING, NOT THE CLAIM. A verified token says which account the caller
 // holds, `(iss, sub)`, and the binding at `mirror.identity.<provider>.account.<sub>` says which
@@ -43,7 +43,7 @@ import (
 //
 // A BEARER THAT FAILS IS REFUSED, and never falls back to the header beside it: a write let
 // through on a failed proof would name somebody viff had just failed to verify. A bearer sent to
-// a viff that verifies none is refused too, since serving it as nobody would answer with what
+// a viff instance that verifies none is refused too, since serving it as nobody would answer with what
 // looks like an empty viff. And a verified bearer beside a header naming somebody else is
 // refused, because acting as another is delegation, which a header does not confer.
 //
@@ -70,15 +70,15 @@ type Auth struct {
 	Iod AuthIod
 }
 
-// AuthProvider is one OpenID Connect issuer a viff accepts id_tokens from.
+// AuthProvider is one OpenID Connect issuer a viff instance accepts id_tokens from.
 type AuthProvider struct {
 	// Issuer is the issuer's URL: where its discovery document is, and every token's `iss`.
 	Issuer string
-	// ClientID is this viff's client at the issuer, which a token's `aud` holds.
+	// ClientID is this viff instance's client at the issuer, which a token's `aud` holds.
 	ClientID string
 	// Domains are the email domains a first sight is admitted from.
 	Domains []string
-	// IOs are the installed iods the viff trusts for the provider's accounts, by the name each is
+	// IOs are the installed iods the viff instance trusts for the provider's accounts, by the name each is
 	// installed under: `github`'s, whose accounts are proved by a comment an io reflects, and
 	// `slack`'s, whose io relays the member who typed (iod.go). A provider has an issuer or iods.
 	IOs []string
@@ -151,7 +151,7 @@ type authProvider struct {
 	failure  error
 }
 
-// SetAuth says how this viff authenticates people, and writes down which iods each provider
+// SetAuth says how this viff instance authenticates people, and writes down which iods each provider
 // trusts as evidence (trustRef). It is called before the server serves.
 //
 // THE TRUSTED IOS COME FROM HERE AND NOWHERE ELSE. Which iods' reflections count as evidence
@@ -228,7 +228,7 @@ func (s *Server) writeTrusts(providers map[string]AuthProvider) error {
 	return nil
 }
 
-// verifiesPeople reports whether this viff admits a `user:` only from a verified bearer.
+// verifiesPeople reports whether this viff instance admits a `user:` only from a verified bearer.
 func (s *Server) verifiesPeople() bool {
 	return s.auth != nil && s.auth.mode == AuthRequired
 }
@@ -370,7 +370,7 @@ type verified struct {
 func (s *Server) verifyToken(ctx context.Context, token string) (*verified, *turnedAway) {
 	n := s.auth
 	if n == nil || len(n.byIssuer) == 0 {
-		return nil, turnAway(http.StatusUnauthorized, "this viff verifies no bearer: it names no "+
+		return nil, turnAway(http.StatusUnauthorized, "this viff instance verifies no bearer: it names no "+
 			"identity provider (auth.principal in its config), so a request says who makes it in %s",
 			api.PrincipalHeader)
 	}
@@ -381,17 +381,17 @@ func (s *Server) verifyToken(ctx context.Context, token string) (*verified, *tur
 	p := n.provider(iss)
 	if p == nil {
 		if !n.peoplesIssuers() {
-			return nil, turnAway(http.StatusUnauthorized, "this viff verifies no person's bearer: it "+
+			return nil, turnAway(http.StatusUnauthorized, "this viff instance verifies no person's bearer: it "+
 				"names no identity provider (auth.principal in its config), so a request says who makes "+
 				"it in %s", api.PrincipalHeader)
 		}
 		return nil, turnAway(http.StatusUnauthorized, "the bearer was issued by %s, which is no identity "+
-			"provider of this viff (it takes: %s)", iss, n.providerNames())
+			"provider of this viff instance (it takes: %s)", iss, n.providerNames())
 	}
 	if n.mode == AuthOff && !p.iod {
 		// People are not verified here, and a token is not served as nobody: an answer with
 		// nothing in it reads as an empty viff.
-		return nil, turnAway(http.StatusUnauthorized, "this viff verifies no bearer of a person "+
+		return nil, turnAway(http.StatusUnauthorized, "this viff instance verifies no bearer of a person "+
 			"(auth.principal.mode is %s), so a request says who makes it in %s", AuthOff, api.PrincipalHeader)
 	}
 	verifier, err := p.verifierFor()
@@ -471,7 +471,7 @@ func (s *Server) authenticate(ctx context.Context, token, presented, account, ta
 			return s.asRunner(e, presented, account, task, a)
 		}
 		return "", "", "", turnAway(http.StatusUnauthorized, "the bearer is a workload token whose "+
-			"subject %s is no io of this viff (auth.iod.accounts) and no registered runner's "+
+			"subject %s is no io of this viff instance (auth.iod.accounts) and no registered runner's "+
 			"(`viff runner add -subject`)", v.sub)
 	}
 	sys := entity.As(s.Store, entity.SystemIdentity)
@@ -598,7 +598,7 @@ func (s *Server) asRunner(e api.Runner, presented, account, task string, a act) 
 
 // relayedActs are the routes a runner carries a task's request to, the viff system's verbs:
 // raising an ask (`viff-ask-create`), reading the owner's asks (`viff-ask-get`,
-// `viff-ask-list`), reading, writing and removing the viff at an address (`viff-data-get`,
+// `viff-ask-list`), reading, writing and removing the store at an address (`viff-data-get`,
 // `-put`, `-rm`), reading the charters, asking whether some would install, installing and
 // removing them (`viff-charter-get`, `-check`, `-install`, `-remove`; what a task installs is
 // held within it, chartertask.go), and saying whom a request is made as.

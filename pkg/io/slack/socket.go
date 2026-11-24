@@ -21,7 +21,7 @@ import (
 
 // Socket Mode: how what somebody says in Slack reaches this program with no Ingress in front of it.
 //
-// Slack can post an event to a public url, and a viff with no Ingress (staging has none, and is
+// Slack can post an event to a public url, and a viff instance with no Ingress (staging has none, and is
 // not meant to) has none to give it. In Socket Mode this program dials OUT instead: it asks for a
 // url with the app-level token (`xapp-…`, `connections:write`), opens a WebSocket to it, and Slack
 // sends each event down it as an envelope, which is acknowledged by its id. Slack refreshes the
@@ -61,17 +61,17 @@ import (
 // It is never made as this program's own principal: an answer recorded as agent:slack-iod would be
 // an answer nobody gave. The Slack user comes from an envelope on a socket the app token
 // authenticated, and this program presents that person to viff with the account they are,
-// `slack:<user id>`, beside its own credential; a viff that verifies people admits the request
+// `slack:<user id>`, beside its own credential; a viff instance that verifies people admits the request
 // through the account's binding, from a Slack io it trusts, and the ballot says so.
 type Socket struct {
 	s   *Slack
 	app *api // holding the app-level token, which only apps.connections.open takes
-	// as is the client factory io.Controller is handed: one viff, and a request made as
+	// as is the client factory io.Controller is handed: one viff instance, and a request made as
 	// whoever Slack says did the thing, with their account. nil until Control runs, and then
 	// never as this program.
 	as func(principal, account string) *client.Client
 
-	// Viff, when set, is the viff as this io itself: whose word it is that a member said
+	// Viff, when set, is the viff instance as this io itself: whose word it is that a member said
 	// `/viff link <nonce>` (link). Nil links nobody, and says so.
 	Viff *client.Client
 
@@ -88,7 +88,7 @@ type Socket struct {
 	Answered func()
 }
 
-// Socket is this workspace's Socket Mode listener, answering clicks at the viff at viffAddr.
+// Socket is this workspace's Socket Mode listener, answering clicks at the viff instance at viffAddr.
 func (s *Slack) Socket(appToken string) *Socket {
 	return &Socket{s: s, app: newAPI(appToken, s.api.base, s.api.cl)}
 }
@@ -240,7 +240,7 @@ func (k *Socket) said(ctx context.Context, payload json.RawMessage) {
 	if e.Type == "message" && k.s.me != "" && strings.Contains(e.Text, "<@"+k.s.me+">") {
 		return
 	}
-	// `link <nonce>`, said to the app in a message or a DM, is the person proving a viff
+	// `link <nonce>`, said to the app in a message or a DM, is the person proving a viff instance
 	// account is theirs, and is about no question. The slash command is the same words (commanded).
 	if nonce, ok := linking(e.Text); ok {
 		k.link(ctx, e.Channel, e.ThreadTS, e.User, "", nonce)
@@ -515,7 +515,7 @@ func linking(text string) (nonce string, ok bool) {
 	return "", false
 }
 
-// link proves the Slack account is the claimant's. The viff gave somebody the nonce
+// link proves the Slack account is the claimant's. The viff instance gave somebody the nonce
 // (`viff account -link slack`); this io's word that this account said it is what binds the two
 // (`POST /accounts/slack/heard`; perms.md, "accounts in other systems"). The word is the io's own,
 // so it is given as the io itself; what became of it is said to the person alone.
@@ -539,7 +539,7 @@ func (k *Socket) link(ctx context.Context, channel, thread, user, responseURL, n
 		Principal string `tony:"field=principal"`
 	}
 	if err := client.Decode(resp, &row); err != nil {
-		tell("Linked, though the viff's answer did not decode: " + err.Error())
+		tell("Linked, though the viff instance's answer did not decode: " + err.Error())
 		return
 	}
 	tell(fmt.Sprintf("Linked: in viff, <@%s> is %s.", user, row.Principal))

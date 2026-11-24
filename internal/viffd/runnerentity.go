@@ -91,7 +91,7 @@ func findRunnerErr(r entity.Reader, ref string) (api.Runner, bool, error) {
 // may be absent from the document, so it decodes cleanly; read as it decodes, it would list as
 // an ordinary runner with a blank subject, take a token minted for nobody at the door, and fail
 // every spawn at the handshake with a cue (`viff runner check`) that can never fix it. Held to
-// Check, it is a registration this viff can't read, and the error says how to make it one.
+// Check, it is a registration this viff instance can't read, and the error says how to make it one.
 func decodeRunner(payload *ir.Node) (api.Runner, error) {
 	var out api.Runner
 	if err := codec.FromNode(payload, &out); err != nil {
@@ -103,7 +103,7 @@ func decodeRunner(payload *ir.Node) (api.Runner, error) {
 	return out, nil
 }
 
-// readdHint is a registration's failed Check, saying how to make it one this viff reads.
+// readdHint is a registration's failed Check, saying how to make it one this viff instance reads.
 func readdHint(e api.Runner, err error) error {
 	return fmt.Errorf("%v; add it again with `viff runner add %s %s -subject <sub>` (or `-token-file <file>`)", err, e.Name, e.URL)
 }
@@ -121,7 +121,7 @@ func unreadableRunner(r entity.Reader, ref string) error {
 		return nil
 	}
 	if _, err := decodeRunner(e.Payload); err != nil {
-		return fmt.Errorf("%s is stored in a shape this viff can't read: %v", e.Ref, err)
+		return fmt.Errorf("%s is stored in a shape this viff instance can't read: %v", e.Ref, err)
 	}
 	return nil
 }
@@ -158,7 +158,7 @@ func installedRunners(r entity.Reader) []api.Runner {
 // question from asking the read.
 //
 // AT THE SUBTREE, not over the document (readRegistrations). A List(pred) is a Match on the ROOT
-// — the whole viff across the wire and filtered here — so a listing of a handful of runners cost
+// — the whole viff instance across the wire and filtered here — so a listing of a handful of runners cost
 // a read of everything every source had ever reflected. A registration that does not decode, or
 // does not check (decodeRunner), is left out: what reads this decides with the runners it can
 // reach.

@@ -9,7 +9,7 @@ import (
 	"go.viff.dev/viff/pkg/entity"
 )
 
-// baseCharter is the charter every viff stands on, in the binary: the standard schedules and
+// baseCharter is the charter every viff instance stands on, in the binary: the standard schedules and
 // the calendar (system.tony). Installed at every start, before the deployment's own.
 //
 //go:embed system.tony
@@ -18,8 +18,8 @@ var baseCharter []byte
 // installSystemCharter applies the system's charter: the embedded base, then the file named by
 // SystemCharter when the deployment names one. Their rules are the system's, their firings act
 // as the system, and a question one of them poses is co-owned by the system alone. A file that
-// cannot be read or installed is reported and the rest of the start goes on; a viff whose
-// system charter is missing is a viff with fewer rules, not one that will not start.
+// cannot be read or installed is reported and the rest of the start goes on; a viff instance whose
+// system charter is missing is a viff instance with fewer rules, not one that will not start.
 func (s *Server) installSystemCharter() {
 	s.installAsSystem("the base charter", baseCharter)
 	if s.SystemCharter != "" {
@@ -35,7 +35,7 @@ func (s *Server) installSystemCharter() {
 // the system, after the sources are restored: one that sends to an io's place is checked against
 // the iods registered, and a text that cannot be installed is reported and the rest go on.
 //
-// ONE REFUSED FOR WANT OF ITS IOS OR RUNNERS WAITS FOR THEM. A viff started on an empty store (a
+// ONE REFUSED FOR WANT OF ITS IOS OR RUNNERS WAITS FOR THEM. A viff instance started on an empty store (a
 // wipe) has no iods or runners at start, and they are registered afterwards
 // (a deployment's repopulate script), so such a charter — one sending to an io, or spawning on a runner — is
 // refused here and would stay missing until the next restart. It is kept, and tried again each

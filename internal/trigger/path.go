@@ -11,7 +11,7 @@ package trigger
 //	all:    !list-paths { at: "git.repo.*", path: branch }
 //	ref:    !get-path { at: [git, repo, .[subject.value.head]], path: branch }
 //
-// ONE ADDRESS, all the way down. A viff is one document (pkg/entity/doc.go, and `viff data`
+// ONE ADDRESS, all the way down. A viff instance's store is one document (pkg/entity/doc.go, and `viff data`
 // answers it), so an entity address is a path prefix and the
 // path simply continues it into the payload. That used to need the object form's `path:` key,
 // because an id may contain dots and the colon spelling could not say where the id ended; the

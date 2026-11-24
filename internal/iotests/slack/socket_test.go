@@ -82,7 +82,7 @@ type socketRig struct {
 	ts     string // the message asking the question, which a reply threads under
 	src    *slack.Slack
 	viff   *client.Client
-	addr   string // the viff, for a test that asks it things as somebody
+	addr   string // the viff instance, for a test that asks it things as somebody
 }
 
 const askedQuestion = "mirror.trigger.review.review~1"
@@ -122,7 +122,7 @@ func newSocketRigWith(t *testing.T, bearer client.BearerFunc) *socketRig {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	s := src.Socket(appToken)
-	s.Viff = viff // as cmd/iod wires it: `/viff link` is told to the viff as the io itself
+	s.Viff = viff // as cmd/iod wires it: `/viff link` is told to the viff instance as the io itself
 	s.Asking = sink.Asked
 	s.Answered = func() { r.kicked <- struct{}{} }
 	s.Hint = func(_ context.Context, refs ...entity.Ref) { r.hints <- refs }
@@ -238,7 +238,7 @@ func TestAReplyIsAdmittedAsThePersonWhereViffVerifiesPeople(t *testing.T) {
 		t.Errorf("walter's ballot = %v, want authenticated by slack via this io", ballot)
 	}
 
-	// The io with no credential of its own: the person is asserted, and a viff that verifies
+	// The io with no credential of its own: the person is asserted, and a viff instance that verifies
 	// people will not have it.
 	bare := newSocketRig(t)
 	if err := bare.srv.SetAuth(verifying); err != nil {
@@ -617,7 +617,7 @@ func TestARefusedEditIsNotRememberedAsShown(t *testing.T) {
 	}
 }
 
-// `/viff link <nonce>` said to the app binds the Slack account to whoever the viff gave the nonce
+// `/viff link <nonce>` said to the app binds the Slack account to whoever the viff instance gave the nonce
 // to, on this io's word; and where slack names no domains, that binding is the only way a reply is
 // admitted as the person. The dogfood shape: people asserted (`optional`), bindings by the nonce.
 func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
@@ -649,7 +649,7 @@ func TestLinkSaidToTheAppBindsTheAccountAndAdmitsTheReply(t *testing.T) {
 		t.Fatalf("an unbound reply answered: %v", q)
 	}
 
-	// Walter claims a Slack account from the CLI, asserted; the nonce is what the viff answers.
+	// Walter claims a Slack account from the CLI, asserted; the nonce is what the viff instance answers.
 	resp, err := client.New(r.addr, "user:walter@example.com").Post("/accounts/slack", nil, map[string]any{})
 	if err != nil {
 		t.Fatal(err)

@@ -15,7 +15,7 @@ import (
 	"go.viff.dev/viff/pkg/mirror"
 )
 
-// asking is a started viff, which asks as every viff does: the verb writes an ask and viffd
+// asking is a started viff, which asks as every viff instance does: the verb writes an ask and viffd
 // poses it, and the seed holds out creating an ask to everyone.
 func asking(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()

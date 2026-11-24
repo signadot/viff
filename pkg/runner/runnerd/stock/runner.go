@@ -68,7 +68,7 @@ func SecretsFromEnv(c Config) Secrets {
 // only what its launch's doer's shellEnv names: no task's process holds a variable another
 // doer's shell is given. tokens is what the runner holds that a task never does: its git
 // tokens, for when c checks out repos, and its Linear credential. toViff is how the runner
-// carries a task's request to the viff it serves, with its own token (runnerd.Guard.Carry); nil
+// carries a task's request to the viff instance it serves, with its own token (runnerd.Guard.Carry); nil
 // for a runner with none, whose tasks are not offered the viff system.
 func Standalone(c Config, s Secrets, tokens Tokens, sb runnerd.Sandbox, command []string, work, control string,
 	toViff delivery.Viff, log io.Writer) (*runnerd.SubprocessHandler, error) {
@@ -291,7 +291,7 @@ type taskConfig struct {
 	// Networks is the networks the runner's sandbox builds (networks), so the task's process
 	// describes what the runner described.
 	Networks []string `tony:"field=networks,omitzero"`
-	// ReachesViff is whether the runner carries the viff system to its viff (Standalone's
+	// ReachesViff is whether the runner carries the viff system to its viff instance (Standalone's
 	// toViff), so the task's process offers its tools where it does.
 	ReachesViff bool `tony:"field=reachesViff,omitzero"`
 }

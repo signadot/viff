@@ -29,9 +29,9 @@ const (
 	otherSub  = "system:serviceaccount:viff:other-runner"
 )
 
-// fakeViff is a viff as a runner's door sees it: an issuer signing tokens as viffIssuer.URL,
+// fakeViff is a viff instance as a runner's door sees it: an issuer signing tokens as viffIssuer.URL,
 // whose keys the runner reads at a url of its own, viffURL, which is not the issuer's name, as
-// a viff called one thing outside the cluster and another inside is. The runner's own token is
+// a viff instance called one thing outside the cluster and another inside is. The runner's own token is
 // the cluster's.
 func fakeViff(t *testing.T) (cluster, viffIssuer *idptest.IdP, viffURL string) {
 	t.Helper()
@@ -65,7 +65,7 @@ func ownTokenFile(t *testing.T, cluster *idptest.IdP, sub string) (path, token s
 }
 
 // A runner with a `viff:` block serves that viff alone: a request is admitted when its bearer
-// is a token the viff signed for this runner, its own subject as the audience. The describe is
+// is a token the viff instance signed for this runner, its own subject as the audience. The describe is
 // answered to anyone, since the description is public, and carries the runner's own token to the
 // viff alone.
 func TestARunnerServesItsViffAlone(t *testing.T) {
@@ -104,21 +104,21 @@ func TestARunnerServesItsViffAlone(t *testing.T) {
 	}
 	good := viff.Token(runnerSub, "viff", nil)
 	if resp := get("/describe", good); resp.StatusCode != http.StatusOK || resp.Header.Get(runner.TokenHeader) != ownToken {
-		t.Fatalf("the viff's token on the describe = %s, %s=%q", resp.Status, runner.TokenHeader, resp.Header.Get(runner.TokenHeader))
+		t.Fatalf("the viff instance's token on the describe = %s, %s=%q", resp.Status, runner.TokenHeader, resp.Header.Get(runner.TokenHeader))
 	}
 	if resp := get("/tasks", good); resp.StatusCode != http.StatusOK || resp.Header.Get(runner.TokenHeader) != "" {
-		t.Fatalf("the viff's token elsewhere = %s, %s=%q: the token is answered on the describe alone", resp.Status, runner.TokenHeader, resp.Header.Get(runner.TokenHeader))
+		t.Fatalf("the viff instance's token elsewhere = %s, %s=%q: the token is answered on the describe alone", resp.Status, runner.TokenHeader, resp.Header.Get(runner.TokenHeader))
 	}
-	// A bearer that is presented is checked, on the describe too: a viff that believes it proves
+	// A bearer that is presented is checked, on the describe too: a viff instance that believes it proves
 	// itself and does not is told there. A token minted for a sibling is the one that matters:
 	// a copy taken at one runner opens no other's door.
 	for what, bad := range map[string]string{
-		"a token the viff minted for another runner": viff.Token(otherSub, "viff", nil),
-		"a token for another audience":               viff.Token("some-audience", "viff", nil),
-		"the cluster's token, not the viff's":        cluster.Token(runnerSub, "viff", nil),
-		"a forged token":                             viff.Forged(runnerSub, "viff", nil),
-		// What else the viff's issuer signs, for an audience a charter declared: this runner's.
-		"a gate credential the viff minted for this runner": viff.Token(runnerSub, "mirror.trigger.rule.deploy:auto",
+		"a token the viff instance minted for another runner": viff.Token(otherSub, "viff", nil),
+		"a token for another audience":                        viff.Token("some-audience", "viff", nil),
+		"the cluster's token, not the viff instance's":        cluster.Token(runnerSub, "viff", nil),
+		"a forged token": viff.Forged(runnerSub, "viff", nil),
+		// What else the viff instance's issuer signs, for an audience a charter declared: this runner's.
+		"a gate credential the viff instance minted for this runner": viff.Token(runnerSub, "mirror.trigger.rule.deploy:auto",
 			map[string]any{"task": "deploy@demo.pr.1", "gates": []any{map[string]any{"passed": "auto"}}}),
 	} {
 		for _, path := range []string{"/describe", "/tasks"} {
@@ -128,7 +128,7 @@ func TestARunnerServesItsViffAlone(t *testing.T) {
 		}
 	}
 
-	// No token file: the block names the audience, the viff is served, and the describe
+	// No token file: the block names the audience, the viff instance is served, and the describe
 	// carries nothing.
 	noFile, err := NewGuard(Viff{URL: viffURL, Issuer: viff.URL, Audience: "some-audience"}, "")
 	if err != nil {
@@ -160,7 +160,7 @@ func TestARunnerServesItsViffAlone(t *testing.T) {
 			t.Errorf("%s as the token file: NewGuard = %v, want a refusal naming the token", what, err)
 		}
 	}
-	// The block names where the viff is, or it names nothing.
+	// The block names where the viff instance is, or it names nothing.
 	for what, v := range map[string]Viff{
 		"no url":                   {Issuer: viff.URL},
 		"a url that is no url":     {URL: "viffd"},
@@ -171,7 +171,7 @@ func TestARunnerServesItsViffAlone(t *testing.T) {
 			t.Errorf("%s: NewGuard = %v, want a refusal naming the block", what, err)
 		}
 	}
-	// The issuer defaults to the url: one viff, called one thing.
+	// The issuer defaults to the url: one viff instance, called one thing.
 	one, err := NewGuard(Viff{URL: viffURL}, file)
 	if err != nil || one.Viff().Issuer != viffURL {
 		t.Fatalf("Viff{URL} = %+v, %v; want the issuer defaulted to the url", one.Viff(), err)
@@ -181,7 +181,7 @@ func TestARunnerServesItsViffAlone(t *testing.T) {
 		t.Fatalf("Viff{Issuer: url/} = %+v, %v; want the slash dropped", slashed.Viff(), err)
 	}
 
-	// A viff whose keys cannot be read is a bearer that cannot be checked, not a bad bearer.
+	// A viff instance whose keys cannot be read is a bearer that cannot be checked, not a bad bearer.
 	down, err := NewGuard(Viff{URL: "http://127.0.0.1:1", Issuer: viff.URL}, file)
 	if err != nil {
 		t.Fatal(err)
@@ -196,11 +196,11 @@ func TestARunnerServesItsViffAlone(t *testing.T) {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("a viff whose keys are unreachable = %s, want 503", resp.Status)
+		t.Fatalf("a viff instance whose keys are unreachable = %s, want 503", resp.Status)
 	}
 }
 
-// A runner announces itself to its viff in a loop, with its token, until the viff answers
+// A runner announces itself to its viff instance in a loop, with its token, until the viff instance answers
 // 2xx; and its readiness is the server's, heard or not.
 func TestARunnerAnnouncesItselfUntilHeard(t *testing.T) {
 	helloFirstWait, helloMaxWait = 5*time.Millisecond, 20*time.Millisecond
@@ -270,8 +270,8 @@ func TestARunnerAnnouncesItselfUntilHeard(t *testing.T) {
 	quiet.Announce(ctx, func(string, ...any) { t.Fatal("a runner with no token announced something") })
 }
 
-// The hello reaches the viff as the door reads its keys: through the roots `viff.ca` names, so
-// a viff behind a private CA hears the runner; and a try the viff takes and never answers is a
+// The hello reaches the viff instance as the door reads its keys: through the roots `viff.ca` names, so
+// a viff instance behind a private CA hears the runner; and a try the viff instance takes and never answers is a
 // try that failed, so the backoff tries again.
 func TestTheHelloTrustsTheViffsCA(t *testing.T) {
 	helloFirstWait, helloMaxWait = 5*time.Millisecond, 20*time.Millisecond
@@ -302,7 +302,7 @@ func TestTheHelloTrustsTheViffsCA(t *testing.T) {
 		t.Fatalf("hellos = %d, want 2: one never answered, one heard; said %q", n, said)
 	}
 	if last := said[len(said)-1]; !strings.Contains(last, "describes this runner now") {
-		t.Fatalf("said = %q, want the viff heard over its CA", said)
+		t.Fatalf("said = %q, want the viff instance heard over its CA", said)
 	}
 }
 
@@ -469,11 +469,11 @@ func TestARunnersViffMayStopIt(t *testing.T) {
 	default:
 	}
 	if code := stop(http.MethodPost, good); code != http.StatusAccepted {
-		t.Fatalf("the viff's stop = %d, want 202", code)
+		t.Fatalf("the viff instance's stop = %d, want 202", code)
 	}
 	select {
 	case <-stopped:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the viff's stop did not stop the runner")
+		t.Fatal("the viff instance's stop did not stop the runner")
 	}
 }

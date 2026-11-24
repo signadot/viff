@@ -32,14 +32,14 @@ const (
 	ioToken   = "the-github-iods-own-token"
 )
 
-// asksRig is a viff that verifies people and knows this io by a static token, a fake GitHub with
+// asksRig is a viff instance that verifies people and knows this io by a static token, a fake GitHub with
 // one pull request, and the out half with a way to answer as a person.
 type asksRig struct {
 	store     *entity.LogdStore
 	srv       *viffd.Server
 	fake      *fakeGitHub
 	out       *viffio.Out
-	addr      string // the viff, for a test that asks it things as somebody
+	addr      string // the viff instance, for a test that asks it things as somebody
 	tokenFile string // the io's own token, for a test that sets the auth again
 }
 
@@ -308,11 +308,11 @@ func TestAReplyConsentsToTheEditTheCommentShowed(t *testing.T) {
 	}
 	got := r.fake.commentsOn("signadot/viff", 42)
 	if len(got) != 2 || !strings.Contains(got[1], "did not take that answer") {
-		t.Errorf("comments %q, want ana told the viff refused the stale consent", got)
+		t.Errorf("comments %q, want ana told the viff instance refused the stale consent", got)
 	}
 }
 
-// A `/viff link <nonce>` reply binds the author's GitHub account to whoever the viff gave the
+// A `/viff link <nonce>` reply binds the author's GitHub account to whoever the viff instance gave the
 // nonce to, on this io's word, and their next command counts.
 func TestALinkReplyBindsTheAuthorsAccount(t *testing.T) {
 	r := newAsksRig(t)

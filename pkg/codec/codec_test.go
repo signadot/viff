@@ -17,7 +17,7 @@ type sample struct {
 }
 
 // One value, every RENDERING, same meaning. This is the whole premise of the package —
-// and the list is the two viff writes, JSON having become read-only (see the package
+// and the list is the two viff instance writes, JSON having become read-only (see the package
 // doc). Its read side is covered by TestJSONInputIsReadAsTony.
 func TestRoundTripEveryFormat(t *testing.T) {
 	in := sample{

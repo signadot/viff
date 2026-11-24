@@ -33,7 +33,7 @@ rules:
     patch: {seen: true}
 `
 
-// An install input installs a tree of charters out of the repository into the viff at an
+// An install input installs a tree of charters out of the repository into the viff instance at an
 // address, as this io: archived from the tree object, every charter file in it in one request
 // that prunes the address, recorded for the commit it was installed for, and done once per
 // commit. A tree the repository lacks or a file that is not a charter is refused for good; the
@@ -143,7 +143,7 @@ func TestTheGitOutHalfInstallsATreeOfCharters(t *testing.T) {
 	}
 }
 
-// A check input asks the viff what an install of the tree would do and installs nothing: a tree
+// A check input asks the viff instance what an install of the tree would do and installs nothing: a tree
 // that would install says so with what it adds; a file in the tree that does not parse is a
 // verdict of `refused`, not a failed input; a tree checked already costs nothing; and the check
 // and the install stay two inputs.

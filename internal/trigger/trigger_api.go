@@ -306,7 +306,7 @@ func (e *Engine) vet(t Trigger, as string, runners Runners) (*cause, error) {
 		}
 	}
 	// A RULE THAT DOES NOTHING IS REFUSED. It installed, reported "installed 1 trigger(s)",
-	// rendered back with `action: {}`, and then watched its subtree for the life of the viff
+	// rendered back with `action: {}`, and then watched its subtree for the life of the viff instance
 	// without ever writing anything (git-issue b2g9hsnfh12ks5vqg9n0).
 	//
 	// It is the failure every refusal around it exists to prevent — a rule that looks installed

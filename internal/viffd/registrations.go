@@ -8,7 +8,7 @@ import (
 	"go.viff.dev/viff/pkg/entity"
 )
 
-// unreadableRegistration is a stored registration that does not decode as this viff reads it,
+// unreadableRegistration is a stored registration that does not decode as this viff instance reads it,
 // with why.
 type unreadableRegistration struct {
 	Ref entity.Ref

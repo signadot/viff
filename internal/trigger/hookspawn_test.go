@@ -74,7 +74,7 @@ func TestAHookSpawnReadsTheSubject(t *testing.T) {
 
 // A HOOK'S SPAWN FOR A TASK WITH NO FIRING COMMIT READS THE SUBJECT ALL THE SAME: an adopted task
 // whose record says no `occurrence` belongs to no firing, and the hook reads at the head, which is
-// always there. The hook's own patch does not show: the hook reads one world, the viff as it was
+// always there. The hook's own patch does not show: the hook reads one world, the viff instance as it was
 // when the task ended, and its patch lands after.
 func TestAHookSpawnWithNoFiringCommitReadsTheSubject(t *testing.T) {
 	store := entitytest.Store(t)

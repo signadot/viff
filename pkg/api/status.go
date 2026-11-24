@@ -2,12 +2,12 @@ package api
 
 import "github.com/signadot/tony-format/go-tony/ir"
 
-// Status is what GET /status answers: what this viff is, what it is running, and where to
+// Status is what GET /status answers: what this viff instance is, what it is running, and where to
 // reach the pieces around it.
 //
 // The counters are the cheap health read; the three optional blocks are discovery. `docd` is
-// how a store client beside this viff finds docd without guessing the ephemeral port `up`
-// chose, `listen` publishes this viff's own addresses, and `llm` says whether agent creds
+// how a store client beside this viff instance finds docd without guessing the ephemeral port `up`
+// chose, `listen` publishes this viff instance's own addresses, and `llm` says whether agent creds
 // are configured ON THIS SERVER — the common gotcha, since the runtime reads its own
 // environment rather than the client's.
 //
@@ -25,18 +25,18 @@ type Status struct {
 	Firings *Firings `tony:"field=firings,omitzero"`
 
 	// WHAT IS INSTALLED, as against what is happening. The counts above move on their own;
-	// these three are things somebody put here, and a viff that has lost them looks healthy by
+	// these three are things somebody put here, and a viff instance that has lost them looks healthy by
 	// every other line — which is exactly the state a wiped store comes back in.
 	//
 	// Runners are the refs a spawn may name (`mirror.runners.code`), which is a different question
-	// from `runner` below — that one is how THIS viff runs a task when a spawn names nobody.
-	// IOs are the refs of what reaches the world for this viff (`mirror.iods.slack`) — the one
-	// line here that says anything is arriving at all, since a viff whose iods are gone goes on
+	// from `runner` below — that one is how THIS viff instance runs a task when a spawn names nobody.
+	// IOs are the refs of what reaches the world for this viff instance (`mirror.iods.slack`) — the one
+	// line here that says anything is arriving at all, since a viff instance whose iods are gone goes on
 	// reporting a fine store rev and an idle charter.
 	//
 	// The charter used to be here too, as `rules` (a count) and `strata` (names in level
-	// order). Both were BASELINE's alone while every count beside them is the whole viff's, so
-	// a viff whose program is packaged reported `rules: 0` and no levels — the scoping was the
+	// order). Both were BASELINE's alone while every count beside them is the whole viff instance's, so
+	// a viff instance whose program is packaged reported `rules: 0` and no levels — the scoping was the
 	// bug, not the zero. `charter` below carries both, per node, where the shape says whose.
 	//
 	// All three are refs rather than records: status is an orientation, and `viff charter`,
@@ -63,7 +63,7 @@ type Status struct {
 	//
 	// `arming`, when present, names rules counted in `rules` whose watch is still being opened:
 	// restored from the charter over a store that did not answer, in the charter and firing on
-	// nothing until it does. Absent on a viff that is up.
+	// nothing until it does. Absent on a viff instance that is up.
 	//
 	// A TREE rather than a flat list of addresses, because addresses SHARE PREFIXES and a
 	// status line is read at a glance: `viff-dev.drift` and `viff-dev.merge` are two charters
@@ -74,7 +74,7 @@ type Status struct {
 	Docd   *Docd         `tony:"field=docd,omitzero"`
 	LLM    *LLM          `tony:"field=llm,omitzero"`
 	Listen *Listen       `tony:"field=listen,omitzero"`
-	// Issuer is this viff as an issuer of its own tokens (auth.issuer): absent where it issues
+	// Issuer is this viff instance as an issuer of its own tokens (auth.issuer): absent where it issues
 	// none.
 	Issuer *Issuer `tony:"field=issuer,omitzero"`
 	// Perms is what the permission check has refused since this process started: a count
@@ -84,7 +84,7 @@ type Status struct {
 	// Restoring is the phases of the server's start still being asked again, by name: each
 	// reads a slice of the store, the store did not answer, and what it would have restored —
 	// the sources, the docket's deadlines, a charter — is not running yet. A read that did
-	// not happen is asked again until it does; this is the sign that one is. Absent on a viff
+	// not happen is asked again until it does; this is the sign that one is. Absent on a viff instance
 	// that is up.
 	Restoring []string `tony:"field=restoring,omitzero"`
 }
@@ -103,9 +103,9 @@ type Firings struct {
 	Unread int `tony:"field=unread,omitzero"`
 }
 
-// RunnerStatus is this viff's local runner, the runnerd `viff up` starts beside it and
+// RunnerStatus is this viff instance's local runner, the runnerd `viff up` starts beside it and
 // registers as `local`: whether it is described and what it offers, and where it is not, why
-// not, asked of the runner when the status is, never stored. Absent where the viff starts none.
+// not, asked of the runner when the status is, never stored. Absent where the viff instance starts none.
 //
 //tony:schemagen=viff-runner-status,notag
 type RunnerStatus struct {
@@ -141,7 +141,7 @@ type LLM struct {
 	BaseURL    string `tony:"field=baseURL,omitzero"`
 }
 
-// Issuer is this viff as an issuer: the url every token it signs names as `iss`, and where its
+// Issuer is this viff instance as an issuer: the url every token it signs names as `iss`, and where its
 // key is from. Key is `config` for one auth.issuer names, and otherwise the file `viff up` made
 // it in, in its data dir, or `memory` for one made for this process alone, which a restart
 // replaces and with it every token signed by the last.
@@ -152,7 +152,7 @@ type Issuer struct {
 	Key string `tony:"field=key"`
 }
 
-// Listen is this viff's own addresses: the operator API, and the admin face.
+// Listen is this viff instance's own addresses: the operator API, and the admin face.
 //
 //tony:schemagen=viff-listen,notag
 type Listen struct {

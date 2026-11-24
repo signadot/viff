@@ -61,7 +61,7 @@ func TestTheLocalRunnerIsARegistrationLikeAnyOther(t *testing.T) {
 		t.Fatalf("a person registering `local` = %s: %s, want it refused", resp.Status, body)
 	}
 
-	// Stopped as its viff, and its registration removed.
+	// Stopped as its viff instance, and its registration removed.
 	if err := srv.StopRunnerAt(face.URL, face.Subject); err != nil {
 		t.Fatalf("stopping the local runner: %v", err)
 	}

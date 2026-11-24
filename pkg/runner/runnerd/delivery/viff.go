@@ -30,7 +30,7 @@ const (
 	OpViffAskGet = "viff.ask-get"
 	// OpViffAskList lists the owner's asks (GET /asks), as `viff ask` does.
 	OpViffAskList = "viff.ask-list"
-	// OpViffDataGet reads the viff at an address (GET /state), as `viff data` does.
+	// OpViffDataGet reads the store at an address (GET /state), as `viff data` does.
 	OpViffDataGet = "viff.data-get"
 	// OpViffDataPut writes a value at an address (POST /entity), as `viff data --put` does.
 	OpViffDataPut = "viff.data-put"
@@ -49,9 +49,9 @@ const (
 	OpViffCharterRemove = "viff.charter-remove"
 )
 
-// Viff is how the runner makes a request to its viff for a task it hosts: method on path, with
+// Viff is how the runner makes a request to its viff instance for a task it hosts: method on path, with
 // the runner's own token and the task's id, body a tony document where there is one. It answers
-// the viff's status and what it said; an error is a request that got no answer, or one viff
+// the viff instance's status and what it said; an error is a request that got no answer, or one viff instance
 // refused the runner itself on (its token, or the task it carried the request for).
 type Viff func(ctx context.Context, taskID, method, path string, body []byte) (status int, said string, err error)
 
@@ -81,13 +81,13 @@ func (s *Server) viffAskCreate(ctx context.Context, tk Task, req Request) (asked
 		case err != nil:
 			return unanswered(http.MethodPost, err)
 		case code/100 == 4:
-			return Reply{Refused: "the viff refused the ask: " + said}
+			return Reply{Refused: "the viff instance refused the ask: " + said}
 		case code/100 != 2:
-			return Reply{Error: fmt.Sprintf("the viff answered %d: %s", code, said)}
+			return Reply{Error: fmt.Sprintf("the viff instance answered %d: %s", code, said)}
 		}
 		var raised api.Asked
 		if err := codec.Unmarshal([]byte(said), &raised, codec.Tony); err != nil || raised.ID == "" {
-			return Reply{Error: "the viff raised the ask and its answer does not say the id: " + said}
+			return Reply{Error: "the viff instance raised the ask and its answer does not say the id: " + said}
 		}
 		out := api.AskRaised(raised.ID, ask.Question)
 		fmt.Fprintf(s.Log, "delivery: %s: %s\n", tk.ID, out)
@@ -283,13 +283,13 @@ func (s *Server) ownersAsks(ctx context.Context, tk Task, q url.Values) ([]entit
 	case err != nil:
 		return nil, unanswered(http.MethodGet, err)
 	case code/100 == 4:
-		return nil, Reply{Refused: "the viff refused the read: " + said}
+		return nil, Reply{Refused: "the viff instance refused the read: " + said}
 	case code/100 != 2:
-		return nil, Reply{Error: fmt.Sprintf("the viff answered %d: %s", code, said)}
+		return nil, Reply{Error: fmt.Sprintf("the viff instance answered %d: %s", code, said)}
 	}
 	list, err := codec.ParseNode([]byte(said), codec.Tony)
 	if err != nil {
-		return nil, Reply{Error: "the viff's asks do not read: " + err.Error()}
+		return nil, Reply{Error: "the viff instance's asks do not read: " + err.Error()}
 	}
 	return append([]entity.Entity{}, mirror.AsksIn(list)...), Reply{}
 }
@@ -356,9 +356,9 @@ func (s *Server) viffRouted(ctx context.Context, tk Task, req Request) (asked, R
 		case err != nil:
 			return unanswered(route.method, err)
 		case code/100 == 4:
-			return Reply{Refused: "the viff refused it: " + said}
+			return Reply{Refused: "the viff instance refused it: " + said}
 		case code/100 != 2:
-			return Reply{Error: fmt.Sprintf("the viff answered %d: %s", code, said)}
+			return Reply{Error: fmt.Sprintf("the viff instance answered %d: %s", code, said)}
 		}
 		return Reply{OK: true, Out: said}
 	})

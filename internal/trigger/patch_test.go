@@ -125,7 +125,7 @@ func TestPatchCreatesNamedSubject(t *testing.T) {
 }
 
 // A failing patch must fail the FIRING, not just the write. Spawning a task about a state
-// the trigger failed to establish is worse than not firing: the task runs against a viff
+// the trigger failed to establish is worse than not firing: the task runs against a viff instance
 // that never got the transition it was started for.
 func TestFailedPatchDoesNotSpawn(t *testing.T) {
 	store := entitytest.Store(t)

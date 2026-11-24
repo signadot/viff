@@ -38,7 +38,7 @@ type Descriptor struct {
 }
 
 // Owner is the optional face a source uses to declare what it claims to be the single writer
-// of. It is separate from Source because a source deployed alone, into a viff with no other
+// of. It is separate from Source because a source deployed alone, into a viff instance with no other
 // source of its root, needs nothing from it.
 type Owner interface {
 	Owns() []Own

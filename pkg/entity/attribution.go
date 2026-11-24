@@ -332,7 +332,7 @@ func PolicyOf(s Store) *Attribution {
 }
 
 // SetRootChildGrants sets what a node created with no default above it holds out. nil or empty
-// is nothing: a viff where what anybody creates is theirs and their grantees' alone.
+// is nothing: a viff instance where what anybody creates is theirs and their grantees' alone.
 func (a *Attribution) SetRootChildGrants(l Levels) {
 	a.mu.Lock()
 	children := make([]*Attribution, 0, len(a.children))
@@ -515,7 +515,7 @@ func (a *attributed) write(w Write, ref Ref, need Level, act string, creating bo
 	// WHERE THE RECORD WILL GO, asked BEFORE the write, because afterwards everything the write
 	// made exists and nothing can say which of it is new. A write of `probe.thing.1` into an
 	// empty place brings `probe`, `probe.thing` and the row into being, and all three are the
-	// writer's: the tree is the state space this viff reacts to, so the structure somebody adds
+	// writer's: the tree is the state space this viff instance reacts to, so the structure somebody adds
 	// is their contribution and not scaffolding around it. Recording only the row left the
 	// containers inheriting from above, which reads the same in an open viff and stops the
 	// writer dead the day the top is narrowed — they keep the rows they own and cannot make
@@ -1076,7 +1076,7 @@ func CheckInto(s Store, principal string, ref Ref) error {
 // place permits is that record's grants — `owner` beneath the root to everyone in an open viff,
 // to an admin group in a shaped one — rather than a line here nobody could read or narrow. Where
 // even that record is missing, nobody holds anything and the system still holds everything,
-// since it owns the root: a viff whose seed failed refuses rather than standing wide open.
+// since it owns the root: a viff instance whose seed failed refuses rather than standing wide open.
 func (a *attributed) accessOf(principal string, ref Ref) (access, error) {
 	return a.accessFor(principal, ref, false)
 }
@@ -3697,7 +3697,7 @@ func Note(s Store, principal string) error {
 	return err
 }
 
-// PrincipalSystem is the system under viff's root that lists the principals this viff has
+// PrincipalSystem is the system under viff's root that lists the principals this viff instance has
 // met, by the kind their name carries: `mirror.principal.user.<email>` for a person, written the
 // first time they present themselves over the api, `mirror.principal.runner.<identity>` for a
 // worker at its claim. A group's record stands beside them, under GroupKind.

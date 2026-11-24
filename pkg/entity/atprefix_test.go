@@ -19,7 +19,7 @@ func at(t *testing.T, s string) *kpath.KPath {
 }
 
 // LiteralPrefix says where a read at a path is asked of the store, which is the difference
-// between reading a subtree and reading the viff and discarding it.
+// between reading a subtree and reading the viff instance and discarding it.
 func TestLiteralPrefix(t *testing.T) {
 	for _, c := range []struct {
 		at     string
@@ -49,7 +49,7 @@ func TestLiteralPrefix(t *testing.T) {
 //
 // logd distinguishes them — not_found says the path is empty, a failure says the store could
 // not be read — and viff folds the second into a 503. Recording the first as a read error
-// made `viff data <a system nothing has written>` report the viff as unavailable, which
+// made `viff data <a system nothing has written>` report the viff instance as unavailable, which
 // only became reachable once reads went to their path instead of to the root.
 func TestReadAtAnAbsentPathIsNotAnOutage(t *testing.T) {
 	s := entitytest.OpenStore(t)

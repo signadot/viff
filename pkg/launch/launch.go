@@ -5,7 +5,7 @@
 // substrate; it is pure data + binding.
 //
 // Every field is a *reference* to something named elsewhere, or text the authoring party wrote
-// for this spawn — the same index-not-warehouse discipline as the rest of the viff: the spec
+// for this spawn — the same index-not-warehouse discipline as the rest of the viff instance: the spec
 // points at native semantics; the runner that builds the task resolves the references against
 // its own offer. It maps onto the spawn spec's axes:
 //
@@ -164,7 +164,7 @@ type Spec struct {
 	// it liked to act as.
 	ActsFor string `tony:"field=actsFor,omitzero"`
 	// Credential asks viff to vouch for this task to a system outside it: a short-lived token,
-	// signed by this viff as an issuer, that says which rule's gate let the work through and how:
+	// signed by this viff instance as an issuer, that says which rule's gate let the work through and how:
 	// on the ballots people cast, on its deadline, or as a gate written `auto`. Absent, the task
 	// gets none.
 	//

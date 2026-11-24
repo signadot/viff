@@ -13,14 +13,14 @@ import (
 	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// status is a one-shot summary of the running viff: the store's revision and the
+// status is a one-shot summary of the running viff instance: the store's revision and the
 // live counts across the planes — the charter size, in-flight flows, pending gates,
 // hosted tasks, and total firings.
 // healthz answers from THIS PROCESS ALONE — no store call, at any load.
 //
 // It exists because `/status` was the only endpoint to probe, and `/status` is a census: it
 // counts gates, runners, sources and tasks, and each of those is a read. So a kubelet asking
-// "is viffd up" every five seconds was asking docd for the whole viff, and the answer's
+// "is viffd up" every five seconds was asking docd for the whole viff instance, and the answer's
 // latency was a function of the STORE's load rather than of whether this process was alive.
 // On staging that made readiness unsatisfiable while the store was busy — viffd sat 0/1 for
 // half an hour with logd perfectly healthy underneath — and every attempt left a watch behind
@@ -64,7 +64,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		// Head, which no longer costs a sync and no longer lies when nothing is happening.
 		//
 		// This was Rev, deliberately, for one reason: Head used to be what this PROCESS had
-		// been told, so a viff where nothing had committed since it started reported 0 —
+		// been told, so a viff instance where nothing had committed since it started reported 0 —
 		// staging, sources scaled off, answered `head: 0` over a store holding 7262 commits.
 		// An operator reads storeRev to judge whether anything is moving, and 0 about a full
 		// store is worse than a slow answer.
@@ -96,7 +96,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	if s.issuer != nil {
 		out.Issuer = &api.Issuer{URL: s.issuer.url, Key: s.issuer.from}
 	}
-	// This viff's own listen addresses (the operator API, and the admin face).
+	// This viff instance's own listen addresses (the operator API, and the admin face).
 	if s.Addr != "" || s.AdminAddr != "" {
 		out.Listen = &api.Listen{API: s.Addr, Admin: s.AdminAddr}
 	}
@@ -118,7 +118,7 @@ func (s *Server) permsStatus() *api.Perms {
 	return &api.Perms{Refused: refused, Unreadable: unreadable, Hidden: pol.Hidden(), Unparsed: pol.Unparsed()}
 }
 
-// firedTotal is how many entities this viff's triggers have acted on: every engine running a
+// firedTotal is how many entities this viff instance's triggers have acted on: every engine running a
 // charter here, baseline's and each package's, added up.
 //
 // EVERY ENGINE, because a rule fires in the engine that holds it and a package's charter runs
@@ -130,7 +130,7 @@ func (s *Server) permsStatus() *api.Perms {
 //
 // CUMULATIVE SINCE THIS PROCESS STARTED, which is what the counter is: countFire only ever
 // increments, and nothing persists it, so a restart is the one thing that takes it back to 0.
-// Read it as "has this viff ever acted", not as a gauge of what is in flight — `flows` is the
+// Read it as "has this viff instance ever acted", not as a gauge of what is in flight — `flows` is the
 // live one.
 //
 // Scopes are left out for the reason the census leaves them out: a scope is one party's
@@ -168,7 +168,7 @@ func (s *Server) firedTotal() int {
 //	      drift: {rules: 4, strata: 2}
 //
 // COUNTED PER NODE, because the count this replaces was BASELINE's alone while every number
-// beside it in status is the whole viff's. A viff whose program is packaged reported
+// beside it in status is the whole viff instance's. A viff instance whose program is packaged reported
 // `rules: 0` next to a charter tree listing the packages holding them — the scoping was the
 // bug rather than the zero, and a shape that says whose is the fix for it.
 //
@@ -221,7 +221,7 @@ func (c *charterCensus) child(seg string) *charterCensus {
 }
 
 // count records what an engine holds. A nil engine is a charter whose records are in the store
-// and whose engine is not — it is installed, and it holds nothing this viff is running.
+// and whose engine is not — it is installed, and it holds nothing this viff instance is running.
 func (c *charterCensus) count(eng *trigger.Engine) {
 	c.here = true
 	if eng == nil {
@@ -316,7 +316,7 @@ func runnerRefs(store entity.Store) []string {
 // ioRefs is what reaches the world for this viff. Refs rather than records, for runnerRefs'
 // reason — but it earns its line here for one of its own: every other counter measures what
 // viff is doing with what it was given, and none of them can tell "nothing is happening" from
-// "nothing is arriving". A viff whose only io was dropped reports a steady store rev and an
+// "nothing is arriving". A viff instance whose only io was dropped reports a steady store rev and an
 // idle charter, which is what a healthy quiet one reports too. `viff iod` carries the health.
 func ioRefs(store entity.Store) []string {
 	es := viffio.List(store)

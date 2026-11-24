@@ -87,7 +87,7 @@ func TestARelyingPartyVerifiesATokenViffSigned(t *testing.T) {
 }
 
 // The two documents are JSON whatever the request asks for, and are read by a party that names
-// nobody. A viff that issues nothing has neither.
+// nobody. A viff instance that issues nothing has neither.
 func TestTheIssuersDocumentsAreReadByNobody(t *testing.T) {
 	srv, ts := issuingServer(t)
 	for _, path := range []string{issuerDiscoveryPath, issuerKeysPath} {
@@ -119,7 +119,7 @@ func TestTheIssuersDocumentsAreReadByNobody(t *testing.T) {
 		}
 		resp.Body.Close()
 		if resp.StatusCode != http.StatusNotFound {
-			t.Errorf("%s at a viff that issues nothing = %s, want 404", path, resp.Status)
+			t.Errorf("%s at a viff instance that issues nothing = %s, want 404", path, resp.Status)
 		}
 	}
 }
@@ -206,7 +206,7 @@ func TestTheIssuerKeyIsKeptInTheDataDir(t *testing.T) {
 	}
 }
 
-// Status says this viff issues, as what, and where its key is from; and says nothing where it
+// Status says this viff instance issues, as what, and where its key is from; and says nothing where it
 // issues nothing.
 func TestStatusSaysTheIssuer(t *testing.T) {
 	srv := testServer(t)
@@ -227,6 +227,6 @@ func TestStatusSaysTheIssuer(t *testing.T) {
 	}
 	srv.issuer = nil
 	if got, ok := status()["issuer"]; ok {
-		t.Fatalf("status of a viff issuing nothing says issuer %v", got)
+		t.Fatalf("status of a viff instance issuing nothing says issuer %v", got)
 	}
 }

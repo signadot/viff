@@ -18,7 +18,7 @@ import (
 	"go.viff.dev/viff/pkg/schedule"
 )
 
-// AN INSTALL REFUSED BY THE VIFF IS ASKED AGAIN once the viff has moved: each time the minute's
+// AN INSTALL REFUSED BY THE VIFF IS ASKED AGAIN once the viff instance has moved: each time the minute's
 // check of an entry of viff/live finds its tree would install, where it did not before, the
 // install of that tree is asked again, once. Not every minute: a round that finds it so again
 // asks nothing. And per entry: an entry found to install, as the one before it was, is asked
@@ -100,7 +100,7 @@ func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 	if a := again(); a != "" {
 		t.Fatalf("a check that refuses asked the install again: %q", a)
 	}
-	// The viff moved (a runner came up): the check finds it installs, and the install is asked
+	// The viff instance moved (a runner came up): the check finds it installs, and the install is asked
 	// again, carrying the round.
 	r2 := tick(round(2))
 	checked(r2, "installs", r2, entry, tree)
@@ -129,7 +129,7 @@ func TestARefusedInstallIsAskedAgainWhenTheCheckFindsItInstalls(t *testing.T) {
 	})
 
 	// A NEW ENTRY, found to install as the one before it was. What runs is checked and installs;
-	// a yes appends another tree, whose install is refused; the viff moves; and the check of the
+	// a yes appends another tree, whose install is refused; the viff instance moves; and the check of the
 	// new entry finds it installs. The verdict never stopped being `installs`, and the install is
 	// asked again all the same, since the verdict begins again at the new entry.
 	r6 := tick(round(6))

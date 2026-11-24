@@ -165,8 +165,8 @@ func TestABearerThatDoesNotProveItsCallerIsRefused(t *testing.T) {
 				"nbf": time.Now().Add(hour).Unix()}), "nbf"},
 		{"a signature by a key the provider does not publish",
 			idp.Forged(authClient, "s7", person("ana@example.com")), "did not verify"},
-		{"an issuer this viff does not name",
-			other.Token(authClient, "s8", person("ana@example.com")), "no identity provider of this viff"},
+		{"an issuer this viff instance does not name",
+			other.Token(authClient, "s8", person("ana@example.com")), "no identity provider of this viff instance"},
 		{"alg none",
 			idp.Unsigned(authClient, "s9", person("ana@example.com")), "did not verify"},
 		{"no account",
@@ -217,7 +217,7 @@ func TestWithNoBearerTheHeaderIsAdmittedUnderOptional(t *testing.T) {
 	}
 }
 
-// A viff that names no provider verifies no bearer, and says so: served as nobody, the request
+// A viff instance that names no provider verifies no bearer, and says so: served as nobody, the request
 // would be answered with what an empty viff answers.
 func TestABearerAtAViffThatVerifiesNoneIsRefused(t *testing.T) {
 	idp := idptest.New(t)
@@ -658,7 +658,7 @@ func TestSetAuthIsJudgedByTheConfigsRules(t *testing.T) {
 	}
 }
 
-// A viff whose only issuer is the iods' tells a person it verifies no person's bearer rather
+// A viff instance whose only issuer is the iods' tells a person it verifies no person's bearer rather
 // than offering them `iod`.
 func TestAViffWithOnlyTheIosIssuerVerifiesNoPerson(t *testing.T) {
 	cluster, people := idptest.New(t), idptest.New(t)
@@ -671,7 +671,7 @@ func TestAViffWithOnlyTheIosIssuerVerifiesNoPerson(t *testing.T) {
 	defer ts.Close()
 	code, body := bearer(t, http.MethodGet, ts.URL+"/whoami", people.Token(authClient, "sub-ana", person("ana@example.com")), "", "")
 	if code != http.StatusUnauthorized || !strings.Contains(body, "verifies no person's bearer") || strings.Contains(body, "iod") {
-		t.Errorf("a person's token at a viff with only the iods' issuer = %d %q", code, strings.TrimSpace(body))
+		t.Errorf("a person's token at a viff instance with only the iods' issuer = %d %q", code, strings.TrimSpace(body))
 	}
 	// A verified person cannot bind an io's token as an account of theirs.
 	srv2, ts2, idp := authServer(t, AuthOptional)

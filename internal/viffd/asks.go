@@ -49,7 +49,7 @@ type askWait struct {
 // and viffd waits on it as a task waits on its own question.
 //
 // CHECKED HERE, where the asker is present: the names in the grammar a grant uses, a date in the
-// future, and an `on` of rows, each a match tony can apply and a `then` of one key this viff knows
+// future, and an `on` of rows, each a match tony can apply and a `then` of one key this viff instance knows
 // how to run. And READ STRICTLY: a key the body
 // does not know is refused, since an ask whose `to` was dropped for being misspelled, or spelled as
 // it once was (`answerers`), names nobody and is put to everyone.
@@ -142,7 +142,7 @@ func (s *Server) raiseAsk(store entity.Store, asker string, body api.Ask, now ti
 	return id, http.StatusCreated, nil
 }
 
-// checkOn checks each `then` of the rows of the `on` an ask's record holds against the viff as it
+// checkOn checks each `then` of the rows of the `on` an ask's record holds against the viff instance as it
 // stands (checkThen), as an ask raised or changed by asker; self is the ask's id, where it has one.
 func (s *Server) checkOn(asker string, rec entity.Obj, self string, now time.Time, within *taskBound) (int, error) {
 	on, _ := rec["on"].(*ir.Node)

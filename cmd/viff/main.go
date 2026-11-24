@@ -1,4 +1,4 @@
-// Command viff is the single CLI for the viff prototype: `up` starts the
+// Command viff is the single CLI for the viff instance prototype: `up` starts the
 // daemon(s); every other subcommand is a client that connects to a running viff.
 // See docs/reference/README.md for the command tree, and docs/deployment-and-steering.md for
 // the plane split it encodes.
@@ -186,7 +186,7 @@ func rootCmd() *cli.Command {
 		}
 	}
 	return cli.NewCommand("viff").
-		WithSynopsis("one CLI for the viff prototype").
+		WithSynopsis("one CLI for the viff instance prototype").
 		WithDescription("`up` starts the daemon(s); every other subcommand is a client.").
 		WithOpts(gopts...).
 		// Each collection is ONE command, named in the singular, and bare it lists:
@@ -336,7 +336,7 @@ func noArgs(cmd *cli.Command, name string, args []string) error {
 //
 // "No positionals of its own" is now enforced rather than assumed: these commands used to
 // discard whatever they were handed, so `viff status demo.pr.1` printed the status of the
-// whole viff and looked like it had answered the question asked.
+// whole viff instance and looked like it had answered the question asked.
 // listing is leaf for a command that ANSWERS A COLLECTION — it carries --if/--trim, where a
 // leaf that prints a line (`down`) does not. A flag that silently does nothing is
 // worse than one the parser refuses, which is the whole reason the two are separate builders.

@@ -72,7 +72,7 @@ func startLogd(t testing.TB) (*storage.Storage, string) {
 // CompactingStore is Store with a hand on its history: compact erases every commit the store
 // holds so far, as logd's compaction does to whatever is older than its cutoff, so a read at any
 // of those revisions is refused from then on (entity.ErrReplayTooOld) and the head still reads.
-// It is how a test reaches what a long-running viff reaches after its cutoff, without waiting.
+// It is how a test reaches what a long-running viff instance reaches after its cutoff, without waiting.
 func CompactingStore(t testing.TB) (s *entity.LogdStore, compact func()) {
 	t.Helper()
 	logd, addr := startLogd(t)
@@ -147,7 +147,7 @@ func Remove(t testing.TB, s entity.Store, ref entity.Ref) {
 // writer's, and everyone reads the root itself.
 //
 // IT IS WRITTEN RATHER THAN ASSUMED, because openness is a deployment's policy and not the
-// check's: a store nobody seeded admits nobody but the system, which is what makes a viff whose
+// check's: a store nobody seeded admits nobody but the system, which is what makes a viff instance whose
 // seed failed refuse rather than stand wide open. A test that is ABOUT the policy takes Store
 // and writes the record it means (viffd's seed writes this one, plus viff's half and the
 // deployment's admins).

@@ -127,7 +127,7 @@ func (e *Engine) open(ctx context.Context) {
 // settleLeft settles every claim standing under this engine's owner prefix, spawn claims and
 // then the run claims that still stand, since an element's own claim settles its run. A claim
 // left unsettled because the store did not answer for it, or for what says how to pay it, holds
-// its subject for as long as this viff runs. So the claims are listed and settled again until
+// its subject for as long as this viff instance runs. So the claims are listed and settled again until
 // the store has answered for each, for as long as the engine runs, and the engine stays shut
 // meanwhile. A read the store refused is not asked again (unsettled).
 func (e *Engine) settleLeft(ctx context.Context) bool {

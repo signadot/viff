@@ -23,5 +23,5 @@ scripts/mermaid/node_modules/
 scratchpad/
 __pycache__/
 
-# pitchfork.toml is the local viff; a personal override goes here
+# pitchfork.toml is the local viff instance; a personal override goes here
 pitchfork.local.toml

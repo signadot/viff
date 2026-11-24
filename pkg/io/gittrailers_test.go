@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// A commit's TRAILERS reach the viff; its body does not.
+// A commit's TRAILERS reach the viff instance; its body does not.
 //
 // The trailer block is the one part of a commit message that is structured enough to condition
 // on — `Tier:`, `Breaks:`, `Co-Authored-By:`, and the provenance a coding runner writes about

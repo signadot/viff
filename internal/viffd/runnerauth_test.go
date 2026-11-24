@@ -26,7 +26,7 @@ import (
 const runnerSub = "system:serviceaccount:viff:gpu-runner"
 
 // runnerServer is a server whose deployment names a workload issuer (the fake cluster), with no
-// iod accounts, and which issues tokens of its own as its address: a viff that can verify a
+// iod accounts, and which issues tokens of its own as its address: a viff instance that can verify a
 // runner's token, prove itself to a runner, and has nothing else to verify.
 func runnerServer(t *testing.T) (*Server, *httptest.Server, *idptest.IdP) {
 	t.Helper()
@@ -37,7 +37,7 @@ func runnerServer(t *testing.T) (*Server, *httptest.Server, *idptest.IdP) {
 	return srv, ts, cluster
 }
 
-// wordOnlyServer is runnerServer without an issuer of its own: a viff that could verify a
+// wordOnlyServer is runnerServer without an issuer of its own: a viff instance that could verify a
 // runner's token and could never prove itself to one.
 func wordOnlyServer(t *testing.T) (*Server, *httptest.Server, *idptest.IdP) {
 	t.Helper()
@@ -121,20 +121,20 @@ func TestARegistrationNamesTheRunnersSubject(t *testing.T) {
 		t.Fatalf("an iod account with a registered runner's subject = %v", err)
 	}
 
-	// A principal is one thing across the viff: a subject in a named scope is refused, since the
+	// A principal is one thing across the viff instance: a subject in a named scope is refused, since the
 	// door reads the baseline registrations and would neither admit nor refuse the runner.
 	resp = postTony(t, ts.URL+"/runners?probe=false&scope=sandbox", map[string]any{"name": "gpu3", "url": face.URL, "subject": runnerSub})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "baseline") {
 		t.Fatalf("a subject in a scope = %s: %s", resp.Status, body)
 	}
 
-	// A viff naming no workload issuer refuses a subject, naming the config that would let it.
+	// A viff instance naming no workload issuer refuses a subject, naming the config that would let it.
 	plain := testServer(t)
 	tsPlain := httptest.NewServer(plain.Handler())
 	defer tsPlain.Close()
 	resp = postTony(t, tsPlain.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "auth.iod.issuer") {
-		t.Fatalf("a subject at a viff with no workload issuer = %s: %s", resp.Status, body)
+		t.Fatalf("a subject at a viff instance with no workload issuer = %s: %s", resp.Status, body)
 	}
 }
 
@@ -192,7 +192,7 @@ func TestARunnerProvesItselfWithItsWorkloadToken(t *testing.T) {
 	}
 }
 
-// tokenFile writes a token where a runner or a viff reads its own from, and answers the path.
+// tokenFile writes a token where a runner or a viff instance reads its own from, and answers the path.
 func tokenFile(t *testing.T, dir, name, token string) string {
 	t.Helper()
 	p := filepath.Join(dir, name)
@@ -202,7 +202,7 @@ func tokenFile(t *testing.T, dir, name, token string) string {
 	return p
 }
 
-// guardedFace is a runner face serving the viff at viffURL alone, by the tokens it signs for the
+// guardedFace is a runner face serving the viff instance at viffURL alone, by the tokens it signs for the
 // subject of the token in file, which it answers on its describe.
 func guardedFace(t *testing.T, viffURL, file string) *httptest.Server {
 	t.Helper()
@@ -296,7 +296,7 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 	gpu2Sub := "system:serviceaccount:viff:gpu2"
 	resp = postTony(t, ts.URL+"/runners", map[string]any{"name": "gpu2", "url": other.URL, "subject": gpu2Sub})
 	decodeResp(t, resp, &row)
-	if why := fmt.Sprint(row["why"]); resp.StatusCode != http.StatusCreated || row["reach"] != "unreachable" || !strings.Contains(why, "refused this viff") || !strings.Contains(why, "system:serviceaccount:viff:other") {
+	if why := fmt.Sprint(row["why"]); resp.StatusCode != http.StatusCreated || row["reach"] != "unreachable" || !strings.Contains(why, "refused this viff instance") || !strings.Contains(why, "system:serviceaccount:viff:other") {
 		t.Fatalf("another runner's subject = %s %v", resp.Status, row)
 	}
 	// A runner answering no token is refused at the add: waiting fixes nothing.
@@ -391,21 +391,21 @@ func TestTheDescribeIsTheHandshake(t *testing.T) {
 		t.Fatalf("a registration with a subject at a bare face = %s, bearer on its describe = %v; want the refusal and the bearer: %s", resp.Status, bearerSeen.Load(), body)
 	}
 
-	// A viff that issues nothing could never prove itself to a guarded runner: a subject is
+	// A viff instance that issues nothing could never prove itself to a guarded runner: a subject is
 	// refused at the add, naming the issuer it lacks.
 	_, tsPlain, _ := wordOnlyServer(t)
 	resp = postTony(t, tsPlain.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "issues none") || !strings.Contains(body, "auth.issuer") {
-		t.Fatalf("a viff issuing nothing adding a guarded runner with its subject = %s: %s", resp.Status, body)
+		t.Fatalf("a viff instance issuing nothing adding a guarded runner with its subject = %s: %s", resp.Status, body)
 	}
-	// Another viff's token, signed by another key under another name, is refused at the
+	// Another viff instance's token, signed by another key under another name, is refused at the
 	// describe, which the add reads as unreachable: installed, with the warning, since the
 	// deployment fixes it.
 	_, tsWrong, _ := runnerServer(t)
 	resp = postTony(t, tsWrong.URL+"/runners", map[string]any{"name": "gpu", "url": face.URL, "subject": runnerSub})
 	decodeResp(t, resp, &row)
-	if resp.StatusCode != http.StatusCreated || row["reach"] != "unreachable" || !strings.Contains(fmt.Sprint(row["why"]), "refused this viff") {
-		t.Fatalf("another viff at a guarded runner = %s %v", resp.Status, row)
+	if resp.StatusCode != http.StatusCreated || row["reach"] != "unreachable" || !strings.Contains(fmt.Sprint(row["why"]), "refused this viff instance") {
+		t.Fatalf("another viff instance at a guarded runner = %s %v", resp.Status, row)
 	}
 	// And the token minted for one runner opens no other's door: the token viffd presented to
 	// gpu, replayed at other, is refused there.

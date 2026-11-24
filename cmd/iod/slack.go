@@ -66,7 +66,7 @@ func slackMain(args []string) error {
 		"POST /slack/events": src.Events(signing, c.hinter()),
 	}
 
-	// The out half dials the viff, where the reflection is dialled BY it: it reads what is asked
+	// The out half dials the viff instance, where the reflection is dialled BY it: it reads what is asked
 	// and writes what became of it, as a principal of its own. Its address defaults to the one the
 	// hint url already names, so a deployment says where viff is once.
 	addr := c.viff()
@@ -91,7 +91,7 @@ func slackMain(args []string) error {
 		sock := src.Socket(app)
 		sock.Hint = c.hinter()
 		// `/viff link <nonce>` is this program's own word that a member said it, so it is told
-		// to the viff as this program, with or without the out half.
+		// to the viff instance as this program, with or without the out half.
 		sock.Viff = viff
 		if o != nil {
 			sock.Asking, sock.Answered = sink.Asked, o.Kick

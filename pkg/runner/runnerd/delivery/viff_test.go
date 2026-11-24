@@ -45,7 +45,7 @@ func TestATasksRaiseIsCarriedToViffForTheTask(t *testing.T) {
 	}
 
 	s.Services.Viff = answer(http.StatusBadRequest, "then: spawn.environment.systems.network: beyond the task")
-	if rep := s.answer(tk, frame(t, Request{Op: OpViffAskCreate, Fields: map[string]string{"ask": ask}})); !strings.Contains(rep.Refused, "the viff refused the ask: then: spawn.environment") {
+	if rep := s.answer(tk, frame(t, Request{Op: OpViffAskCreate, Fields: map[string]string{"ask": ask}})); !strings.Contains(rep.Refused, "the viff instance refused the ask: then: spawn.environment") {
 		t.Errorf("a raise viff refuses: %+v", rep)
 	}
 

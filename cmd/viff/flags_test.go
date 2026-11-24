@@ -236,7 +236,7 @@ func TestStateTakesAPath(t *testing.T) {
 		t.Fatal("viff data: no such command")
 	}
 	if cmd.Hooks.Run == nil {
-		t.Fatal("viff data: no run — bare it answers the whole viff")
+		t.Fatal("viff data: no run — bare it answers the whole viff instance")
 	}
 	// EVERY POSITIONAL IS A STEP, so several of them are one address rather than an error —
 	// which is what this used to assert, back when the positional was one token. No server is

@@ -23,7 +23,7 @@ import (
 // one frame holding every record. It opens from now; what changed before it opened, or while
 // it was down, is caught by the read that follows each opening.
 //
-// A section whose watch is not open (refused, or the viff not answering) is read every round,
+// A section whose watch is not open (refused, or the viff instance not answering) is read every round,
 // as before; one whose watch is open is read when a frame says it changed, and every
 // tuiResync besides, in case a frame was lost.
 //
@@ -63,7 +63,7 @@ func startTUIWatch(ctx context.Context, c *client.Client) *tuiWatch {
 	return w
 }
 
-// follow keeps a watch at place open, counting each frame on s. A watch the viff refuses
+// follow keeps a watch at place open, counting each frame on s. A watch the viff instance refuses
 // (a grant missing, a login expired) is asked again every askRetryMax; meanwhile the section is
 // read every round.
 func follow(ctx context.Context, c *client.Client, place string, s *watchState) {

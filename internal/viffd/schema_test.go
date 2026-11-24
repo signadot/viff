@@ -51,10 +51,10 @@ func TestEveryRouteSignatureResolves(t *testing.T) {
 	}
 }
 
-// tonyBase is the part of tony's own vocabulary a route may name instead of a viff signature.
+// tonyBase is the part of tony's own vocabulary a route may name instead of a viff instance signature.
 // `GET /flows` returns subject addresses — a list of plain strings — and `string` is the whole
 // truth about them, so it is published rather than left blank. These resolve against tony-base
-// (go-tony/schema/base.tony), not against the viff schema, which is why they are named here.
+// (go-tony/schema/base.tony), not against the viff instance schema, which is why they are named here.
 var tonyBase = map[string]bool{"string": true, "int": true, "float": true, "bool": true}
 
 // A route that returns something must say HOW MANY come back, and one that returns nothing must
@@ -299,9 +299,9 @@ func TestEveryReferenceResolvesUnqualified(t *testing.T) {
 	}
 }
 
-// THE WALK. The root says what a viff looks like — `entities: .[array(viff-entity)]` — and
+// THE WALK. The root says what a viff instance looks like — `entities: .[array(viff-entity)]` — and
 // the server says what it serves. Neither is derived from the other any more, which is what
-// makes the schema readable without a running viff, and which is also what lets them drift.
+// makes the schema readable without a running viff instance, and which is also what lets them drift.
 // So they are held together here, in both directions:
 //
 //   - every key in the root names a bare top-level path this server answers, with the shape it
@@ -353,7 +353,7 @@ func TestTheRootIsTheServedSurface(t *testing.T) {
 		path, want := f.String, root.Values[i].String
 		got, ok := served[path]
 		if !ok {
-			t.Errorf("the root describes %q, which this viff does not serve as a bare GET "+
+			t.Errorf("the root describes %q, which this viff instance does not serve as a bare GET "+
 				"returning a named document", path)
 			continue
 		}
@@ -364,7 +364,7 @@ func TestTheRootIsTheServedSurface(t *testing.T) {
 	}
 	for path, typ := range served {
 		t.Errorf("GET /%s answers %s and the root does not mention it — a new top-level path "+
-			"belongs in internal/schema/root.tony, which is what says what a viff looks like", path, typ)
+			"belongs in internal/schema/root.tony, which is what says what a viff instance looks like", path, typ)
 	}
 }
 

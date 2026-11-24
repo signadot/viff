@@ -445,7 +445,7 @@ func TestAnInnerSystemsCeilingIsTheOperatorsLine(t *testing.T) {
 	}
 }
 
-// VIFF'S SECTION IS A CEILING, taken whether or not the runner reaches a viff: the file is
+// VIFF'S SECTION IS A CEILING, taken whether or not the runner reaches a viff instance: the file is
 // checked before that is known, and viff's verbs go with the runner's own token.
 func TestViffsSectionIsTakenBeforeTheRunnerReachesAViff(t *testing.T) {
 	c := Config{Script: &Script{Systems: map[string]System{"viff": {Ceiling: systems.Open()}}}}

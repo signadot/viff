@@ -85,7 +85,7 @@ func TestReconcileKeepsClaimsForResumedRuns(t *testing.T) {
 	}
 }
 
-// reconcile is what a start does for the tasks and claims a viff left behind, in a start's
+// reconcile is what a start does for the tasks and claims a viff instance left behind, in a start's
 // order: the tasks re-attached or ended and handed to the root package's engine, the engine
 // started and open, its claims settled by then, and what belongs to no package stopped.
 func reconcile(t *testing.T, srv *Server) {

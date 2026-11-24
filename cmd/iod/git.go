@@ -84,11 +84,11 @@ func gitMain(args []string) error {
 	if err := git.SetRoot(c.root); err != nil {
 		return err
 	}
-	// The out half dials the viff, where the reflection is dialled BY it: one pass loop per
+	// The out half dials the viff instance, where the reflection is dialled BY it: one pass loop per
 	// repository, writing refs where this program reads them.
 	if *out {
 		sink := git.Sink()
-		// An install input installs a tree of charters into the viff, as this io
+		// An install input installs a tree of charters into the viff instance, as this io
 		// (pkg/io/gitinstall.go): the one client proves it at the door and makes the request.
 		sink.Viff = c.outClient(git.Root())
 		sink.As = c.principal(git.Root())

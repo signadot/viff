@@ -8,7 +8,7 @@ import (
 	"go.viff.dev/viff/pkg/entity"
 )
 
-// userRules is the baseline charter without the system's own rules: every viff stands on the
+// userRules is the baseline charter without the system's own rules: every viff instance stands on the
 // base charter (system.tony), so a test asserting what a person installed reads past it.
 //
 // Armed, once the pass a placed rule waits on has run: a rule just restored or installed is

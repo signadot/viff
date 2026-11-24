@@ -37,12 +37,12 @@ func removeOwnPidfile(path string) {
 // its graceful shutdown, reaping the logd+docd it spawned (see resolveDocd's stop). It
 // signals rather than tears down out-of-band so there is one shutdown path.
 func downCmd() *cli.Command {
-	return leaf("down", "down — stop the viff on --addr (signals it to reap its daemons)",
+	return leaf("down", "down — stop the viff instance on --addr (signals it to reap its daemons)",
 		func(cc *cli.Context, args []string) error {
 			pidPath := upPidPath(g.Addr)
 			data, err := os.ReadFile(pidPath)
 			if err != nil {
-				return fmt.Errorf("viff down: no running viff for %s (no pidfile %s)", g.Addr, pidPath)
+				return fmt.Errorf("viff down: no running viff instance for %s (no pidfile %s)", g.Addr, pidPath)
 			}
 			pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 			if err != nil {

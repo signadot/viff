@@ -608,7 +608,7 @@ func TestAStratumWithRulesCannotBeRemoved(t *testing.T) {
 
 // ── durability ────────────────────────────────────────────────────────────────────
 
-// Strata are durable for the same reason rules are: a viff comes back up with its work in
+// Strata are durable for the same reason rules are: a viff instance comes back up with its work in
 // progress intact, and the ordering its rules were checked against has to come back with it.
 func TestStrataSurviveARestart(t *testing.T) {
 	store := entitytest.Store(t)

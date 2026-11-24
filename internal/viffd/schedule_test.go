@@ -60,7 +60,7 @@ func standingTicks(t *testing.T, store entity.Store, id string, want ...string) 
 	return nil
 }
 
-// A `next` that passed while the viff was down ticks on the way up: once, for the last
+// A `next` that passed while the viff instance was down ticks on the way up: once, for the last
 // instant due, saying how many were skipped, with the old tick gone and `next` ahead.
 func TestAScheduleWhoseNextHasPassedTicksOnTheWayUp(t *testing.T) {
 	srv := testServer(t)
@@ -128,7 +128,7 @@ func TestReArmingReadsTheRecord(t *testing.T) {
 	srv.armSchedule("hourly")
 	rec := standingTicks(t, srv.Store, "hourly", schedule.Key(now.Truncate(time.Hour)))
 
-	// The viff is "down" past the next instant: move it into the past and re-arm.
+	// The viff instance is "down" past the next instant: move it into the past and re-arm.
 	ahead, _ := schedule.ParseKey(entity.Str(rec, schedule.NextField))
 	if _, _, err := srv.Store.Write(entity.Write{
 		At: schedule.Ref("hourly").At(schedule.NextField), Value: entity.Val(schedule.Key(ahead.Add(-2 * time.Hour))),

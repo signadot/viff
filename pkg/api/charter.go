@@ -48,7 +48,7 @@ type Installed struct {
 // removed at, RFC 3339; installing it again renews it.
 //
 // An install answers once the charter is accepted — written and checked — and arming is the
-// store's pace: a rule's watches open a few at a time behind every other watch the viff is
+// store's pace: a rule's watches open a few at a time behind every other watch the viff instance is
 // opening. So Held carries the rules still arming at the instant of the answer, marked Arming,
 // and `?wait=<d>` holds the answer until none is, or d has passed (internal/viffd/charter.go). Rules
 // counts an arming rule, since it has passed every check and the store alone stands between it

@@ -69,7 +69,7 @@ func TestARegistrationThisViffCantReadIsListedAndRemoved(t *testing.T) {
 // A REGISTRATION NAMING NO SUBJECT is one an older viff wrote, and it decodes: `subject` may be
 // absent. Read as it decodes, it listed as an ordinary runner, took a token minted for nobody at
 // the door, and failed each spawn at the handshake pointing at a check that could never fix it.
-// It is a registration this viff can't read: listed so, no runner at the door or to a spawn, and
+// It is a registration this viff instance can't read: listed so, no runner at the door or to a spawn, and
 // each surface that names it, a spawn passing it over among them, says to add it again.
 func TestARegistrationNamingNoSubjectIsUnreadable(t *testing.T) {
 	srv := testServer(t)

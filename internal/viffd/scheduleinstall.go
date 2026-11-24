@@ -23,7 +23,7 @@ import (
 // schedule installs one declaration, remembering what it replaced.
 func (tx *charterTx) schedule(def *ir.Node) (int, error) {
 	if tx.scope != "" {
-		return http.StatusBadRequest, errors.New("a schedule ticks for the viff, not for a scope: " +
+		return http.StatusBadRequest, errors.New("a schedule ticks for the viff instance, not for a scope: " +
 			"declare it in the baseline charter or a package's")
 	}
 	var decl schedule.Schedule

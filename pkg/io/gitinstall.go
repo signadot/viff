@@ -20,7 +20,7 @@ import (
 )
 
 // The install input of the git io's out half: a tree of charters in the repository, installed
-// into the viff at an address, by this io, from its own copy of the repository.
+// into the store at an address, by this io, from its own copy of the repository.
 //
 //	to:   install.repos.viff     # everything after the first dot is the address, as `viff c`
 //	                              # spells one
@@ -40,7 +40,7 @@ import (
 // is this io's pod, which holds the mirror, and nowhere a task runs. The io installs as itself,
 // so it has to own the address, or hold `child-owner` above it; what the install refuses, the
 // viff says, and a refusal (a 4xx) is recorded for good until the input changes, since the same
-// tree asked again would be refused again. A viff that cannot be reached is tried again.
+// tree asked again would be refused again. A viff instance that cannot be reached is tried again.
 //
 // WHAT IT DOES NOT DO: it does not read the charters, judge them, or choose the tree. The
 // reconciler has decided by the time it writes the input; this carries the decision out.

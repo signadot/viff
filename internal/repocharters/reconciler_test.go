@@ -72,7 +72,7 @@ func installedBy(t *testing.T, srv *viffd.Server, tree, entry, from string) {
 	}.Payload())
 }
 
-// checkedBy answers a check input as the git io's out half would: the tree, and the viff's
+// checkedBy answers a check input as the git io's out half would: the tree, and the viff instance's
 // verdict on it (pkg/io/gitcheck.go).
 func checkedBy(t *testing.T, srv *viffd.Server, tree, verdict, refusal string) {
 	t.Helper()
@@ -440,7 +440,7 @@ func TestTheRepoChartersReconcilerInstallsWhatIsApproved(t *testing.T) {
 		t.Fatalf("an unrelated commit to main moved viff/live: %v", entity.ToObj(p.Payload))
 	}
 
-	// 9. A tree answered yes that the io refuses to install: an issue says what the viff said,
+	// 9. A tree answered yes that the io refuses to install: an issue says what the viff instance said,
 	// the candidate's check fails, and what runs stays.
 	const treeC = "cccc3333cccc3333cccc3333cccc3333cccc3333"
 	mainAt(t, srv, sha(7), treeC)

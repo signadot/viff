@@ -19,7 +19,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/token"
 )
 
-// DefaultRoot is the top-level kinded-path segment the viff lives under in logd.
+// DefaultRoot is the top-level kinded-path segment the viff instance lives under in logd.
 // Log-backed entities are stored at <root>.<system>.<kind>.<id>, so a single watch on
 // the root observes the whole (historied) viff.
 const DefaultRoot = "viff"
@@ -39,7 +39,7 @@ const sessionBudget = 10 * time.Second
 // logd's request loop and each one holds it until its commit lands, so a write's wait is the
 // sum of the writes in front of it rather than its own cost.
 //
-// Ten seconds was sized when a store held seed data. It is not what a viff reflecting several
+// Ten seconds was sized when a store held seed data. It is not what a viff instance reflecting several
 // repositories spends: staging's three sources each failed at exactly 10s — `write
 // git:ref:signadot/pull/1320/head: context deadline exceeded` — and none of them had reflected
 // in over half an hour, because every pass re-queued behind the same wall.
@@ -76,7 +76,7 @@ type observer struct {
 }
 
 // LogdStore is an entity.Store backed by a logd document server (tony-format), reached
-// through the embedded libctl client — the durable, observable substrate the whole viff
+// through the embedded libctl client — the durable, observable substrate the whole viff instance
 // runs on. Entities map to kinded paths (<root>.<system>.<kind>.<id>); reads are Match,
 // writes are Patch, and the change stream + revision cursor come from a single logd Watch
 // on the root.
@@ -117,12 +117,12 @@ type LogdStore struct {
 
 	// readErr is the last read this store COULD NOT PERFORM, and it exists because List
 	// cannot say so in its signature: it answers a slice, so a store that is unreadable
-	// answers the empty one — which is what a viff holding nothing answers too.
+	// answers the empty one — which is what a viff instance holding nothing answers too.
 	//
 	// That confusion is not theoretical. A store whose log holds a patch it cannot replay
 	// (raw.go, and the guard that now refuses to write one) reads as EMPTY: `viff data
 	// --paths` prints nothing, `viff charter` shows a charter of no rules, and writes go
-	// on reporting success — a viff that looks alive and answers nothing, diagnosable only by
+	// on reporting success — a viff instance that looks alive and answers nothing, diagnosable only by
 	// reading docd's log. Remembering the failure is what lets the surfaces above say "this
 	// store cannot be read" instead of "there is nothing here".
 	readErr error
@@ -339,7 +339,7 @@ func payloadToNode(p Payload) *ir.Node {
 //
 // Viff does not write comments (its parse does not ask for them), so this is about what
 // somebody else wrote: a store is not viff's alone, and a document put there by `o` or by
-// hand is one viff still has to be able to read.
+// hand is one viff instance still has to be able to read.
 func nodeToPayload(node *ir.Node) Payload {
 	if node == nil {
 		return nil
@@ -456,7 +456,7 @@ func (s *LogdStore) GetCommit(ref Ref) (Entity, bool, int64, error) {
 //
 // Getting it wrong in the other direction is what makes this worth stating at length:
 // every absent entity whose id, kind, or system had never been written used to come back
-// as a read FAILURE — so `GET /entity` for anything absent answered 502 on any viff that
+// as a read FAILURE — so `GET /entity` for anything absent answered 502 on any viff instance that
 // had ever been written to, and an agent asking after a file was told the store was
 // unreachable.
 //
@@ -755,7 +755,7 @@ func (s *LogdStore) replacing(ref Ref, payload Payload) Payload {
 // QUESTIONS ALLOW.
 //
 // THE DEPTH IS THE COST. A precondition is evaluated by reading the value at its path and
-// matching the pattern against it, so one asked at the root reads the whole viff — and
+// matching the pattern against it, so one asked at the root reads the whole viff instance — and
 // nearly every write carries one, since a write that descends carries a guard about the place
 // it descends through. Measured on a 1500-entity store: 24ms a write, growing with what the
 // store holds, against 0.8ms for the same write with no precondition. Asked under the
@@ -1155,7 +1155,7 @@ func (s *LogdStore) ListErrCommit(pred func(Ref) bool) ([]Entity, int64, error) 
 // depth is the caller's.
 //
 // It reads the SUBTREE rather than the root: a question about `viff-dev.drift.head` has no
-// business materializing the whole viff, and the prefix is exactly the path the substrate
+// business materializing the whole viff instance, and the prefix is exactly the path the substrate
 // routes on.
 func (s *LogdStore) ListAt(at []string, depth int, pred func(Ref) bool) []Entity {
 	out, _ := s.ListAtErr(at, depth, pred)
@@ -1209,7 +1209,7 @@ func (s *LogdStore) ReadAtCommit(at []string) (*ir.Node, bool, int64, error) {
 //
 // AN ARRAY IS A LEVEL LIKE ANY OTHER: its members are positions, and the descent enters them as
 // it enters an object's fields. Identity is the store's to give (!logd-key), a `!key` tag is
-// refused on the way in (checkNotKeyed), and the viff surface for the store's keying is not
+// refused on the way in (checkNotKeyed), and the viff instance surface for the store's keying is not
 // designed yet -- so nothing here has to read an array to find out what its elements are called.
 //
 // The addresses beneath an element are the same ones the document walk spells, since below an
@@ -1486,7 +1486,7 @@ func (s *LogdStore) ListAtErrCommit(at []string, depth int, pred func(Ref) bool)
 	// NOT_FOUND IS AN ANSWER, not an outage: it says nothing stands at the path, and a read that
 	// FAILS says the store could not be read (libctl's own distinction). They are only ever
 	// confused upward: `unreadable` turns a recorded read error into a 503, so a read at a path
-	// nothing stands at reported the viff as unavailable.
+	// nothing stands at reported the viff instance as unavailable.
 	//
 	// IT ARRIVES AS AN EMPTY ANSWER, deliberately. Listing or watching a slice before anything
 	// is written to it is what an engine, a source and an install all do, and none of them wants
@@ -1518,7 +1518,7 @@ func (s *LogdStore) ListAtErrCommit(at []string, depth int, pred func(Ref) bool)
 // <root>.<system>.<kind> — or, when kind is "", a whole system (<root>.<system>, all
 // its kinds), streaming a change Event per entity and carrying this store's scope. This
 // is the per-trigger observation an engine uses: it watches precisely the subtree its
-// trigger matches, rather than the whole viff (docd routes a subtree watch at/below
+// trigger matches, rather than the whole viff instance (docd routes a subtree watch at/below
 // its path; a root watch is out of scope by design). A system-level watch is the
 // broadest a trigger may take — a truly global (system-less) watch is disallowed.
 //
@@ -1545,7 +1545,7 @@ func (s *LogdStore) ListAtErrCommit(at []string, depth int, pred func(Ref) bool)
 //
 // The cost, which is the charter author's to carry: what fires is "matches now", so a
 // non-idempotent action behind a state a subject can genuinely re-enter fires again when
-// the engine restarts over a viff still in that state. The latch idiom answers it — match
+// the engine restarts over a viff instance still in that state. The latch idiom answers it — match
 // a field the action advances (see docs/change-events.md) — and it is the same discipline a
 // re-entry already needs.
 func (s *LogdStore) WatchSubtree(depth int, prefix ...string) (<-chan Commit, func(), error) {
@@ -1779,7 +1779,7 @@ var ErrReplayTooOld = errors.New("the cursor is older than what the store retain
 
 // Since replays commits with Rev > from using a native logd FromCommit watch (a
 // query by revision), in commit order, over the slice at `at` — the path segments under the
-// root, or the whole viff when none are given. It is a pure read — it derives each event's Op
+// root, or the whole viff instance when none are given. It is a pure read — it derives each event's Op
 // from the delta alone (a tombstone is Delete, any value is Set) and mutates no store state, so
 // repeated or concurrent calls are consistent. This is what keeps a hold costing a cursor
 // rather than a growing buffer.
@@ -1803,7 +1803,7 @@ var ErrReplayTooOld = errors.New("the cursor is older than what the store retain
 //
 // NARROW IT WHEN THE CALLER IS NARROW. The replay reads the document as it stood at the
 // starting commit (docAt) and logd reads every patch in the range that touches the watched
-// path, so both halves cost what the PATH holds rather than what the viff holds: a whole-viff
+// path, so both halves cost what the PATH holds rather than what the viff instance holds: a whole-viff
 // catch-up on a large store is gigabytes of document and log, and it is what evicted staging's
 // substrate four times in fifteen minutes. logd narrows before it reads (its index descends by
 // path, and only the segments recorded at or under it are fetched), so the prefix is not a
@@ -1854,7 +1854,7 @@ func (s *LogdStore) Since(from int64, patterns ...*kpath.KPath) ([]Commit, error
 	//
 	// A watch has a bounded buffer and logd FAILS a consumer that does not keep up (slow
 	// consumer, mirroring the server's own behaviour). Levelling inside the receive put the
-	// most expensive work in the viff — a patch applied to the whole document, then the
+	// most expensive work in the viff instance — a patch applied to the whole document, then the
 	// entity walk over the result — between one event and the next, so the buffer filled and
 	// the store killed the replay partway. Measured on a docd-backed store, this loop with the
 	// work inline was cut off after ~1000 events; draining first carries 2000 in 297ms. What
@@ -1929,7 +1929,7 @@ func (s *LogdStore) Since(from int64, patterns ...*kpath.KPath) ([]Commit, error
 	return out, replayErr
 }
 
-// AsOf returns a snapshot of the whole viff as it stood at rev — one MatchAt over the root,
+// AsOf returns a snapshot of the whole viff instance as it stood at rev — one MatchAt over the root,
 // which docd answers across base and every logd-backed mount at the same commit (they share
 // logd's commit sequence), so the snapshot is consistent across mounts and not merely
 // per-path.
@@ -2037,7 +2037,7 @@ func nodeOrEmpty(n *ir.Node) *ir.Node {
 	return n
 }
 
-// graftAt places a subtree read at a PREFIX into the viff map being assembled, merging with a
+// graftAt places a subtree read at a PREFIX into the viff instance map being assembled, merging with a
 // sibling already grafted beside it — a second kind under one system, or the world's half
 // beside viff's own.
 func graftAt(viff map[string]*ir.Node, prefix []string, node *ir.Node) {
@@ -2065,7 +2065,7 @@ func graftAt(viff map[string]*ir.Node, prefix []string, node *ir.Node) {
 // before any of this existed.)
 func (s *LogdStore) docAt(ctx context.Context, commit int64, at ...string) *ir.Node {
 	// AT THE PATH THE REPLAY WATCHES, so the base costs what that slice holds rather than what
-	// the viff holds — the half of a catch-up that grows with the whole store. The document is
+	// the viff instance holds — the half of a catch-up that grows with the whole store. The document is
 	// still ROOT-ROOTED, because everything that reads entities out of it (payloadIn, changesAt)
 	// addresses them from the root; the replay's deltas are nested onto it.
 	path := seg(s.root)
@@ -2198,7 +2198,7 @@ func (s *LogdStore) applyDelta(doc, patch *ir.Node) *ir.Node {
 
 // emit broadcasts one commit to observers, non-blocking with drop-and-gap accounting — the
 // contract Observe documents (drops are recovered by consumers via Since). Each observer's
-// Changes are answered at its own patterns, from the viff before and after the commit.
+// Changes are answered at its own patterns, from the viff instance before and after the commit.
 //
 // A commit is dropped or delivered WHOLE. Dropping part of one would hand a consumer a
 // transaction with entities missing and no way to know it, which is the one shape the
@@ -2306,7 +2306,7 @@ func (s *LogdStore) writeCtx() (context.Context, context.CancelFunc) {
 // it meant to wait. Viff always means to wait: the engine watches the slice a rule selects over
 // before any subject exists in it, a source watches the slice it is about to reflect into, and the
 // root watch is opened on a store that has never been written. A refusal there is not a typo
-// caught, it is the viff failing to start.
+// caught, it is the viff instance failing to start.
 //
 // The one place that must NOT wait is a person naming a path at a command line, where a refusal
 // is the answer they want. That surface does not exist yet: `viff watch` observes the ROOT and
@@ -2353,7 +2353,7 @@ const commentValueField = "value"
 // wrapper is a CommentType node standing around the value it precedes; `!comment` is an
 // ordinary tagged object, `{head: […], line: […], value: …}`, whose fields name the operand's
 // parts rather than the document's. A structural walk that treats it as a container therefore
-// descends `head`, `line` and `value` as if they were levels of the viff, and reports whatever
+// descends `head`, `line` and `value` as if they were levels of the viff instance, and reports whatever
 // stands under them as entities that do not exist.
 //
 // A nil answer with ok is a comment stated on its own: the comments at that node changed and

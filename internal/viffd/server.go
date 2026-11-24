@@ -1,4 +1,4 @@
-// Package viffd is the viff as one process: the entity store, the trigger engine, the task
+// Package viffd is the viff instance as one process: the entity store, the trigger engine, the task
 // runtime and the door that says who a request is from, assembled behind one HTTP surface that
 // the `viff` CLI drives (Server).
 //
@@ -100,11 +100,11 @@ type Server struct {
 	// DefaultAgent is the agent a prompt naming none is for, bound at the spawn; empty is
 	// DefaultAgent (`defaultAgent` in the config).
 	DefaultAgent string
-	// runnerTokens is the tokens this viff has minted toward its runners, one per audience,
+	// runnerTokens is the tokens this viff instance has minted toward its runners, one per audience,
 	// kept until they are about to expire (runnerauth.go).
 	runnerTokens runnerTokens
 	// helloing is the registrations a hello is describing right now, by name: one describe in
-	// flight per registration, so a runner announcing itself in a loop cannot make this viff
+	// flight per registration, so a runner announcing itself in a loop cannot make this viff instance
 	// dial it in one.
 	helloing sync.Map
 	// keptRegistrations is the runners' registrations as the door last read them (runnerauth.go).
@@ -121,7 +121,7 @@ type Server struct {
 	// an hour (hostedRetentionDefault).
 	HostedRetention time.Duration
 
-	// Addr is this viff's OWN listen address, the operator API, published on /status so a
+	// Addr is this viff instance's OWN listen address, the operator API, published on /status so a
 	// client can discover where viff listens, as the docd address is published. Set by the
 	// task that binds it (cmd/viff up); empty until then.
 	Addr string
@@ -135,7 +135,7 @@ type Server struct {
 	// that hosts the runtime) — the common gotcha. Set by `up`; nil when unconfigured.
 	LLM *api.LLM
 
-	// DocdClient is the client-face address of the docd this viff is backed by, when
+	// DocdClient is the client-face address of the docd this viff instance is backed by, when
 	// store-kind is docd. It is published on GET /status so a store client run beside this
 	// viff can find docd without guessing the ephemeral port `up` chose.
 	//
@@ -166,7 +166,7 @@ type Server struct {
 	// Guarded by scopeMu.
 	uninstalls map[string]*uninstalling
 	stopWait   time.Duration
-	// left is the tasks the viff before this one left in baseline, re-attached, each with the
+	// left is the tasks the viff instance before this one left in baseline, re-attached, each with the
 	// engine it was handed to since (resumeLeft, handTasks); leftIn is closed once they are all
 	// here and the root package's are handed over (reconcileTasks).
 	leftMu   sync.Mutex
@@ -215,7 +215,7 @@ type Server struct {
 	control map[string]bool
 	// auth is how people are authenticated at the door (SetAuth); nil verifies nobody.
 	auth *authn
-	// issuer signs tokens as this viff and publishes the keys that verify them (SetIssuer); nil
+	// issuer signs tokens as this viff instance and publishes the keys that verify them (SetIssuer); nil
 	// issues none.
 	issuer *issuer
 
@@ -232,7 +232,7 @@ type Server struct {
 //
 // It is here rather than a NewWithStore argument because a scope engine is built lazily, on first
 // use, and a pace applied only to the baseline would leave a scope running
-// a different autonomy from the viff it overlays.
+// a different autonomy from the viff instance it overlays.
 func (s *Server) SetTripPace(d time.Duration) {
 	s.scopeMu.Lock()
 	s.tripPace, s.tripPaceSet = d, true
@@ -267,7 +267,7 @@ type Option func(*options)
 type options struct{ perms Perms }
 
 // WithPerms carries the permission policy a deployment set — the root's default and its admins.
-// It is read BEFORE the seed runs, since the seed writes the records it describes; a viff
+// It is read BEFORE the seed runs, since the seed writes the records it describes; a viff instance
 // assembled without it is the open one.
 func WithPerms(p Perms) Option { return func(o *options) { o.perms = p } }
 
@@ -289,8 +289,8 @@ func NewWithStore(store entity.Store, opts ...Option) *Server {
 	// The root's default, BEFORE the seed: the records the seed writes hold out what it says,
 	// and setting it afterwards left a deployment's own default reaching nothing the seed
 	// wrote — which is the order this fixes rather than documents.
-	// NIL IS UNSET AND EMPTY IS A SETTING: `perms: {child-grants: {}}` is a viff where what anybody
-	// creates is theirs alone, and reading it as "not set" made a viff configured private
+	// NIL IS UNSET AND EMPTY IS A SETTING: `perms: {child-grants: {}}` is a viff instance where what anybody
+	// creates is theirs alone, and reading it as "not set" made a viff instance configured private
 	// create everything readable by everyone, with nothing said.
 	// A root default that cannot be one is refused as a seed is: fatal, saying why.
 	rootDefault := entity.CheckChildGrants(o.perms.ChildGrants)
@@ -303,8 +303,8 @@ func NewWithStore(store entity.Store, opts ...Option) *Server {
 	// anybody's behalf: a request that arrived before the seed would be checked against a
 	// autonomy admitting nobody.
 	// A FAILED SEED IS FATAL, and it is kept here for StartServing to refuse on. The seed IS the
-	// autonomy — the root's record is what admits anybody at all — so a viff that serves without
-	// it refuses every request from every person, which looks like a viff that has lost its
+	// autonomy — the root's record is what admits anybody at all — so a viff instance that serves without
+	// it refuses every request from every person, which looks like a viff instance that has lost its
 	// data.
 	seedErr := rootDefault
 	if seedErr == nil {
@@ -379,7 +379,7 @@ func NewWithStore(store entity.Store, opts ...Option) *Server {
 	})
 
 	// The Spawner owns the full lifecycle: host it via the runner, then mirror
-	// its state into the viff so triggers can react to its completion.
+	// its state into the viff instance so triggers can react to its completion.
 	eng.SetSpawner(s.spawnerFor(store, "", eng))
 	eng.SetDeadlineMover(s.moveDeadline)
 	eng.SetOfferCheck(s.offerCheck())
@@ -455,7 +455,7 @@ type hostedTask struct {
 // model credential it spends. The task's record carries the same (mirror.Meta).
 type launched struct {
 	environment systems.Environment
-	runner      string // the registration's ref (runnerEntityRef), "" for this viff's own runtime
+	runner      string // the registration's ref (runnerEntityRef), "" for this viff instance's own runtime
 	virtualKey  string // the credential's address as the spawn named it, never the key
 }
 
@@ -1104,7 +1104,7 @@ func (s *Server) resumeTasks(store entity.Store, scope string, mine func(id stri
 				continue
 			}
 		}
-		// Its runtime was this process: the task ended with the viff that ran it, and its
+		// Its runtime was this process: the task ended with the viff instance that ran it, and its
 		// record says so. Only how it ended is written;
 		// the rest of what the task recorded stands.
 		if _, _, err := store.Write(entity.Write{At: ent.Ref.At(), Value: mirror.Orphaned(mirror.OrphanedWithViff).Payload()}); err != nil {
@@ -1117,7 +1117,7 @@ func (s *Server) resumeTasks(store entity.Store, scope string, mine func(id stri
 // reconcileQuestions settles the questions nobody is waiting on any more.
 //
 // A question is a durable record and its WAITER is not: whatever blocked on the answer was a
-// goroutine in the viff that just died. So the record outliving the restart is only useful
+// goroutine in the viff instance that just died. So the record outliving the restart is only useful
 // where something can still receive an answer, and the docket has to say which is which —
 // listing a question nobody will read asks a person to decide something into a void.
 //
@@ -1126,7 +1126,7 @@ func (s *Server) resumeTasks(store entity.Store, scope string, mine func(id stri
 //   - A TASK raised it. It survives exactly as its task does, which is the distinction
 //     resumeLeft already draws: resumed behind a runner that is still there, orphaned
 //     when the runtime died with us. The question does not get its own opinion.
-//   - A FIRING raised it, before anything spawned. That waiter was in this viff, always, so
+//   - A FIRING raised it, before anything spawned. That waiter was in this viff instance, always, so
 //     a restart ends it unconditionally. If the rule still matches, its replay poses the
 //     question again under the same deterministic id and it comes back answerable within
 //     milliseconds — which is what a deterministic id is for. If it no longer matches, the
@@ -1157,7 +1157,7 @@ func (s *Server) reconcileQuestions() {
 
 // write applies a value at a path during startup reconciliation, reporting a failure on
 // stderr. Reconcile runs before the server serves, with no request to fail: a write that did
-// not land leaves the viff claiming something untrue about a task, and the operator
+// not land leaves the viff instance claiming something untrue about a task, and the operator
 // deserves to see that at the point it happens rather than to deduce it later.
 func (s *Server) write(at entity.Path, v entity.Payload) {
 	if _, _, err := s.Store.Write(entity.Write{At: at, Value: v}); err != nil {
@@ -1349,7 +1349,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /resolvers/{name}/asks", s.servedAsks, "", list("viff-served-ask"))
 	rt.handle("GET /asks/{id}/served", s.askServed, "", one("viff-ask-served"))
 	rt.handle("POST /resolvers/{name}/revoke", s.revokeResolver, "viff-answer-for", nothing)
-	// sources — what REFLECTS an external system into the viff, as against where work runs.
+	// sources — what REFLECTS an external system into the viff instance, as against where work runs.
 	// Addressed by the slice reflected, because that is a question viff already asks: who
 	// writes `git:*`. See docs/io.md.
 	rt.handle("GET /iods", s.listIOs, "", list("viff-iod-row"))
@@ -1382,7 +1382,7 @@ func (s *Server) Handler() http.Handler {
 	rt.handle("GET /accounts/{provider}/who", s.whoIsAccount, "", one("viff-account"))
 	rt.handle("DELETE /accounts/{provider}/{sub}", s.revokeAccount, "", nothing)
 	// runners — WHERE work runs, as against who answers for it. Installed rather than chosen
-	// at startup, so a drive can add one for work this viff does not otherwise need to know
+	// at startup, so a drive can add one for work this viff instance does not otherwise need to know
 	// about.
 	rt.handle("GET /runners", s.listRunners, "", list("viff-runner-row"))
 	rt.handle("POST /runners", s.addRunner, "viff-installed-runner", one("viff-runner-row"))
@@ -1456,7 +1456,7 @@ func (s *Server) Handler() http.Handler {
 // per process so that a listing costs one write per party rather than one per request.
 //
 // It is a middleware rather than a line in scopedStore because reads present a principal too,
-// and a party that only ever looked is still a party the viff has met.
+// and a party that only ever looked is still a party the viff instance has met.
 //
 // WHO A REQUEST IS FROM is its bearer's, where it carries one: an id_token from an identity
 // provider the deployment names is verified, and the principal its account is bound to is set on
@@ -1551,7 +1551,7 @@ func (s *Server) principals(mux *http.ServeMux, unattributed map[string]bool) ht
 			// viff, and a refusal says to log in.
 			if g.Kind == entity.UserKind && s.verifiesPeople() && authenticatedBy(r) == claimantAsserted {
 				w.Header().Set("WWW-Authenticate", "Bearer")
-				http.Error(w, fmt.Sprintf("this viff admits a person only from an identity provider's "+
+				http.Error(w, fmt.Sprintf("this viff instance admits a person only from an identity provider's "+
 					"token (auth.principal.mode is %s), and this request names %s with none: log in "+
 					"(`viff account login`). People are verified first; an agent is taken as given "+
 					"until its own authentication is built, a runner is always verified by its token, "+
@@ -2156,7 +2156,7 @@ func (s *Server) listDocket(w http.ResponseWriter, r *http.Request) {
 	}
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `viff iod` answered `[]` on a viff holding three sources, which is the one shape an
+	// `viff iod` answered `[]` on a viff instance holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason.
 	if unreadable(w, r, readErr) {
 		return
@@ -2189,7 +2189,7 @@ func waitsOn(store entity.Store, who string, q entity.Payload) bool {
 // a question about nothing, and the operator was sent hunting a typo for a gate that was open
 // and waiting. Which is the one case where retrying is exactly right.
 //
-// The fallbacks remain for a question this viff never published: the id's own prefix (a
+// The fallbacks remain for a question this viff instance never published: the id's own prefix (a
 // runtime gate is `<task-id>~dN`), then a sweep of the snapshots for an executor-raised
 // gate, whose id carries no owner by construction.
 func (s *Server) ownerOf(store entity.Store, questionID string) string {
@@ -2937,7 +2937,7 @@ func (s *Server) reflect(store entity.Store, id string, serial uint64, h task.Ha
 	if m.As == "" {
 		m.As = runnerIdentity(store, m.RunnerName)
 	}
-	// Followed while this viff runs: the one that comes next follows it again (resume).
+	// Followed while this viff instance runs: the one that comes next follows it again (resume).
 	m.Done = s.ctxOrBackground().Done()
 	mirror.Reflect(store, id, h, m)
 }
@@ -3044,7 +3044,7 @@ func (s *Server) listResolvers(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `viff iod` answered `[]` on a viff holding three sources, which is the one shape an
+	// `viff iod` answered `[]` on a viff instance holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason.
 	if unreadable(w, r, readErr) {
 		return
@@ -3065,7 +3065,7 @@ func (s *Server) getResolver(w http.ResponseWriter, r *http.Request) {
 	}
 	var out resolver.Resolver
 	if err := codec.FromNode(e.Payload, &out); err != nil {
-		http.Error(w, fmt.Sprintf("resolver %s is stored in a shape this viff can't read: %v", ref, err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("resolver %s is stored in a shape this viff instance can't read: %v", ref, err), http.StatusInternalServerError)
 		return
 	}
 	writeOut(w, r, http.StatusOK, out)
@@ -3538,10 +3538,10 @@ func taskRows(store entity.Store) []entity.Entity {
 		1, entity.ViffRoot, mirror.System, mirror.InstanceKind)
 }
 
-// taskCount is how many tasks this viff has a record of — the number `viff task` lists.
+// taskCount is how many tasks this viff instance has a record of — the number `viff task` lists.
 //
 // It counts the mirror rather than the in-process runtime, and the difference is the whole
-// point: the runtime's map holds the tasks THIS PROCESS hosts, so a viff that runs its work
+// point: the runtime's map holds the tasks THIS PROCESS hosts, so a viff instance that runs its work
 // on a remote runner hosts none of them and would report 0 over a full docket. `status` is
 // read as the cheap orientation and `viff task` as the detail, in that order, by somebody
 // deciding whether anything is happening at all — so the two must not be able to disagree.
@@ -3760,7 +3760,7 @@ func (s *Server) getTask(w http.ResponseWriter, r *http.Request) {
 // nothing about their shape tells them apart, which is exactly why the answer has to.
 func noSuchTask(w http.ResponseWriter, r *http.Request, id string) {
 	codec.HTTPError(w, r, http.StatusNotFound, fmt.Sprintf(
-		"no task %q — not in this viff's runtime, not on its runner, and no record of one. "+
+		"no task %q — not in this viff instance's runtime, not on its runner, and no record of one. "+
 			"A SUBJECT is not a task id: a trigger names its task `<chain>@<subject>`. "+
 			"`viff flow` lists live tasks by id; "+
 			"`viff flow show %s` reads the flow.", id, id))

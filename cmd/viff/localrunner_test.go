@@ -36,7 +36,7 @@ func TestTheLocalRunnersTokenIsMadeOnceAndKept(t *testing.T) {
 }
 
 // THE CONFIG `viff up` WRITES is one runnerd loads as it loads any, strictly: where it listens,
-// the viff it serves, and what it offers. The address it listens on is read back by the next run,
+// the viff instance it serves, and what it offers. The address it listens on is read back by the next run,
 // and moved where the port is taken.
 func TestTheLocalRunnersConfigIsOneRunnerdLoads(t *testing.T) {
 	path := filepath.Join(t.TempDir(), localRunnerConfig)

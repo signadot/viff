@@ -14,7 +14,7 @@ import (
 	"go.viff.dev/viff/pkg/schedule"
 )
 
-// The seed: what the system holds out, so that the flows a viff runs today are admitted by
+// The seed: what the system holds out, so that the flows a viff instance runs today are admitted by
 // the check rather than by its absence. Every kind-rooted node under viff's root is the
 // system's, and a request that installs a charter, runs a task or registers a source creates
 // beneath one of them — so each holds out `owner` beneath itself to everyone, and what is
@@ -118,8 +118,8 @@ const AdminGroup = "admin"
 // never one — nothing acts as a group, and the root's owner has to be somebody.
 //
 // It is an identity of the deployment's rather than a person's: whoever administers rotates, and
-// the root record would otherwise carry the name of whoever set the viff up long after they
-// stopped. Ownership descends, so this principal co-owns every place in the viff, which is what
+// the root record would otherwise carry the name of whoever set the viff instance up long after they
+// stopped. Ownership descends, so this principal co-owns every place in the viff instance, which is what
 // makes it the one that can put the top back — a grant could not, since ownership concluded from
 // a grant is held back wherever somebody else's place stands beneath (the fence).
 //
@@ -136,13 +136,13 @@ type Perms struct {
 	// `child-grants`. nil leaves the check's own, which is the open viff's `{read: ["*"]}`; EMPTY is
 	// a setting, and it says what anybody creates is theirs and their grantees' alone.
 	ChildGrants entity.Levels
-	// Admins are the grantees the admin group holds. Empty is a viff with no administered
+	// Admins are the grantees the admin group holds. Empty is a viff instance with no administered
 	// top: anybody takes a top-level place, which is what a dogfood viff runs as.
 	Admins []string
 	// Reseed writes the top records as this config says, OVER what stands. Without it the seed
 	// writes them once and an operator's edits are what stand after — which is right until the
 	// deployment's own policy changes, and then there is no way to apply it: the seed is absent
-	// only on a viff nobody has started, and the records are not a person's to write by hand.
+	// only on a viff instance nobody has started, and the records are not a person's to write by hand.
 	//
 	// It is a deployment's act and says so: an operator turns it on for one start, reads the
 	// top back, and turns it off. It touches the three records this file writes and nothing
@@ -150,8 +150,8 @@ type Perms struct {
 	Reseed bool
 }
 
-// seedPerms writes the seed, once: a row already standing — this viff's, or an operator's
-// edit of it — is left as it is. A default is written where the record says none, so a viff
+// seedPerms writes the seed, once: a row already standing — this viff instance's, or an operator's
+// edit of it — is left as it is. A default is written where the record says none, so a viff instance
 // seeded before defaults existed gets the docket's; a default an operator set stands.
 func seedPerms(store entity.Store, p Perms) error {
 	if err := seedTop(store, p); err != nil {
@@ -342,12 +342,12 @@ func clearForReseed(store entity.Store, p Perms, refs ...entity.Ref) error {
 // of the top, open or administered, and the DEFAULT a new node holds out — which is otherwise
 // silent. It does not watch WHO the admins are: the config's list seeds the admin group, and
 // membership is changed live, by `user:admin@viff` with `viff group`, like any other group's.
-// A list that differs from the group is therefore the ordinary state of a viff somebody
+// A list that differs from the group is therefore the ordinary state of a viff instance somebody
 // administers, and not drift.
 //
 // It is said because the seed writes once and the record is what a check reads, so a deployment
 // that changed `perms.admins` or `perms.child-grants` and restarted goes on running the policy it
-// had: a viff set private still creating what everyone reads, with nothing to read but the old
+// had: a viff instance set private still creating what everyone reads, with nothing to read but the old
 // record. Said at every start rather than fixed, since the record is where an operator's own
 // edits live and this cannot tell those from a config that moved.
 func noteDrift(store entity.Store, p Perms, want entity.Obj) {

@@ -1,6 +1,6 @@
 // Package runnerdtest serves a runner for a test: a builder's tasks behind the task-control
-// contract, over HTTP, proving itself to a viff with a static token as a registered runner does.
-// A viff runs no task in its own process, so a test that runs tasks registers one of these.
+// contract, over HTTP, proving itself to a viff instance with a static token as a registered runner does.
+// A viff instance runs no task in its own process, so a test that runs tasks registers one of these.
 package runnerdtest
 
 import (
@@ -30,7 +30,7 @@ type Runner struct {
 }
 
 // Serve serves build as a runner describing itself as desc. It answers its static token on every
-// describe, to whoever asks, and takes any bearer: it proves itself to a viff without holding the
+// describe, to whoever asks, and takes any bearer: it proves itself to a viff instance without holding the
 // viff to anything, which a test viff's door does not need. Its tasks are cancelled, and its
 // connections closed, when the test ends.
 func Serve(t testing.TB, build runnerd.Builder, desc runner.Description) *Runner {

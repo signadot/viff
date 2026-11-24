@@ -105,7 +105,7 @@ func agentOffer(sys map[string]runner.System) runner.Offer {
 	return runner.Offer{Agent: &runner.AgentOffer{Name: "viff", Settings: map[string]runner.Setting{"model": {}}}, Systems: withNet(sys)}
 }
 
-// described is a description of the offers given, at this viff's version.
+// described is a description of the offers given, at this viff instance's version.
 func described(offers ...runner.Offer) runner.Description {
 	return runner.Description{Version: runner.DescriptionVersion, Offers: offers}
 }

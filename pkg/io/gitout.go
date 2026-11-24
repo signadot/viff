@@ -46,7 +46,7 @@ import (
 // disk gets the ref written in place, which is what a laptop driving the reconciler against a
 // clone wants.
 type GitSink struct {
-	// Viff is the viff an install input installs into, as this io (gitinstall.go). Nil
+	// Viff is the viff instance an install input installs into, as this io (gitinstall.go). Nil
 	// installs nothing, and an install input is refused for good.
 	Viff *client.Client
 	// As is the principal Viff acts as: who an obsolete input's answers are by

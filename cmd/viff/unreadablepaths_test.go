@@ -75,7 +75,7 @@ func (u *unreadable) ReadError() error {
 	return nil
 }
 
-// serveUnreadable stands up a viff over a store that can be made to stop answering, and points
+// serveUnreadable stands up a viff instance over a store that can be made to stop answering, and points
 // the client at it.
 func serveUnreadable(t *testing.T) *unreadable {
 	t.Helper()
@@ -90,7 +90,7 @@ func serveUnreadable(t *testing.T) *unreadable {
 // AN UNREADABLE STORE IS NOT AN EMPTY VIFF, on the form a SCRIPT reads.
 //
 // `--paths` prints one address per line and nothing else, so a store that could not be read
-// presents as zero records — the exact answer a viff holding nothing gives, and the failure
+// presents as zero records — the exact answer a viff instance holding nothing gives, and the failure
 // the long form's refusal exists to prevent (`--paths | wc -l` reporting 0 where the truth was
 // "the store could not answer"). The two forms of the one read must not disagree about that:
 // whatever `viff data <path>` refuses, `viff data <path> --paths` refuses too.

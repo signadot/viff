@@ -29,7 +29,7 @@ func TestTheSystemsDocumentsAreInstalledAtStart(t *testing.T) {
 	}
 }
 
-// A SYSTEM THE BINARY NO LONGER SHIPS LEAVES THE STORE AT START: a store carried from a viff
+// A SYSTEM THE BINARY NO LONGER SHIPS LEAVES THE STORE AT START: a store carried from a viff instance
 // that had it keeps no document of verbs nothing checks a policy against.
 func TestADocumentOfASystemNotShippedIsRemovedAtStart(t *testing.T) {
 	srv := testServer(t)

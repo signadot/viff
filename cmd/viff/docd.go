@@ -44,7 +44,7 @@ type docd struct {
 //   - --docd-addr given: connect to a running docd (viff spawns nothing).
 //   - --data given: bring logd+docd up on that dir via `o sys up`.
 //   - neither: do the same on ~/.viff/<addr> (defaultDataDir), made on the first run and
-//     kept, so a bare `viff up` comes back to the same viff, its local runner with it.
+//     kept, so a bare `viff up` comes back to the same viff instance, its local runner with it.
 //
 // For the spawned modes viff reserves free loopback ports and passes them to
 // `o sys up`, so it already knows the addresses (no stdout scraping), and waits for
@@ -124,8 +124,8 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 		return docd{}, err
 	}
 	// The admin/pprof face gets a reserved port too. `o sys up` defaults it to a FIXED
-	// localhost:9223 and treats the bind as fatal, so leaving it unset made every viff
-	// that spawns its own daemons claim one global port: a second viff — a smoke beside
+	// localhost:9223 and treats the bind as fatal, so leaving it unset made every viff instance
+	// that spawns its own daemons claim one global port: a second viff instance — a smoke beside
 	// a dev server, two smokes in two worktrees — died on "address already in use" from a
 	// listener neither of them asked for. Ephemeral here for the same reason as the three
 	// above; `off` would buy the same isolation but throw away the one channel that still
@@ -200,7 +200,7 @@ func resolveDocd(cfg *upConfig, cc *cli.Context) (docd, error) {
 // resolveO answers with the `o` binary to spawn logd+docd with.
 //
 // This used to be `go run <pinned cmd/o>`, which works in exactly one place: a checkout of
-// this module. Everywhere else — the directory an operator actually starts a viff in —
+// this module. Everywhere else — the directory an operator actually starts a viff instance in —
 // `go run` cannot resolve a package it has no go.mod for, so `viff up` printed a module
 // error from a tool nobody asked about and then waited out its startup timeout.
 //
@@ -276,7 +276,7 @@ func resolveO(explicit string, cc *cli.Context) (string, error) {
 // COMPACTION, which logd leaves off. Off means every patch ever written is retained, and a
 // read replays the ones that reach its path — so a store's read cost grows with its whole
 // history and never comes back down. Snapshots bound what a read replays; they do not bound
-// what the disk holds. A viff is a long-lived store written to by an engine that fires on
+// what the disk holds. A viff instance is a long-lived store written to by an engine that fires on
 // every commit, so "keep everything forever" is not a default it can live on.
 //
 // A DAY, because the cutoff is how far back an EXACT read works, and viff reads at a firing's
@@ -429,8 +429,8 @@ func pinnedGoTony() string {
 
 // cachedO is where viff keeps an `o` it installed: ~/.viff/bin/<version>/o. The version
 // is a directory rather than part of the name so the binary keeps calling itself `o`, and
-// so a viff built against a newer go-tony installs beside the old one instead of racing
-// another running viff for the same path.
+// so a viff instance built against a newer go-tony installs beside the old one instead of racing
+// another running viff instance for the same path.
 func cachedO(version string) string {
 	if version == "" {
 		return ""

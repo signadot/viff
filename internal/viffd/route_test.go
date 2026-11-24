@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// routedServer is a viff whose own runner hosts nothing, with two runners registered by workload
+// routedServer is a viff instance whose own runner hosts nothing, with two runners registered by workload
 // token, each offering the agent `fake` and scripts: `a` and `b`, in that order by name. It
 // answers the token files, which a test rewrites to make a runner somebody else.
 func routedServer(t *testing.T) (*Server, *httptest.Server, map[string]string) {

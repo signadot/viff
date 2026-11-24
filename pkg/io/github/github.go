@@ -558,7 +558,7 @@ func (g *GitHub) reflectRepo(ctx context.Context, repo string) (viffio.Reflectio
 
 	// CI state lands on the pull request as a field, not as entities of its own. "Is this PR
 	// green" is a property of the proposal rather than of the seventeen check runs that
-	// produced it, and a kind per check would multiply the busiest slice in the viff to answer
+	// produced it, and a kind per check would multiply the busiest slice in the viff instance to answer
 	// a question nobody asks in that form. A charter that wants the failing job follows `url`.
 	//
 	// Derived from the runs already read, by head sha, so it costs no request at all — where

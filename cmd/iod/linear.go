@@ -60,7 +60,7 @@ func linearMain(args []string) error {
 		"POST /linear/webhook": src.Webhook(signing, c.hinter()),
 	}
 
-	// The out half dials the viff, where the reflection is dialled BY it: one pass loop per
+	// The out half dials the viff instance, where the reflection is dialled BY it: one pass loop per
 	// team's place, all of them the same sink, since an issue identifier says which team it is.
 	if *out {
 		if _, err := c.outHalf(ctx, src.Root(), src.Sink(), src.OutRefs(), nil); err != nil {

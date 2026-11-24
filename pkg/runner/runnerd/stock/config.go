@@ -185,7 +185,7 @@ type Config struct {
 	// it installs any.
 	Pkg *Pkg `tony:"field=pkg,omitzero"`
 
-	// reachesViff is whether the runner carries the viff system's verbs to the viff it serves
+	// reachesViff is whether the runner carries the viff system's verbs to the viff instance it serves
 	// (Standalone's toViff): not the file's to say, since it follows from the runner's `viff:`
 	// block and its token.
 	reachesViff bool
@@ -1026,7 +1026,7 @@ func (c *Config) checkSystems(doer string, sections map[string]System) error {
 					at, name, doer, name, strings.Join(innerFor(doer), ", "))
 			}
 		} else if p, _ := performedNamed(name); name != "network" && !p.atStart && !slices.Contains(performs, name) {
-			// viff's section is taken whether or not the runner reaches a viff, which the file
+			// viff's section is taken whether or not the runner reaches a viff instance, which the file
 			// is checked before knowing (performed.atStart): the runner offers the system only
 			// where it does, with its own token.
 			return fmt.Errorf("%s.%s: this runner does not perform %s (it performs: %s); %s", at, name, name,

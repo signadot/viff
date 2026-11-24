@@ -4,7 +4,7 @@ import "time"
 
 // Runner runs and governs tasks on some substrate; viff (the engine) is its
 // client. The only implementation today is the in-process local supervisor (a runnerd
-// wrapper); remote runners addressed by a base URL — k8s, lambda, another viff — come
+// wrapper); remote runners addressed by a base URL — k8s, lambda, another viff instance — come
 // later, all behind this same seam. See docs/task-control.md.
 //
 // Keeping even the local case behind the interface is deliberate: there is no privileged
@@ -40,7 +40,7 @@ type Runner interface {
 //
 // ListTasks: nil, nil is a runner with no tasks; a runner that did not answer is
 // ErrUnreachable and one with no such face is ErrUnsupported. Those are not the same fact, and
-// a caller that cannot tell them apart shows an operator a viff with less work in it than it
+// a caller that cannot tell them apart shows an operator a viff instance with less work in it than it
 // has.
 //
 // TaskSnapshot: ErrNoSuchTask is the far side answering that it has never heard of this

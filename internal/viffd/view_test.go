@@ -10,7 +10,7 @@ import (
 	"go.viff.dev/viff/pkg/entity"
 )
 
-// alicesRunner installs a runner that is alice's alone, in a viff that holds nothing out.
+// alicesRunner installs a runner that is alice's alone, in a viff instance that holds nothing out.
 func alicesRunner(t *testing.T, srv *Server, name string) {
 	t.Helper()
 	entity.PolicyOf(srv.Store).SetRootChildGrants(nil)

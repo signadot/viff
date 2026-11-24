@@ -20,7 +20,7 @@ import (
 // obvious reading is a typo in the id, when the actual cause is that the control path looked
 // for the task in the wrong place. Asked directly, the runner holding it cancels happily.
 //
-// taskControl called s.runner.Attach — this viff's DEFAULT runner — while the whole point of
+// taskControl called s.runner.Attach — this viff instance's DEFAULT runner — while the whole point of
 // `runner:` on a spawn is that the work went somewhere else. Every task a charter spawns onto
 // a pool was therefore uncontrollable: no cancel, no say, no vector slide. The events route
 // had already learned this ("wherever it runs, not wherever the default runner is") and

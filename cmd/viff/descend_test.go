@@ -6,7 +6,7 @@ import (
 )
 
 // `..` IS A STEP, and it reaches every depth beneath where it stands — the node included. It is
-// what asks a question about the viff without naming a depth for it: `viff data '..' -if X`
+// what asks a question about the viff instance without naming a depth for it: `viff data '..' -if X`
 // answers every node X holds of, nested where it stands.
 //
 // The shell is why it is a whole word: `..` is not expanded, and the name that is two dots is

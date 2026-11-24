@@ -40,7 +40,7 @@ import (
 //     half-applied included — which is what it would see of any concurrent write. It cannot be
 //     otherwise anyway: a rule begins observing when it installs, so a half-applied charter is
 //     already ACTING, and a reader held behind this lock would get a tidy before-and-after view
-//     of a viff that had already fired half a program. Locking reads buys a neater display and
+//     of a viff instance that had already fired half a program. Locking reads buys a neater display and
 //     costs a listing that wedges behind an install, which is the readiness probe that made
 //     health a function of load, one surface over.
 //

@@ -54,12 +54,12 @@ fi
 VIFF="${VIFF:-viff}"
 O="${O:-o}"
 v() { "$VIFF" -addr "$ADDR" "$@"; }
-v status >/dev/null || { echo "cannot reach a viff at $ADDR" >&2; exit 1; }
+v status >/dev/null || { echo "cannot reach a viff instance at $ADDR" >&2; exit 1; }
 
 # places prints the list's places, one per line, comments and blank lines dropped.
 places() { sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$LIST" | grep -v '^$' || true; }
 
-# dotted joins steps the way the viff spells an address back: `notes.team`.
+# dotted joins steps the way the viff instance spells an address back: `notes.team`.
 dotted() { local IFS=.; echo "$*"; }
 
 # managed answers why a place is a charter's to rebuild, and nothing when it is not: a package at

@@ -546,7 +546,7 @@ func streamChanges(cc *cli.Context, what string, q url.Values, s stream) error {
 	}
 	// A STREAM THAT STOPS SHORT SAYS SO. Only the server closing it is the quiet end above; a
 	// frame the scan cannot hold, or a read that breaks, is an error, or it would print and exit
-	// exactly as a viff with nothing to report does.
+	// exactly as a viff instance with nothing to report does.
 	if errors.Is(frames.Err(), codec.ErrFrameTooLong) {
 		return fmt.Errorf("%s: a frame is longer than the %d bytes this reads. A node's opening "+
 			"state is one frame; '*' after its steps watches its children, a frame each",
@@ -919,7 +919,7 @@ type stateConfig struct {
 	Grants string `cli:"name=grants desc='with --put: create the node holding out this list, as viff perms --grants takes it ([{read: [ana@example.com]}]; [] for nothing), in place of the default above it; refused where the node stands'"`
 }
 
-// dataCmd is `viff data`: the viff's data at a path.
+// dataCmd is `viff data`: the viff instance's data at a path.
 //
 // The answer is the document the store holds, not rows flattened out of it, and every question
 // is one path asked at a different depth, typed as steps: `viff data`, `viff data demo`,
@@ -933,7 +933,7 @@ func dataCmd() *cli.Command {
 		panic(err)
 	}
 	return cli.NewCommandAt(&cfg.Command, "data").WithAliases("d").
-		WithSynopsis("data — the viff at an address: data [<step>…] [--if <pattern>] [--paths]; --put|--rm one").
+		WithSynopsis("data — the store at an address: data [<step>…] [--if <pattern>] [--paths]; --put|--rm one").
 		// --trim only, for the reason watch takes only that: `data --if` is the server's
 		// selector, and it names WHICH ENTITIES rather than what to print of them.
 		WithOpts(append(opts, trimOpt()...)...).
@@ -1031,7 +1031,7 @@ func (cfg *stateConfig) run(cc *cli.Context, args []string) error {
 	return printDoc(cc, resp, kp)
 }
 
-// stateQuery is a read of the viff at the kinded path at, as GET /state takes it
+// stateQuery is a read of the viff instance at the kinded path at, as GET /state takes it
 // (api.StateQuery), and the path parsed, which is what the answer is walked by.
 func stateQuery(at, pattern, patternAt string, listing bool, depth int, in codec.Format) (url.Values, *kpath.KPath, error) {
 	q, kp, err := api.StateQuery(at, pattern, patternAt, listing, depth, in)

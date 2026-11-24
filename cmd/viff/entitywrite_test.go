@@ -20,7 +20,7 @@ import (
 	"go.viff.dev/viff/pkg/entity/entitytest"
 )
 
-// testAddr is where serve() put the viff this test talks to. rootCmd() resolves the
+// testAddr is where serve() put the viff instance this test talks to. rootCmd() resolves the
 // address from the config layers every time it is built, so it has to be re-pointed after.
 var testAddr string
 
@@ -91,7 +91,7 @@ type nopCloser struct{ *bytes.Buffer }
 
 func (nopCloser) Close() error { return nil }
 
-// serve stands up a viff over a real store and points the client at it.
+// serve stands up a viff instance over a real store and points the client at it.
 func serve(t *testing.T) entity.Store {
 	t.Helper()
 	store := entitytest.Store(t)

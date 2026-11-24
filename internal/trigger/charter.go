@@ -1,11 +1,11 @@
 package trigger
 
-// The charter is its records: an installed rule is written into the viff as a
+// The charter is its records: an installed rule is written into the viff instance as a
 // trigger:rule:<name> entity, and the engine follows the records (follow.go).
 //
 // Everything else a restart needs is durable — a task is mirrored, a sequence's position is a
 // fact on its subject, a claim is a debt in the store, and a task's hooks are looked up by its
-// chain when it ends — so the program is too: a viff comes back up with its work in progress intact and
+// chain when it ends — so the program is too: a viff instance comes back up with its work in progress intact and
 // the charter standing to react to it.
 //
 // It is one entity per rule rather than one charter document, because that is what the
@@ -89,12 +89,12 @@ func (e *Engine) asOwner(name string) (string, *cause) {
 }
 
 // ErrCharter marks an install refused by the STORE rather than by the rule: the trigger is
-// fine, the viff could not record it. A caller answering a request tells the two apart
+// fine, the viff instance could not record it. A caller answering a request tells the two apart
 // with errors.Is — a malformed rule is the installer's problem, an unwritable charter is
 // viff's, and reporting the second as the first sends someone to debug a correct trigger.
 var ErrCharter = errors.New("the charter could not be written")
 
-// persist writes t into the viff as its charter entity, and answers the revision the write
+// persist writes t into the viff instance as its charter entity, and answers the revision the write
 // landed at: what a caller waits for the follow to reach. A write that changed nothing lands
 // at none.
 //

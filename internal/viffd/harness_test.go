@@ -14,7 +14,7 @@ import (
 	"go.viff.dev/viff/pkg/runner/runnerd/viff/modeltest"
 )
 
-// harnessServer is a viff hosting its tasks as `viff up` does, with the model its runner
+// harnessServer is a viff instance hosting its tasks as `viff up` does, with the model its runner
 // reaches: the test's, or none.
 func harnessServer(t *testing.T, modelURL string) *Server {
 	t.Helper()

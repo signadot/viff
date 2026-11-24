@@ -250,7 +250,7 @@ func TestARefusedRecordIsPendingWithTheRefusal(t *testing.T) {
 }
 
 // A RESTORE SAYS WHAT THE STORE IS DOING. The charter is read from its records through a
-// watch, and until the watch is open nothing is restored and Restored is not closed: a viff
+// watch, and until the watch is open nothing is restored and Restored is not closed: a viff instance
 // under load at a restart says so (FollowState) rather than coming back running no rules. An
 // empty charter restores, and says nothing is wrong, because nothing is.
 func TestARestoreSaysWhatTheStoreIsDoing(t *testing.T) {

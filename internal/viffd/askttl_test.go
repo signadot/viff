@@ -117,7 +117,7 @@ func TestAnAsksExpiryHoldsAcrossARestart(t *testing.T) {
 	ts.Close()
 	stop()
 
-	// The same clock: the expiry is an instant on the record, and the second viff arms it
+	// The same clock: the expiry is an instant on the record, and the second viff instance arms it
 	// against the clock as it stands.
 	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.clock = clock
@@ -150,7 +150,7 @@ const gatedRule = `{
 	gates: [{name: ok, mode: ask}], action: {patch: {landed: true}},
 }`
 
-// A RULE'S GATE IS AN ASK, AND GOES LIKE ONE: settled, it stands for the viff's keep, then it is
+// A RULE'S GATE IS AN ASK, AND GOES LIKE ONE: settled, it stands for the viff instance's keep, then it is
 // removed.
 func TestASettledGateGoesAfterTheKeep(t *testing.T) {
 	srv, ts, clock := keeping(t, 2*time.Second)

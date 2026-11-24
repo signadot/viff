@@ -120,7 +120,7 @@ type taskRunConfig struct {
 	// Who is running this — used twice, because it is one fact. A gate that arrives while
 	// attached is answered as this (watching needs no identity; answering has needed one
 	// since a decision became a durable record), and it rides the spawn as the run's
-	// PRINCIPAL, so a runner whose effects leave the viff can say on whose account.
+	// PRINCIPAL, so a runner whose effects leave the viff instance can say on whose account.
 	// Self-asserted, like every other `--as` here.
 	As string `cli:"name=as desc='who is running this: the run principal, and the identity for a gate answered while attached'"`
 }
@@ -973,9 +973,9 @@ var asOverride string
 
 // principal resolves who a command acts as, spelled in the grammar (entity.Grammar): its --as
 // where it took one, else the config's `agent:` as `agent:<name>`, else whoever is logged in
-// toward this viff (`viff account login`), else the config's `user:`, else the local user when the viff
+// toward this viff instance (`viff account login`), else the config's `user:`, else the local user when the viff instance
 // is on this machine (localUser) and nobody when it is not. A login comes before `user:` because
-// its token is what the request carries, and the viff makes the request as whoever that proves. --as and
+// its token is what the request carries, and the viff instance makes the request as whoever that proves. --as and
 // `user:` take a principal or a bare email, which is `user:<email>`; a bare word is refused
 // rather than guessed at, so `--as viff-runner` is an error and `--as runner:viff-runner` a
 // worker. Recording the answer is what puts it on the wire (see skewCheck), so a ballot cast
@@ -1022,7 +1022,7 @@ func principal(as string) (string, error) {
 // made them, and the refusal is a USAGE error in each — so the command whose --as is most
 // obviously load-bearing prints the usage rather than a bare line. What it answers is the
 // principal to act as: --as, or whoever the CLI acts as when the flag was left off (principal).
-// Toward a viff on this machine that is always somebody, so the refusal is one a shared viff
+// Toward a viff instance on this machine that is always somebody, so the refusal is one a shared viff
 // gives.
 func requireAs(as, noun, why string) (string, error) {
 	if p, err := principal(as); err != nil || p != "" {

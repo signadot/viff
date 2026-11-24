@@ -23,7 +23,7 @@ import (
 // spawn no runner takes is refused here as the install refuses it. runners is what the vet makes
 // of a spawn no runner offers at all: RunnersChecked refuses it, as an install does;
 // RunnersToCome holds it, as a restore places a rule before the runners are known, for a check
-// against a viff whose runners are not up yet.
+// against a viff instance whose runners are not up yet.
 func Check(store entity.Store, confine Subtree, reads []Subtree, as string, strata []Stratum, rules []Trigger,
 	offer func(runner.Launch) error, runners Runners) (held []string, err error) {
 	e := New(store, nil)

@@ -12,7 +12,7 @@ import (
 	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// The out half: a comment on a Linear issue, kept in step with what the viff asks for.
+// The out half: a comment on a Linear issue, kept in step with what the viff instance asks for.
 //
 // It is the second sink, and it exists as much to prove the framework is not Slack's as to
 // comment on issues. What it shares with Slack is the whole of io.Out — the pass, the status

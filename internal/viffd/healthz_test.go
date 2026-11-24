@@ -36,7 +36,7 @@ func (c *countingStore) Rev() int64 { c.reads++; return c.Store.Rev() }
 // THE READINESS ENDPOINT MAKES NO STORE READ, at any load.
 //
 // That is the whole of what it is for. `/status` is a census — it counts gates, runners and
-// sources, and Rev syncs — so probing it asked docd for the viff every five seconds, made
+// sources, and Rev syncs — so probing it asked docd for the viff instance every five seconds, made
 // readiness a function of the STORE's load rather than of this process, and left a root watch
 // behind per attempt. Staging sat 0/1 for half an hour on a healthy store.
 func TestHealthzReadsNothing(t *testing.T) {

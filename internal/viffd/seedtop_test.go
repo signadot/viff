@@ -155,7 +155,7 @@ func TestASecondSeedLeavesAnEditedRecordAlone(t *testing.T) {
 // from a record is the one authority the fence never holds back: a grant conferring ownership
 // stops wherever somebody else's place stands beneath it, which is every place an administered
 // viff has. That is what lets an admin put the top back — and, through `viff perms`, edit the
-// root's own record on a running viff, which nobody could when the system owned it.
+// root's own record on a running viff instance, which nobody could when the system owned it.
 func TestTheRootIsTheAdminIdentitys(t *testing.T) {
 	store := seeded(t, Perms{Admins: []string{"user:walter@example.com"}})
 	rec, ok, err := store.Get(entity.PermsRef(entity.RefAt()))
@@ -207,13 +207,13 @@ func TestTheAdminIdentityDoesNotDisplaceAnOwner(t *testing.T) {
 	}
 }
 
-// A policy that changed reaches a viff that already has a top only when somebody says so: the
+// A policy that changed reaches a viff instance that already has a top only when somebody says so: the
 // seed is once, because after it the records are where an operator's own edits live and nothing
 // here can tell an edit from a config that moved.
 func TestAConfigChangeNeedsAReseed(t *testing.T) {
 	store := seeded(t, Perms{})
 	bob, walter := "user:bob@example.com", "user:walter@example.com"
-	// A place taken while the viff was open, which the narrowing must leave alone.
+	// A place taken while the viff instance was open, which the narrowing must leave alone.
 	place := entity.RefAt("github", "signadot", "viff")
 	if err := entity.Claim(store, place, "user:alice@example.com"); err != nil {
 		t.Fatal(err)
@@ -249,7 +249,7 @@ func TestAConfigChangeNeedsAReseed(t *testing.T) {
 	}
 }
 
-// `perms: {child-grants: {}}` IS A SETTING, not the absence of one: a viff where what anybody creates
+// `perms: {child-grants: {}}` IS A SETTING, not the absence of one: a viff instance where what anybody creates
 // is theirs and their grantees' alone. Testing it with `len(...) > 0` read the empty map as
 // unset, and a deployment configured private created everything readable by everyone.
 func TestAnEmptyDefaultIsPrivateNotUnset(t *testing.T) {
@@ -262,7 +262,7 @@ func TestAnEmptyDefaultIsPrivateNotUnset(t *testing.T) {
 		t.Fatal(err)
 	}
 	if holds(t, store, bob, entity.Read, note) {
-		t.Error("bob reads what alice created in a viff whose default holds out nothing")
+		t.Error("bob reads what alice created in a viff instance whose default holds out nothing")
 	}
 	// …and unset is still the open viff's: readable by everyone.
 	open := seeded(t, Perms{})
@@ -320,7 +320,7 @@ func TestAReseedReplacesWhatAnOperatorAdded(t *testing.T) {
 
 // WHO THE ADMINS ARE IS CHANGED LIVE, by the identity that owns the root: the config's list seeds
 // the group, and after that membership is the group's, edited with `viff group` like any
-// other's. So a list that differs from the group is a viff somebody administers, not drift —
+// other's. So a list that differs from the group is a viff instance somebody administers, not drift —
 // and it has to be true that the admin identity can make the edit, and that nobody else can.
 func TestTheAdminIdentityChangesWhoTheAdminsAre(t *testing.T) {
 	store := seeded(t, Perms{Admins: []string{"user:walter@example.com"}})
@@ -346,7 +346,7 @@ func TestTheAdminIdentityChangesWhoTheAdminsAre(t *testing.T) {
 }
 
 // A `perms.child-grants` THAT MOVED IS DRIFT, as a form of the top that moved is. The root's record is
-// what a creation reads, written once, so a viff first started open and then configured private
+// what a creation reads, written once, so a viff instance first started open and then configured private
 // went on creating what everyone reads — and said nothing, since only the grants were compared.
 func TestADefaultTheConfigNoLongerSaysIsDrift(t *testing.T) {
 	store := seeded(t, Perms{ChildGrants: entity.Levels{entity.Read: {entity.Everyone}}})
@@ -362,7 +362,7 @@ func TestADefaultTheConfigNoLongerSaysIsDrift(t *testing.T) {
 		return o.Payload()
 	}
 	if got := drifted(stands.Payload, want(Perms{ChildGrants: entity.Levels{}})); len(got) != 1 || got[0] != entity.ChildGrantsField {
-		t.Errorf("a viff configured private over a record that says read to everyone: drift = %v", got)
+		t.Errorf("a viff instance configured private over a record that says read to everyone: drift = %v", got)
 	}
 	if got := drifted(stands.Payload, want(Perms{ChildGrants: entity.Levels{entity.Read: {entity.Everyone}}})); len(got) != 0 {
 		t.Errorf("the default it was seeded with reads as drift: %v", got)

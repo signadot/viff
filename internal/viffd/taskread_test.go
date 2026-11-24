@@ -9,7 +9,7 @@ import (
 	"go.viff.dev/viff/pkg/entity"
 )
 
-// privateWithTasks is a viff that holds nothing out, with a task of alice's hosted here.
+// privateWithTasks is a viff instance that holds nothing out, with a task of alice's hosted here.
 func privateWithTasks(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
 	srv := testServer(t)

@@ -87,6 +87,6 @@ func TestAWatchCatchesUpOverTheSliceItWatches(t *testing.T) {
 	get(url.Values{"since": {"0"}})
 	asked = store.asked()
 	if last := asked[len(asked)-1]; len(last) != 0 {
-		t.Errorf("a watch over the whole viff caught up at %v, want the root", last)
+		t.Errorf("a watch over the whole viff instance caught up at %v, want the root", last)
 	}
 }

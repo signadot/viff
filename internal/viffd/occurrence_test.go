@@ -59,7 +59,7 @@ func TestATaskRecordSaysWhichRunItIs(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	// Something has happened in this viff before the first run — which is not staging for
+	// Something has happened in this viff instance before the first run — which is not staging for
 	// the test's benefit but the ordinary case: a store at revision 0 has had no commits, so
 	// a run in it has no revision to name, and the moment anything is written that stops
 	// being true.
@@ -73,7 +73,7 @@ func TestATaskRecordSaysWhichRunItIs(t *testing.T) {
 		t.Fatal("a run with no occurrence: the record cannot say which run it is")
 	}
 
-	// A second run of the SAME id, as a re-fire produces. The viff has moved on, so this
+	// A second run of the SAME id, as a re-fire produces. The viff instance has moved on, so this
 	// run is about a later revision — which is the whole of what makes the two tellable
 	// apart.
 	entitytest.Set(t, store, entity.RefAt("demo", "pr", "2"),

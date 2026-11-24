@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # relayout.sh: the move to the golang-standards/project-layout tree, as a script.
 #
-# Committed with the move so that a branch owner, or the viff -> viff-oss sync, can apply the
+# Committed with the move so that a branch owner, or the viff instance -> viff-oss sync, can apply the
 # same move to a tree that still has the old paths: rebase, then run this. Delete it once nothing
 # needs it.
 #
@@ -10,7 +10,7 @@
 # the old path, beside the moved directory); the import rewrite is a no-op on a rewritten path.
 #
 # What it does:
-#   1. git mv the Go packages into pkg/ (what a program outside the viff imports) and internal/
+#   1. git mv the Go packages into pkg/ (what a program outside the viff instance imports) and internal/
 #      (viffd's own), and the loose root files into build/, docs/ and test/.
 #   2. rewrite the import paths in every *.go file (tracked or not), then gofmt the files it
 #      touched, since a rewritten path can change the sort order inside an import block.
@@ -22,7 +22,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Go packages that a program outside the viff imports: the dependency closure of the two
+# Go packages that a program outside the viff instance imports: the dependency closure of the two
 # documented examples (docs/reference/examples/{runner,io}) plus the CLI's client, and verbs: the
 # stock runner (pkg/runner/runnerd/stock, reached from cmd/runnerd) imports it, and it imports
 # nothing from internal/.

@@ -308,7 +308,7 @@ func (e *Engine) Pendings() []Pending {
 }
 
 // Arming is every armed rule whose watches are not all open, sorted by name, each with what
-// the store is doing for the first that is not (watching). Empty on a viff that is up.
+// the store is doing for the first that is not (watching). Empty on a viff instance that is up.
 func (e *Engine) Arming() []Pending {
 	e.trigMu.Lock()
 	defer e.trigMu.Unlock()

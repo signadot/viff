@@ -27,7 +27,7 @@ import (
 // reads the replies on the pull request — the comments after this io's own, as the in half
 // reflects them under the repository's place — and answers one AS ITS AUTHOR: the author's GitHub account is looked
 // up for who they are (docs/reference/perms.md, "accounts in other systems"), and the answer is
-// made as that person with the account beside it, which a viff that verifies people admits
+// made as that person with the account beside it, which a viff instance that verifies people admits
 // through the binding and records on the ballot. It is never made as this io: an answer recorded
 // as agent:github-iod would be an answer nobody gave.
 //
@@ -225,7 +225,7 @@ type reply struct {
 }
 
 // replies is the conversation on the pull request as this io itself reflects it under the
-// repository's place, `<root>.<org>.<name>.comment.<n>.<id>`, read through the viff and never
+// repository's place, `<root>.<org>.<name>.comment.<n>.<id>`, read through the viff instance and never
 // asked of GitHub again: the reflection is the one record of what was said, the same one a
 // charter reads, and what the in half's window holds is what there is. A reply arrives in it on
 // the comment's delivery, which also kicks a pass (cmd/iod), or on the resync. Oldest first, so
@@ -277,7 +277,7 @@ func linking(body string) (nonce string, ok bool) {
 	return "", false
 }
 
-// link proves the GitHub account is the claimant's: the viff gave somebody the nonce
+// link proves the GitHub account is the claimant's: the viff instance gave somebody the nonce
 // (`viff account -link github -account <login>`), and this io's word that this account said it in
 // a comment it reflected is what binds the two (`POST /accounts/github/heard`; perms.md, "accounts
 // in other systems"). The word is the io's own, so it is given as the io itself; the author is
@@ -298,7 +298,7 @@ func (k *Sink) link(ctx context.Context, repo string, number int, c reply, nonce
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= http.StatusInternalServerError {
-		return false, client.StatusError(resp, "linking "+c.login) // the viff's trouble, not the author's: next pass
+		return false, client.StatusError(resp, "linking "+c.login) // the viff instance's trouble, not the author's: next pass
 	}
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		return tell("not linked: " + client.StatusError(resp, "`"+commandWord+" "+linkWord+"`").Error())
@@ -331,7 +331,7 @@ func command(body string) (option, say string, ok bool) {
 }
 
 // act answers one command as its author, or tells the author why it cannot. It reports whether
-// the reply has been dealt with: an answer the viff refused for a reason that may pass next time
+// the reply has been dealt with: an answer the viff instance refused for a reason that may pass next time
 // (the question still being posed) is left for the next pass.
 func (k *Sink) act(ctx context.Context, repo string, number int, c reply, option, say string, asks []asked) (bool, error) {
 	tell := func(text string) (bool, error) {
@@ -371,7 +371,7 @@ func (k *Sink) act(ctx context.Context, repo string, number int, c reply, option
 	}
 	if who == "" {
 		return tell(fmt.Sprintf("I do not know who %s is in viff, so this does not count. Claim the "+
-			"account from your viff (`viff account -link github -account %s`) and say the "+
+			"account from your viff instance (`viff account -link github -account %s`) and say the "+
 			"`%s %s <nonce>` it prints in a comment here, on a line of its own. Then say it again.",
 			c.login, c.login, commandWord, linkWord))
 	}
@@ -392,10 +392,10 @@ func (k *Sink) act(ctx context.Context, repo string, number int, c reply, option
 		return false, nil // still being posed: asked again next pass
 	}
 	if resp.StatusCode >= http.StatusInternalServerError {
-		return false, nil // the viff's trouble, not the answer's: asked again next pass
+		return false, nil // the viff instance's trouble, not the answer's: asked again next pass
 	}
 	refusal, _ := stdio.ReadAll(resp.Body)
-	return tell(fmt.Sprintf("the viff did not take that answer: %s", strings.TrimSpace(string(refusal))))
+	return tell(fmt.Sprintf("the viff instance did not take that answer: %s", strings.TrimSpace(string(refusal))))
 }
 
 // placed is the question a command answers: the one pending question offering the option, matched

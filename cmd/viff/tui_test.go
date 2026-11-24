@@ -590,7 +590,7 @@ func TestTheExplorerNeverWrapsARow(t *testing.T) {
 // without the layout counting it, and a row scrolled into view lost its explorer and its rule.
 // Scrolled through, every row of the body keeps its rule and fits the terminal.
 func TestTheTUIDrawsARecordsControlCharactersSafely(t *testing.T) {
-	// As the viff sends it: a block, its tabs and carriage returns raw.
+	// As the viff instance sends it: a block, its tabs and carriage returns raw.
 	doc := "\ntitle: \"PR 99\"\nbody: |-\n"
 	for i := range 40 {
 		doc += fmt.Sprintf("  line %d:\tfunc main() {\tfmt.Println(\"hi\")\t}\r\n", i)

@@ -14,7 +14,7 @@ import (
 
 // A CHARTER PACKAGE THAT IS NOT THERE HAS NO WORK. Its tasks are cancelled, with no hook run: its
 // rules are gone, and a hook is a rule's. That is a package whose records have been removed
-// (stopPackage), and one the last viff left tasks of that this viff does not have
+// (stopPackage), and one the last viff left tasks of that this viff instance does not have
 // (settleTasks). An uninstall cancels a package's tasks while its rules stand, so that their
 // hooks run, those that start nothing (uninstall.go), and comes here with nothing left running. One stop runs for a
 // package at a time (stopWork), and it takes

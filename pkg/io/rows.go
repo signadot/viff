@@ -19,7 +19,7 @@ type Row struct {
 	Why      string  `tony:"field=why,omitzero"`
 	Warning  string  `tony:"field=warning,omitzero"`
 	Report   *Report `tony:"field=report,omitzero"`
-	// Unreadable is why the stored registration does not decode as this viff reads it. Nothing
+	// Unreadable is why the stored registration does not decode as this viff instance reads it. Nothing
 	// else on such a row is read from the record: the row is there so the registration can be
 	// seen and removed by its name.
 	Unreadable string `tony:"field=unreadable,omitzero"`

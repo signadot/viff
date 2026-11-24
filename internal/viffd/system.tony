@@ -1,8 +1,8 @@
-# The charter every viff stands on, installed at start as the system (installSystemCharter):
+# The charter every viff instance stands on, installed at start as the system (installSystemCharter):
 # the standard schedules, the clock derived from the minutely tick and the calendar from the
 # hourly one.
 #
-# A schedule ticks for the viff: `every` is its period and `from` its phase, defaulting to a
+# A schedule ticks for the viff instance: `every` is its period and `from` its phase, defaulting to a
 # Monday at midnight in the daemon's zone (TZ), so minutely ticks on the minute, hourly on the
 # hour, daily at midnight and weekly on Monday. A rule about a schedule reads its ticks as its
 # subject and needs no latch: `subject: {path: "mirror.schedule.hourly.tick.*"}`.
@@ -52,7 +52,7 @@ strata:
 
 rules:
 # The clock: `time` to the minute, from the minutely tick. Two commits a minute, the tick and
-# this derive, and nothing else in the viff reads either place unless a charter asks to.
+# this derive, and nothing else in the viff instance reads either place unless a charter asks to.
 - name: clock
   stratum: ticks
   condition:

@@ -18,7 +18,7 @@ import (
 	"go.viff.dev/viff/pkg/verbs"
 )
 
-// THE VIFF SYSTEM'S DATA VERBS: the viff at an address, read, written and removed as the person
+// THE VIFF SYSTEM'S DATA VERBS: the store at an address, read, written and removed as the person
 // the task runs for, as `viff data` and viff_data, viff_data_put and viff_data_rm do. Each tool
 // is defined once with its MCP tool and reads a call as it does (verbs.DataGetOf, DataPutOf), and
 // the runner carries the request on the op's own route (delivery.OpViffDataGet, OpViffDataPut,
@@ -49,7 +49,7 @@ func viffDataTools(cl *delivery.Client) []viff.Tool {
 			}
 			node, err := codec.ParseNode([]byte(rep.Out), codec.Tony)
 			if err != nil {
-				return "", false, fmt.Errorf("the viff's answer does not read: %w", err)
+				return "", false, fmt.Errorf("the viff instance's answer does not read: %w", err)
 			}
 			// As viff_data answers it: a listing one kinded path per line, a document trimmed
 			// at each node the address reached.

@@ -25,7 +25,7 @@ func ioCmd() *cli.Command {
 		panic(err)
 	}
 	return filteredCollection("iod", "iods", "/iods",
-		"iod — a connector between the viff and an external system: it reflects in, and it acts "+
+		"iod — a connector between the viff instance and an external system: it reflects in, and it acts "+
 			"out [--probe]; add|show|check|remove one",
 		opts, func() url.Values {
 			// Bare, the columns are what viff has RECORDED. --probe adds what the iods say

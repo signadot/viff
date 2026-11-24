@@ -41,7 +41,7 @@ func asTask(t *testing.T, method, url, token, taskID, presented, account string)
 	return resp.StatusCode, string(body)
 }
 
-// spawnOn starts a script task as the tester, on the runner named, or on this viff's own runtime
+// spawnOn starts a script task as the tester, on the runner named, or on this viff instance's own runtime
 // where none is.
 func spawnOn(t *testing.T, ts string, id string) {
 	t.Helper()

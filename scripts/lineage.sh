@@ -30,7 +30,7 @@
 # replay verb. This script always installs its rules first, so it never meets that; running it
 # against a repository already reflected does.
 #
-# Like seed-demo.sh — and unlike test/smoke.sh — this talks to YOUR viff and leaves what it
+# Like seed-demo.sh — and unlike test/smoke.sh — this talks to YOUR viff instance and leaves what it
 # writes behind for you to poke at.
 #
 #   ./viff up                        # in another terminal
@@ -38,7 +38,7 @@
 #   ./scripts/lineage.sh --scope me   # …into a copy-on-write scope instead of baseline
 #   ./scripts/lineage.sh --clean      # remove what a previous run wrote
 #
-# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff to
+# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff instance to
 # talk to). Both are the CLI's own knobs; nothing here is a second configuration.
 set -euo pipefail
 
@@ -85,7 +85,7 @@ if [ -z "$BIN" ]; then
 	fi
 fi
 
-# THE BINARY HAS TO SPEAK `state`. These scripts read the viff as one document at a kinded
+# THE BINARY HAS TO SPEAK `state`. These scripts read the viff instance as one document at a kinded
 # path, and a CLI from before that has `entity` instead — whose failure is a usage error and
 # the whole command tree, which says nothing about why. The trap is a STALE `./viff` in the
 # working directory: it is preferred over $PATH above, so a checkout that built one months ago
@@ -275,7 +275,7 @@ rules:
 # subject, so fifty traces cannot feed one release — the level above reads them instead.
 # `patch` rather than `derive` on purpose: reads inside a patch are unconstrained.
 #
-# The predicate is what keeps that read from being a walk of every trace in the viff, and it
+# The predicate is what keeps that read from being a walk of every trace in the viff instance, and it
 # is expanded like the rest of the address — `.[subject.value.target]` is the release's OWN
 # branch, so this is one rule rather than one rule per branch.
 #
@@ -391,7 +391,7 @@ step "the release: three ids reassembled without a fourth"
 # The store revision has none of those problems: it is viff's own monotonic counter, it moved
 # when this run wrote its seven fixtures a moment ago, and it needs nothing to have caught up.
 rev=$(v status -o tony 2>/dev/null | sed -n 's|^storeRev:[[:space:]]*||p' | tr -d '"')
-[ -n "$rev" ] || die "could not read storeRev — is this viff answering \`$BIN status\`?"
+[ -n "$rev" ] || die "could not read storeRev — is this viff instance answering \`$BIN status\`?"
 # The address as steps, and beside it the way the store renders it — the same pair as PR above,
 # and for the same reason: one is what a command takes, the other is what a grep over a rendered
 # record finds.

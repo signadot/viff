@@ -64,28 +64,28 @@ func (s *Server) addRunner(w http.ResponseWriter, r *http.Request) {
 	if e.Identity != "" {
 		body["identity"] = e.Identity
 	}
-	// The subject names a token this viff has to verify, so it is refused where nothing
+	// The subject names a token this viff instance has to verify, so it is refused where nothing
 	// could: a registration nobody can ever prove is a runner that takes no spawn and says why
-	// too late. And it is refused in a named scope: a principal is one thing across the viff,
+	// too late. And it is refused in a named scope: a principal is one thing across the viff instance,
 	// and the door reads the baseline registrations, so a subject written anywhere else would
 	// neither admit the runner's token nor refuse its bare name.
 	if !runner.IsStaticSubject(e.Subject) && s.workloadIssuer() == nil {
-		http.Error(w, fmt.Sprintf("runner %q: a subject is a workload token's, and this viff names "+
+		http.Error(w, fmt.Sprintf("runner %q: a subject is a workload token's, and this viff instance names "+
 			"no issuer of workload tokens (auth.iod.issuer in its config), so nothing could verify %s",
 			e.Name, e.Subject), http.StatusBadRequest)
 		return
 	}
-	// And the handshake runs both ways: a runner held to its subject holds this viff to
-	// its signature, so a viff that issues nothing could never be let in by it.
+	// And the handshake runs both ways: a runner held to its subject holds this viff instance to
+	// its signature, so a viff instance that issues nothing could never be let in by it.
 	if s.issuer == nil {
-		http.Error(w, fmt.Sprintf("runner %q: a runner registered with a subject takes this viff's calls "+
-			"by the tokens it signs, and this viff issues none (auth.issuer in its config), so it could "+
+		http.Error(w, fmt.Sprintf("runner %q: a runner registered with a subject takes this viff instance's calls "+
+			"by the tokens it signs, and this viff instance issues none (auth.issuer in its config), so it could "+
 			"never prove itself to %s", e.Name, e.Subject), http.StatusBadRequest)
 		return
 	}
 	if sc := r.URL.Query().Get("scope"); sc != "" {
 		http.Error(w, fmt.Sprintf("runner %q: a subject makes the runner a principal, which is one thing "+
-			"across the viff and not a scope's: register it with its subject in the baseline, not in %q",
+			"across the viff instance and not a scope's: register it with its subject in the baseline, not in %q",
 			e.Name, sc), http.StatusBadRequest)
 		return
 	}
@@ -251,7 +251,7 @@ func (s *Server) listRunners(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	// A FAILED READ IS NOT AN EMPTY LIST. List answers nil when the read did not happen, so
 	// without this a store that could not be read renders as "nothing is installed" — and
-	// `viff iod` answered `[]` on a viff holding three sources, which is the one shape an
+	// `viff iod` answered `[]` on a viff instance holding three sources, which is the one shape an
 	// operator acts on. Same guard /state has carried all along, for the same reason. THIS
 	// read's error, not the store's last one — see unreadable.
 	if unreadable(w, r, readErr) {
@@ -288,7 +288,7 @@ func (s *Server) getRunner(w http.ResponseWriter, r *http.Request) {
 	}
 	e, err := decodeRunner(ent.Payload)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("runner %s is stored in a shape this viff can't read: %v", ent.Ref, err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("runner %s is stored in a shape this viff instance can't read: %v", ent.Ref, err), http.StatusInternalServerError)
 		return
 	}
 	writeOut(w, r, http.StatusOK, e)
@@ -301,7 +301,7 @@ func (s *Server) checkRunner(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	e, ok, err := findRunnerErr(s.scopedStore(r), entity.JoinSegs([]string{name}))
 	if why := unreadableRunner(s.scopedStore(r), name); !ok && err == nil && why != nil {
-		// A check reads the runner, not the registration: one this viff can't read is added
+		// A check reads the runner, not the registration: one this viff instance can't read is added
 		// again, and a check saying "not installed" would send the operator to add a second.
 		codec.HTTPError(w, r, http.StatusConflict, why.Error())
 		return
@@ -437,7 +437,7 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 	ref := runnerEntityRef(name)
 	e, ok, err := findRunnerErr(store, entity.JoinSegs([]string{name}))
 	if !ok && err == nil {
-		// A registration this viff can't read is still removed by its name: its url is not
+		// A registration this viff instance can't read is still removed by its name: its url is not
 		// known, so its work is found by the name alone, and a cancel reaches none of it.
 		_, ok, err = store.Get(ref)
 		e = api.Runner{Name: name}
@@ -491,7 +491,7 @@ func (s *Server) removeRunner(w http.ResponseWriter, r *http.Request) {
 // liveOn returns the ids of tasks still running on a runner.
 //
 // Matched on the task:instance mirror, by the NAME a spawn used or by the url stamped on it.
-// Both, because the two answer different halves: the name finds work this viff placed there,
+// Both, because the two answer different halves: the name finds work this viff instance placed there,
 // and the url finds work placed there before a rename — and a task carries the url precisely
 // so that removing the entity cannot strand it.
 func liveOn(r entity.Reader, ref entity.Ref, url string) []string {

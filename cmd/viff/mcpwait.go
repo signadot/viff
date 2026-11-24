@@ -22,7 +22,7 @@ import (
 // the number it was given. Nothing said between two calls is missed, and nothing is said twice.
 //
 // It is opened by the first call rather than when the server starts, so a session that never waits
-// holds no watch on the viff; and never closed after, since a watch opened again from now does not
+// holds no watch on the viff instance; and never closed after, since a watch opened again from now does not
 // say an answer that landed while it was closed.
 
 // waitLogCap is how many lines the log keeps. A var so a test can make it small.
@@ -206,7 +206,7 @@ func waitAnswer(lines []waitLine, cursor string, timeout time.Duration) (*mcp.Ca
 var waitRetryFirst = time.Second
 
 // startWait opens the watch, once: the caller's asks and the questions waiting on them, followed
-// until the server ends. A stream that never opened — a viff down, or refusing — is said, and
+// until the server ends. A stream that never opened — a viff instance down, or refusing — is said, and
 // tried again after a backoff, from the last revision met where there is one. The same failure
 // again is not said again until the watch has said something else: each line wakes every waiting
 // call and takes a place in the log.

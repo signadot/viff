@@ -179,7 +179,7 @@ func TestWaitFollowsAgainWhenItsStreamEnds(t *testing.T) {
 	first := askAs(t, victor, "first", "-q", "First?")
 	out1, c1 := waitUntil(t, dan, since, "raised question "+first+": First?")
 	ts.CloseClientConnections()
-	// That ends every connection to the viff, the CLI's idle ones in the shared pool with the
+	// That ends every connection to the viff instance, the CLI's idle ones in the shared pool with the
 	// wait's stream, and a POST on one the CLI has not yet seen close fails rather than being
 	// tried again. A CLI is a process per command and dials afresh; the pool goes so this one
 	// does too.

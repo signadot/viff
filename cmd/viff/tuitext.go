@@ -64,7 +64,7 @@ func lastShown(l string) string {
 // two-byte escape.
 var escapeSeq = regexp.MustCompile("\x1b\\[[0-?]*[ -/]*[@-~]|\x1b\\][^\x07\x1b]*(?:\x07|\x1b\\\\)|\x1b[@-Z\\\\-_]")
 
-// screenSafe is text from the viff made safe to lay out: what the screen draws is measured by
+// screenSafe is text from the viff instance made safe to lay out: what the screen draws is measured by
 // its cells, and a character the measure takes as no width while the terminal moves the cursor
 // for it shifts or overwrites the rest of its line. A record carries them as it was written: a
 // PR body's CRLF, a script's tabs, a progress bar's carriage returns, a log's cursor movements.

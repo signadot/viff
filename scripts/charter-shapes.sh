@@ -18,7 +18,7 @@
 #   ./scripts/charter-shapes.sh remove  [shape]   uninstall one, or all of them
 #   ./scripts/charter-shapes.sh clean             uninstall all, and delete the entities they acted on
 #
-# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff to
+# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff instance to
 # talk to). --scope <name> works on every subcommand.
 set -euo pipefail
 
@@ -199,7 +199,7 @@ if [ -z "$BIN" ]; then
 	fi
 fi
 
-# THE BINARY HAS TO SPEAK `state`. These scripts read the viff as one document at a kinded
+# THE BINARY HAS TO SPEAK `state`. These scripts read the viff instance as one document at a kinded
 # path, and a CLI from before that has `entity` instead — whose failure is a usage error and
 # the whole command tree, which says nothing about why. The trap is a STALE `./viff` in the
 # working directory: it is preferred over $PATH above, so a checkout that built one months ago
@@ -368,7 +368,7 @@ clean)
 	v data ci status shapes --rm >/dev/null 2>&1 || true
 	v data ci status release --rm >/dev/null 2>&1 || true
 	# The derived entity is addressed by the ENGINE — the place, the rule, then the subject's own
-	# segments — so it is named here rather than guessed at: nothing else in the viff knows to
+	# segments — so it is named here rather than guessed at: nothing else in the viff instance knows to
 	# clean it up.
 	v data derived feature shape-derive demo derive 1 --rm >/dev/null 2>&1 || true
 	ok "every shape trigger and the entities they acted on are gone"

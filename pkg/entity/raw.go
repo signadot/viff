@@ -207,7 +207,7 @@ func compose(head, tag string) string {
 // whose Patch method can only ever return "cannot patch with X operation". The write itself
 // succeeds, because the store appends before it applies. Every later read replays the log,
 // hits that operator, and fails. From then on the store cannot be read and cannot be repaired,
-// while writes go on succeeding — which is a viff that looks alive and answers nothing.
+// while writes go on succeeding — which is a viff instance that looks alive and answers nothing.
 //
 // The two earlier fixes were at WRITERS: the mirror escapes an agent's answer (AsData), and a
 // charter is stored with Raw. Both were right and neither is enough, because the defect is not
@@ -251,7 +251,7 @@ func CheckPatchable(p Payload) error {
 // A `!key` tag in a payload is a second keying on top of that one, and it only survives a write
 // because it is stored as DATA (Raw / AsData) -- so the store keys the array by position while
 // the value claims a name for each element, and only viff's own reader knows. Two mechanisms
-// for one question is what this refuses; the viff surface for the substrate's keying is not
+// for one question is what this refuses; the viff instance surface for the substrate's keying is not
 // designed yet, and an array is positional until it is.
 //
 // It walks ESCAPED subtrees too, unlike checkPatchable: being data is exactly how the tag got

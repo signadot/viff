@@ -47,7 +47,7 @@ type Request struct {
 	// be trusted about what it may touch.
 	Fields map[string]string `tony:"field=fields,omitzero"`
 	// Body is the act's document, where it has one: a pull request's or an issue's body, a
-	// message's text, what a viff verb writes or installs, in tony.
+	// message's text, what a viff instance verb writes or installs, in tony.
 	Body string `tony:"field=body,omitzero"`
 
 	// op is the op performing the request, on the runner's side: what its reading of a name is

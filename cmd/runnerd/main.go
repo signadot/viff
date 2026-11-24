@@ -5,7 +5,7 @@
 //	runnerd -config runner.tony -token-file /var/run/viff/token
 //
 // Each task runs in a process of its own, confined by bwrap unless -sandbox none says otherwise.
-// The runner serves the one viff its `viff:` block names, and proves itself to it with its
+// The runner serves the one viff instance its `viff:` block names, and proves itself to it with its
 // token; it does not start without both.
 //
 // Then register it, from anywhere that can reach viff:
@@ -68,7 +68,7 @@ func offers(c stock.Config) []string {
 }
 
 // run is the runner: what its configuration offers, each task in a process of its own, in the
-// sandbox -sandbox names, serving the one viff its `viff:` block names.
+// sandbox -sandbox names, serving the one viff instance its `viff:` block names.
 func run(args []string) error {
 	fs := flag.NewFlagSet("runnerd", flag.ExitOnError)
 	fs.Usage = usage(fs)
@@ -77,18 +77,18 @@ func run(args []string) error {
 	adminAddr := fs.String("admin-addr", os.Getenv("VIFF_RUNNER_ADMIN_ADDR"),
 		"admin/pprof listen address, or off to disable (default: the listen port + 1)")
 	tokenFile := fs.String("token-file", os.Getenv("VIFF_TOKEN_FILE"),
-		"the file holding this runner's token, a workload token or a static one, answered on GET /describe to the viff it verified; required (VIFF_TOKEN_FILE)")
-	// The viff this runner serves, where the configuration file does not name it: a deployment
-	// writes one configuration for every cluster and names its viff in the pod's environment,
+		"the file holding this runner's token, a workload token or a static one, answered on GET /describe to the viff instance it verified; required (VIFF_TOKEN_FILE)")
+	// The viff instance this runner serves, where the configuration file does not name it: a deployment
+	// writes one configuration for every cluster and names its viff instance in the pod's environment,
 	// as it names the token file.
 	viffURL := fs.String("viff-url", os.Getenv("VIFF_URL"),
-		"where this runner reaches the one viff it serves, and reads its keys, where the configuration has no viff block (VIFF_URL)")
+		"where this runner reaches the one viff instance it serves, and reads its keys, where the configuration has no viff block (VIFF_URL)")
 	viffIssuer := fs.String("viff-issuer", os.Getenv("VIFF_ISSUER"),
 		"the issuer name of that viff's tokens, where it differs from the url (VIFF_ISSUER)")
 	viffAudience := fs.String("viff-audience", os.Getenv("VIFF_AUDIENCE"),
-		"the audience this runner takes its viff's tokens for, where it is not its own token's subject (VIFF_AUDIENCE)")
+		"the audience this runner takes its viff instance's tokens for, where it is not its own token's subject (VIFF_AUDIENCE)")
 	viffCA := fs.String("viff-ca", os.Getenv("VIFF_CA"),
-		"a PEM bundle the viff's certificate is checked against, for a viff under a certificate no public root signed (VIFF_CA)")
+		"a PEM bundle the viff instance's certificate is checked against, for a viff instance under a certificate no public root signed (VIFF_CA)")
 	taskProc := fs.Bool("task", false,
 		"run as one task's process; the runner starts these itself, with its configuration on stdin")
 	if err := fs.Parse(args); err != nil {
@@ -106,20 +106,20 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	// The door: the runner serves the viff its `viff:` block names, in the file or from the
+	// The door: the runner serves the viff instance its `viff:` block names, in the file or from the
 	// flags, and proves itself to it with its token. A runner with neither would answer no token,
 	// take no spawn, and find out at its first; it is refused here instead.
 	if *viffURL != "" || *viffIssuer != "" || *viffAudience != "" || *viffCA != "" {
 		if rc.Viff != nil {
-			return fmt.Errorf("the viff this runner serves is named twice: `viff:` in %s, and -viff-url/-viff-issuer/-viff-audience/-viff-ca (VIFF_URL, VIFF_ISSUER, VIFF_AUDIENCE, VIFF_CA); name it once", *config)
+			return fmt.Errorf("the viff instance this runner serves is named twice: `viff:` in %s, and -viff-url/-viff-issuer/-viff-audience/-viff-ca (VIFF_URL, VIFF_ISSUER, VIFF_AUDIENCE, VIFF_CA); name it once", *config)
 		}
 		rc.Viff = &runnerd.Viff{URL: *viffURL, Issuer: *viffIssuer, Audience: *viffAudience, CA: *viffCA}
 	}
 	if rc.Viff == nil {
-		return fmt.Errorf("%s: no `viff:` block names the viff this runner serves (or -viff-url, VIFF_URL); a runner serves one viff, and proves itself to it", *config)
+		return fmt.Errorf("%s: no `viff:` block names the viff instance this runner serves (or -viff-url, VIFF_URL); a runner serves one viff instance, and proves itself to it", *config)
 	}
 	if *tokenFile == "" {
-		return fmt.Errorf("no -token-file (VIFF_TOKEN_FILE): a runner proves itself to its viff with a token, a workload token or a static one (`viff runner add -subject` or `-token-file`)")
+		return fmt.Errorf("no -token-file (VIFF_TOKEN_FILE): a runner proves itself to its viff instance with a token, a workload token or a static one (`viff runner add -subject` or `-token-file`)")
 	}
 	// A system whose credential is not set is closed rather than refused: the runner starts,
 	// and offers what it can perform.
@@ -171,7 +171,7 @@ func run(args []string) error {
 	if err := systems.Check(); err != nil {
 		return fmt.Errorf("this runner does not honour the systems' documents: %w", err)
 	}
-	// The door's guard before the runner, since what the runner carries to its viff for a task
+	// The door's guard before the runner, since what the runner carries to its viff instance for a task
 	// (the viff system's verbs) goes with the guard's own token.
 	guard, err := runnerd.NewGuard(*rc.Viff, *tokenFile)
 	if err != nil {
@@ -186,15 +186,15 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Its viff may ask it to stop (POST /stop), behind the door, as a signal would.
+	// Its viff instance may ask it to stop (POST /stop), behind the door, as a signal would.
 	h := guard.Wrap(runnerd.WithStop(r.HTTPHandler(), stop))
-	log.Printf("serving one viff: %s, by the tokens it signs for %s", guard.Viff().Issuer, guard.Viff().Audience)
+	log.Printf("serving one viff instance: %s, by the tokens it signs for %s", guard.Viff().Issuer, guard.Viff().Audience)
 	srv := &http.Server{Handler: runnerd.WithReady(h)}
 	ln, err := net.Listen("tcp", rc.Listen)
 	if err != nil {
 		return err
 	}
-	// The hello, once the runner listens: the viff describes this runner as soon as it is told
+	// The hello, once the runner listens: the viff instance describes this runner as soon as it is told
 	// the runner is here. Readiness (GET /ready) is the server's alone.
 	go guard.Announce(ctx, log.Printf)
 	go func() {

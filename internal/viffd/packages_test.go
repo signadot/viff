@@ -157,7 +157,7 @@ func TestACharterPackageIsRestoredAtItsAddress(t *testing.T) {
 	second.Start(t.Context())
 
 	// The baseline charter did NOT take it: a package's rules are not baseline's, and a
-	// restart that folded them in would hand one group's rules the whole viff to write in.
+	// restart that folded them in would hand one group's rules the whole viff instance to write in.
 	for _, tr := range second.Eng.Triggers() {
 		if tr.Name == "note-the-head" {
 			t.Fatal("the package's rule was restored into the baseline charter")
@@ -448,7 +448,7 @@ func TestNarrowingImportsIsRefusedWhileARuleNeedsThem(t *testing.T) {
 	}
 }
 
-// A store that cannot be READ answers the empty slice, which is what a viff holding nothing
+// A store that cannot be READ answers the empty slice, which is what a viff instance holding nothing
 // answers — so a listing built on `Store.List` reports "there is nothing here" for a store that
 // is simply unreadable. That is how an unreplayable patch in the log presents: `viff data`
 // empty, the charter tree showing no rules, every write still reporting success.

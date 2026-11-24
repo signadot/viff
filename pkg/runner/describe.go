@@ -38,15 +38,15 @@ type Description struct {
 const DescriptionVersion = 2
 
 // TokenHeader is the header a runner answers GET /describe with, carrying the workload token
-// its runtime gave it, to a viff it verified as its own: the runner's half of the handshake.
+// its runtime gave it, to a viff instance it verified as its own: the runner's half of the handshake.
 // Viff checks the token's subject against the runner's registration before it records the
 // description, so a runner replaced behind the same url is found by the step that admitted the
-// first. A runner that verifies no viff answers none, since a token is for its viff alone.
+// first. A runner that verifies no viff answers none, since a token is for its viff instance alone.
 const TokenHeader = "Viff-Runner-Token"
 
-// ViffSubject is the `sub` of the token a viff presents to its runners: the viff itself. The
+// ViffSubject is the `sub` of the token a viff instance presents to its runners: the viff instance itself. The
 // viff's issuer signs other tokens too, a gate credential among them (`sub` the rule and how its
-// gate passed), for an audience the charter declares; the subject is what tells the viff's own
+// gate passed), for an audience the charter declares; the subject is what tells the viff instance's own
 // token from those, so a runner's door admits this one alone.
 const ViffSubject = "viff"
 
@@ -108,7 +108,7 @@ func SubjectOf(token string) (string, error) {
 }
 
 // TokenSubject is the `sub` of a JWT, read without verifying it: what a runner's own token says
-// it is, which is the audience the runner holds its viff's tokens to. The token is the
+// it is, which is the audience the runner holds its viff instance's tokens to. The token is the
 // runtime's and nothing here trusts the claim beyond naming the door.
 func TokenSubject(token string) (string, error) {
 	parts := strings.Split(token, ".")
@@ -169,7 +169,7 @@ func CheckSubject(s string) error {
 // called `name` or `annotations`.
 func (d Description) Check() error {
 	if d.Version != DescriptionVersion {
-		return fmt.Errorf("it describes itself in version %d, not %d: the runner is older or newer than this viff, and is asked again (`viff runner check`)",
+		return fmt.Errorf("it describes itself in version %d, not %d: the runner is older or newer than this viff instance, and is asked again (`viff runner check`)",
 			d.Version, DescriptionVersion)
 	}
 	if len(d.Offers) == 0 {

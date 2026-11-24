@@ -264,7 +264,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	}
 	defer e.hookDone()
 	subject, serr := entity.ParseAddr(fp.subject)
-	// WHAT COMMIT THIS READS AT: the head, the viff as it is when the task ends.
+	// WHAT COMMIT THIS READS AT: the head, the viff instance as it is when the task ends.
 	//
 	// A hook is woken by a task finishing rather than by a write, so it has no cause of its
 	// own — and for a while that was taken to mean it had no revision to read at either, which
@@ -285,7 +285,7 @@ func (e *Engine) applyHook(fp flowTask, status task.Status, ev entity.Event) {
 	// writing over it in between (applyOne). What makes the hook survive a restart is as it
 	// was: the chain on the record names the action, which is looked up when the task ends.
 	//
-	// Head, as every read the engine makes of the viff as it stands (selectsNow, a lift's
+	// Head, as every read the engine makes of the viff instance as it stands (selectsNow, a lift's
 	// reArm): what this process has been told of, which the task's own terminal write is, with
 	// no round trip. A write another process made that the watch has not delivered yet is one the
 	// next commit brings, as for any firing.

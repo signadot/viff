@@ -36,7 +36,7 @@ func trimSHA(b []byte) string {
 //
 // `git issue` moves a ref to change status, so the repository somebody types in has exactly one
 // ref per issue and the namespace IS the status. `git issue push` writes the new ref and does
-// not delete the old, so a mirror holds both — on the viff tracker, 12 of 17 closed issues.
+// not delete the old, so a mirror holds both — on the viff instance tracker, 12 of 17 closed issues.
 // Read naively that is one issue reflected twice, and nine closed issues were reading
 // `status: open` on staging with nothing in the code deciding which won.
 //

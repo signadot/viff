@@ -32,7 +32,7 @@ func settleWorld(t *testing.T, rule Trigger, stage string) (*Engine, entity.Stor
 	return eng, store, sp
 }
 
-// claimAt writes the claim a rule's action at chain holds about demo.pr.1 as a viff before this
+// claimAt writes the claim a rule's action at chain holds about demo.pr.1 as a viff instance before this
 // one left it, taken at the commit occurrence, and answers it with the id of the task it guards.
 func claimAt(t *testing.T, eng *Engine, store entity.Store, chain string, spawn bool, occurrence int64) (entity.Entity, string) {
 	t.Helper()

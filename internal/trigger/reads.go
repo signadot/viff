@@ -181,7 +181,7 @@ func ParseReads(in []string) ([]Subtree, error) {
 			return nil, fmt.Errorf("reads: %w", err)
 		}
 		if !st.confined() {
-			return nil, fmt.Errorf("reads: an empty address reads the whole viff, which is "+
+			return nil, fmt.Errorf("reads: an empty address reads the whole viff instance, which is "+
 				"what having a declaration is for; name a system (`git`) or a system and a kind "+
 				"(`demo.pr`) — got %q", s)
 		}

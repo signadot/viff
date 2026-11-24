@@ -1,4 +1,4 @@
-// Package verbs is the viff verbs an agent is offered twice, defined once: by `viff mcp`, to an
+// Package verbs is the viff instance verbs an agent is offered twice, defined once: by `viff mcp`, to an
 // agent acting as you (viff_data), and by a runner's viff system, to a task acting as the
 // person it runs for (viff-data-get). Each verb says its name in both, the command it mirrors,
 // what it does, the parameters it takes and what a call must say; both faces read a call through
@@ -52,7 +52,7 @@ type Verb struct {
 	Name string
 	// Tool is viff mcp's tool (viff_ask_create).
 	Tool string
-	// Lead is what it does, said before who it acts as: "Read the viff at an address".
+	// Lead is what it does, said before who it acts as: "Read the store at an address".
 	Lead string
 	// CLI is the command it mirrors, as a person types it: "`viff data`".
 	CLI string

@@ -105,7 +105,7 @@ func TestTheCharterCheckSaysWhatAnInstallWouldDo(t *testing.T) {
 		!strings.Contains(got.Refusal, "no runner offers the agent claude") {
 		t.Fatalf("a spawn no runner offers: %+v", got)
 	}
-	// Asked to vet as a restore places a rule, for a viff whose runners are not up yet, the
+	// Asked to vet as a restore places a rule, for a viff instance whose runners are not up yet, the
 	// check holds it for a runner instead, and says so.
 	if got := checkAt(t, ts, "repos.r", checkedPackage+"---\n"+spawns, "runners=to-come"); got.Verdict != "installs" ||
 		len(got.Packages) != 2 || strings.Join(got.Packages[1].Held, ",") != "work" {

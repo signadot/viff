@@ -675,7 +675,7 @@ func (e *Engine) nameTaken(name string) error {
 // the stratum is here (reconcile.go).
 func (e *Engine) promote(string) { e.kick() }
 
-// persistStratum writes s into the viff as its stratum entity. Raw for the same reason a rule
+// persistStratum writes s into the viff instance as its stratum entity. Raw for the same reason a rule
 // is raw: a match is full of operator tags, and an unescaped write has the store execute them
 // rather than store them (see charter.go's charter.SpecField).
 func (e *Engine) persistStratum(s Stratum, as string, take bool) (int64, error) {

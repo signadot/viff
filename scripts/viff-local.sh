@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# viff-local.sh setup — what a viff on this machine needs before pitchfork runs it (pitchfork.toml;
+# viff-local.sh setup — what a viff instance on this machine needs before pitchfork runs it (pitchfork.toml;
 # docs/platform/local-viff.md), from its settings: scripts/viff-local.env, with yours over them in
 # ~/.config/viff-local.env.
 #
 #   - the settings, rendered into ~/.viff/local/local.env, which pitchfork's run lines source;
 #   - viff, runnerd, viff-call-tool and viff-secret-exec built from this tree, and the `o` it pins, in the bin dir;
-#   - the viff's config: who you are, where the viff is, and the issuer it signs as;
+#   - the viff instance's config: who you are, where the viff instance is, and the issuer it signs as;
 #   - the data dir, with the issuer's key, and logd's config with the compaction cutoff;
 #   - the runner's dir: its config (scripts and claude) and its token, 0600;
-#   - Claude Code's MCP server for the viff;
+#   - Claude Code's MCP server for the viff instance;
 #   - the runner's registration, once, where viffd is up (else run setup again once it is).
 #
 # Run it again after a pull, or a setting changed. It rebuilds the binaries, renders the settings
@@ -73,7 +73,7 @@ done
 [[ "$VIFF_LOCAL_COMPACTION_CUTOFF" =~ ^([0-9]*\.?[0-9]+(ns|us|ms|s|m|h|d|w|y))+$ ]] &&
 	[[ "$VIFF_LOCAL_COMPACTION_CUTOFF" =~ [1-9] ]] ||
 	die "VIFF_LOCAL_COMPACTION_CUTOFF=$VIFF_LOCAL_COMPACTION_CUTOFF: a duration longer than nothing, as logd reads one (1d, 36h, 90m)"
-rendered="# The local viff's settings, rendered by scripts/viff-local.sh setup from
+rendered="# The local viff instance's settings, rendered by scripts/viff-local.sh setup from
 # $DEFAULTS
 # and $OVERRIDES. pitchfork's run lines source it.
 # Edits here do not survive a setup: change a setting in $OVERRIDES.
@@ -87,7 +87,7 @@ done
 old_data="$HOME/.viff/localhost_9797"
 if [[ "$VIFF_LOCAL_DATA" == "$default_data" && ! -e "$VIFF_LOCAL_DATA" &&
 	-e "$old_data/issuer.pem" && -e "$HOME/.viff/runner/runner.tony" ]]; then
-	die "a local viff set up before ~/.viff/local is in $old_data, with its runner in ~/.viff/runner.
+	die "a local viff instance set up before ~/.viff/local is in $old_data, with its runner in ~/.viff/runner.
   To keep using it where it is, say so in $OVERRIDES:
     VIFF_LOCAL_DATA=\"\$HOME/.viff/localhost_9797\"
     VIFF_LOCAL_RUNNER_DIR=\"\$HOME/.viff/runner\"
@@ -139,7 +139,7 @@ addr: $ADDR
 $issuer"
 # The config is yours once written, so a setting it carries is checked, not rewritten.
 grep -q 'issuer:' "$CONFIG" ||
-	die "$CONFIG names no issuer, and this viff signs its runner's tokens as one; add to its auth block: issuer: {url: \"http://$ADDR\", key: \"$DATA/issuer.pem\"}"
+	die "$CONFIG names no issuer, and this viff instance signs its runner's tokens as one; add to its auth block: issuer: {url: \"http://$ADDR\", key: \"$DATA/issuer.pem\"}"
 grep -Eq "^addr: *\"?$ADDR\"? *$" "$CONFIG" ||
 	die "$CONFIG does not say addr: $ADDR, which VIFF_LOCAL_ADDR does; make them agree"
 grep -q "url: \"http://$ADDR\"" "$CONFIG" ||
@@ -214,7 +214,7 @@ say "Claude Code"
 if ! command -v claude >/dev/null 2>&1; then
 	say "  no claude on PATH: add the MCP server once it is, by running setup again"
 elif mcp="$(claude mcp get "$MCP_NAME" 2>/dev/null)"; then
-	# Kept where it runs this viff on this config; else it is an older setup's, or another
+	# Kept where it runs this viff instance on this config; else it is an older setup's, or another
 	# viff's under the same name, and Claude Code would go on reaching that one.
 	if grep -qF "Command: $BIN/viff" <<<"$mcp" && grep -qF "VIFF_CONFIG=$CONFIG" <<<"$mcp"; then
 		say "  kept    the MCP server $MCP_NAME"

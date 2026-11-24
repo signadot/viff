@@ -117,7 +117,7 @@ func (s *Server) staticRunner(token string) (api.Runner, bool, error) {
 }
 
 // verifiedRunner is the registration of the runner acting as principal. Every registration names
-// a subject, so every registered runner is one viff verifies.
+// a subject, so every registered runner is one viff instance verifies.
 func (s *Server) verifiedRunner(principal string) (api.Runner, bool, error) {
 	if entity.KindOf(principal) != entity.RunnerKind {
 		return api.Runner{}, false, nil
@@ -145,7 +145,7 @@ func (s *Server) registrationWhere(match func(api.Runner) bool) (api.Runner, boo
 // minutes. The runner holds viffd's tokens to its own name, so a copy taken at one runner, or
 // sent to a url somebody typed wrong, opens no other runner's door; and the key is the proof,
 // so there is no projected token of viffd's to mount and no subject of viffd's for a runner
-// to be told. A viff that issues nothing presents nothing, and refuses to register a subject it
+// to be told. A viff instance that issues nothing presents nothing, and refuses to register a subject it
 // could never prove itself to (addRunner).
 //
 // THE TOKEN GOES WHERE A VOUCHED IDENTITY IS. Viffd presents a token to every registration, for
@@ -171,7 +171,7 @@ type mintedRunnerToken struct {
 }
 
 // runnerTokenFor is the token source for calls to a runner whose door takes aud: the kept token
-// while it is good, a fresh one otherwise. Nil where this viff issues nothing.
+// while it is good, a fresh one otherwise. Nil where this viff instance issues nothing.
 func (s *Server) runnerTokenFor(aud string) func() (string, error) {
 	if s.issuer == nil {
 		return nil
@@ -194,7 +194,7 @@ func (s *Server) runnerTokenFor(aud string) func() (string, error) {
 			"jti": hex.EncodeToString(b[:]),
 		})
 		if err != nil {
-			return "", fmt.Errorf("minting this viff's token toward a runner: %w", err)
+			return "", fmt.Errorf("minting this viff instance's token toward a runner: %w", err)
 		}
 		if s.runnerTokens.by == nil {
 			s.runnerTokens.by = map[string]mintedRunnerToken{}
@@ -205,7 +205,7 @@ func (s *Server) runnerTokenFor(aud string) func() (string, error) {
 }
 
 // runnerTransport is how viffd reaches a runner whose door takes aud: presenting a token minted
-// for that audience, where this viff issues; bare otherwise.
+// for that audience, where this viff instance issues; bare otherwise.
 func (s *Server) runnerTransport(aud string) http.RoundTripper {
 	source := s.runnerTokenFor(aud)
 	if source == nil {
@@ -251,7 +251,7 @@ func (s *Server) iodAccountNamed(sub string) bool {
 	return false
 }
 
-// probeRegistered asks a registered runner what it is, as this viff, and holds it to its
+// probeRegistered asks a registered runner what it is, as this viff instance, and holds it to its
 // registration: a runner that answered as a runner and did not prove it is the registration's
 // subject is Unverified, with why, and what it said is not read.
 func (s *Server) probeRegistered(e api.Runner) (client.Reach, runner.Description, error) {
@@ -271,7 +271,7 @@ func (s *Server) probeRegistered(e api.Runner) (client.Reach, runner.Description
 func (s *Server) verifyRunnerToken(token, subject string) error {
 	if token == "" {
 		return fmt.Errorf("it answered no %s: the runner has no token of its own (VIFF_TOKEN_FILE), "+
-			"or no `viff:` block names the viff it would answer one to", runner.TokenHeader)
+			"or no `viff:` block names the viff instance it would answer one to", runner.TokenHeader)
 	}
 	if runner.IsStaticSubject(subject) {
 		got, ok := runner.StaticSubjectOf(token)
@@ -438,7 +438,7 @@ func (s *Server) relayTask(e api.Runner, presented, id string) (principal, provi
 		return refuse("no task %s stands", id)
 	}
 	if got, want := entity.Str(rec.Payload, "runnerName"), runnerEntityRef(e.Name).String(); got != want {
-		return refuse("its record says it runs on %s, not %s", cmp.Or(got, "this viff's own runtime"), want)
+		return refuse("its record says it runs on %s, not %s", cmp.Or(got, "this viff instance's own runtime"), want)
 	}
 	if got := entity.Str(rec.Payload, "runnerSubject"); got == "" || got != e.Subject {
 		return refuse("its record does not say it was launched to the subject %s proves", e.Principal())

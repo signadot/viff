@@ -384,7 +384,7 @@ func TestTheGateCharterLeavesDocketQuestionsToTheDocket(t *testing.T) {
 	}
 }
 
-// systemGated is a viff running the shipped charter as the system, as a deployment installs it:
+// systemGated is a viff instance running the shipped charter as the system, as a deployment installs it:
 // only the system's rule reads every ask, a person's and an onward one included.
 func systemGated(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()

@@ -33,7 +33,7 @@ func TestARuleInTroubleIsMarkedInTheCharterAndCountedInTheStatus(t *testing.T) {
 		return st
 	}
 	if st := status(); st.Firings != nil {
-		t.Fatalf("a viff where nothing has fired says firings: %+v", st.Firings)
+		t.Fatalf("a viff instance where nothing has fired says firings: %+v", st.Firings)
 	}
 
 	installFile(t, ts.URL, `{

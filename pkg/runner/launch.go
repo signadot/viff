@@ -98,7 +98,7 @@ type Agent struct {
 	// default agent, given the settings below.
 	Name string
 	// Settings are the agent's settings, by name, each a value its offer takes; one left out
-	// is the agent's own default, where it has one. `model` is the one viff reads.
+	// is the agent's own default, where it has one. `model` is the one viff instance reads.
 	Settings map[string]string
 	// Annotations are settings for the runner that viff or the runner write, never a spawn's
 	// author knob, such as `viff.portkey/virtual-key`. The runner refuses one it does not know.

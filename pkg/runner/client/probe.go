@@ -73,7 +73,7 @@ func Describe(baseURL string) (runner.Description, error) {
 
 // DescribeOver is Describe over a transport, answering the runner's token too (ProbeOver). A
 // runner that refused the request (401, 403) is unreachable rather than not a runner: it is one,
-// and it did not take this viff for its own, which deploying viff's token fixes.
+// and it did not take this viff instance for its own, which deploying viff's token fixes.
 func DescribeOver(baseURL string, tr http.RoundTripper) (runner.Description, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -93,8 +93,8 @@ func DescribeOver(baseURL string, tr http.RoundTripper) (runner.Description, str
 		// The runner's own words say which of the two it was: a token for another runner, or a
 		// viff it does not know.
 		said, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return runner.Description{}, "", fmt.Errorf("%w: %s refused this viff (GET /describe: %s: %s): it serves "+
-			"its own viff alone, and this viff presented no token it takes", task.ErrUnreachable, baseURL, resp.Status,
+		return runner.Description{}, "", fmt.Errorf("%w: %s refused this viff instance (GET /describe: %s: %s): it serves "+
+			"its own viff alone, and this viff instance presented no token it takes", task.ErrUnreachable, baseURL, resp.Status,
 			strings.TrimSpace(string(said)))
 	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		// A runner that cannot answer right now (its issuer unread, its token file gone) is a

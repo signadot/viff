@@ -27,7 +27,7 @@ func same(a, b Payload) bool { return mergeop.RawEqual(a, b) }
 
 // A value written under Raw is STORED rather than executed, operators and all. This is the
 // whole point: a rule, a goal, any tony document which is itself written in the operator
-// grammar, could not be written into the viff at all before the escape existed.
+// grammar, could not be written into the viff instance at all before the escape existed.
 func TestRawStoresOperatorsAsData(t *testing.T) {
 	store := openStore(t)
 	ref := ViffRef("trigger", "rule", "hotfix")

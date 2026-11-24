@@ -389,7 +389,7 @@ func TestHintRefusals(t *testing.T) {
 //
 // Tombstoning always is right about the common case and wrong about the one that will happen —
 // moving a repo to another host is a remove and an add of the same physical truth, and
-// tombstoning it fires every branch-deleted trigger in the viff and then every branch-created
+// tombstoning it fires every branch-deleted trigger in the viff instance and then every branch-created
 // one behind it. So a removal with a non-empty reflected slice is refused until told which.
 func TestRemovingASourceForksOnWhatItReflected(t *testing.T) {
 	requireGit(t)
@@ -557,7 +557,7 @@ func TestForgetTakesTheOwnedPlaceAndLeavesTheSharedNode(t *testing.T) {
 //
 // Cancelling a reflector fails the pass in flight with context.Canceled. Written down, that
 // would outlive the task: every source would come back from a clean stop carrying it as
-// lastError, and an operator reading the listing after a restart would see a viff full of
+// lastError, and an operator reading the listing after a restart would see a viff instance full of
 // broken sources that are all fine.
 func TestACleanShutdownIsNotRecordedAsAFailure(t *testing.T) {
 	srv := testServer(t)

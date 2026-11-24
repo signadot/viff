@@ -16,7 +16,7 @@ import (
 //
 //tony:schemagen=viff-tui-config,notag
 type TUIConfig struct {
-	// Every is how often the screen reads the viff again, a duration of at least 200ms. Empty
+	// Every is how often the screen reads the viff instance again, a duration of at least 200ms. Empty
 	// is 2s; --every overrides it.
 	Every string `tony:"field=every,omitzero"`
 	// Start is the section the screen opens on: questions, tasks, data, charters or runners.

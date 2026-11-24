@@ -209,7 +209,7 @@ func TestWhoGetsWhichCredential(t *testing.T) {
 		{name: "a gate written auto", gates: `[{name: ok, mode: auto}]`, spawn: wants,
 			status: task.Done, sub: "mirror.trigger.rule.deploy:auto", passed: "auto"},
 		{name: "a rule that writes no gate", gates: `[]`, spawn: wants, refused: "the rule has no gate"},
-		{name: "a viff that issues nothing", gates: `[{name: ok, mode: ask}]`, spawn: wants, answer: "proceed", noIssuer: true,
+		{name: "a viff instance that issues nothing", gates: `[{name: ok, mode: ask}]`, spawn: wants, answer: "proceed", noIssuer: true,
 			status: task.Failed, inResult: "issues none"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -336,7 +336,7 @@ func TestNoCredentialWithoutAnAnswerToVouchFor(t *testing.T) {
 }
 
 // A credential is for a system outside viff, and a runner is not one: a spawn declaring a
-// runner's subject as its audience is minted nothing, since the token would be one viff signed
+// runner's subject as its audience is minted nothing, since the token would be one viff instance signed
 // for that runner's name.
 func TestNoCredentialForARunner(t *testing.T) {
 	srv, _, _ := credentialServer(t)

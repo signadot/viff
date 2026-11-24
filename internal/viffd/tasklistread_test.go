@@ -24,7 +24,7 @@ func (w *watchedReads) ListAt(at []string, depth int, pred func(entity.Ref) bool
 // LISTING TASKS DOES NOT READ THE RUN ARCHIVE. The rows are instances; asked one level up, the
 // read also pulls every `task:run:<id>@<rev>` and every claim across the wire and throws them
 // away in Go. The archive is unbounded — a run record per firing, and nothing prunes them — so
-// the cost grows with the viff's whole history rather than with the number of tasks it lists.
+// the cost grows with the viff instance's whole history rather than with the number of tasks it lists.
 // Measured before this narrowing: 100 instances with 40 runs each answered GET /tasks in 2.8s,
 // for 12.9KB of answer; after, 8ms. git-issue w2j58rp2h12ksgdzhhn0.
 func TestListingTasksDoesNotReadTheRunArchive(t *testing.T) {

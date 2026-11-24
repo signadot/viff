@@ -44,7 +44,7 @@ func HintPath(name string) string {
 	return "/iods/" + name + "/hint"
 }
 
-// HintURL joins a viff base url to that route: HintURL("http://viff:9797", "acme").
+// HintURL joins a viff instance base url to that route: HintURL("http://viff:9797", "acme").
 func HintURL(base, name string) string {
 	return strings.TrimRight(base, "/") + HintPath(name)
 }
@@ -61,7 +61,7 @@ func Hints(hintURL string, logf func(string, ...any)) Hinter {
 
 // hintTimeout bounds a hint delivery. Short, and much shorter than a reflect: a hint is a
 // courtesy — the periodic resync is what makes a missed one land eventually — so a source
-// blocking its own event loop on a viff that is rolling out would be paying a real cost for
+// blocking its own event loop on a viff instance that is rolling out would be paying a real cost for
 // an optimisation.
 const hintTimeout = 10 * time.Second
 

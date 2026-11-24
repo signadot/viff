@@ -147,7 +147,7 @@ func (s *Server) claimAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if trusted == nil {
-		http.Error(w, fmt.Sprintf("%q is no provider whose accounts an io proves on this viff "+
+		http.Error(w, fmt.Sprintf("%q is no provider whose accounts an io proves on this viff instance "+
 			"(auth.principal.providers.<name>.iods)", provider), http.StatusNotFound)
 		return
 	}
@@ -202,17 +202,17 @@ func (s *Server) heardAccount(w http.ResponseWriter, r *http.Request) {
 	provider := r.PathValue("provider")
 	io, ok := s.ioOf(principalOf(r))
 	if authenticatedBy(r) != iodProvider || !ok {
-		http.Error(w, "a nonce heard is reported by an io the viff verified (auth.iod), as itself", http.StatusForbidden)
+		http.Error(w, "a nonce heard is reported by an io the viff instance verified (auth.iod), as itself", http.StatusForbidden)
 		return
 	}
 	p := s.providerNamed(provider)
 	if p == nil || len(p.IOs) == 0 {
-		http.Error(w, fmt.Sprintf("%q is no provider whose accounts an io proves on this viff "+
+		http.Error(w, fmt.Sprintf("%q is no provider whose accounts an io proves on this viff instance "+
 			"(auth.principal.providers.<name>.iods)", provider), http.StatusNotFound)
 		return
 	}
 	if io.IO == "" || !slices.Contains(p.IOs, io.IO) {
-		http.Error(w, fmt.Sprintf("%s is not an io this viff trusts for %s accounts "+
+		http.Error(w, fmt.Sprintf("%s is not an io this viff instance trusts for %s accounts "+
 			"(auth.principal.providers.%s.iods names %s)", io.Principal, provider, provider,
 			strings.Join(p.IOs, ", ")), http.StatusForbidden)
 		return

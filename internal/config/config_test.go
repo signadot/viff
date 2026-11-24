@@ -237,7 +237,7 @@ func write(t *testing.T, path, body string) {
 //
 // The list is every variable Load consults and has to stay that way, because one missing
 // from it turns a test of the loader into a question about the machine running it.
-// PORTKEY_VIRTUAL_KEY is the one that bites: anybody who has pointed a viff at a real LLM
+// PORTKEY_VIRTUAL_KEY is the one that bites: anybody who has pointed a viff instance at a real LLM
 // has it exported, so every config they load has an LLM configured and `Available()` is true
 // with no file anywhere saying so.
 func withLayers(t *testing.T, systemBase, xdgDir string) {
@@ -301,10 +301,10 @@ func TestRepoChartersFromFile(t *testing.T) {
 	}
 }
 
-// A SPAWN'S CREDENTIAL IS THE ONE IT CARRIES, and this viff's only when it carries none.
+// A SPAWN'S CREDENTIAL IS THE ONE IT CARRIES, and this viff instance's only when it carries none.
 //
 // There is nothing to look up: what a spawn carries is already the key, read for it from the
-// address it named by whoever named it. This viff's own is the default, which is every spawn
+// address it named by whoever named it. This viff instance's own is the default, which is every spawn
 // written before credentials had addresses.
 func TestASpawnsCredentialBeatsTheViffsOwn(t *testing.T) {
 	llm := LLMConfig{APIKey: "pk", VirtualKey: "vk-general"}
@@ -313,10 +313,10 @@ func TestASpawnsCredentialBeatsTheViffsOwn(t *testing.T) {
 		t.Errorf("carried → %q, want the spawn's own", got)
 	}
 	if got := llm.VirtualKeyOr(""); got != "vk-general" {
-		t.Errorf("unnamed → %q, want this viff's", got)
+		t.Errorf("unnamed → %q, want this viff instance's", got)
 	}
-	// A viff with none, asked by a spawn with none: no virtual key at all, which is the
-	// account key alone and the state every viff was in before this.
+	// A viff instance with none, asked by a spawn with none: no virtual key at all, which is the
+	// account key alone and the state every viff instance was in before this.
 	if got := (LLMConfig{APIKey: "pk"}).VirtualKeyOr(""); got != "" {
 		t.Errorf("neither → %q, want no virtual key", got)
 	}
@@ -363,7 +363,7 @@ func TestAuthPrincipalIsReadAndChecked(t *testing.T) {
 		t.Errorf("google = %+v", g)
 	}
 
-	// A viff with no auth block is one that verifies nobody.
+	// A viff instance with no auth block is one that verifies nobody.
 	if c, err := load("addr: \"x:1\"\n"); err != nil || c.Auth.Principal.Mode != "" || len(c.Auth.Principal.Providers) != 0 {
 		t.Errorf("no auth block = %+v, %v", c.Auth, err)
 	}

@@ -114,7 +114,7 @@ func TestARestartOrphansAFiringsQuestion(t *testing.T) {
 }
 
 // A firing's question is a different case from a task's, and the one easy to miss: the
-// thing waiting on the answer was a goroutine in the viff, so a restart ends it whatever the
+// thing waiting on the answer was a goroutine in the viff instance, so a restart ends it whatever the
 // store still says. Left pending, the docket would list a question whose answer nothing could
 // receive — and answering it returns 404, because the registry that held it is empty.
 //
@@ -151,7 +151,7 @@ func TestARestartReposesAFiringsQuestion(t *testing.T) {
 	if posed == "" {
 		t.Fatal("the rule never posed its gate")
 	}
-	stop() // the viff goes down, and the firing waiting on that answer goes with it
+	stop() // the viff instance goes down, and the firing waiting on that answer goes with it
 
 	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())

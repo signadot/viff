@@ -102,7 +102,7 @@ spec:
           readOnly: true
         readinessProbe:
           # GET /io is the contract's own "what are you", which is exactly the question a
-          # readiness probe is asking. A source that cannot answer it is one viff's install
+          # readiness probe is asking. A source that cannot answer it is one viff instance's install
           # probe would call unreachable.
           httpGet:
             path: /io

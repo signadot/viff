@@ -57,7 +57,7 @@ func TestAFiringRefusedBeforeItsLaunchIsGivenNoCredential(t *testing.T) {
 		deployRule(`[{name: ok, mode: auto}]`, `agent: {name: codex}, prompt: go, credential: {audience: `+credAudience+`}`)); code != http.StatusCreated {
 		t.Fatalf("install = %d %s", code, out)
 	}
-	// This viff's own runner describes itself after the install, and offers no codex.
+	// This viff instance's own runner describes itself after the install, and offers no codex.
 	describeLocal(t, srv, offering())
 	if code, out := bearer(t, http.MethodPost, ts.URL+"/entity", ana, "", func() string {
 		b, _ := codec.Marshal(api.PutEntity{At: "demo.pr.1", Payload: entity.Obj{"stage": "ready"}.Payload()}, codec.Tony)

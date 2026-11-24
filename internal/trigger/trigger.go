@@ -7,7 +7,7 @@
 //
 //	Match   — POINT-IN-TIME: which entities satisfy this right now. The atom, and the
 //	          leaf of every Formula. A Subject and a flow address are bare Matches.
-//	Formula — a Match asked of the viff's evolution: at two revisions for a cause (`on`),
+//	Formula — a Match asked of the viff instance's evolution: at two revisions for a cause (`on`),
 //	          at one for a condition (`when`). Nothing composes it over time.
 //
 // Name entities at an instant → a Match; ask one of the store as it moves → a Formula. See
@@ -195,13 +195,13 @@ type Condition struct {
 	// Two consequences worth knowing before writing one. An EDGE DOES NOT RE-FIRE while it
 	// stays true: `on: {path: "demo.pr.*", value: {stage: reviewed}}` rises when the
 	// first PR reaches `reviewed` and says nothing about the second, because the predicate was
-	// already true. And an `on` trigger does NOT act on the backlog — installed over a viff
+	// already true. And an `on` trigger does NOT act on the backlog — installed over a viff instance
 	// where its predicate already holds, there is no rising edge to observe, where a
 	// subject-dispatched trigger acts on everything already standing (see the level-triggered
 	// seed in docs/change-events.md).
 	On *Formula `tony:"field=on,omitzero"`
 	// When fires the trigger. Its atom form is a single match, dispatched on the edge of
-	// one change event; temporal operators relate the viff's evolution instead.
+	// one change event; temporal operators relate the viff instance's evolution instead.
 	//
 	// Optional, and an omitted When IS the Subject: the ordinary rule reacts to the thing it
 	// is about ("when a pr goes open, review that pr"), so saying the same match twice would
@@ -563,7 +563,7 @@ type occasion struct {
 	// change costs a read at a revision.
 	commit entity.Commit
 	parent int64
-	// snap is the firing's snapshot of the viff at that commit, taken at most once and shared
+	// snap is the firing's snapshot of the viff instance at that commit, taken at most once and shared
 	// by everything in the action that needs one. A pointer, because an occasion is copied
 	// down the action tree and the whole point is that the copies agree.
 	//
@@ -574,7 +574,7 @@ type occasion struct {
 	// cost is real: see within.
 	snap *snapCache
 	// within is the places that snapshot holds — firingWithin, computed from the rule. Empty
-	// reads the whole viff, which is what a rule reading a place it cannot name leaves as the
+	// reads the whole viff instance, which is what a rule reading a place it cannot name leaves as the
 	// only safe answer.
 	within [][]string
 	// reader is the store this firing reads through: the engine's, as the rule that is
@@ -606,11 +606,11 @@ type snapCache struct {
 	err  error
 }
 
-// snapshot returns the firing's view of the viff at the commit that caused it.
+// snapshot returns the firing's view of the viff instance at the commit that caused it.
 func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 	if oc.commit.Rev == 0 {
 		return nil, fmt.Errorf("this firing has no causing commit to read at, so there is no " +
-			"revision to be as of. A completion hook reads at the head, the viff as it is when " +
+			"revision to be as of. A completion hook reads at the head, the viff instance as it is when " +
 			"its task ends")
 	}
 	if oc.snap == nil {
@@ -629,7 +629,7 @@ func (oc occasion) snapshot(e *Engine) (entity.Snapshot, error) {
 // IT IS WHAT MAKES A FIRING AFFORDABLE, and the difference is not small. A whole-viff snapshot
 // costs the log replay to that commit and grows with the store — measured at seconds once a few
 // thousand commits have landed, against tens of milliseconds for a narrowed one, which is flat.
-// A firing that read the whole viff paid for every entity its rule cannot see, on a store that
+// A firing that read the whole viff instance paid for every entity its rule cannot see, on a store that
 // only grows, against a read budget that does not (entity.sessionBudget).
 //
 // A PREFIX rather than the address, so what it names is a SUPERSET of what the reads can reach:
@@ -647,7 +647,7 @@ func firingWithin(t Trigger) [][]string {
 		for _, s := range segs {
 			// A segment that is a reference is not a place until the firing resolves it, and
 			// `demo."$[kind]".x` narrowed to `demo."$[kind]"` is a narrowing to nothing at all.
-			// Any dollar at all, rather than a well-formed expression: reading the whole viff
+			// Any dollar at all, rather than a well-formed expression: reading the whole viff instance
 			// for a place named `$5` is the cheap way to be wrong here.
 			if strings.Contains(s, "$") {
 				return false
@@ -1115,7 +1115,7 @@ func (a Action) applyClaimed(chain string, oc occasion, subj entity.Ref, e *Engi
 	// EVERYTHING IS RESOLVED BEFORE ANYTHING IS WRITTEN. The patch is what takes the subject
 	// out of the rule's selection, so a patch that lands ahead of a derive that then fails is
 	// a subject latched over a write that never happened: the rule does not fire again to
-	// try, and the viff says the work finished and holds no record of it. What can fail at a
+	// try, and the viff instance says the work finished and holds no record of it. What can fail at a
 	// firing in the ordinary way — a reference the answer did not carry, a read of an entity
 	// that is not there — is known before any write, from the firing's own snapshot, so it is
 	// found here and the firing writes nothing.

@@ -16,7 +16,7 @@ import (
 )
 
 // The charter tools mirror `viff charter`: its read, --check, -a and -r (-R stays on the command
-// line), verbs a runner's viff system offers too, defined once (verbs); and the commands that say what the viff is: `viff status`, `viff schema`, and `viff
+// line), verbs a runner's viff system offers too, defined once (verbs); and the commands that say what the viff instance is: `viff status`, `viff schema`, and `viff
 // flow`'s listing and `flow show`.
 
 type statusIn struct {
@@ -49,13 +49,13 @@ func (m *mcpServer) addCharterTools(s *mcp.Server) {
 	addVerb(m, s, verbs.CharterRemove, m.charterRemove)
 	addTool(m, s, &mcp.Tool{
 		Name: "viff_status",
-		Description: "What the viff is and what it runs, as `viff status` says: the store's rev, live " +
+		Description: "What the viff instance is and what it runs, as `viff status` says: the store's rev, live " +
 			"flows, gates, suspensions, tasks, firings and what went wrong at them, and what is installed.",
 		Annotations: readOnly(),
 	}, m.status)
 	addTool(m, s, &mcp.Tool{
 		Name:        "viff_schema",
-		Description: "The schema the viff publishes about itself, as `viff schema` prints it, or one definition of it.",
+		Description: "The schema the viff instance publishes about itself, as `viff schema` prints it, or one definition of it.",
 		Annotations: readOnly(),
 	}, m.schema)
 	addTool(m, s, &mcp.Tool{

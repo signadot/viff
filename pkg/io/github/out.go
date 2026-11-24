@@ -18,7 +18,7 @@ import (
 	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// The out half: a comment on an issue or a pull request, kept in step with what the viff asks
+// The out half: a comment on an issue or a pull request, kept in step with what the viff instance asks
 // for. It is the Linear io's out half pointed at GitHub, and it is the first of what the review
 // environment needs from GitHub (git-issue jdvbwvjah12krsstqsn0; the steps are on the branch's
 // issue, 934azhtjh12kr7mtqsn0).
@@ -141,7 +141,7 @@ import (
 // is about goes wrong and right. It is how a charter files what
 // went wrong where the repository's people read, with no number to know before the issue exists.
 type Sink struct {
-	// Viff is the viff this io reads questions and bindings from, as itself. Nil reads none,
+	// Viff is the viff instance this io reads questions and bindings from, as itself. Nil reads none,
 	// and an input carrying `asks` is refused for good.
 	Viff *client.Client
 	// As makes a request as a person this io relays, named with their GitHub account

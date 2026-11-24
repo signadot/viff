@@ -357,7 +357,7 @@ func (c *countingStore) narrowedTo(place ...string) bool {
 }
 
 // `!get-path` with a `path:` reaches into the payload rather than taking all of it. That is
-// what makes the pair one grammar: a viff is one document, an entity address is a path prefix,
+// what makes the pair one grammar: a viff instance's store is one document, an entity address is a path prefix,
 // and `path:` continues it.
 func TestGetPathReachesIntoThePayload(t *testing.T) {
 	eng, store := newEng(t)
@@ -492,7 +492,7 @@ func TestListPathsInADeriveMustBeAtOrBelow(t *testing.T) {
 
 // A PAYLOAD PREDICATE narrows the list to the ones that look like it. The refusal this
 // replaces was written for `!read`, which named exactly one entity — "no ordering to define,
-// no 'it matched three', no truncation, no cost that grows with the viff" — and every one of
+// no 'it matched three', no truncation, no cost that grows with the viff instance" — and every one of
 // those was paid on the list side when the tag split by cardinality. What is left is the
 // cheaper read: a `*` last segment walks every node at the place, and a predicate is what
 // narrows it.

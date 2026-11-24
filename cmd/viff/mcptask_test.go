@@ -200,7 +200,7 @@ func TestTheTaskRunToolReadsTheSpawnAsTheCommandDoes(t *testing.T) {
 	}
 }
 
-// fakeViff is a viff that answers as h does, for what a real one does only when something goes
+// fakeViff is a viff instance that answers as h does, for what a real one does only when something goes
 // wrong; the next session is toward it.
 func fakeViff(t *testing.T, h http.HandlerFunc) {
 	t.Helper()

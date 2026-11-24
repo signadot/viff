@@ -175,7 +175,7 @@ func TestASlowStoreDoesNotHoldUpTheNextSubscribe(t *testing.T) {
 	waitFor(t, "three subscribes while the store takes no write", func() bool { return len(h.subscribes()) >= 3 })
 }
 
-// A VIFF THAT STOPS STOPS FOLLOWING ITS TASKS, and ends none of them: the viff that comes next
+// A VIFF THAT STOPS STOPS FOLLOWING ITS TASKS, and ends none of them: the viff instance that comes next
 // follows them again. Once Done closes, nothing more is asked of the runner, and the task is not
 // given up.
 func TestAFollowEndsWithTheViffThatFollows(t *testing.T) {
@@ -193,12 +193,12 @@ func TestAFollowEndsWithTheViffThatFollows(t *testing.T) {
 	select {
 	case <-returned:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the follow went on after the viff stopped")
+		t.Fatal("the follow went on after the viff instance stopped")
 	}
 	asked := len(h.subscribes())
 	time.Sleep(300 * time.Millisecond) // three quarters of a lease: a follow still running asks again
 	if n := len(h.subscribes()); n != asked {
-		t.Fatalf("%d subscribes after the viff stopped", n-asked)
+		t.Fatalf("%d subscribes after the viff instance stopped", n-asked)
 	}
 	for {
 		it, ok := q.take()
@@ -206,7 +206,7 @@ func TestAFollowEndsWithTheViffThatFollows(t *testing.T) {
 			break
 		}
 		if it.mark == markGaveUp {
-			t.Fatal("the follow gave the task up as the viff stopped")
+			t.Fatal("the follow gave the task up as the viff instance stopped")
 		}
 	}
 }

@@ -23,7 +23,7 @@ const DefaultListen = ":9802"
 type Config struct {
 	// Listen is the address the runner serves viff on.
 	Listen string `tony:"field=listen,omitzero"`
-	// Viff is the one viff this runner serves, by the token viffd presents (viffauth.go).
+	// Viff is the one viff instance this runner serves, by the token viffd presents (viffauth.go).
 	// Absent, the runner serves whoever reaches it.
 	Viff *Viff `tony:"field=viff,omitzero"`
 }

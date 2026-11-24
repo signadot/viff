@@ -13,7 +13,7 @@ import (
 // A RULE THAT DOES NOTHING IS REFUSED.
 //
 // It used to install — "installed 1 trigger(s)" — and render back with `action: {}`, then watch
-// its subtree for the life of the viff without ever writing anything. It is the failure every
+// its subtree for the life of the viff instance without ever writing anything. It is the failure every
 // refusal around it exists to prevent, and a worse instance than the ones already caught: there
 // is no half-written field to notice, the whole action is missing (git-issue b2g9hsnfh12ks5vqg9n0).
 func TestARuleWithNoActionIsRefused(t *testing.T) {

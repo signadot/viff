@@ -455,7 +455,7 @@ haskv "$rec" verdict proceed || die "the settled record does not say what it set
 ok "the question is settled with both ballots on the record"
 
 # ── ask: a person asks a person, and is told the answer ─────────────────────
-# Every viff asks: nothing is installed for it. alice asks bob, bob answers on the docket, and
+# Every viff instance asks: nothing is installed for it. alice asks bob, bob answers on the docket, and
 # alice reads the answer off her ask and off the watch.
 step "ask: alice asks bob, bob answers, alice sees it"
 LAND=$(VIFF_USER=user:alice v ask land -q "Review viff/ask?" --to user:bob --due 48h) || die "alice could not ask"
@@ -707,7 +707,7 @@ ok "--scope $SCOPE suspend of baseline's package is refused, naming baseline"
 # ── status ───────────────────────────────────────────────────────────────────
 step "status"
 # `rules` is inside the charter census now — counted where each charter is, since the top-level
-# count was baseline's alone and read 0 on a viff whose program is packaged.
+# count was baseline's alone and read 0 on a viff instance whose program is packaged.
 has "$(v status)" 'rules' || die "status missing the charter census"
 has "$(v status)" 'storeRev' || die "status missing engine counts"
 ok "status reports engine counts"
@@ -852,15 +852,15 @@ step "down"
 v down >/dev/null 2>&1 || true # the trap also reaps the server + its daemons
 ok "down"
 
-# ── the quick start: a fresh viff, and nobody configured ────────────────────
+# ── the quick start: a fresh viff instance, and nobody configured ────────────────────
 # What the README tells a new developer to type, as they arrive: no config, no VIFF_USER, a
 # viff on this machine. Every seed script writes, so each one running is a check that a CLI
 # with nobody configured acts as somebody here (the local user), and that the scripts a
 # newcomer meets first still say what the CLI takes.
 #
-# A viff of its own, because the scripts seed baseline: beside the rules the steps above
+# A viff instance of its own, because the scripts seed baseline: beside the rules the steps above
 # installed, what a seeded entity does would be theirs to decide as much as the seed's.
-step "quick start (a fresh viff, nobody configured)"
+step "quick start (a fresh viff instance, nobody configured)"
 QADDR="127.0.0.1:$(free_port)" || die "could not reserve an ephemeral port"
 # The environment a newcomer has: no user, no agent, and no config file in either layer.
 q() { env -u VIFF_USER -u VIFF_AGENT VIFF_CONFIG="$tmp/none.tony" VIFF="$BIN" VIFF_ADDR="$QADDR" "$@"; }

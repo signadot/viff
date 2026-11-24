@@ -78,7 +78,7 @@ func (e *Engine) failed(chain string, subj entity.Ref, err error) {
 	e.trouble(t)
 }
 
-// unread records that rule could not read the viff at rev, and did not evaluate the commit.
+// unread records that rule could not read the viff instance at rev, and did not evaluate the commit.
 func (e *Engine) unread(rule string, rev int64, err error) {
 	e.trouble(Trouble{Rule: rule, Kind: TroubleUnread, Rev: rev, Why: err.Error()})
 }

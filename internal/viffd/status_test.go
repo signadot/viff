@@ -13,8 +13,8 @@ import (
 	"go.viff.dev/viff/pkg/mirror"
 )
 
-// /status summarizes the running viff: it reports the store revision and live
-// counts, which move as the viff is driven.
+// /status summarizes the running viff instance: it reports the store revision and live
+// counts, which move as the viff instance is driven.
 func TestStatus(t *testing.T) {
 	srv := testServer(t) // no daemons needed
 	ts := httptest.NewServer(srv.Handler())
@@ -42,10 +42,10 @@ func TestStatus(t *testing.T) {
 		}
 	}
 	// THE CHARTER IS COUNTED WHERE IT IS INSTALLED, not once at the top. A top-level `rules`
-	// counted BASELINE's alone while every number beside it counts the whole viff, so a viff
+	// counted BASELINE's alone while every number beside it counts the whole viff instance, so a viff instance
 	// whose program is packaged reported none.
 	if n := charterCount(t, m, "rules"); n != 0 {
-		t.Fatalf("charter rules = %v, want 0 on a fresh viff", n)
+		t.Fatalf("charter rules = %v, want 0 on a fresh viff instance", n)
 	}
 
 	// Install a trigger and write an entity; the counts move.
@@ -70,7 +70,7 @@ func TestStatus(t *testing.T) {
 }
 
 // Status names the installed sources. This is the one line that says a source is REGISTERED:
-// every counter above it moves on what viff was already given, so a viff whose source was
+// every counter above it moves on what viff was already given, so a viff instance whose source was
 // dropped reads exactly like a healthy quiet one until this list is empty. Reaching the far
 // side is a separate question, not asserted by this list — see the inline note below and the
 // type doc on api.Status.
@@ -92,7 +92,7 @@ func TestStatusSources(t *testing.T) {
 	}
 
 	if got := sources(); len(got) != 0 {
-		t.Fatalf("sources = %v, want none on a fresh viff", got)
+		t.Fatalf("sources = %v, want none on a fresh viff instance", got)
 	}
 
 	// Installed through the real route, so status reports what an operator actually put here.
@@ -123,7 +123,7 @@ func charterCount(t *testing.T, m map[string]any, key string) int64 {
 	return n
 }
 
-// `tasks` is the DOCKET — how many tasks this viff has a record of — and it is the number
+// `tasks` is the DOCKET — how many tasks this viff instance has a record of — and it is the number
 // `viff task` lists. This pins it to that list.
 //
 // The in-process task runtime is NOT that number: it holds the tasks this process hosts, so a
@@ -152,7 +152,7 @@ func TestStatusTasksIsTheDocket(t *testing.T) {
 	}
 
 	if n := tasks(); n != 0 {
-		t.Fatalf("tasks = %d, want 0 on a viff with no record of one", n)
+		t.Fatalf("tasks = %d, want 0 on a viff instance with no record of one", n)
 	}
 
 	// The record a spawn writes, for tasks running somewhere this process cannot see.
@@ -210,7 +210,7 @@ func TestStatusFiredCountsEveryEngine(t *testing.T) {
 	}
 
 	if n := fired(); n != 0 {
-		t.Fatalf("fired = %d, want 0 on a viff whose triggers have acted on nothing", n)
+		t.Fatalf("fired = %d, want 0 on a viff instance whose triggers have acted on nothing", n)
 	}
 
 	// A package, and nothing in baseline: the deployment this is about.

@@ -222,7 +222,7 @@ func TestAStuckDesktopNeitherHangsNorHidesDrops(t *testing.T) {
 	}
 }
 
-// THE QUIET CLOCK STARTS WHEN THE STREAM OPENS: a viff slow to answer, or to assemble what stands,
+// THE QUIET CLOCK STARTS WHEN THE STREAM OPENS: a viff instance slow to answer, or to assemble what stands,
 // is not quiet, and what it then sends is still caught up on.
 func TestCatchingUpWaitsForTheStreamToOpen(t *testing.T) {
 	w := newAskWatch(apiClient(), victor, false, true)

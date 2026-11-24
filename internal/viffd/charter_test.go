@@ -25,7 +25,7 @@ func matchAt(path string, value map[string]any) trigger.Match {
 }
 
 // A restart comes back running the charter it went down with. Start reinstalls the rules
-// standing in the viff, so the second server observes what the first was told to.
+// standing in the viff instance, so the second server observes what the first was told to.
 //
 // Two servers over ONE logd is the restart: the first one's memory is gone, and only what
 // the store holds crosses the gap.

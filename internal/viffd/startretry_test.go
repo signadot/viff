@@ -15,13 +15,13 @@ import (
 
 // A START WHOSE READS DID NOT HAPPEN IS ASKED AGAIN, and says so meanwhile. The phases of Start
 // each list a slice of the store and act on what they find; a listing that hit its deadline
-// finds nothing, and a viff that took that as the answer came back with its sources
+// finds nothing, and a viff instance that took that as the answer came back with its sources
 // registered and none running, and stayed that way until the next restart. Now the phase is in
 // `restoring` on status until the store answers, and then what it restores is running.
 func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 	raw := entitytest.Store(t)
 
-	// What the viff held when it went down: a rule and a source, installed the ordinary way.
+	// What the viff instance held when it went down: a rule and a source, installed the ordinary way.
 	first := serverWith(t, runnerdtest.Scripted, raw)
 	ts := httptest.NewServer(first.Handler())
 	if resp := postTony(t, ts.URL+"/charter", map[string]any{
@@ -89,7 +89,7 @@ func TestAStartWhoseReadsFailedIsAskedAgain(t *testing.T) {
 		t.Fatalf("%d reflectors after the store answered, want 1", n)
 	}
 	if st := statusOf(t, ts); len(st.Restoring) != 0 {
-		t.Fatalf("status.restoring = %v on a viff that is up", st.Restoring)
+		t.Fatalf("status.restoring = %v on a viff instance that is up", st.Restoring)
 	}
 	// And the rule is really running, not merely listed.
 	ref := entity.RefAt("demo", "pr", "1")

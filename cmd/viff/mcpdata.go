@@ -10,7 +10,7 @@ import (
 	"go.viff.dev/viff/pkg/verbs"
 )
 
-// The data tools mirror `viff data`: the viff at an address. Each is a verb a runner's viff
+// The data tools mirror `viff data`: the store at an address. Each is a verb a runner's viff
 // system offers too, defined once (verbs).
 
 func (m *mcpServer) addDataTools(s *mcp.Server) {

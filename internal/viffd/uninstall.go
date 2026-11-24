@@ -29,7 +29,7 @@ import (
 // shares (charterlock.go): that one is taken for step 3 alone. A task whose runner does not
 // answer the cancel holds the uninstall there, the package still installed and locked, until it
 // does or the task ends. The uninstall runs on the server's account and not the request's: a
-// request that goes away leaves it running, and one that asks again joins it. A viff that
+// request that goes away leaves it running, and one that asks again joins it. A viff instance that
 // restarts meanwhile comes back with the package installed and not locked, its tasks attached
 // again, for the uninstall to be asked again.
 

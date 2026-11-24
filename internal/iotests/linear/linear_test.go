@@ -314,7 +314,7 @@ func TestLinearConvergesATeamThroughTheReflector(t *testing.T) {
 		t.Fatalf("ENG-1 = %+v, want the new state", p)
 	}
 	if _, ok := get("ENG-2"); ok {
-		t.Fatal("ENG-2 is gone from Linear and still standing in the viff")
+		t.Fatal("ENG-2 is gone from Linear and still standing in the viff instance")
 	}
 }
 

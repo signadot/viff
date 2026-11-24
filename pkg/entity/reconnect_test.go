@@ -290,7 +290,7 @@ func TestStoreRecoversFromClosedConnection(t *testing.T) {
 //
 // It is long by construction — the noticing IS the runtime, and making it fast would test
 // something else. What the timings say when it passes is worth as much as the pass: how
-// long a viff spends unable to write before it repairs itself is a number an operator
+// long a viff instance spends unable to write before it repairs itself is a number an operator
 // eventually asks for.
 func TestStoreRecoversFromDarkConnection(t *testing.T) {
 	requireLong(t)

@@ -7,12 +7,12 @@ import (
 	"strings"
 )
 
-// VersionHeader is what each side of a viff conversation stamps its own version in — the
+// VersionHeader is what each side of a viff instance conversation stamps its own version in — the
 // client on every request, the server on every response.
 //
-// It exists because the wire contract is a moving one. The schema says what a viff looks
+// It exists because the wire contract is a moving one. The schema says what a viff instance looks
 // like, and a client reading it from its own binary is reading the shapes THAT binary was
-// built against; the viff it is talking to may have been built against others. Nothing else
+// built against; the viff instance it is talking to may have been built against others. Nothing else
 // notices: a field that moved comes back missing, a route that changed answers 404, and both
 // look like ordinary emptiness. This is the one place the two builds can say who they are.
 const VersionHeader = "Viff-Version"
@@ -72,7 +72,7 @@ func Version() string {
 	return bi.Main.Version
 }
 
-// Skew is how far apart two viff versions are.
+// Skew is how far apart two viff instance versions are.
 type Skew int
 
 const (
@@ -90,7 +90,7 @@ const (
 
 // VersionSkew reports how far apart a client and a server are, and says it in one line. The
 // line names BOTH versions, always: the failure a skew produces is a missing field or a 404,
-// neither of which says "your viff is older than the one you are talking to".
+// neither of which says "your viff instance is older than the one you are talking to".
 //
 // The rule is semver's, taken plainly. A different MAJOR is incompatible — that is the whole
 // content of the number. A different MINOR is drift: one side has features the other does not,

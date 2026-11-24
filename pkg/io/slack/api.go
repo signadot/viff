@@ -337,7 +337,7 @@ type conversationsResp struct {
 // users.conversations rather than conversations.list, and the difference is honesty about
 // permission: a bot can enumerate public channels it has never been invited to, and can read
 // the history of none of them. Reflecting a channel whose messages will always be missing
-// would put an entity in the viff that no trigger can ever say anything true about. So the
+// would put an entity in the viff instance that no trigger can ever say anything true about. So the
 // membership IS the configuration — invite the bot to what you want reflected.
 func (a *api) conversations(ctx context.Context) ([]channel, error) {
 	var out []channel

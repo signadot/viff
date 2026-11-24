@@ -77,7 +77,7 @@ func TestTheTUIAttachCommand(t *testing.T) {
 	}
 }
 
-// A stream the viff refuses is said in the pane, not left as an empty transcript.
+// A stream the viff instance refuses is said in the pane, not left as an empty transcript.
 func TestTheTUISaysWhyATranscriptDidNotOpen(t *testing.T) {
 	src := counting()
 	src.streamErr = errors.New("this task has no transcript to attach to")

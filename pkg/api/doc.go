@@ -1,5 +1,5 @@
 // Package api is the Operator API: viffd's HTTP surface, as the routes it serves and the
-// requests and answers that are its own. The CLI, the iods and any program that drives a viff
+// requests and answers that are its own. The CLI, the iods and any program that drives a viff instance
 // import these declarations, and viffd decodes and writes them, so a field renamed on one side
 // is a build failure on the other rather than a key dropped in silence. A runner's API is
 // package runner's. An iod's registration and the rows about it are package io's, and a
@@ -14,7 +14,7 @@
 //
 //	Route                                     Request               Response                     File
 //
-//	The viff
+//	The viff instance
 //	GET    /status                            -                     Status                       status.go
 //	GET    /healthz                           -                     Health                       status.go
 //	GET    /api                               -                     Routes                       routes.go
@@ -131,7 +131,7 @@
 // embeds the record and adds what viff knows of it now (RunnerRow, io.Row, resolver.Row,
 // GroupRow), and an install answers the row its listing shows, with what a runner described and
 // any warning the install has for the operator. A claim of an account is not an install, so it
-// answers what to do next (AccountClaimed). A registration this viff can't decode is listed as
+// answers what to do next (AccountClaimed). A registration this viff instance can't decode is listed as
 // a row saying why (`unreadable`), its GET by name answers 500, and its removal takes it out by
 // its name. GET /asks answers each ask as the keys api.AskRecord names, and only those: a check in
 // viffd's tests holds every ask they leave to the type, and viffd logs a key it drops. Every ask
@@ -158,7 +158,7 @@
 //
 // # Headers
 //
-// Viff-Principal names who a request is from, where the viff takes names as asserted or beside
+// Viff-Principal names who a request is from, where the viff instance takes names as asserted or beside
 // a verified bearer token (PrincipalHeader). Viff-Version is the build each side was made from
 // (VersionHeader). Viff-Resolver makes a request as a resolver its sender installed
 // (ResolverHeader). Viff-For-Principal is the account an io saw, for a person it relays

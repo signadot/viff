@@ -12,7 +12,7 @@ import (
 
 // A FIRING THAT CANNOT BE RESOLVED WRITES NOTHING. The patch is what takes the subject out of
 // the rule's selection, so one that lands ahead of a derive that then fails latches the subject
-// over a write that never happened: the rule never fires again to try, and the viff says the
+// over a write that never happened: the rule never fires again to try, and the viff instance says the
 // work was done and holds no record of it.
 //
 // The rule below is the shape that lost a finding on staging: a fan-out whose element names a

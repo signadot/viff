@@ -23,13 +23,13 @@ import (
 // the obvious reading was a typo, and the actual cause was that nothing on the answer path
 // could see a task that had gone somewhere by name.
 //
-// Both halves of the lookup consulted `s.runner`, this viff's DEFAULT runner, while the whole
+// Both halves of the lookup consulted `s.runner`, this viff instance's DEFAULT runner, while the whole
 // point of `runner:` on a spawn is that the work went elsewhere. Listing worked because it reads
 // the mirror; answering did not because it read a field. So this test spawns onto a runner that
 // is explicitly NOT the default, and answers.
 func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 	// A face that asks before it acts, so there is a real question to answer. Its registry is
-	// the one that must receive the answer, and it is not this viff's.
+	// the one that must receive the answer, and it is not this viff instance's.
 	build := func(l runner.Launch, reg *task.Registry) *task.Task {
 		gating := task.Autonomy{{Name: "act", Match: &task.Match{System: "commands", Verb: "run"}, Then: task.Then{Mode: task.ThenAsk}}, {Then: task.Then{Mode: task.ThenAllow}}}
 		// ONE action, then done. A driver that keeps proposing would park on a second gate
@@ -65,7 +65,7 @@ func TestGateOnPerSpawnRunnerIsAnswerable(t *testing.T) {
 		"name": "code", "url": face.URL, "subject": face.Subject,
 	}).Body.Close()
 
-	// Spawned onto that runner BY NAME. The viff's own default runner is the in-process one
+	// Spawned onto that runner BY NAME. The viff instance's own default runner is the in-process one
 	// and knows nothing about this task, which is the condition being tested.
 	resp := postTony(t, ts.URL+"/tasks", map[string]any{"name": "onrunner", "spawn": map[string]any{"agent": map[string]any{"name": "fake"}, "prompt": "work", "environment": stepEnv}})
 	if resp.StatusCode != http.StatusOK {

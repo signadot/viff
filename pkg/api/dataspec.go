@@ -38,7 +38,7 @@ func misuse(field string, err error) error { return &FieldError{Field: field, Mi
 // unread is a FieldError for a value of field that does not read.
 func unread(field string, err error) error { return &FieldError{Field: field, Err: err} }
 
-// StateQuery is a read of the viff at the kinded path at, as GET /state takes it: the server's
+// StateQuery is a read of the viff instance at the kinded path at, as GET /state takes it: the server's
 // selector (pattern, in the format in, rooted at patternAt), and for a listing the paths alone,
 // depth levels deep (entity.Unbounded for all). It answers the path parsed too, which is what the
 // answer is walked by.

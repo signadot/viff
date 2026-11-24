@@ -2,7 +2,7 @@ package entity
 
 import "github.com/signadot/tony-format/go-tony/ir"
 
-// Reader is the READ half of a Store: what it takes to evaluate a predicate over the viff
+// Reader is the READ half of a Store: what it takes to evaluate a predicate over the viff instance
 // and to select the entities satisfying one. It exists so that "evaluate this against the
 // store" and "evaluate this against the store as it stood at commit C" are the same call
 // with a different receiver, rather than two code paths that must be kept saying the same
@@ -49,12 +49,12 @@ type Snapshot interface {
 	Rev() int64
 }
 
-// docSnapshot is a Snapshot over one root-rooted document read at a commit — the whole viff
+// docSnapshot is a Snapshot over one root-rooted document read at a commit — the whole viff instance
 // as it stood, in hand. Both reads are then pure functions of that node: no further round
 // trip, and no way for a later commit to be visible to one read and not another.
 //
 // Holding the whole document is the right trade at viff's scale and is what the substrate
-// hands back anyway (one MatchAt over the root). If a viff ever outgrows that, the
+// hands back anyway (one MatchAt over the root). If a viff instance ever outgrows that, the
 // interface is what stays: a snapshot that reads lazily at a pinned commit satisfies it
 // identically.
 type docSnapshot struct {

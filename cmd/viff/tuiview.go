@@ -109,7 +109,7 @@ func (m tuiModel) contentRows() int {
 
 func (m tuiModel) View() string {
 	if !m.loaded {
-		return "reading the viff…"
+		return "reading the viff instance…"
 	}
 	exW, contentW, bodyH := m.layout()
 	ex := m.explorerLines(exW, bodyH)
@@ -464,7 +464,7 @@ func (m tuiModel) contentLines(w, h int) []string {
 	return append(out, tuiFaint.Render(where))
 }
 
-// summary is the viff in one line, under the content when it fits.
+// summary is the viff instance in one line, under the content when it fits.
 func (m tuiModel) summary() string {
 	// A hidden section is not read, so it is not counted: a 0 would read as a fact.
 	var parts []string

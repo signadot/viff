@@ -107,7 +107,7 @@ func TestADeadlineWithNoDefaultSettlesOnNothing(t *testing.T) {
 
 // The stamped instant is honoured across a restart. The question is re-posed with the same
 // duration, as a charter's replay re-poses it, and the clock does not start over: an instant
-// that passed while the viff was down fires on the way back up.
+// that passed while the viff instance was down fires on the way back up.
 func TestARestartHonoursTheStampedDeadline(t *testing.T) {
 	addr := entitytest.Addr(t)
 	const id = "mirror.trigger.review.review~3"
@@ -117,12 +117,12 @@ func TestARestartHonoursTheStampedDeadline(t *testing.T) {
 	first.Start(ctx)
 	raiseWithDeadline(t, first, id, "10m", "deny")
 	_, _, stamped := mirror.DeadlineOf(entity.Obj(armedQuestion(t, first, id)).Payload())
-	backdate(t, first.Store, id) // the viff is down for longer than the deadline
+	backdate(t, first.Store, id) // the viff instance is down for longer than the deadline
 	stop()
 
 	second := serverWith(t, runnerdtest.Scripted, entitytest.StoreAt(t, addr))
 	second.Start(t.Context())
-	// The reconcile orphaned it (its waiter died with the first viff); the replay re-poses it.
+	// The reconcile orphaned it (its waiter died with the first viff instance); the replay re-poses it.
 	answered := raiseWithDeadline(t, second, id, "10m", "deny")
 	byDeadline(t, answered, "deny")
 	q := settledQuestion(t, second, id)

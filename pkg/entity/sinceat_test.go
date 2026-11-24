@@ -60,7 +60,7 @@ func TestSinceAtOneSlice(t *testing.T) {
 //
 // The watch has a bounded buffer and logd fails a consumer that does not keep up. Levelling
 // each delta inside the receive — a patch applied to the whole document, then the entity walk
-// over it — is the most expensive work in the viff, and putting it between one event and the
+// over it — is the most expensive work in the viff instance, and putting it between one event and the
 // next filled that buffer: this replay was cut off after about a thousand commits, and the
 // caller was handed a truncated catch-up reported as a failure it could do nothing about
 // (git-issue 3qf2z59dh12ksdazg9n0). 1500 is comfortably past where that happened.

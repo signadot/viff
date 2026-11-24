@@ -113,7 +113,7 @@ func packageFirings(srv *Server) int {
 
 // A RESTART REPLAYS A SYSTEM CHARTER ONCE, in the restore, however often the config hands it
 // over unchanged. Applying the same text over what the restore brought back replayed every rule
-// a second time: on staging each repository's charter, eight minutes before the viff was ready.
+// a second time: on staging each repository's charter, eight minutes before the viff instance was ready.
 // A changed text still installs, and replays what it changed.
 func TestAnUnchangedSystemCharterIsNotReplayedAtARestart(t *testing.T) {
 	addr := entitytest.Addr(t)

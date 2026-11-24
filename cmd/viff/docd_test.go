@@ -49,8 +49,8 @@ func goTonyIsReplaced() bool {
 	return false
 }
 
-// The cache is keyed by version so a viff built against a newer go-tony installs BESIDE
-// the old one rather than over it — two viffs of different vintages can be running.
+// The cache is keyed by version so a viff instance built against a newer go-tony installs BESIDE
+// the old one rather than over it — two viff instances of different vintages can be running.
 func TestCachedOIsVersioned(t *testing.T) {
 	a, b := cachedO("v0.0.108"), cachedO("v0.0.109")
 	if a == b {

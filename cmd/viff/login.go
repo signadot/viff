@@ -30,12 +30,12 @@ import (
 	viffio "go.viff.dev/viff/pkg/io"
 )
 
-// Logging in: the CLI proves who is at the keyboard to an identity provider the viff names, and
+// Logging in: the CLI proves who is at the keyboard to an identity provider the viff instance names, and
 // from then on sends the id_token it was given with every request, in place of a name (git-issue
 // hfh7km3th12ksd6nqsn0 §1.4).
 //
 // THE PROVIDERS ARE THE CONFIG'S (`auth.principal.providers`), the same block the server reads:
-// the CLI logs in as the client the viff accepts tokens for. It is a public client. Nothing the
+// the CLI logs in as the client the viff instance accepts tokens for. It is a public client. Nothing the
 // CLI holds is a secret of the client's, and the login is proved by PKCE or by the device's code.
 //
 // TWO WAYS IN. Where the provider's discovery names a device authorization endpoint, the CLI
@@ -60,9 +60,9 @@ const refreshMargin = 10 * time.Second
 // what was asked. A var so a test need not sit it out.
 var providerWait = 30 * time.Second
 
-// loginEntry is one login: the tokens a provider gave, and who the viff said they prove.
+// loginEntry is one login: the tokens a provider gave, and who the viff instance said they prove.
 type loginEntry struct {
-	// Principal is who the viff made the request as when it was shown the token.
+	// Principal is who the viff instance made the request as when it was shown the token.
 	Principal string `tony:"field=principal,omitzero"`
 	// IDToken is what is sent as the bearer. Expiry is its `exp`.
 	IDToken string `tony:"field=idToken"`
@@ -71,15 +71,15 @@ type loginEntry struct {
 	RefreshToken string `tony:"field=refreshToken,omitzero"`
 }
 
-// viffLogins is the logins toward one viff: one per provider, and the provider in use.
+// viffLogins is the logins toward one viff instance: one per provider, and the provider in use.
 type viffLogins struct {
 	Current   string                 `tony:"field=current,omitzero"`
 	Providers map[string]*loginEntry `tony:"field=providers,omitzero"`
 }
 
-// tokenCache is the tokens file: the logins, by the address of the viff they are toward.
+// tokenCache is the tokens file: the logins, by the address of the viff instance they are toward.
 type tokenCache struct {
-	Viffs map[string]*viffLogins `tony:"field=viffs,omitzero"`
+	Viffs map[string]*viffLogins `tony:"field=viff instances,omitzero"`
 }
 
 // logins is the tokens file as this invocation read it, read once.
@@ -144,7 +144,7 @@ func saveLogins(c *tokenCache) error {
 	return os.Rename(tmp.Name(), path)
 }
 
-// currentLogin is the login in use toward the viff this invocation talks to, and its provider;
+// currentLogin is the login in use toward the viff instance this invocation talks to, and its provider;
 // nil where there is none.
 func currentLogin() (*loginEntry, string, error) {
 	c, err := loadLogins()
@@ -177,7 +177,7 @@ func loginPrincipal() string {
 }
 
 // bearer is the id_token a request carries: the login's, renewed first where it has expired, and
-// "" where the CLI has no login toward this viff or acts as somebody else.
+// "" where the CLI has no login toward this viff instance or acts as somebody else.
 //
 // THE TOKENS FILE IS READ AGAIN for each request, since a process can outlive what it read
 // (`viff mcp` lives as long as its host): a login, a logout or a renewal made since, by another
@@ -345,7 +345,7 @@ func pickProvider(args []string, usage string) (string, error) {
 	switch len(provs) {
 	case 0:
 		return "", fmt.Errorf("this config names no identity provider to log in to: set " +
-			"auth.principal.providers, as the viff's own config has it")
+			"auth.principal.providers, as the viff instance's own config has it")
 	case 1:
 		for name := range provs {
 			return name, nil
@@ -432,7 +432,7 @@ func (p *loginProvider) obtain(cc *cli.Context) (*oauth2.Token, error) {
 	}
 }
 
-// whoIs asks the viff who a request is from, and how it knows.
+// whoIs asks the viff instance who a request is from, and how it knows.
 func whoIs() (principal, by string, err error) {
 	resp, err := httpGet("/whoami", nil)
 	if err != nil {
@@ -446,7 +446,7 @@ func whoIs() (principal, by string, err error) {
 	return out.Principal, out.By, nil
 }
 
-// accountConfig is `viff account`: who you are to this viff, and the accounts in other systems
+// accountConfig is `viff account`: who you are to this viff instance, and the accounts in other systems
 // that are you. Bare, it lists your bindings; `-link` binds one more; `login` and `logout` are
 // its verbs.
 type accountConfig struct {
@@ -460,8 +460,8 @@ func accountCmd() *cli.Command {
 	return cli.NewCommandAt(&cfg.Command, "account").
 		WithAliases("accounts").
 		WithSynopsis("account | account login [<provider>] | account logout [<provider>] | account -link <provider> [-account <login>] — "+
-			"who you are to this viff: bare, the accounts in other systems bound to you; login proves who you are to an "+
-			"identity provider the viff names; -link binds an account in another system to who you are").
+			"who you are to this viff instance: bare, the accounts in other systems bound to you; login proves who you are to an "+
+			"identity provider the viff instance names; -link binds an account in another system to who you are").
 		WithOpts(mustOpts(cfg)...).
 		WithSubs(loginCmd(), logoutCmd()).
 		WithRun(cfg.run)
@@ -508,7 +508,7 @@ type loginConfig struct{ *cli.Command }
 func loginCmd() *cli.Command {
 	cfg := &loginConfig{}
 	return cli.NewCommandAt(&cfg.Command, "login").
-		WithSynopsis("login [<provider>] — prove who you are to an identity provider this viff names, " +
+		WithSynopsis("login [<provider>] — prove who you are to an identity provider this viff instance names, " +
 			"and act as that person from then on").
 		WithRun(cfg.run)
 }
@@ -548,11 +548,11 @@ func (cfg *loginConfig) run(cc *cli.Context, args []string) error {
 	if err := saveLogins(c); err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
-	// The viff has the last word on who the token proves: its binding, or the first sight it
+	// The viff instance has the last word on who the token proves: its binding, or the first sight it
 	// makes now. A token it refuses is no login, so the one before it is put back.
 	who, by, err := whoIs()
 	if err == nil && by != name {
-		err = fmt.Errorf("the viff at %s did not take the token: it answers as %q", g.Addr, who)
+		err = fmt.Errorf("the viff instance at %s did not take the token: it answers as %q", g.Addr, who)
 	}
 	if err != nil {
 		c.Viffs[g.Addr] = prev
@@ -571,7 +571,7 @@ func (cfg *loginConfig) run(cc *cli.Context, args []string) error {
 }
 
 // link binds the caller's account at a second provider to who they are logged in as: it logs in
-// there, and presents the id_token it is given to the viff as evidence of the account. The
+// there, and presents the id_token it is given to the viff instance as evidence of the account. The
 // login in use stays the one it was.
 func link(cc *cli.Context, name string) error {
 	l, current, err := currentLogin()
@@ -611,12 +611,12 @@ func link(cc *cli.Context, name string) error {
 }
 
 // claimThrough claims the caller's account at a provider whose accounts an io proves, and prints
-// the words to say from it. The claim is whoever the CLI acts as, logged in or not, since a viff
+// the words to say from it. The claim is whoever the CLI acts as, logged in or not, since a viff instance
 // that takes names as asserted takes this binding the same way (the binding's `claimant` says
 // which).
 //
 // A Slack account is bound when the Slack io hears the words in a message to the app, and there
-// is nothing here to wait on. A GITHUB account is bound by asking: the viff reads the comments
+// is nothing here to wait on. A GITHUB account is bound by asking: the viff instance reads the comments
 // its github ios reflect for the words (`POST /accounts/github/verify`), so a comment on any issue
 // or pull request in a reflected repository proves it, and this waits for the comment to be
 // reflected. The github io's own report (`heard`) binds only from a reply on a pull request where
@@ -626,7 +626,7 @@ func claimThrough(cc *cli.Context, name, account string) error {
 	// A login already linked to the caller is said so, and not claimed again: the io's report of a
 	// second proof spends the claim and leaves the binding as it stood, which nothing here could
 	// tell from a comment not reflected yet. It is also what lets the wait below take any binding
-	// of the login as new, with no clock compared to the viff's.
+	// of the login as new, with no clock compared to the viff instance's.
 	if name == githubProvider && account != "" {
 		if row, ok := bound(strings.TrimPrefix(account, "@")); ok {
 			fmt.Fprintf(cc.Out, "the github account %s (%s) is already linked to %s\n", row.Login, row.Sub, row.Principal)
@@ -634,7 +634,7 @@ func claimThrough(cc *cli.Context, name, account string) error {
 		}
 	}
 	// Ctrl-c ends the wait below with a word, not the process. The handler is installed before the
-	// claim, so that a claim the viff holds is one the wait answers for.
+	// claim, so that a claim the viff instance holds is one the wait answers for.
 	ctx := cc.Go
 	if name == githubProvider {
 		var stop context.CancelFunc
@@ -673,14 +673,14 @@ func claimThrough(cc *cli.Context, name, account string) error {
 	return nil
 }
 
-// githubProvider is the provider whose accounts the viff proves by reading a comment.
+// githubProvider is the provider whose accounts the viff instance proves by reading a comment.
 const githubProvider = "github"
 
-// verifyEvery is how often a GitHub link asks the viff whether the comment has been reflected.
+// verifyEvery is how often a GitHub link asks the viff instance whether the comment has been reflected.
 // A comment reaches the store on its webhook's hint within seconds, or on the minute's resync.
 var verifyEvery = 5 * time.Second
 
-// awaitGitHub asks the viff to bind the claimed account from a reflected comment until it does,
+// awaitGitHub asks the viff instance to bind the claimed account from a reflected comment until it does,
 // the claim expires, or ctx ends. A 404 is the comment not reflected yet, or the claim spent by the
 // io's own report; a binding of the login is that report's, since the login was unbound when the
 // claim was made (claimThrough), and ends the wait.
@@ -742,7 +742,7 @@ func bound(login string) (api.Account, bool) {
 }
 
 // reflectedRepos names what the trusted github ios reflect, as `org/name` from each one's claims,
-// or "" when the viff cannot be asked.
+// or "" when the viff instance cannot be asked.
 func reflectedRepos(ios []string) string {
 	resp, err := httpGet("/iods", nil)
 	if err != nil {
@@ -791,7 +791,7 @@ func (c *tokenCache) use(addr, provider string, entry *loginEntry) {
 	v.Providers[provider], v.Current = entry, provider
 }
 
-// clone copies a viff's logins, so a login that fails can put back what stood before it.
+// clone copies a viff instance's logins, so a login that fails can put back what stood before it.
 func (v *viffLogins) clone() *viffLogins {
 	if v == nil {
 		return nil
@@ -809,7 +809,7 @@ type logoutConfig struct{ *cli.Command }
 func logoutCmd() *cli.Command {
 	cfg := &logoutConfig{}
 	return cli.NewCommandAt(&cfg.Command, "logout").
-		WithSynopsis("logout [<provider>] — drop the login toward this viff: every provider's, or the one named").
+		WithSynopsis("logout [<provider>] — drop the login toward this viff instance: every provider's, or the one named").
 		WithRun(cfg.run)
 }
 
@@ -855,7 +855,7 @@ func (cfg *logoutConfig) run(cc *cli.Context, args []string) error {
 }
 
 func whoamiCmd() *cli.Command {
-	return leaf("whoami", "whoami — who this viff takes you for, and how it knows: the identity provider that verified you, or `asserted`",
+	return leaf("whoami", "whoami — who this viff instance takes you for, and how it knows: the identity provider that verified you, or `asserted`",
 		func(cc *cli.Context, args []string) error {
 			who, by, err := whoIs()
 			if err != nil {

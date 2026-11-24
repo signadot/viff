@@ -6,7 +6,7 @@ import (
 	"go.viff.dev/viff/pkg/entity"
 )
 
-// Whether a rule's subject predicate picks an entity out of the viff as it stands: asked of a
+// Whether a rule's subject predicate picks an entity out of the viff instance as it stands: asked of a
 // gate's subject before its firing is resumed, and of a firing about to happen.
 
 // stillSelects reports whether a trigger's subject predicate still picks this entity out of the
@@ -24,7 +24,7 @@ import (
 func (e *Engine) stillSelects(t Trigger, subj entity.Ref) bool {
 	// HEAD, not Rev, and this is the one call that makes a resume expensive. Rev SYNCS — it
 	// opens a watch on the root and is seeded with a read — and this runs once per question, so
-	// a viff coming back with a docket would pay that per question: the session budget, so a
+	// a viff instance coming back with a docket would pay that per question: the session budget, so a
 	// timeout rather than work.
 	//
 	// Head is the session's known commit (libctl's mark, raised by every answer that carries
@@ -48,7 +48,7 @@ func (e *Engine) stillSelects(t Trigger, subj entity.Ref) bool {
 }
 
 // selectsNow is stillSelects for a firing about to happen: whether the rule's `when` holds and its
-// subject picks this entity out of the viff as it stands. It answers FALSE when it cannot tell,
+// subject picks this entity out of the viff instance as it stands. It answers FALSE when it cannot tell,
 // where stillSelects answers true: here the cost of a wrong yes is an action applied, and the
 // next commit that touches what the rule reads asks again.
 func (e *Engine) selectsNow(t Trigger, subj entity.Ref) bool {

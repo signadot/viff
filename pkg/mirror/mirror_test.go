@@ -52,7 +52,7 @@ func (s *sayer) Next(_ context.Context, _ task.StepResult) (task.ToolUse, bool, 
 
 func (s *sayer) Result() string { return s.result }
 
-// A task's output is durable in the viff: its narration, last tool output, and
+// A task's output is durable in the viff instance: its narration, last tool output, and
 // full final answer land on the task:instance entity, readable after the run.
 func TestReflectProjectsOutput(t *testing.T) {
 	store := entitytest.Store(t)
@@ -87,7 +87,7 @@ func TestReflectProjectsOutput(t *testing.T) {
 	}
 }
 
-// A running task shows up in the viff as a task:instance:<id> entity that
+// A running task shows up in the viff instance as a task:instance:<id> entity that
 // progresses to a terminal status — so another observer sees its lifecycle purely
 // by watching entities.
 func TestReflectProjectsTaskState(t *testing.T) {
@@ -123,7 +123,7 @@ func TestReflectProjectsTaskState(t *testing.T) {
 		}
 	}
 	if !sawRunning {
-		t.Fatal("never saw the task appear as running in the viff")
+		t.Fatal("never saw the task appear as running in the viff instance")
 	}
 
 	// the terminal entity remains, queryable, marked completed

@@ -43,7 +43,7 @@ func TestTheCheckEncodesADefinitionCanonically(t *testing.T) {
 	}
 }
 
-// THE CHECK FINDS NOTHING TO CHANGE IN A TREE THAT STANDS, across a restart: what a viff
+// THE CHECK FINDS NOTHING TO CHANGE IN A TREE THAT STANDS, across a restart: what a viff instance
 // restores from the store is what it installed, and the charter check against the same tree
 // says so. The repository's own charters are the tree, installed as the git io installs them.
 func TestTheCheckFindsNoChangeAfterARestart(t *testing.T) {

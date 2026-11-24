@@ -38,10 +38,10 @@ import (
 // takes what it offers, as every registered runner does (viffd route.go).
 //
 // It is found by dialing, never by a pid: what answers the describe at the url the last run
-// recorded, proving the token in the data dir, is this viff's runner, and is used as it
+// recorded, proving the token in the data dir, is this viff instance's runner, and is used as it
 // stands, so its tasks outlive a crash of `viff up` as a deployed runner's outlive viffd's.
 // Nothing answers, or something else does: a runner is started. It is stopped by a request
-// (runnerd.StopPath), which the runner takes from its viff alone, so a runner a crashed run
+// (runnerd.StopPath), which the runner takes from its viff instance alone, so a runner a crashed run
 // left is stopped the way a child is.
 
 // adoptedCheck is how often `viff up` asks a runner a crashed run left whether it still answers.
@@ -72,7 +72,7 @@ type localRunner struct {
 }
 
 // startLocalRunner registers the local runner and has one serving: the one the last run left, if
-// it answers as this viff's, else a runnerd started now on the port the last run recorded, or a
+// it answers as this viff instance's, else a runnerd started now on the port the last run recorded, or a
 // fresh one. It keeps the runner up until ctx ends, starting it again when it exits.
 func startLocalRunner(ctx context.Context, srv *viffd.Server, bin, dir string, viff runnerd.Viff, c stock.Config, secrets stock.Secrets, out io.Writer) (*localRunner, error) {
 	tokenFile, token, err := localToken(dir)
@@ -99,7 +99,7 @@ func startLocalRunner(ctx context.Context, srv *viffd.Server, bin, dir string, v
 			go lr.watch(ctx)
 			return lr, nil
 		}
-		// Something answers there and is not this viff's: a runner the last run left serving
+		// Something answers there and is not this viff instance's: a runner the last run left serving
 		// another --addr, which takes no stop from this one, or something else on the port.
 		if !portFree(recorded) {
 			fmt.Fprintf(out, "viff up: what answers at %s, where the last run's local runner listened, is not "+
@@ -148,7 +148,7 @@ func (lr *localRunner) spawn() error {
 
 // watch starts the runner again when it exits before ctx ends, waiting longer each time it does so
 // quickly. A runner this run did not start has no process here to wait on, so it is asked every
-// adoptedCheck whether it still answers as this viff's, and one is started in its place when not:
+// adoptedCheck whether it still answers as this viff instance's, and one is started in its place when not:
 // the one poll in viff, and only of a runner a crashed run left.
 func (lr *localRunner) watch(ctx context.Context) {
 	wait := time.Second
@@ -214,7 +214,7 @@ func (lr *localRunner) respawn() error {
 	return lr.spawn()
 }
 
-// stop asks the runner to stop, as its viff, and waits for it; a child that does not stop is
+// stop asks the runner to stop, as its viff instance, and waits for it; a child that does not stop is
 // killed with its process group. The registration goes with it.
 func (lr *localRunner) stop() {
 	lr.mu.Lock()
@@ -232,7 +232,7 @@ func (lr *localRunner) stop() {
 		}
 	} else {
 		// One this run did not start has no process here to wait on: it is waited on by dialing,
-		// until it no longer answers as this viff's.
+		// until it no longer answers as this viff instance's.
 		for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
 			if ours, _ := lr.srv.LocalRunnerAt(at, lr.subject); !ours {
 				break
@@ -269,7 +269,7 @@ func localToken(dir string) (path, token string, err error) {
 	return path, token, nil
 }
 
-// writeLocalRunnerConfig writes the runner's configuration: where it listens, the viff it serves
+// writeLocalRunnerConfig writes the runner's configuration: where it listens, the viff instance it serves
 // (where it reaches it, and the issuer its tokens are signed as where that is spelled otherwise),
 // and what it offers (localRunnerOffers), rewritten on every up.
 func writeLocalRunnerConfig(path, listen string, viff runnerd.Viff, c stock.Config) error {
@@ -360,7 +360,7 @@ func localSandbox(out io.Writer) string {
 }
 
 // localRunnerEnv is the runner's environment: this process's, its model credential as the config
-// resolved it, and none of the variables that would name another viff than its config does.
+// resolved it, and none of the variables that would name another viff instance than its config does.
 func localRunnerEnv(s stock.Secrets) []string {
 	var env []string
 	for _, kv := range os.Environ() {
@@ -381,10 +381,10 @@ func localRunnerEnv(s stock.Secrets) []string {
 }
 
 // resolveRunnerd answers with the runnerd to start the local runner with, in this order: the flag;
-// beside this viff executable; viff's cache, ~/.viff/bin/<version>/runnerd; on PATH; and
-// `go install` of this viff's version into the cache, with viff-call-tool beside it.
+// beside this viff instance executable; viff's cache, ~/.viff/bin/<version>/runnerd; on PATH; and
+// `go install` of this viff instance's version into the cache, with viff-call-tool beside it.
 //
-// A runnerd found beside viff or on PATH is refused where it is another build than this viff
+// A runnerd found beside viff or on PATH is refused where it is another build than this viff instance
 // (sameBuild); the flag's is used with a warning, since naming one is the way to run another.
 func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 	if explicit != "" {
@@ -407,7 +407,7 @@ func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 	version := viffVersion()
 	release := releaseOf(version)
 	cached := cachedRunnerd(release)
-	// Not run through sameBuild: the cache is keyed by this viff's release, so what it holds
+	// Not run through sameBuild: the cache is keyed by this viff instance's release, so what it holds
 	// is this build by construction. It counts once both binaries are in it: an install cut
 	// short between the two leaves a runnerd whose agents have no viff-call-tool, and is done
 	// again.
@@ -421,11 +421,11 @@ func resolveRunnerd(explicit string, out io.Writer) (string, error) {
 		return onPath, nil
 	}
 	if cached == "" {
-		return "", fmt.Errorf("viff up: no runnerd beside this viff or on PATH, and this viff (%s) is no release to install one of; %s",
+		return "", fmt.Errorf("viff up: no runnerd beside this viff instance or on PATH, and this viff instance (%s) is no release to install one of; %s",
 			cmp.Or(version, "no version stamped"), buildBeside)
 	}
 	if _, err := exec.LookPath("go"); err != nil {
-		return "", fmt.Errorf("viff up: no runnerd beside this viff or on PATH, and no `go` to install one (%s/cmd/runnerd@%s); pass --runnerd-bin, or --local-runner=false", viffModule, release)
+		return "", fmt.Errorf("viff up: no runnerd beside this viff instance or on PATH, and no `go` to install one (%s/cmd/runnerd@%s); pass --runnerd-bin, or --local-runner=false", viffModule, release)
 	}
 	fmt.Fprintf(out, "viff up: installing runnerd and viff-call-tool %s into %s (once per version)…\n", release, filepath.Dir(cached))
 	for _, cmd := range cachedBinaries {
@@ -475,11 +475,11 @@ func releaseOf(version string) string {
 const rebuildBoth = "build both from one tree (`make bin`, or `go build -o <dir> ./cmd/viff ./cmd/runnerd ./cmd/viff-call-tool`), " +
 	"or pass --runnerd-bin to run that one anyway, or --local-runner=false"
 
-// sameBuild is why the runnerd at bin is another build than this viff, or nil. A build is its
+// sameBuild is why the runnerd at bin is another build than this viff instance, or nil. A build is its
 // module version as Go stamps it: a release's tag, or, built from a checkout, a pseudo-version
 // that carries the commit and +dirty where the tree had changes. Two builds of one tree agree;
-// a viff rebuilt after a pull and a runnerd that was not do not, and the runner they make
-// describes itself in a form this viff may refuse, as a failed registration a step away from
+// a viff instance rebuilt after a pull and a runnerd that was not do not, and the runner they make
+// describes itself in a form this viff instance may refuse, as a failed registration a step away from
 // its cause. A build either side does not stamp (go run, a test) is not checked.
 func sameBuild(bin string) error { return compareBuilds(bin, viffVersion(), moduleVersionOf(bin)) }
 
@@ -488,10 +488,10 @@ func compareBuilds(bin, ours, theirs string) error {
 	if ours == "" || theirs == "" || theirs == "(devel)" || ours == theirs {
 		return nil
 	}
-	return fmt.Errorf("the runnerd at %s is built from viff %s, and this viff from %s", bin, theirs, ours)
+	return fmt.Errorf("the runnerd at %s is built from viff %s, and this viff instance from %s", bin, theirs, ours)
 }
 
-// viffVersion is this viff's module version as Go stamps it: a release's tag, or, built from a
+// viffVersion is this viff instance's module version as Go stamps it: a release's tag, or, built from a
 // checkout, a pseudo-version carrying the commit and +dirty where the tree had changes. "" where
 // Go stamped none (go run, a test).
 func viffVersion() string {
@@ -536,8 +536,8 @@ func viffHome() (string, error) {
 	return filepath.Join(home, ".viff"), nil
 }
 
-// defaultDataDir is a viff's data dir where --data names none: ~/.viff/<addr>, kept, so a bare
-// `viff up` comes back to the same viff, its store and its local runner with it.
+// defaultDataDir is a viff instance's data dir where --data names none: ~/.viff/<addr>, kept, so a bare
+// `viff up` comes back to the same viff instance, its store and its local runner with it.
 func defaultDataDir(addr string) (string, error) {
 	home, err := viffHome()
 	if err != nil {

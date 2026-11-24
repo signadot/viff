@@ -134,7 +134,7 @@ func (c *scheduleListings) ListAtErr(at []string, depth int, pred func(entity.Re
 }
 
 // THE CHARTER TREE READS THE SCHEDULES A FIXED NUMBER OF TIMES, however many charters it lists:
-// each is handed the ones declared at its address. Read per charter, `viff c` on a viff of
+// each is handed the ones declared at its address. Read per charter, `viff c` on a viff instance of
 // fifteen charters read every schedule record fifteen times, one after another.
 func TestTheCharterTreeReadsTheSchedulesOnce(t *testing.T) {
 	cs := &scheduleListings{Store: entitytest.Store(t)}

@@ -10,14 +10,14 @@ import (
 	"go.viff.dev/viff/pkg/schedule"
 )
 
-// viff schedule: the schedules a viff ticks on. Bare, it lists every record with its period,
+// viff schedule: the schedules a viff instance ticks on. Bare, it lists every record with its period,
 // the instant the daemon is armed against and the tick standing under it; `tick` writes the
 // tick for a past instant, the same entity the schedule would have written, so a rule about it
 // fires as it would have. A schedule is declared in a charter beside the strata (`{name, every,
 // from}`) and removed as a rule is; the standard ones come with the viff.
 func scheduleCmd() *cli.Command {
 	return filteredCollection("schedule", "schedules", "/schedules",
-		"schedule — the schedules the viff ticks on; tick <name> --due <instant> backfills one",
+		"schedule — the schedules the viff instance ticks on; tick <name> --due <instant> backfills one",
 		nil, func() url.Values { return nil }, scheduleTickCmd())
 }
 

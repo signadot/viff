@@ -22,7 +22,7 @@ import (
 
 // The runner's door (git-issue pb6fwh8gh12krmb7vhn0).
 //
-// A RUNNER BELONGS TO ONE VIFF. Its configuration names the viff it serves by the tokens viffd
+// A RUNNER BELONGS TO ONE VIFF. Its configuration names the viff instance it serves by the tokens viffd
 // signs: viffd is an issuer of its own (auth.issuer on the viff side), and presents on every
 // call a token it minted for this runner, `iss` viffd's issuer name, `aud` this runner's own
 // subject and `sub` viff (runner.ViffSubject). The runner reads viffd's keys at the url it
@@ -37,7 +37,7 @@ import (
 // names, so a registered runner types nothing.
 //
 // THE DESCRIPTION IS PUBLIC; THE TOKEN IS NOT. GET /describe says what the runner offers, which
-// is no secret, so a bare one is answered to anyone, as an operator at the port or a viff with
+// is no secret, so a bare one is answered to anyone, as an operator at the port or a viff instance with
 // no token asks it. A bearer presented with it is still checked, and refused when it does not verify: a
 // viff that believes it proves itself and does not finds out at the describe, not at the first
 // spawn.
@@ -56,21 +56,21 @@ import (
 // place: viffd serves it under its own url (internal/viffd/issuer.go).
 const keySetPath = "/.well-known/jwks.json"
 
-// Viff is the viff a runner serves, as its configuration names it (`viff:`): where the runner
+// Viff is the viff instance a runner serves, as its configuration names it (`viff:`): where the runner
 // reaches it, and how it holds viffd's tokens. A runner with none serves whoever reaches it.
 type Viff struct {
-	// URL is where the runner reaches its viff: the hello (Announce) and every verb a task
+	// URL is where the runner reaches its viff instance: the hello (Announce) and every verb a task
 	// performs on viff through the runner go there, with the runner's own token, and viffd's
 	// keys are read there (keySetPath).
 	URL string `tony:"field=url"`
 	// Issuer is the `iss` of viffd's tokens, `auth.issuer.url` on the viff side: what viffd is
-	// called where its relying parties are, which a viff behind a proxy may spell differently
+	// called where its relying parties are, which a viff instance behind a proxy may spell differently
 	// from URL. Unset is URL.
 	Issuer string `tony:"field=issuer,omitzero"`
 	// Audience is the `aud` this runner takes viffd's tokens for. Unset is the subject of the
 	// runner's own token (NewGuard), which is what its registration names.
 	Audience string `tony:"field=audience,omitzero"`
-	// CA is the path of the PEM bundle viffd's certificate is checked against, for a viff
+	// CA is the path of the PEM bundle viffd's certificate is checked against, for a viff instance
 	// served over TLS under a certificate no public root signed. Unset trusts the system's roots.
 	CA string `tony:"field=ca,omitzero"`
 }
@@ -78,10 +78,10 @@ type Viff struct {
 // Check fills in the defaults it can and refuses a block that names no viff.
 func (v *Viff) Check() error {
 	if v.URL == "" {
-		return fmt.Errorf("viff: `url` names the viff this runner serves, where it reaches it; it is required")
+		return fmt.Errorf("viff: `url` names the viff instance this runner serves, where it reaches it; it is required")
 	}
 	if u, err := url.Parse(v.URL); err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
-		return fmt.Errorf("viff.url: %q is not the viff's URL", v.URL)
+		return fmt.Errorf("viff.url: %q is not the viff instance's URL", v.URL)
 	}
 	if v.Issuer == "" {
 		v.Issuer = v.URL
@@ -99,7 +99,7 @@ func (v *Viff) Check() error {
 	return nil
 }
 
-// Guard is a runner's door: it admits the requests of the one viff the runner serves, and
+// Guard is a runner's door: it admits the requests of the one viff instance the runner serves, and
 // answers that viff the runner's own token on the describe.
 type Guard struct {
 	v         Viff
@@ -111,11 +111,11 @@ type Guard struct {
 }
 
 // guardClockSkew is how far past its expiry a token is still taken, for a clock that runs behind
-// the viff's.
+// the viff instance's.
 const guardClockSkew = 30 * time.Second
 
 // NewGuard is the door for v. tokenFile names the runner's own workload token, which the door
-// answers on the describe to the viff it verified, and whose subject is the audience the door
+// answers on the describe to the viff instance it verified, and whose subject is the audience the door
 // takes where the block names none; "" answers none, and the block then names the audience. The
 // file is read at each use, since the runtime rotates the token under the process, and once
 // here, so a path that holds nothing is refused where it was named rather than guessed at from
@@ -139,7 +139,7 @@ func NewGuard(v Viff, tokenFile string) (*Guard, error) {
 		}
 	}
 	if g.v.Audience == "" {
-		return nil, fmt.Errorf("viff.audience: a runner with no token of its own names the audience it takes its viff's tokens for")
+		return nil, fmt.Errorf("viff.audience: a runner with no token of its own names the audience it takes its viff instance's tokens for")
 	}
 	if v.CA != "" {
 		pem, err := os.ReadFile(v.CA)
@@ -168,7 +168,7 @@ func (g *Guard) ownToken() (string, error) {
 	return tok, nil
 }
 
-// Wrap is h behind the door. A request is served when its bearer verifies to the viff, and
+// Wrap is h behind the door. A request is served when its bearer verifies to the viff instance, and
 // refused 401 otherwise, except a bare GET /describe, which is answered to anyone: the
 // description is public. The describe answers the
 // runner's own token to the caller it verified, and to nobody else.
@@ -204,13 +204,13 @@ func (g *Guard) admit(r *http.Request) (int, string) {
 	scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
 	token = strings.TrimSpace(token)
 	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" {
-		return http.StatusUnauthorized, fmt.Sprintf("this runner serves one viff, %s, and the request "+
+		return http.StatusUnauthorized, fmt.Sprintf("this runner serves one viff instance, %s, and the request "+
 			"presents no bearer: viffd presents a token it signs for this runner (auth.issuer)", g.v.Issuer)
 	}
 	id, err := g.verifierFor().Verify(r.Context(), token)
 	if err != nil {
 		if keysUnread(err) {
-			return http.StatusServiceUnavailable, fmt.Sprintf("the viff's keys at %s%s could not be read, so the "+
+			return http.StatusServiceUnavailable, fmt.Sprintf("the viff instance's keys at %s%s could not be read, so the "+
 				"bearer cannot be verified: %v", g.v.URL, keySetPath, err)
 		}
 		return http.StatusUnauthorized, fmt.Sprintf("the bearer did not verify as %s's token for %s: %v", g.v.Issuer, g.v.Audience, err)
@@ -219,15 +219,15 @@ func (g *Guard) admit(r *http.Request) (int, string) {
 	// for whatever audience a charter declares, this runner's name included; what tells the
 	// viff's token from one is its subject (runner.ViffSubject).
 	if id.Subject != runner.ViffSubject {
-		return http.StatusUnauthorized, fmt.Sprintf("the bearer is %s's token for %s, and not the viff's own: "+
-			"its subject is %q, where the viff's is %q", g.v.Issuer, g.v.Audience, id.Subject, runner.ViffSubject)
+		return http.StatusUnauthorized, fmt.Sprintf("the bearer is %s's token for %s, and not the viff instance's own: "+
+			"its subject is %q, where the viff instance's is %q", g.v.Issuer, g.v.Audience, id.Subject, runner.ViffSubject)
 	}
 	return 0, ""
 }
 
-// verifierFor is the verifier of the viff's tokens, made once. The keys are read where the
-// runner reaches its viff, as a token asks for them, and the tokens are held to the issuer name
-// the block says: a viff called one thing outside and another in-cluster is one viff, and no
+// verifierFor is the verifier of the viff instance's tokens, made once. The keys are read where the
+// runner reaches its viff instance, as a token asks for them, and the tokens are held to the issuer name
+// the block says: a viff instance called one thing outside and another in-cluster is one viff instance, and no
 // discovery document is needed to say so. The key set keeps its context for the refetches a
 // rotated key asks for, so it is the process's, not one request's.
 func (g *Guard) verifierFor() *oidc.IDTokenVerifier {
@@ -247,8 +247,8 @@ func (g *Guard) verifierFor() *oidc.IDTokenVerifier {
 	return g.verifier
 }
 
-// keysUnread is whether verifying failed for want of the viff's keys rather than on the token:
-// the fetch did not reach the viff, the viff did not answer it with keys, or what it answered
+// keysUnread is whether verifying failed for want of the viff instance's keys rather than on the token:
+// the fetch did not reach the viff instance, the viff instance did not answer it with keys, or what it answered
 // did not decode. go-oidc's verifier wraps the key set's error with %v, so no error type survives
 // to be matched, and the one thing every failed fetch says is the key set's own wording
 // (keysFetchFailed); TestKeysUnreadMatchesGoOIDC holds go-oidc to it.
@@ -266,16 +266,16 @@ var (
 	helloMaxWait   = 30 * time.Second
 )
 
-// Announce is the runner saying to its viff that it is here: POST /runners/hello with its own
-// token, until the viff answers 2xx or ctx ends. Viffd finds the registration by the token's
+// Announce is the runner saying to its viff instance that it is here: POST /runners/hello with its own
+// token, until the viff instance answers 2xx or ctx ends. Viffd finds the registration by the token's
 // subject and describes the runner then and there, so a pod that comes up after its
 // registration, or comes back after a restart, is verified within seconds and without anyone
-// running `viff runner check`. A viff that is down and a registration that does not exist yet
+// running `viff runner check`. A viff instance that is down and a registration that does not exist yet
 // are one case here: keep asking, with backoff, and say why once per change of answer. Nothing
 // to announce with (no token of its own) returns at once; the runner then waits to be asked.
 //
-// Every answer but a 2xx is tried again: the door's 401 (a token the viff cannot verify yet),
-// the hello's 404 (no registration names this runner yet) and its 503 (the viff could not reach
+// Every answer but a 2xx is tried again: the door's 401 (a token the viff instance cannot verify yet),
+// the hello's 404 (no registration names this runner yet) and its 503 (the viff instance could not reach
 // the runner back) are each one a later try can find changed.
 func (g *Guard) Announce(ctx context.Context, logf func(string, ...any)) {
 	if g.tokenFile == "" {
@@ -303,7 +303,7 @@ func (g *Guard) Announce(ctx context.Context, logf func(string, ...any)) {
 	}
 }
 
-// hello is one try: what the viff said, and whether the announcing is over.
+// hello is one try: what the viff instance said, and whether the announcing is over.
 func (g *Guard) hello(ctx context.Context, target string) (said string, done bool) {
 	tok, err := g.ownToken()
 	if err != nil {
@@ -321,16 +321,16 @@ func (g *Guard) hello(ctx context.Context, target string) (said string, done boo
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode/100 == 2 {
-		return "the viff describes this runner now: " + strings.TrimSpace(string(body)), true
+		return "the viff instance describes this runner now: " + strings.TrimSpace(string(body)), true
 	}
 	return fmt.Sprintf("%s: %s", resp.Status, strings.TrimSpace(string(body))), false
 }
 
-// helloTimeout bounds one try of the hello: a viff that takes the connection and never answers
+// helloTimeout bounds one try of the hello: a viff instance that takes the connection and never answers
 // is a try that failed, and the backoff tries again.
 var helloTimeout = 30 * time.Second
 
-// helloClient is how the hello reaches the viff: as the door reads its keys, through the roots
+// helloClient is how the hello reaches the viff instance: as the door reads its keys, through the roots
 // `viff.ca` names where it names any, and within helloTimeout.
 func (g *Guard) helloClient() *http.Client {
 	c := &http.Client{Timeout: helloTimeout}
@@ -346,7 +346,7 @@ func (g *Guard) helloClient() *http.Client {
 // it does stop waiting on may have been done, and the task is told so (delivery).
 var carryTimeout = 2 * time.Minute
 
-// carryClient is how Carry reaches the viff: through the roots the hello uses, within
+// carryClient is how Carry reaches the viff instance: through the roots the hello uses, within
 // carryTimeout.
 func (g *Guard) carryClient() *http.Client {
 	c := &http.Client{Timeout: carryTimeout}
@@ -359,11 +359,11 @@ func (g *Guard) carryClient() *http.Client {
 // carryCap is the most of viff's answer Carry hands a task.
 const carryCap = 4 << 20
 
-// Carry makes a task's request to the viff this runner serves, a verb of the viff system: method
+// Carry makes a task's request to the viff instance this runner serves, a verb of the viff system: method
 // on path, with the runner's own token and the task's id (api.TaskHeader), body a tony document
 // where there is one, and the answer asked for in tony. Viff admits it as the task's owner
 // through the task's record, which names this runner, so the task holds nothing and names nobody,
-// and only on the routes its door carries for a task. It answers the viff's status and what it
+// and only on the routes its door carries for a task. It answers the viff instance's status and what it
 // said; an error is a request that got no answer. A runner with no token of its own has nothing to
 // carry it with, and Carrier is then nil.
 func (g *Guard) Carry(ctx context.Context, taskID, method, path string, body []byte) (int, string, error) {
@@ -424,7 +424,7 @@ func (g *Guard) Carrier() func(ctx context.Context, taskID, method, path string,
 }
 
 // WithReady is h with GET /ready beside it, for a readiness probe: 200 as soon as the runner
-// serves, with or without a door. Readiness is the server's and nothing else's: whether a viff
+// serves, with or without a door. Readiness is the server's and nothing else's: whether a viff instance
 // has heard this runner's hello, and whether its describe verified the runner, is the
 // registration's to say (`described`), where `viff runner` shows it. A readiness
 // that waited on viff would keep the pod out of its Service until viffd had reached it, and
@@ -441,13 +441,13 @@ func WithReady(h http.Handler) http.Handler {
 }
 
 // StopPath is where a runner's viff asks it to stop: POST, on the control face, behind the door,
-// so only the viff it serves may. The runner answers 202 and stops as a signal would stop it,
-// its tasks with it. It is how a viff stops a runner it did not start, or no longer holds the
-// process of: its local runner after the viff itself was restarted.
+// so only the viff instance it serves may. The runner answers 202 and stops as a signal would stop it,
+// its tasks with it. It is how a viff instance stops a runner it did not start, or no longer holds the
+// process of: its local runner after the viff instance itself was restarted.
 const StopPath = "/stop"
 
 // WithStop is h with POST StopPath beside it, calling stop once the answer is written. Wrap it in
-// the guard (Guard.Wrap), so the route is the viff's alone.
+// the guard (Guard.Wrap), so the route is the viff instance's alone.
 func WithStop(h http.Handler, stop func()) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != StopPath {

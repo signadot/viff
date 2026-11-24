@@ -1,4 +1,4 @@
-// Package client is how a program outside the viff talks to one: the operator API over HTTP, in
+// Package client is how a program outside the viff instance talks to one: the operator API over HTTP, in
 // the wire format, stamped with who is asking and which contract it speaks.
 //
 // The `viff` CLI is one such program and so is a connector writing back what it did, a runner or
@@ -22,9 +22,9 @@ import (
 	"go.viff.dev/viff/pkg/codec"
 )
 
-// Client is one viff's operator API, seen from outside it.
+// Client is one viff instance's operator API, seen from outside it.
 type Client struct {
-	// Addr is the viff's host:port, the spelling VIFF_ADDR and `-addr` take.
+	// Addr is the viff instance's host:port, the spelling VIFF_ADDR and `-addr` take.
 	Addr string
 	// Scope, when set, is folded into every request: a copy-on-write overlay isolated
 	// from baseline.
@@ -62,7 +62,7 @@ func (c *Client) request(method, u string, body io.Reader) (*http.Request, error
 	return http.NewRequestWithContext(c.context(), method, u, body)
 }
 
-// New is the Client for a program acting as principal against the viff at addr, stamping this
+// New is the Client for a program acting as principal against the viff instance at addr, stamping this
 // build's contract version and that principal on every request.
 func New(addr, principal string) *Client {
 	return &Client{
@@ -86,7 +86,7 @@ func NewAs(addr, principal string, bearer BearerFunc) *Client {
 // NewRelay is the Client for a verified program acting for a person it identified: it carries the
 // program's bearer, the person, and the person's account in the system the program speaks for,
 // `<provider>:<id>`, and viffd admits the request as the person through that account's binding.
-// With no bearer the person and the account are asserted, which a viff that verifies people
+// With no bearer the person and the account are asserted, which a viff instance that verifies people
 // refuses. With no account there is nothing to relay through, so the program asserts the
 // principal and sends no bearer, as a program with none does: a bearer beside a bare name would
 // make the request the program's own.
@@ -245,7 +245,7 @@ func (c *Client) SetFormatHeaders(req *http.Request) {
 
 // StatusError is the refusal a request came back with, in the words the server used.
 //
-// A viff refusal is a SENTENCE — "stratum X still holds 3 rules, removing it would leave them
+// A viff instance refusal is a SENTENCE — "stratum X still holds 3 rules, removing it would leave them
 // installed and unchecked" — written into the response body on purpose, and reporting only
 // `400 Bad Request` throws away the whole of what the server said. The status is the fallback, for
 // a server that refused without saying anything.

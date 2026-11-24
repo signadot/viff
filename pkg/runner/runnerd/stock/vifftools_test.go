@@ -361,7 +361,7 @@ func TestAScriptInstallsAndRemovesTheChartersTheRunnerCarries(t *testing.T) {
 		!strings.Contains(got, "package repos.r.old: uninstalled, not in the charters given") {
 		t.Errorf("the pruning install answered %q, want its ttl and what the prune took", got)
 	}
-	if got := strings.TrimSpace(parts[2]); !strings.HasPrefix(got, "refused: the viff refused it: rule \"wide\"") {
+	if got := strings.TrimSpace(parts[2]); !strings.HasPrefix(got, "refused: the viff instance refused it: rule \"wide\"") {
 		t.Errorf("a refused install answered %q, want viff's words", got)
 	}
 	if got := strings.TrimSpace(parts[3]); got != "removed the rule lift" {

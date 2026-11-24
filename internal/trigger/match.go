@@ -512,7 +512,7 @@ func PathMatch(steps []*ir.Node) (Match, error) {
 	return Match{mKeyPath: segs}, nil
 }
 
-// Subtree is a watched slice of the viff: the address levels above an entity's id, root
+// Subtree is a watched slice of the viff instance: the address levels above an entity's id, root
 // included. It is an ARRAY rather than a slice because it is a map key in half the places it
 // is used — one watch per distinct subtree — and a slice is not comparable.
 //
@@ -583,7 +583,7 @@ func (s Subtree) Path() []string {
 	return segs
 }
 
-// Named is how many segments the subtree names, root included. Zero is the whole viff, which
+// Named is how many segments the subtree names, root included. Zero is the whole viff instance, which
 // is not something a watch may open.
 func (s Subtree) Named() int { return len(s.Path()) }
 
@@ -596,7 +596,7 @@ func (s Subtree) Parent() Subtree {
 	return SubtreeAt(segs[:len(segs)-1]...)
 }
 
-// root is the half of the viff this subtree is in — `viff` for viff's own, empty for the
+// root is the half of the viff instance this subtree is in — `viff` for viff's own, empty for the
 // world's, which is also what a subtree naming nothing at all is.
 func (s Subtree) root() string {
 	if segs := s.Path(); len(segs) > 0 && segs[0] == entity.ViffRoot {

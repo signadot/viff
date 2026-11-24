@@ -28,7 +28,7 @@ import (
 )
 
 // a runner face an operator can actually install: the viff-facing contract, served by the
-// same runnerd handler the local runner calls in process, proving itself to the viff at
+// same runnerd handler the local runner calls in process, proving itself to the viff instance at
 // viffURL.
 func runnerFace(t *testing.T, viffURL string) *face {
 	t.Helper()
@@ -479,8 +479,8 @@ func waitForStatus(t *testing.T, ch <-chan task.Event, want task.Status) {
 	}
 }
 
-// Two tasks in one viff, running in two places. What a drive could not do before was use its
-// own runner for SOME of the work — a second runner meant a second viff, and then everything
+// Two tasks in one viff instance, running in two places. What a drive could not do before was use its
+// own runner for SOME of the work — a second runner meant a second viff instance, and then everything
 // went there. An agent only gpu offers goes to gpu; a script, which both offer, goes to the one
 // carrying less, the local runner.
 func TestTwoTasksRunInTwoPlaces(t *testing.T) {
@@ -590,7 +590,7 @@ func instanceOf(t *testing.T, srv *Server, id string) map[string]any {
 	return entity.ToObj(e.Payload)
 }
 
-// Work outlives the viff that started it, and outlives the ENTITY that named its runner.
+// Work outlives the viff instance that started it, and outlives the ENTITY that named its runner.
 //
 // This is the step that decides whether the feature is safe. A restart reconstructs the runner
 // from the url stamped on the task, so removing the runner entity — which is what a drive
@@ -599,7 +599,7 @@ func instanceOf(t *testing.T, srv *Server, id string) map[string]any {
 func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	store := entitytest.Store(t)
 
-	// A viff that spawns onto a named runner, then dies.
+	// A viff instance that spawns onto a named runner, then dies.
 	first := issuing(t, serverWith(t, runnerdtest.Scripted, store))
 	ts := httptest.NewServer(first.Handler())
 	face := runnerFace(t, ts.URL)
@@ -610,7 +610,7 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 	ts.Close()
 
 	// The drive tears the runner down: the ENTITY goes, the work does not. This is what
-	// step 1's --leave does, reached here directly because the viff that served it is gone.
+	// step 1's --leave does, reached here directly because the viff instance that served it is gone.
 	if _, _, err := store.Write(entity.Write{At: runnerEntityRef("gpu").At(), Value: nil}); err != nil {
 		t.Fatalf("removing the runner entity: %v", err)
 	}

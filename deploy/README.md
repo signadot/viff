@@ -277,7 +277,7 @@ an unexposed Service looks exactly like an exposed one until you go looking on t
 | `viff` | the viffd API — `viff -addr http://viff:9797 …` | 9797 |
 | `viff-docd` | docd's client face: the store, read/write, including scoped writes | 7071 |
 
-The device names track `namespace`, so a second viff on the same tailnet is a second name
+The device names track `namespace`, so a second viff instance on the same tailnet is a second name
 rather than the `-1` suffix the operator would otherwise pick. `-e tailscaleTags=tag:viff`
 if the ACL wants its own tag instead of the operator's default `tag:k8s`.
 
@@ -330,7 +330,7 @@ should be passed the Service name directly rather than discovering it.
 | `systemCharter` | `""` | a charter, by path (relative to `deploy/`, or absolute), mounted into viffd and installed at start as the system (`VIFF_SYSTEM_CHARTER`); read at start, so a change takes a restart. The example a deployment copies under `deploy/` is [gate-ask](../docs/reference/examples/gate-ask/gate-ask.tony), with its Slack place filled in |
 | `authConfig` | `""` | viff's `auth` block, a file by path (relative to `deploy/`, or absolute), mounted into viffd as its config (`VIFF_CONFIG`): who verifies people, which iods are trusted for whose accounts, how the iods prove themselves ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). eks: `auth/eks.tony` |
 | `iodTokens` | `false` | give the slack, github and git iods a ServiceAccount each and a projected token, so each proves it is the iod (eks and minikube: on) |
-| `runnerTokens` | `true` | give each deployed runner a ServiceAccount and a projected token, and viffd its signing key (the `viff-issuer` Secret, **required**: viffd does not start without it), so a runner serves its viff alone and proves it is the one registered ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). A deployed runner needs it: `runnerd` does not start without the viff it serves and its token |
+| `runnerTokens` | `true` | give each deployed runner a ServiceAccount and a projected token, and viffd its signing key (the `viff-issuer` Secret, **required**: viffd does not start without it), so a runner serves its viff instance alone and proves it is the one registered ([Who a request is from](#who-a-request-is-from-authconfig-iodtokens-runnertokens)). A deployed runner needs it: `runnerd` does not start without the viff instance it serves and its token |
 | `issuer` | `http://viff:9797` | the name viffd's tokens are issued under, the auth file's `auth.issuer.url`: what each runner holds viffd's tokens to (`VIFF_ISSUER`). The runners read the keys at viffd's in-cluster url, so this is a name |
 | `issuerDiscoveryOpen` | `false` | let anyone reaching the API server read its OpenID discovery and keys, which viffd needs where the cluster itself is the iods' issuer (minikube: on; EKS needs none) |
 | `runner` | `false` | deploy the viff runner (its own image; install it with `viff runner add`) |
@@ -467,7 +467,7 @@ asked for under `git.<repo>.out` is pushed to the remote with the same credentia
 git](../docs/reference/iod.md#the-out-half-of-git)); nothing is pushed that nobody asked for.
 And it reflects the tree sha of each repository's `.viff/charters` directory on every ref
 (`-tree .viff/charters`), which is what the repo-charters reconciler keys approval on, and
-installs that tree into the viff when the reconciler asks (`{to: install.<address>}`), as
+installs that tree into the viff instance when the reconciler asks (`{to: install.<address>}`), as
 itself: the deployment's repopulate script holds `repos` out to it with `child-owner`. The mirror
 lives on an `emptyDir`, so a restart re-clones; swap in a PVC if that gets expensive. For a
 repository that already exists somewhere, run the same binary next to it with `-repo`, or skip
@@ -476,7 +476,7 @@ the deployment entirely and use `viff iod add -dir`.
 ### Carrying what people wrote across a wipe
 
 A wipe takes the store with it: the store *is* the configuration, and there is no seed file a
-fresh viff reads. So a deployment keeps a repopulate script of its own, run after the wipe and
+fresh viff instance reads. So a deployment keeps a repopulate script of its own, run after the wipe and
 after the tiers are up at the new vintage, that puts back what its files describe, in an order
 the install checks impose. The runner first (`viff runner add`, with the pod's subject), since a
 charter whose spawn no registered runner takes is refused at install. Then the iods (`viff iod
@@ -604,13 +604,13 @@ tailnet nobody else reaches. With it, viffd verifies people and its own iods
 - **`runnerTokens`** does the same for the runners (`deploy/runner-tokens`), and gives viffd
   the other half: the two prove themselves to each other at the describe ([who the runner
   is](../docs/runners.md#who-the-runner-is)). A runner's token has the audience `viff`: it
-  answers it on the describe to the viff it verified and presents it at viffd's door, and
+  answers it on the describe to the viff instance it verified and presents it at viffd's door, and
   `viff runner add -subject system:serviceaccount:viff:<runner>` holds the registration to
   it, as a deployment's repopulate script does. Viffd's token toward a runner is one it signs
   itself, as the issuer the auth file's `auth.issuer` makes it, with the `viff-issuer` Secret
   this patch mounts (`issuerSecretKey`, or a Secret made by hand on minikube): minted for that
   runner's subject alone, so a copy taken at one runner opens no other's door. The patch names
-  the viff in each runner's environment, `VIFF_URL`, where it reaches viffd and reads its
+  the viff instance in each runner's environment, `VIFF_URL`, where it reaches viffd and reads its
   keys, and `VIFF_ISSUER` from the `issuer` knob, the name the tokens are issued under; the
   audience a runner takes is its own token's subject, so nothing is typed per runner. The
   description stays public. Each runner announces itself at start, in a loop until viffd knows
@@ -871,7 +871,7 @@ A place code work **runs** — its own `Deployment` + `Service` + `ConfigMap`, a
 process per task, bubblewrap around the process. It is `runnerd`
 ([reference/runnerd.md](../docs/reference/runnerd.md)) with the configuration its ConfigMap
 holds, offering the viff agent and scripts, each under its own ceilings; what a task works on is
-its spawn's. It needs `runnerTokens`, on by default: a runner does not start without the viff it
+its spawn's. It needs `runnerTokens`, on by default: a runner does not start without the viff instance it
 serves and its token to prove itself with. So the `viff-issuer` Secret is required
 (`issuerSecretKey`, or `kubectl -n viff create secret generic viff-issuer
 --from-file=issuer.pem=<(openssl genrsa 2048)`), and the auth file names `auth.issuer` with it. Not an iod and not the engine: viff reaches it by url, and deploying it does not
@@ -1022,7 +1022,7 @@ kubectl --context $CTX -n viff wait --for=delete pod -l app=viff,tier=viffd --ti
 make deploy PROFILE=<profile> IMAGE=$REF E="$RUNNERS" SELECT=tier=docd WAIT=1      # the store; viffd is down, so nothing is talking to it
 make deploy PROFILE=<profile> IMAGE=$REF E="$RUNNERS" SELECT=tier=viffd WAIT=1    # the engine, against a docd that is already up and new
 make deploy PROFILE=<profile> IMAGE=$REF E="$RUNNERS" SELECT=tier=iods WAIT=1      # the iods
-make deploy PROFILE=<profile> IMAGE=$REF E="$RUNNERS" SELECT=tier=runners WAIT=1   # the viff, codex and claude runners, their own images
+make deploy PROFILE=<profile> IMAGE=$REF E="$RUNNERS" SELECT=tier=runners WAIT=1   # the viff instance, codex and claude runners, their own images
 ```
 
 The viffd step restores `replicas: 1` from the manifest, so the scale to 0 costs no

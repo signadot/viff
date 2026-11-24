@@ -68,7 +68,7 @@ func (s *Server) LocalRunnerAt(url, subject string) (bool, error) {
 }
 
 // StopRunnerAt asks the runner at url, which proves subject, to stop (runnerd.StopPath), with a
-// token this viff mints for it.
+// token this viff instance mints for it.
 func (s *Server) StopRunnerAt(url, subject string) error {
 	c := &http.Client{Transport: s.runnerTransport(subject)}
 	resp, err := c.Post(strings.TrimRight(url, "/")+runnerd.StopPath, "", nil)

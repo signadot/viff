@@ -164,7 +164,7 @@ func (r *socketRig) deskForPeggy(t *testing.T) {
 	}
 }
 
-// send makes one request of the viff as who, through the resolver named where one is.
+// send makes one request of the viff instance as who, through the resolver named where one is.
 func (r *socketRig) send(t *testing.T, who, resolver, method, path, body string) int {
 	t.Helper()
 	req, _ := http.NewRequest(method, "http://"+r.addr+path, strings.NewReader(body))

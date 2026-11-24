@@ -50,7 +50,7 @@ func charterFilesPruning(docs []*ir.Node, at, prune string) ([]charterGroup, err
 func (s *Server) pruneTargets(store entity.Store, scope, root string, groups []charterGroup) ([]string, int, error) {
 	if scope != "" {
 		return nil, http.StatusBadRequest, errors.New("prune: a scope's charter is its own copy " +
-			"of the viff and has no packages under an address; prune in baseline")
+			"of the viff instance and has no packages under an address; prune in baseline")
 	}
 	confine, err := trigger.ParseAt(root)
 	if err != nil {

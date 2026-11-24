@@ -452,7 +452,7 @@ func watchAsks(cc *cli.Context, since string, notify, asks, questions bool) erro
 	return w.follow(ctx, since, say)
 }
 
-// askRetryMax is the longest the watch waits between two tries at a viff that stopped answering.
+// askRetryMax is the longest the watch waits between two tries at a viff instance that stopped answering.
 const askRetryMax = 30 * time.Second
 
 // follow reads the watch route until ctx ends. A stream that ends is followed again from the last
@@ -483,8 +483,8 @@ func (w *askWatch) follow(ctx context.Context, since string, say func(rev, line 
 		if ctx.Err() != nil {
 			return nil
 		}
-		// What never opened is the viff refusing or not answering: said as an error the first
-		// time, and waited out once a stream has been followed, when it is a viff coming back.
+		// What never opened is the viff instance refusing or not answering: said as an error the first
+		// time, and waited out once a stream has been followed, when it is a viff instance coming back.
 		var refused *watchRefused
 		switch {
 		case !began && !opened:
@@ -493,7 +493,7 @@ func (w *askWatch) follow(ctx context.Context, since string, say func(rev, line 
 			return err
 		case !began:
 			if !down {
-				say("", fmt.Sprintf("the viff is not answering (%v); trying again until it does", err))
+				say("", fmt.Sprintf("the viff instance is not answering (%v); trying again until it does", err))
 				down = true
 			}
 			if !waitOut(ctx, &backoff) {
@@ -502,18 +502,18 @@ func (w *askWatch) follow(ctx context.Context, since string, say func(rev, line 
 			continue
 		}
 		if down {
-			say("", "the viff answers again")
+			say("", "the viff instance answers again")
 			down = false
 		}
 		opened = true
-		// A stream that ends having carried nothing is waited on before the next, so a viff that
+		// A stream that ends having carried nothing is waited on before the next, so a viff instance that
 		// answers and closes at once is not asked again as fast as it can answer.
 		if carried {
 			backoff = time.Second
 		} else if !waitOut(ctx, &backoff) {
 			return nil
 		}
-		why := "the viff closed it"
+		why := "the viff instance closed it"
 		if err != nil {
 			why = err.Error()
 		}
@@ -568,7 +568,7 @@ func (e *watchRefused) Unwrap() error { return e.err }
 
 // followFrames reads the watch route under q and hands each frame to fn, until the stream ends or
 // ctx does. opened, where set, is called once the route has answered with a stream, before its
-// first frame. began says whether a stream was answered at all: a viff refusing the watch, or not
+// first frame. began says whether a stream was answered at all: a viff instance refusing the watch, or not
 // answering, is not a stream that ended.
 func followFrames(ctx context.Context, c *client.Client, q url.Values, opened func(), fn func(askFrame)) (began bool, err error) {
 	resp, err := c.With(ctx).Get("/watch", q)
@@ -611,7 +611,7 @@ func followFrames(ctx context.Context, c *client.Client, q url.Values, opened fu
 // changed from the record it held before: a frame is a level, and the same one met twice says
 // nothing the second time.
 type askWatch struct {
-	// c is the viff the watch follows, and asks what a frame cannot say.
+	// c is the viff instance the watch follows, and asks what a frame cannot say.
 	c  *client.Client
 	me string
 	// asks and questions are the two sides a watch says: what becomes of the caller's asks, and
@@ -682,7 +682,7 @@ const askCatchUpMax = 10 * time.Second
 
 // catchUp starts the catching up a stream about to be opened does, where the watch notifies:
 // what it meets is summed, not notified. Its clocks start when the stream opens (opened), so the
-// connect and the viff assembling what stands are not counted as quiet.
+// connect and the viff instance assembling what stands are not counted as quiet.
 func (w *askWatch) catchUp() {
 	if w.alert == nil {
 		return
@@ -890,7 +890,7 @@ func (w *askWatch) notify(a alert) {
 	}
 }
 
-// askExpirySkew is how far the watcher's clock may stand behind the viff's, which removes an ask
+// askExpirySkew is how far the watcher's clock may stand behind the viff instance's, which removes an ask
 // at its expiry by its own.
 const askExpirySkew = time.Minute
 
@@ -906,7 +906,7 @@ func (w *askWatch) removal(prev entity.Payload) string {
 	return "withdrawn"
 }
 
-// servedBy is the resolver serving an ask for the caller, "" where none does or the viff did not
+// servedBy is the resolver serving an ask for the caller, "" where none does or the viff instance did not
 // say (9ce3bva0, stage 5): the watch shows such an ask, and says it is served.
 func servedBy(c *client.Client, id string) string {
 	resp, err := c.Get("/asks/"+url.PathEscape(id)+"/served", nil)
@@ -923,7 +923,7 @@ func servedBy(c *client.Client, id string) string {
 }
 
 // waits says whether a pending question waits on the caller: from the frame, as it stood at its
-// revision, where waitsOnMe can tell, and otherwise by asking the viff as it stands now.
+// revision, where waitsOnMe can tell, and otherwise by asking the viff instance as it stands now.
 func (w *askWatch) waits(id string, q entity.Payload) bool {
 	waits, decided := w.waitsOnMe(q)
 	if !decided && w.askViff != nil {
@@ -936,7 +936,7 @@ func (w *askWatch) waits(id string, q entity.Payload) bool {
 // principal of their kind (`user:*`) or everyone, which is how a vote, a conversation's turn and a
 // task's own question wait on whoever may answer (mirror.WaitingOnField, which has expanded any
 // group already). A wildcard does not reach the asker, who answers their own ask only where they
-// named themselves. Who may write a place (`audience:`) is the viff's to say: where the line
+// named themselves. Who may write a place (`audience:`) is the viff instance's to say: where the line
 // names one and nothing here matched, decided is false.
 func (w *askWatch) waitsOnMe(q entity.Payload) (waits, decided bool) {
 	names := entity.Strs(q, "waitingOn")
@@ -964,7 +964,7 @@ func (w *askWatch) waitsOnMe(q entity.Payload) (waits, decided bool) {
 	return false, decided
 }
 
-// waitingOnMe asks the viff whether a pending question waits on the caller: whether it is among
+// waitingOnMe asks the viff instance whether a pending question waits on the caller: whether it is among
 // the questions put to them (GET /asks?waiting=me), served ones included.
 func waitingOnMe(c *client.Client, id string) bool {
 	qs, err := asksFrom(c, url.Values{"waiting": {"me"}, "served": {"true"}})

@@ -1,4 +1,4 @@
-// Package entity is the viff as ONE DOCUMENT: a tony tree, addressed by kinded paths.
+// Package entity is the viff instance as ONE DOCUMENT: a tony tree, addressed by kinded paths.
 //
 // An entity is a node of that tree. Its address (Ref) is a path of segments at any depth —
 // `demo.pr."1"`, `mirror.task.instance.x` — and its payload is whatever tony value stands there.
@@ -26,7 +26,7 @@ import (
 	"github.com/signadot/tony-format/go-tony/ir"
 )
 
-// Ref is the address of one concrete node of the viff: a path of segments at any depth, e.g.
+// Ref is the address of one concrete node of the viff instance: a path of segments at any depth, e.g.
 // `demo.pr."1"`. A pattern over addresses (`demo.pr.*`) lives a level up, in the kinded path a
 // read or a rule asks with; here a Ref always names one place.
 //
@@ -38,7 +38,7 @@ import (
 // equality test in a hundred places (`ev.Ref == subj`, `map[Ref]Payload`), and a slice is
 // neither.
 //
-// THE ROOT is which half of the viff the address is in: empty for everything the world is
+// THE ROOT is which half of the viff instance the address is in: empty for everything the world is
 // about — a PR, a build, a person, a doer somebody registered — and `viff` for what viff
 // writes about its own running. It is a segment like the others (it renders, it is walked, it
 // is a level in the document), held apart so that Reserved is a comparison rather than a walk.
@@ -97,7 +97,7 @@ func ViffRef(segs ...string) Ref {
 	return RefAt(append([]string{ViffRoot}, segs...)...)
 }
 
-// Root is which half of the viff the address is in — empty for the world's, ViffRoot for
+// Root is which half of the viff instance the address is in — empty for the world's, ViffRoot for
 // viff's own. It is what a pattern compares against, and what Segs puts first.
 func (r Ref) Root() string { return r.root }
 
@@ -291,7 +291,7 @@ type Event struct {
 	Gap int   `tony:"field=gap,omitzero"` // >0: this many events dropped before this one (a slow observer)
 }
 
-// Commit is one atomic change to the viff: a revision, and every entity it changed. It is
+// Commit is one atomic change to the viff instance: a revision, and every entity it changed. It is
 // the unit of OBSERVATION, where Event is the unit of change — a store writes many branches
 // in one transaction, and the entities of that transaction share a revision and are true
 // together or not at all.
@@ -364,7 +364,7 @@ func (c Commit) Only(keep func(Ref) bool) Commit {
 
 // Net reports whether the commit's Changes are the net of more than its own change: a subtree
 // watch's opening picture, or one re-established, whose Changes were taken against an older copy
-// or against nothing rather than against the viff just before Rev. Comparing such a commit with
+// or against nothing rather than against the viff instance just before Rev. Comparing such a commit with
 // the commit before it does not say what it changed for its consumer.
 func (c Commit) Net() bool { return c.resync }
 

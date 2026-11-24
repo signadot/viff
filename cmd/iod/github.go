@@ -120,7 +120,7 @@ func githubMain(args []string) error {
 	}
 	hint := c.hinter()
 
-	// The out half dials the viff, where the reflection is dialled BY it: one pass loop per
+	// The out half dials the viff instance, where the reflection is dialled BY it: one pass loop per
 	// repository's place, all of them the same sink, which reads the repository off the place.
 	if *out {
 		sink := src.Sink()

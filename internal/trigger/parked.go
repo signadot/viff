@@ -1,6 +1,6 @@
 package trigger
 
-// A PARKED LAUNCH IS RECORDED, so that it outlives the viff that parked it as the suspension
+// A PARKED LAUNCH IS RECORDED, so that it outlives the viff instance that parked it as the suspension
 // holding it does. The record stands in scratch (entity.Scratch), at mirror.task.parked.<id> for
 // the task the launch would start: nothing watches it, it has no history worth keeping, and one
 // engine writes it. It is written when the launch parks and removed when the lift starts it. An
@@ -32,7 +32,7 @@ func parkedRef(id string) entity.Ref { return entity.ViffRef(mirror.System, park
 func (l parkedLaunch) id(e *Engine) string { return spawnID(e.idOwner(), chainID(l.chain), l.subj) }
 
 // recordParked writes a parked launch's record. A store with no scratch, or one that refuses the
-// write, leaves the launch parked in this viff alone.
+// write, leaves the launch parked in this viff instance alone.
 func (e *Engine) recordParked(l parkedLaunch) {
 	sc, ok := entity.ScratchOf(e.store)
 	if !ok {
@@ -42,7 +42,7 @@ func (e *Engine) recordParked(l parkedLaunch) {
 	for i := range l.passed {
 		n, err := l.passed[i].ToTonyIR()
 		if err != nil {
-			e.logger.Warn("a parked launch was not recorded, and will not outlive this viff", "chain", l.chain, "subject", l.subj.String(), "err", err)
+			e.logger.Warn("a parked launch was not recorded, and will not outlive this viff instance", "chain", l.chain, "subject", l.subj.String(), "err", err)
 			return
 		}
 		passed = append(passed, n)
@@ -55,7 +55,7 @@ func (e *Engine) recordParked(l parkedLaunch) {
 		"passed":     ir.FromSlice(passed),
 	}
 	if err := sc.ScratchWrite(parkedRef(l.id(e)), rec.Payload()); err != nil && !errors.Is(err, entity.ErrNoScratch) {
-		e.logger.Warn("a parked launch was not recorded, and will not outlive this viff", "chain", l.chain, "subject", l.subj.String(), "err", err)
+		e.logger.Warn("a parked launch was not recorded, and will not outlive this viff instance", "chain", l.chain, "subject", l.subj.String(), "err", err)
 	}
 }
 

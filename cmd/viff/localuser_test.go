@@ -44,8 +44,8 @@ func TestLoopbackIsThisMachine(t *testing.T) {
 	}
 }
 
-// Nobody configured and a viff on this machine: the CLI acts as the login, at localhost. The
-// same CLI toward a viff anywhere else names nobody, which the server refuses for a write.
+// Nobody configured and a viff instance on this machine: the CLI acts as the login, at localhost. The
+// same CLI toward a viff instance anywhere else names nobody, which the server refuses for a write.
 func TestNobodyConfiguredIsTheLocalUserOnThisMachineOnly(t *testing.T) {
 	loggedIn(t, "ana")
 	appCfg = &config.Config{}
@@ -95,7 +95,7 @@ func TestALoginThatIsNoNameIsLocal(t *testing.T) {
 	}
 }
 
-// The quick start's first write, as a new developer makes it: nothing configured, a viff just
+// The quick start's first write, as a new developer makes it: nothing configured, a viff instance just
 // started on this machine. It lands, and it is theirs.
 func TestAWriteWithNobodyConfiguredLandsAsTheLocalUser(t *testing.T) {
 	t.Setenv("VIFF_USER", "")

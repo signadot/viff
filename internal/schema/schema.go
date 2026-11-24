@@ -124,7 +124,7 @@ func load() {
 	sort.Strings(sortedNm)
 
 	// `root` sorts before every `viff-…`, so the assembled document reads in the order it is
-	// used: what a viff IS, then the shapes that answer it. That is luck rather than design,
+	// used: what a viff instance IS, then the shapes that answer it. That is luck rather than design,
 	// but it is the reason the root is not called viff-root.
 	// The document gets its OWN nodes: byName keeps parentless definitions, so a definition
 	// read on its own does not arrive with a pointer back into the whole schema.
@@ -294,7 +294,7 @@ func Get(name string) (*ir.Node, bool, error) {
 	return d.DeepCopy(), true, nil
 }
 
-// Root returns the definition whose keys are the top-level paths — what a viff looks like.
+// Root returns the definition whose keys are the top-level paths — what a viff instance looks like.
 // This is what the API walks to find the paths it must agree with.
 func Root() (*ir.Node, bool, error) { return Get(RootDef) }
 

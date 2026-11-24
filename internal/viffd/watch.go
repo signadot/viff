@@ -60,7 +60,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	// nothing stands at is refused by the substrate unless the client asked to wait, so a person
 	// who typed an address wrong is told so instead of holding a stream that will never carry
 	// anything. It also narrows what crosses: observing the root and filtering here means every
-	// commit in the viff is delivered to a watch on one slice.
+	// commit in the viff instance is delivered to a watch on one slice.
 	ch, unsub, err := watchFor(store, sel, waitIfAbsent, withInit)
 	if errors.Is(err, errNoOpeningState) {
 		codec.HTTPError(w, r, http.StatusBadRequest, err.Error())
@@ -80,7 +80,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 	// `Since` returns a non-nil error when `since` is below what the store still retains, and it does
 	// that deliberately rather than returning what it happens to still have. Skipping the
 	// catch-up on that answer — which is what this did — hands the client an open stream with no
-	// history and no notice, indistinguishable from a viff where nothing has happened. Observed
+	// history and no notice, indistinguishable from a viff instance where nothing has happened. Observed
 	// from the outside as: the same `--since 700` printing three commits, then nothing, then only
 	// new ones, as the window slid past the cursor between runs.
 	//
@@ -102,7 +102,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 		// WHAT ACTUALLY HAPPENED, said in the store's own words. This asked a second question
 		// to guess with — `store.Since(0)`, whose answer was one int64, the oldest commit still
 		// retained — and that probe is gone. It could not work: it is the LONGEST replay the
-		// store can be asked for, so on any viff with a history it failed exactly as the
+		// store can be asked for, so on any viff instance with a history it failed exactly as the
 		// cheap one just had, and the handler then asserted "it is not the cursor's age"
 		// whatever the cause. Before it learned to say it had failed at all, its zero value
 		// went out as a measurement: `the store still has commits from 0`, which is what
@@ -125,7 +125,7 @@ func (s *Server) watch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// NOT A CONFLICT. The cursor is fine and the store could not answer — a 409 told a
-		// person their cursor was the problem while their viff was unreachable, and they
+		// person their cursor was the problem while their viff instance was unreachable, and they
 		// retried the one call that made it worse.
 		codec.HTTPError(w, r, http.StatusServiceUnavailable, fmt.Sprintf(
 			"the store could not replay from since=%d: %v — the cursor stands, so the same "+

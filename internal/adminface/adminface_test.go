@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The derived default is the daemon's own port plus one, and the host it was given: a viff on
+// The derived default is the daemon's own port plus one, and the host it was given: a viff instance on
 // localhost:9797 answers pprof on localhost:9798, and one bound to every interface stays bound
 // to every interface. What is NOT derivable answers off rather than guessing at a port.
 func TestDefaultIsThePortPlusOne(t *testing.T) {
@@ -27,7 +27,7 @@ func TestDefaultIsThePortPlusOne(t *testing.T) {
 }
 
 // A DERIVED PORT THAT IS TAKEN COSTS THE FACE, NOT THE DAEMON. Nobody asked for port+1, and
-// two viffs on one laptop is the ordinary case the derivation exists for — so losing the race
+// two viff instances on one laptop is the ordinary case the derivation exists for — so losing the race
 // for it must not be how a smoke run fails.
 func TestADerivedAddressThatIsTakenIsNotFatal(t *testing.T) {
 	held, err := net.Listen("tcp", "127.0.0.1:0")

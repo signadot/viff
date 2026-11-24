@@ -141,7 +141,7 @@ func TestARunnerProvesItselfWithAStaticToken(t *testing.T) {
 	resp := postTony(t, ts.URL+"/runners", map[string]any{"name": "edge", "url": face.URL, "identity": "edge-bot", "subject": sub})
 	var row map[string]any
 	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("add with a static token's subject, at a viff naming no workload issuer = %s: %s", resp.Status, readBody(t, resp))
+		t.Fatalf("add with a static token's subject, at a viff instance naming no workload issuer = %s: %s", resp.Status, readBody(t, resp))
 	}
 	decodeResp(t, resp, &row)
 	if row["reach"] != "a runner" || row["described"] == nil {

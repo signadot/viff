@@ -84,7 +84,7 @@ func TestDriftIsServedAnyway(t *testing.T) {
 	}
 }
 
-// A caller that says nothing about its version is served. It may be a viff older than this
+// A caller that says nothing about its version is served. It may be a viff instance older than this
 // check, a script, or curl — and an endpoint meant to be usable by hand must stay usable by
 // hand. Unknown is not incompatible.
 func TestAnUnversionedClientIsServed(t *testing.T) {

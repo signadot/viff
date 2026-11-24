@@ -17,7 +17,7 @@ import (
 // The tui's model: the last snapshot, where the explorer's cursor is, what the content pane
 // shows of it, and what the person is in the middle of (typing a reason, a command, confirming
 // a cancel). Every act goes through the source and is followed by a read, so what the screen
-// shows after an answer is what the viff says now.
+// shows after an answer is what the viff instance says now.
 //
 // THE EXPLORER is the sections, each with its rows under it: a section's own line shows
 // the section as a table in the content pane, a row's shows that row. Where the cursor is, is a
@@ -84,7 +84,7 @@ type tuiModel struct {
 	// and address) rather than where it is: a read that adds, drops or reorders rows puts the
 	// cursor back on the same row, so a key never acts on one the person did not see.
 	sel [tabCount]string
-	// polls is how many reads of the viff are on their way, shared by every copy of the model:
+	// polls is how many reads of the viff instance are on their way, shared by every copy of the model:
 	// a tick while one is starts none, so a slow viff is not read faster than it answers.
 	// applied is the newest read drawn, by when it was asked; an older one arriving later is
 	// dropped.
@@ -668,7 +668,7 @@ var tuiCommands = [][2]string{
 	{"find <text>", "keep the explorer's rows that hold text (/ does the same)"},
 	{"top", "the content pane's first line"},
 	{"bottom", "the content pane's last line"},
-	{"refresh", "read the viff again"},
+	{"refresh", "read the viff instance again"},
 	{"help", "this list"},
 	{"quit", "leave"},
 }

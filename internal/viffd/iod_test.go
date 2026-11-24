@@ -120,7 +120,7 @@ func TestAnIoProvesItselfWithItsWorkloadToken(t *testing.T) {
 			t.Errorf("%s = %d %s, want 401", what, code, body)
 		}
 	}
-	if code, body := relay(t, http.MethodGet, whoami, cluster.Token(iodAudience, "system:serviceaccount:viff:stranger", nil), "", "", ""); !strings.Contains(body, "no io of this viff") {
+	if code, body := relay(t, http.MethodGet, whoami, cluster.Token(iodAudience, "system:serviceaccount:viff:stranger", nil), "", "", ""); !strings.Contains(body, "no io of this viff instance") {
 		t.Errorf("an unknown subject's refusal does not say so: %d %s", code, body)
 	}
 
@@ -143,7 +143,7 @@ func TestAnIoProvesItselfWithItsWorkloadToken(t *testing.T) {
 		t.Errorf("the static io's record = %v", statics)
 	}
 
-	// Iods are verified whatever the people's mode: a viff that verifies no person still knows its iods.
+	// Iods are verified whatever the people's mode: a viff instance that verifies no person still knows its iods.
 	off, tsOff, _, clusterOff := iodServer(t, AuthOff, AuthProvider{})
 	_ = off
 	if code, body := relay(t, http.MethodGet, tsOff.URL+"/whoami?format=tony", clusterOff.Token(iodAudience, ioSub, nil), "", "", ""); code != http.StatusOK || tonyOf(t, body)["principal"] != ioAgent {
@@ -280,7 +280,7 @@ func TestARelayIsRefusedWhereItMustBe(t *testing.T) {
 	}{
 		{"no account named", idAna, "", "names none", http.StatusForbidden},
 		{"an account of a provider that trusts no iods", idAna, authProvName + ":sub-ana", "trusts iods", http.StatusForbidden},
-		{"an account of no provider", idAna, "nowhere:1", "no provider of this viff", http.StatusForbidden},
+		{"an account of no provider", idAna, "nowhere:1", "no provider of this viff instance", http.StatusForbidden},
 		{"a person who is no person", "agent:bot", slackProv + ":T1/U2", "relays a person", http.StatusForbidden},
 		{"a runner", "runner:gpu", slackProv + ":T1/U2", "relays a person", http.StatusForbidden},
 		{"an account bound to another", idAna, slackProv + ":T1/U9", "another principal", http.StatusConflict},
@@ -343,7 +343,7 @@ func TestARelayIsRefusedWhereItMustBe(t *testing.T) {
 		t.Errorf("a person relaying another = %d, want 403", code)
 	}
 	// And a static io with no name is trusted for nobody's accounts.
-	if code, body := relay(t, http.MethodGet, whoami, staticToken, idAna, slackProv+":T1/U1", ""); code != http.StatusForbidden || !strings.Contains(body, "not an io this viff trusts") {
+	if code, body := relay(t, http.MethodGet, whoami, staticToken, idAna, slackProv+":T1/U1", ""); code != http.StatusForbidden || !strings.Contains(body, "not an io this viff instance trusts") {
 		t.Errorf("a nameless io relaying = %d %q", code, strings.TrimSpace(body))
 	}
 }
@@ -378,7 +378,7 @@ func TestATrustedIoReportsANonceHeardAndTheAccountIsBound(t *testing.T) {
 	if code, body := bearer(t, http.MethodPost, heard, ana, "", said); code != http.StatusForbidden {
 		t.Errorf("a person reporting a nonce heard = %d %s, want 403", code, body)
 	}
-	if code, body := relay(t, http.MethodPost, heard, staticToken, "", "", said); code != http.StatusForbidden || !strings.Contains(body, "not an io this viff trusts for slack") {
+	if code, body := relay(t, http.MethodPost, heard, staticToken, "", "", said); code != http.StatusForbidden || !strings.Contains(body, "not an io this viff instance trusts for slack") {
 		t.Errorf("an io slack does not trust reporting = %d %s, want 403", code, body)
 	}
 	if code, body := relay(t, http.MethodPost, heard, io, "", "", `{nonce: "nobody-claimed-this", account: "T1/U1"}`); code != http.StatusNotFound {

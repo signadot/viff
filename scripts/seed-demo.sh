@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# seed-demo.sh — put a small demo world into a RUNNING viff: a charter and the entities it
+# seed-demo.sh — put a small demo world into a RUNNING viff instance: a charter and the entities it
 # reacts to, so every listing has something to show and there is a live gate waiting for you
 # the moment it finishes.
 #
@@ -9,14 +9,14 @@
 # all answer with nothing. This seeds enough that they don't, and prints what to type next.
 #
 # Unlike test/smoke.sh — which builds its own binaries and runs its own isolated server — this
-# talks to YOUR viff, and leaves what it writes behind for you to play with.
+# talks to YOUR viff instance, and leaves what it writes behind for you to play with.
 #
 #   ./viff up                       # in another terminal (or: make seed-demo)
 #   ./scripts/seed-demo.sh
 #   ./scripts/seed-demo.sh --scope me        # …into a copy-on-write scope instead of baseline
 #   ./scripts/seed-demo.sh --clean           # remove what a previous run seeded
 #
-# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff to
+# Env: VIFF (the binary, default: ./viff then `viff` on PATH), VIFF_ADDR (the viff instance to
 # seed, default: viff's own default). Both are the CLI's own knobs; nothing here is a
 # second configuration.
 set -euo pipefail
@@ -64,7 +64,7 @@ if [ -z "$BIN" ]; then
 	fi
 fi
 
-# THE BINARY HAS TO SPEAK `state`. These scripts read the viff as one document at a kinded
+# THE BINARY HAS TO SPEAK `state`. These scripts read the viff instance as one document at a kinded
 # path, and a CLI from before that has `entity` instead — whose failure is a usage error and
 # the whole command tree, which says nothing about why. The trap is a STALE `./viff` in the
 # working directory: it is preferred over $PATH above, so a checkout that built one months ago
@@ -82,7 +82,7 @@ fi
 v() { "$BIN" ${scope[@]+"${scope[@]}"} "$@"; }
 
 # Talk to it before writing to it: every failure below would otherwise be one "connection
-# refused" per command, which reads as a broken script rather than a viff that isn't up.
+# refused" per command, which reads as a broken script rather than a viff instance that isn't up.
 v status >/dev/null 2>&1 ||
 	die "no viff answering at ${VIFF_ADDR:-its default address} — start one with \`$BIN up\` (or pass VIFF_ADDR=host:port)"
 
@@ -184,7 +184,7 @@ Watch it move (another terminal, before approving):
 
   $BIN$scope_note watch demo
 
-Then drive it yourself — a put is how you speak to the viff:
+Then drive it yourself — a put is how you speak to the viff instance:
 
   $BIN$scope_note data demo pr 2 --put '{stage: open}'   open the draft; demo-review fires again
 

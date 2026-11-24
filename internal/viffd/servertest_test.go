@@ -19,7 +19,7 @@ import (
 )
 
 // testIssuerURL is what a test server signs as, until a test makes it an issuer at its own
-// address. Every viff issues, as `viff up` does, since it proves itself to every runner.
+// address. Every viff instance issues, as `viff up` does, since it proves itself to every runner.
 const testIssuerURL = "http://viff.test"
 
 // testIssuerKey is the key every test server signs with: one per package, since making one is
@@ -38,7 +38,7 @@ var localRunners sync.Map // *Server → *runnerdtest.Runner
 
 // serverWith is a server over store, with build served as its local runner: a runner like any
 // registered one, offering everything a test asks of it (runnerdtest.Everything), registered as
-// `local` as `viff up` registers its own. No task runs in a viff's process, so a test that runs
+// `local` as `viff up` registers its own. No task runs in a viff instance's process, so a test that runs
 // tasks hands the server a runner this way.
 func serverWith(t testing.TB, build runnerd.Builder, store entity.Store, opts ...Option) *Server {
 	t.Helper()
@@ -82,7 +82,7 @@ func describeLocal(t testing.TB, s *Server, desc runner.Description) {
 	}
 }
 
-// noLocalRunner takes s's local runner out of routing: a viff that hosts nothing.
+// noLocalRunner takes s's local runner out of routing: a viff instance that hosts nothing.
 func noLocalRunner(t testing.TB, s *Server) {
 	t.Helper()
 	if err := s.RemoveLocalRunner(); err != nil {
@@ -148,8 +148,8 @@ type face struct {
 	Bare    string
 }
 
-// provenFace serves h as a runner of the viff at viffURL, behind the door runnerd puts in
-// front of a runner (Guard): it takes the viff's tokens, read against the issuer the viff
+// provenFace serves h as a runner of the viff instance at viffURL, behind the door runnerd puts in
+// front of a runner (Guard): it takes the viff instance's tokens, read against the issuer the viff instance
 // publishes, and answers its own static token on the describe. release ends the work on h
 // before the face closes.
 func provenFace(t *testing.T, viffURL string, h http.Handler, release func()) *face {
@@ -168,7 +168,7 @@ func provenFace(t *testing.T, viffURL string, h http.Handler, release func()) *f
 	return &face{Server: faceServing(t, g.Wrap(h), release), Subject: sub, Token: tok, Bare: bare.URL}
 }
 
-// issuerOf is the issuer the viff at viffURL signs as, from its discovery document.
+// issuerOf is the issuer the viff instance at viffURL signs as, from its discovery document.
 func issuerOf(t *testing.T, viffURL string) string {
 	t.Helper()
 	resp, err := http.Get(viffURL + issuerDiscoveryPath)

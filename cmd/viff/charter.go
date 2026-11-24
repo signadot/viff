@@ -92,7 +92,7 @@ type charterFlags struct {
 	// install's verdict, not an error.
 	Check bool `cli:"name=check desc='with -d, or -f as a directory of that one file: whether the charters would install at the path as -a -d --prune would, and what would change; installs nothing'"`
 	// RunnersToCome asks the check for the vet viff places a restored rule with: a spawn no
-	// runner offers is held for a runner still to come, where an install refuses it. For a viff
+	// runner offers is held for a runner still to come, where an install refuses it. For a viff instance
 	// whose runners are not up yet; without it the check answers as the install would.
 	RunnersToCome bool `cli:"name=runners-to-come desc='with --check, hold a spawn no runner offers for a runner still to come, as viff does for a rule it restores, where an install refuses it'"`
 	// Paths prints one path per line instead of the document, as `viff data --paths` does and

@@ -101,7 +101,7 @@ func TestStartProbesRunnersWithoutOffers(t *testing.T) {
 			t.Fatalf("--no-probe add %s = %s", name, resp.Status)
 		}
 	}
-	// The first viff stops serving its operators; its keys stay where the runner reads them, as
+	// The first viff instance stops serving its operators; its keys stay where the runner reads them, as
 	// a restarted viff's are, under the same issuer and key.
 	defer ts.Close()
 

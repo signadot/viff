@@ -30,7 +30,7 @@ func (noExec) Execute(context.Context, task.ToolUse) (task.StepResult, []task.To
 }
 
 // Engine.Spawn hands the (bound) launch.Spec to the Spawner and mirrors the
-// resulting task into the viff — the wire-form action becoming a real task.
+// resulting task into the viff instance — the wire-form action becoming a real task.
 func TestSpawnRoutesBoundSpec(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -56,7 +56,7 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 		t.Fatalf("spawner received unbound/wrong spec: %+v", got)
 	}
 
-	// the task appears in the viff (mirror), then reaches a terminal status
+	// the task appears in the viff instance (mirror), then reaches a terminal status
 	ref := mirror.Ref("rev-1")
 	deadline := time.After(2 * time.Second)
 	for {
@@ -66,7 +66,7 @@ func TestSpawnRoutesBoundSpec(t *testing.T) {
 		select {
 		case <-deadline:
 			e, _, _ := store.Get(ref)
-			t.Fatalf("spawned task never completed in the viff: %+v", e.Payload)
+			t.Fatalf("spawned task never completed in the viff instance: %+v", e.Payload)
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
@@ -116,7 +116,7 @@ func TestSpawnIDIsRouteSafe(t *testing.T) {
 		if !strings.HasPrefix(id, "validate@local.file.task_taskd_daemon.go+") {
 			t.Fatalf("unexpected sanitized id: %q", id)
 		}
-		// and it is routable/findable in the viff under that id (mirror is async)
+		// and it is routable/findable in the viff instance under that id (mirror is async)
 		found := false
 		for deadline := time.After(2 * time.Second); !found; {
 			if _, ok, _ := store.Get(mirror.Ref(id)); ok {

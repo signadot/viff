@@ -22,7 +22,7 @@ const (
 	oscar  = "user:oscar@example.com"
 )
 
-// serveAsking is a started viff, which asks as every viff does: viffd poses what stands under
+// serveAsking is a started viff, which asks as every viff instance does: viffd poses what stands under
 // mirror.ask.
 func serveAsking(t *testing.T) entity.Store {
 	t.Helper()
@@ -240,7 +240,7 @@ func TestWhomAnAskWaitsOn(t *testing.T) {
 		{[]any{other}, "", false, true},
 		{[]any{"user:*"}, me, false, true},
 		{[]any{me}, me, true, true},
-		// Who may write a place is the viff's to say.
+		// Who may write a place is the viff instance's to say.
 		{[]any{"audience:demo.pr"}, "", false, false},
 		{[]any{"audience:demo.pr", "user:*"}, "", true, true},
 	} {
@@ -277,7 +277,7 @@ func TestTheQuestionListingIsWhatWaitsOnYou(t *testing.T) {
 }
 
 // WHAT THE WATCH CANNOT READ, IT ASKS: a question waiting on whoever may write a place is said to
-// wait on you when the viff says it does.
+// wait on you when the viff instance says it does.
 func TestTheQuestionWatchAsksTheViffWhatItCannotRead(t *testing.T) {
 	var asked string
 	w := newAskWatch(apiClient(), victor, false, true)
@@ -287,7 +287,7 @@ func TestTheQuestionWatchAsksTheViffWhatItCannotRead(t *testing.T) {
 		"status": "pending", "waitingOn": []any{"audience:demo.pr"}, "pose": "Land it?",
 	}.Payload()}, func(rev, line string) { said = append(said, line) })
 	if asked != "q1" || len(said) != 1 || !strings.HasPrefix(said[0], "waiting on you q1: Land it?") {
-		t.Fatalf("asked the viff about %q, and said %q", asked, said)
+		t.Fatalf("asked the viff instance about %q, and said %q", asked, said)
 	}
 }
 

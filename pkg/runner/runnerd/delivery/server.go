@@ -60,7 +60,7 @@ type Services struct {
 	GitHubAPI  string
 	SlackToken Credential
 	SlackAPI   string // "" is Slack's own
-	// Viff carries a task's request to the viff the runner serves, a verb of the viff system
+	// Viff carries a task's request to the viff instance the runner serves, a verb of the viff system
 	// (viff.go); nil for a runner with no viff to reach, or no token of its own to reach it with.
 	Viff Viff
 	// Secrets is the runner's secret store, which a `secret.exec` reads the one secret it runs

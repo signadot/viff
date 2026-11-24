@@ -61,7 +61,7 @@ func newStore(t *testing.T) *countingStore {
 	return &countingStore{Store: entitytest.Store(t)}
 }
 
-// quiet runs fn and reports whether it left the viff alone: no write issued, no revision
+// quiet runs fn and reports whether it left the viff instance alone: no write issued, no revision
 // moved, and nothing on the change stream. All three, because they are three different claims
 // — what converge decided, what the store did with it, and what a trigger would have felt.
 func quiet(t *testing.T, store *countingStore, fn func()) bool {

@@ -59,7 +59,7 @@ func delayed(in <-chan entity.Commit, hold func()) <-chan entity.Commit {
 	return out
 }
 
-// openTracked is a viff whose root holds `read` out to everyone beneath it, with the mirror
+// openTracked is a viff instance whose root holds `read` out to everyone beneath it, with the mirror
 // loaded and watched through the system's view; raw is the store underneath, written around it.
 func openTracked(t *testing.T, raw entity.Store) entity.Store {
 	t.Helper()

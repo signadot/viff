@@ -1,5 +1,5 @@
 // Package charter is the shape of a charter's records: where a rule, a stratum and a
-// package's declaration stand in the viff, what each record holds, and the records as they
+// package's declaration stand in the viff instance, what each record holds, and the records as they
 // change (Follow). The engine (package trigger) is derived from them: an install is a write
 // here, a removal a delete, and what the engine runs is what it reads back.
 //
@@ -108,8 +108,8 @@ func Name(id string) string {
 // baseline layered underneath, so a listing in a scope returns both, and only the record can
 // say which is which. AtField is the ADDRESS the charter was installed at — the subtree its
 // rules may write in — absent for baseline, which may write anywhere: the same idea one axis
-// over. A scope says whose COPY of the viff a rule acts in; an address says which part of
-// the viff it acts on.
+// over. A scope says whose COPY of the viff instance a rule acts in; an address says which part of
+// the viff instance it acts on.
 //
 // TaskField is the task whose tools installed a rule, absent for one a person or the system
 // installed, and TaskEnvironmentField what that task could hand on when it did, the systems

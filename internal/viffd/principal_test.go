@@ -59,7 +59,7 @@ func whose(t *testing.T, srv *Server, ref entity.Ref) string {
 
 // A request names who makes it, and everything it writes is theirs: a raw put and a charter
 // install alike leave the requester as the owner of what they created, and the requester
-// on the viff's list of users. A request that names nobody leaves no owner and no user.
+// on the viff instance's list of users. A request that names nobody leaves no owner and no user.
 func TestARequestsPrincipalOwnsWhatItCreates(t *testing.T) {
 	srv := testServer(t)
 	ts := httptest.NewServer(srv.Handler())

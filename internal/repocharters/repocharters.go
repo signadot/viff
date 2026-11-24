@@ -5,7 +5,7 @@
 //
 // IT IS NOT PART OF THE ENGINE. Nothing in viffd knows this charter: it is a charter like any
 // other, written against the rule grammar, the git io's reflection and out half, and the github
-// io's out half, and it reaches a viff the way the deployment's other system charters do, as a
+// io's out half, and it reaches a viff instance the way the deployment's other system charters do, as a
 // text viffd installs at start as the system (viffd.Server.SystemCharters). This package holds
 // the charter's text as a template, renders it for a repository, and is where its test lives.
 // The reference example (docs/reference/examples/repo-charters/repo-charters.tony) is a
@@ -80,7 +80,7 @@ var branchName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._/-]*$`)
 // reflected by a git io beside a clone, its charters installed at `repos.viff`.
 var Example = Params{Repo: "viff", GitHub: "signadot/viff", InstallAt: "repos.viff", Tree: "charters"}
 
-// Render is the charter for one repository, as a viff installs it.
+// Render is the charter for one repository, as a viff instance installs it.
 func Render(p Params) ([]byte, error) {
 	if p.Repo == "" || strings.ContainsAny(p.Repo, ".* \t\n\"") {
 		return nil, fmt.Errorf("repo-charters: Repo %q is not one plain segment", p.Repo)

@@ -1,6 +1,6 @@
 // Package viffdtest stands up a viffd for a test outside the package: a server over a store, with
 // a runner served beside it and registered as its local runner, as `viff up` registers its own.
-// No task runs in a viff's process, so a test that runs tasks needs one.
+// No task runs in a viff instance's process, so a test that runs tasks needs one.
 package viffdtest
 
 import (

@@ -928,7 +928,7 @@ func ShortSha(sha string) string {
 // STAGED before it is sent (stage.go): the commit is local and always safe, the push is neither.
 //
 // The trailers are the attribution channel. A push made under a shared bot credential says nothing
-// at the far end about who it was for, so the only externally checkable link back into the viff is
+// at the far end about who it was for, so the only externally checkable link back into the viff instance is
 // what this writes down — and it is checkable, by anyone who can read both the repository and the
 // viff.
 func (t *Tree) CommitWork(l *runner.Launch, result string) (bool, error) {
@@ -951,7 +951,7 @@ func (t *Tree) CommitWork(l *runner.Launch, result string) (bool, error) {
 		// an empty commit on top purely to carry trailers.
 		//
 		// The cost is real and is the reason a prompt should still say "do not commit": the
-		// trailers are the runner's only attribution channel out of the viff, and a commit
+		// trailers are the runner's only attribution channel out of the viff instance, and a commit
 		// the agent wrote carries none of them. Work preserved without provenance beats work
 		// destroyed, which is the trade being made here and not a preference.
 		return true, nil
@@ -1177,7 +1177,7 @@ func SafeSeg(s string) string {
 
 // requiredTrailers is the provenance every commit an agent delivers must carry: the same lines
 // commitWork writes when the runner makes the commit. They are the only externally checkable
-// link from a commit on the forge back into the viff, so a delivery without them is refused
+// link from a commit on the forge back into the viff instance, so a delivery without them is refused
 // rather than quietly repaired — repairing would rewrite the agent's commits, and the agent
 // would no longer know the SHAs it delivered. The commit's identity (IdentityFor) is held the
 // same way, for the same reason.

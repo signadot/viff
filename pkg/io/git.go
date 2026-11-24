@@ -18,7 +18,7 @@ import (
 // GitRoot is the entity slice a git Source owns and is the single writer of.
 const GitRoot = "git"
 
-// Git reflects one or more git repositories into the git.* slice of the viff — read-only
+// Git reflects one or more git repositories into the git.* slice of the viff instance — read-only
 // reflection, the inbound half of a Source (docs/io.md). It is the single writer of
 // git.*, so the slice needs no CAS. Reflection is content-addressed, which makes reconcile
 // CURSORLESS: `git for-each-ref` yields a ref→sha map, and comparing shas against the stored
@@ -383,7 +383,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 		// HAS no parents, and that is a fact about it rather than a field nobody filled in. It
 		// also keeps the field one shape, so a predicate over it never has to ask which.
 		//
-		// Trailers are the one part of a commit BODY that reaches the viff, and only when
+		// Trailers are the one part of a commit BODY that reaches the viff instance, and only when
 		// there are any — an empty map on every commit is noise in every payload.
 		if len(c.trailers) > 0 {
 			p["trailers"] = c.trailers
@@ -397,7 +397,7 @@ func (g *Git) reflectRepo(ctx context.Context, id string, rp repo) (Reflection, 
 
 // refInfo is one ref: its object, that object's type, and, for an annotated tag, the trailers
 // of the tag's message. A tag is where a release or a deploy says what it is (a deploy tag names
-// the commit of another repository it deployed), and the ref is the only place the viff sees a
+// the commit of another repository it deployed), and the ref is the only place the viff instance sees a
 // tag. A branch's trailers are its tip commit's, at `git.<repo>.commit.<sha>`, so a branch carries
 // none here.
 type refInfo struct {

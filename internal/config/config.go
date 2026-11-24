@@ -76,7 +76,7 @@ type Config struct {
 	// so the task's record names the agent that ran it. Empty is `viff`. Server-side, read by
 	// `viff up`. Env: VIFF_DEFAULT_AGENT.
 	DefaultAgent string `tony:"field=defaultAgent,omitzero"`
-	// LocalRunner says whether this viff hosts work on its own runner, beside the runners
+	// LocalRunner says whether this viff instance hosts work on its own runner, beside the runners
 	// registered with it. False is a central viff: every spawn goes to a registered runner.
 	// Unset is true. Server-side, read by `viff up` (`--local-runner`). Env: VIFF_LOCAL_RUNNER.
 	LocalRunner *bool        `tony:"field=localRunner,omitzero"`
@@ -104,7 +104,7 @@ type Config struct {
 	// the server's model credentials included. Empty means task.DefaultShellEnv. Server-side,
 	// read by `viff up`.
 	ShellEnv []string `tony:"field=shellEnv,omitzero"`
-	// Auth is how the parties that arrive at a viff are authenticated, one block per kind of
+	// Auth is how the parties that arrive at a viff instance are authenticated, one block per kind of
 	// party. Unset, a request is whoever it says it is.
 	Auth AuthConfig `tony:"field=auth,omitzero"`
 	// RepoCharters names the repositories whose charters viff reconciles: for each, `viff up`
@@ -167,19 +167,19 @@ type AuthConfig struct {
 	// Iod is how an io is authenticated: the issuer of the workload tokens the deployment's iods
 	// present, and which io each token's subject is. Server-side, read by `viff up`.
 	Iod IodAuthConfig `tony:"field=iod,omitzero"`
-	// Issuer makes this viff an issuer of its own: it signs a short-lived token for a task whose
+	// Issuer makes this viff instance an issuer of its own: it signs a short-lived token for a task whose
 	// gate passed, and publishes the keys a system outside viff verifies that token against.
 	// Unlike the blocks beside it, this is viff vouching outward, not a party arriving.
 	// Server-side, read by `viff up`.
 	Issuer IssuerConfig `tony:"field=issuer,omitzero"`
 }
 
-// IssuerConfig is what a viff needs to issue tokens: where its relying parties reach it, and
+// IssuerConfig is what a viff instance needs to issue tokens: where its relying parties reach it, and
 // the key it signs with.
 //
 //tony:schemagen=viff-issuer-config,notag
 type IssuerConfig struct {
-	// URL is this viff as a relying party reaches it. It is every token's `iss`, and the
+	// URL is this viff instance as a relying party reaches it. It is every token's `iss`, and the
 	// discovery document is found at `<url>/.well-known/openid-configuration`.
 	URL string `tony:"field=url,omitzero"`
 	// Key is the path of the signing key: an RSA private key in PEM, PKCS#1 or PKCS#8.
@@ -197,7 +197,7 @@ const (
 	AuthRequired = "required"
 )
 
-// PrincipalAuthConfig is the OpenID Connect providers a viff accepts people from, and how far
+// PrincipalAuthConfig is the OpenID Connect providers a viff instance accepts people from, and how far
 // it insists on them.
 //
 //tony:schemagen=viff-principal-auth-config,notag
@@ -216,7 +216,7 @@ type AuthProviderConfig struct {
 	// Issuer is the issuer's URL, which its discovery document is found under and which every
 	// token's `iss` equals.
 	Issuer string `tony:"field=issuer,omitzero"`
-	// ClientID is the OAuth client registered at the issuer for this viff: a token's `aud` holds
+	// ClientID is the OAuth client registered at the issuer for this viff instance: a token's `aud` holds
 	// it, and the CLI logs in as it. It is a public client.
 	ClientID string `tony:"field=clientId,omitzero"`
 	// ClientSecret is what some issuers hand a public client beside its id and want back at the
@@ -228,7 +228,7 @@ type AuthProviderConfig struct {
 	// been bound from before needs a verified email in one of them, and a person an io relays
 	// needs an email in one of them. Empty admits nobody new.
 	Domains []string `tony:"field=domains,omitzero"`
-	// IOs names the installed iods the viff trusts for this provider's accounts, by the name each
+	// IOs names the installed iods the viff instance trusts for this provider's accounts, by the name each
 	// is installed under: an io whose reflection is evidence of an account (`github`, proved by
 	// a comment), and an io that relays a person it identified (`slack`, by the member who
 	// typed). A provider has an issuer or iods, not both. Empty trusts none.
@@ -275,7 +275,7 @@ type IodAuthConfig struct {
 	// is. Written at start, never at first sight.
 	Accounts map[string]IodAccountConfig `tony:"field=accounts,omitzero"`
 	// Static is the iods of a deployment with no issuer: each presents the token in a file, and
-	// the viff keeps the token's hash. Read at start.
+	// the viff instance keeps the token's hash. Read at start.
 	Static []IodStaticConfig `tony:"field=static,omitzero"`
 }
 
@@ -376,11 +376,11 @@ func (a AuthConfig) Validate() error {
 		for _, spelt := range []string{iss, iss + "/"} {
 			if other, dup := issuers[spelt]; dup {
 				return fmt.Errorf("auth.issuer.url: %s is auth.principal.providers.%s's issuer too, and a "+
-					"token this viff signs would be read as one of theirs", iss, other)
+					"token this viff instance signs would be read as one of theirs", iss, other)
 			}
 		}
 		if iss == strings.TrimSuffix(a.Iod.Issuer, "/") {
-			return fmt.Errorf("auth.issuer.url: %s is auth.iod.issuer too, and a token this viff signs "+
+			return fmt.Errorf("auth.issuer.url: %s is auth.iod.issuer too, and a token this viff instance signs "+
 				"would be read as a workload's", iss)
 		}
 	}
@@ -440,7 +440,7 @@ func ioPrincipal(p string) error {
 //tony:schemagen=viff-perms-config,notag
 type PermsConfig struct {
 	// ChildGrants is what a node created with no default above it holds out — grantees by level,
-	// `{read: ["*"]}` — the open viff's when left unset, and `{}` for a viff where what
+	// `{read: ["*"]}` — the open viff's when left unset, and `{}` for a viff instance where what
 	// anybody creates is theirs and their grantees' alone.
 	ChildGrants map[string][]string `tony:"field=child-grants,omitzero"`
 	// Admins are who may take a top-level place: grantees (`walter@example.com`, `agent:ops`),
@@ -450,7 +450,7 @@ type PermsConfig struct {
 	// says it (and how it is changed live, with `kubectl set env`).
 	//
 	// It is a SETTING rather than a record because it is the one policy that has to exist
-	// before anybody can be refused: a viff whose top is administered cannot be administered
+	// before anybody can be refused: a viff instance whose top is administered cannot be administered
 	// into existence from inside itself.
 	Admins []string `tony:"field=admins,omitzero"`
 }
@@ -554,7 +554,7 @@ type LLMConfig struct {
 	Model      string `tony:"field=model,omitzero"`
 }
 
-// VirtualKeyOr is the credential a task runs under: the one its spawn named, else this viff's
+// VirtualKeyOr is the credential a task runs under: the one its spawn named, else this viff instance's
 // own. A spawn's is already the resolved key — viffd read it from the address the spawn named,
 // as whoever named it — so there is nothing to look up here and no list to keep.
 func (l LLMConfig) VirtualKeyOr(named string) string {

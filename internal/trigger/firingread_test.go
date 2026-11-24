@@ -11,7 +11,7 @@ import (
 	"go.viff.dev/viff/pkg/task"
 )
 
-// A firing reads the places its rule names and NOT the whole viff — the difference between a
+// A firing reads the places its rule names and NOT the whole viff instance — the difference between a
 // read whose cost is flat and one that grows with everything anybody else has written.
 func TestAFiringReadsOnlyThePlacesItsRuleNames(t *testing.T) {
 	store := &countingStore{Store: entitytest.Store(t)}
@@ -43,7 +43,7 @@ func TestAFiringReadsOnlyThePlacesItsRuleNames(t *testing.T) {
 	waitField(t, store, cursor, "covering", "bbb222") // the action's read was answered
 
 	if whole := store.wholeViff(); whole != 0 {
-		t.Fatalf("%d of the firing's snapshots read the whole viff — a firing pays the log "+
+		t.Fatalf("%d of the firing's snapshots read the whole viff instance — a firing pays the log "+
 			"replay for every entity its rule cannot see, on a store that only grows", whole)
 	}
 	// And it held what the ACTION reads, which is the half `reads()` does not cover: the
@@ -96,7 +96,7 @@ func TestAFiringTakesOneSnapshotForEveryReferenceInIt(t *testing.T) {
 
 // A read whose address cannot be worked out at install narrows to NOTHING, and a snapshot
 // narrowed to nothing would answer "nothing" for a read that should have found something. So the
-// whole viff is what it falls back to: the expensive answer, in the one case where the cheap one
+// whole viff instance is what it falls back to: the expensive answer, in the one case where the cheap one
 // would be wrong.
 func TestARuleThatCannotNameWhatItReadsReadsTheWholeViff(t *testing.T) {
 	trig := mustParseCharter(t, `
@@ -165,7 +165,7 @@ func TestAHookPaidBeforeTheEngineOpensReadsWhatItsRuleNames(t *testing.T) {
 		t.Fatalf("subject = %v, want the hook's read written", got)
 	}
 	if whole := store.wholeViff() - before; whole != 0 {
-		t.Fatalf("%d of the snapshots taken at start read the whole viff", whole)
+		t.Fatalf("%d of the snapshots taken at start read the whole viff instance", whole)
 	}
 }
 

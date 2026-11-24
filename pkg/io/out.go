@@ -20,7 +20,7 @@ import (
 	"go.viff.dev/viff/pkg/entity"
 )
 
-// The OUT half: what the viff asks of an external system, done, and what became of it written
+// The OUT half: what the viff instance asks of an external system, done, and what became of it written
 // back. It is the reflection's law run the other way round, and the one thing that differs is
 // which side dials.
 //
@@ -175,7 +175,7 @@ func (o *Out) Reporting(name string) *Out {
 	return o
 }
 
-// NewOut runs sink against place, reading and writing the viff through viff.
+// NewOut runs sink against place, reading and writing the viff instance through viff.
 func NewOut(sink Sink, place entity.Ref, viff *client.Client, log func(string, ...any)) *Out {
 	if log == nil {
 		log = func(string, ...any) {}
@@ -216,8 +216,8 @@ func (o *Out) Run(ctx context.Context, every time.Duration) {
 }
 
 // Pass finds every input under the place and asks the sink for each, then tells viff what it
-// did. The report is last, and it is not part of the pass's success: a viff that would not take
-// it is a viff this half has just read and written, so saying so twice adds nothing.
+// did. The report is last, and it is not part of the pass's success: a viff instance that would not take
+// it is a viff instance this half has just read and written, so saying so twice adds nothing.
 func (o *Out) Pass(ctx context.Context) error {
 	place, err := o.Read(o.place.KPath())
 	if err != nil {

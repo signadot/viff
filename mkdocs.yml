@@ -11,7 +11,7 @@ repo_name: GitHub
 edit_uri: ""
 
 # The site is for somebody who USES viff: writes charters, runs tasks, answers gates. The pages
-# for running a viff, extending it and changing it stay in the repository, where a person and an
+# for running a viff instance, extending it and changing it stay in the repository, where a person and an
 # agent read them, and the site does not publish them (docs/platform.md indexes them). Nor does
 # it publish articles/, prose written for somewhere else.
 #

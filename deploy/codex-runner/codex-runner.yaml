@@ -21,7 +21,7 @@ metadata:
 data:
   viff-runner.tony: |
     listen: ":9802"
-    # The one viff this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
+    # The one viff instance this runner serves is not here: the `runnerTokens` patch (deploy/build.tony)
     # names it in the pod's environment, VIFF_URL and VIFF_ISSUER, from the `issuer` knob,
     # since this file is every cluster's, and gives it its token (VIFF_TOKEN_FILE). The runner
     # does not start without both.

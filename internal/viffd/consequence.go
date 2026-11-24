@@ -138,7 +138,7 @@ type taskBound struct {
 	autonomy task.Autonomy
 }
 
-// boundOf is the bound on what follows an ask task id raised: the task as this viff launched it,
+// boundOf is the bound on what follows an ask task id raised: the task as this viff instance launched it,
 // with the autonomy it runs under now.
 func (s *Server) boundOf(id string) *taskBound {
 	ht := s.hostedOf(id)

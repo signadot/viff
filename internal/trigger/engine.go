@@ -24,7 +24,7 @@ import (
 
 // Spawner turns a (bound) launch.Spec into a running, hosted task and returns
 // it. It owns the full lifecycle — resolve the spec's references (driver, runner,
-// resolver, scope, environment), build, mirror into the viff, and run/host — so
+// resolver, scope, environment), build, mirror into the viff instance, and run/host — so
 // the engine stays agnostic to how tasks are hosted (a runnerd runtime here,
 // an RPC to a remote runtime when distributed).
 //
@@ -318,7 +318,7 @@ func (e *Engine) Fired() int {
 	return e.fired
 }
 
-// Start subscribes to the viff (synchronously, before returning) and runs the
+// Start subscribes to the viff instance (synchronously, before returning) and runs the
 // dispatch loop in the background until ctx is cancelled. Subscribing before Start
 // returns means changes produced right after Start are never missed.
 //
@@ -354,7 +354,7 @@ func (e *Engine) startReconciler(ctx context.Context) {
 // ObserveScoped puts the engine in per-trigger (subtree) observation mode: it opens
 // NO root watch. Each trigger added afterward gets its own watch on exactly the
 // (system,kind) subtree it matches — the docd-aligned model (watch what you match,
-// not the whole viff). Used for a scoped engine; ctx
+// not the whole viff instance). Used for a scoped engine; ctx
 // bounds every subtree watcher, so cancelling it stops them all. Baseline engines use
 // Start instead. Actions still run on this engine's (scoped) store and spawner.
 func (e *Engine) ObserveScoped(ctx context.Context) {

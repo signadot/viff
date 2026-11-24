@@ -23,18 +23,18 @@ var login = func() string {
 	return u.Username
 }
 
-// localUser is who a CLI with nobody configured acts as toward the viff at addr:
+// localUser is who a CLI with nobody configured acts as toward the viff instance at addr:
 // `user:<login>@localhost` when addr is on this machine, and nobody ("") when it is not.
 //
-// A viff on this machine is the one a person has just started, and they have configured
+// A viff instance on this machine is the one a person has just started, and they have configured
 // nothing yet: the first write they make should be theirs, under a name that says where it came
-// from. A viff anywhere else is shared, and whoever writes to it says who they are.
+// from. A viff instance anywhere else is shared, and whoever writes to it says who they are.
 //
 // IT IS THE CLI'S DEFAULT AND NOT THE SERVER'S. viffd refuses a request that writes and names
 // nobody whatever address it arrived from, so a program that is not this CLI still names
 // somebody, and an empty principal never reaches the store.
 //
-// A loopback address does not prove a local viff — a port-forward to a shared one is loopback
+// A loopback address does not prove a local viff instance — a port-forward to a shared one is loopback
 // too — and the name says `@localhost` there as well, which is what it was typed from.
 func localUser(addr string) string {
 	if !loopback(addr) {

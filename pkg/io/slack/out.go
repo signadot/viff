@@ -24,7 +24,7 @@ import (
 	"go.viff.dev/viff/pkg/task"
 )
 
-// The out half: what the viff asks to be said in Slack, said, and what became of it written back.
+// The out half: what the viff instance asks to be said in Slack, said, and what became of it written back.
 //
 // Somebody (a person, a charter) writes an INPUT at `slack.<ws>.out.<target>.<name>`:
 //
@@ -69,7 +69,7 @@ type Sink struct {
 	now  func() time.Time
 	// As reads an ask as the person a message is for, where the input names one (9ce3bva0): an
 	// ask is read by whom it asks, and this program only ever shows it to them. The person is
-	// named with their Slack account, so a viff that verifies people admits the read through
+	// named with their Slack account, so a viff instance that verifies people admits the read through
 	// its binding. Nil reads as this program, which reads what a rule's gate holds out and
 	// nothing a person's ask does not.
 	As func(principal, account string) *client.Client
@@ -381,8 +381,8 @@ type posed struct {
 }
 
 // readerFor is who reads the asks a message is about: the person it is for, where the input names
-// one viff knows, and this program otherwise. A person is read as with their Slack account, found
-// by their email once and kept: the account is what a viff that verifies people admits the read
+// one viff instance knows, and this program otherwise. A person is read as with their Slack account, found
+// by their email once and kept: the account is what a viff instance that verifies people admits the read
 // through. A person Slack does not know is read as this program, which is what the message to
 // them would have failed on anyway.
 func (k *Sink) readerFor(ctx context.Context, to string) (*client.Client, string) {

@@ -11,7 +11,7 @@ import (
 // A CONFINED ENGINE may only write inside one subtree of the viff.
 //
 // It is what makes a charter's isolation a guarantee rather than a convention. Two groups
-// running rules in one viff are isolated when neither can write where the other reads, and
+// running rules in one viff instance are isolated when neither can write where the other reads, and
 // "neither does today" is a property of the rules somebody happens to have installed — it stops
 // being true the moment one is edited. A confinement is a property of the ENGINE, so it holds
 // over whatever the charter says next.

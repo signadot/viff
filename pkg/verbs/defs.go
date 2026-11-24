@@ -59,18 +59,18 @@ var (
 	}
 )
 
-// THE DATA VERBS mirror `viff data`: the viff at an address.
+// THE DATA VERBS mirror `viff data`: the store at an address.
 var (
 	DataGet = &Verb{
 		Name: "data-get", Tool: "viff_data", Reads: true,
-		Lead: "Read the viff at an address", CLI: "`viff data`",
+		Lead: "Read the store at an address", CLI: "`viff data`",
 		Does: "the document stored there, or with paths the addresses beneath it. What is not in view, " +
 			"because nothing stands there or it may not be read, is answered alike. Where the address may " +
 			"not be read into at all, the read is refused, naming the nearest owner on record, whom to ask, " +
 			"whether or not anything stands there.",
 		Params: []Param{
 			text("at", "the address as a kinded path, as a document prints it: demo.pr.1, demo.pr.*.stage; "+
-				"empty is all of the viff that may be read"),
+				"empty is all of the viff instance that may be read"),
 			text("if", "only entities whose payload matches this tony pattern, chosen by viff before anything is sent: {stage: open}"),
 			text("if_at", "root the if pattern at this dot-separated field path inside the payload (labels)"),
 			text("trim", "write only the parts of each entity this match document names, as a key set: {id status}"),
@@ -141,7 +141,7 @@ var (
 				"address) with reads, ttl, strata, schedules and rules as a charter file does; several are "+
 				"separated by lines of ---"), "a check carries the charters"),
 			flag("runners-to-come", "hold a spawn no runner offers for a runner still to come, as viff does for "+
-				"a rule it restores, where an install refuses it: for a viff whose runners are not up yet"),
+				"a rule it restores, where an install refuses it: for a viff instance whose runners are not up yet"),
 		},
 	}
 	CharterInstall = &Verb{
