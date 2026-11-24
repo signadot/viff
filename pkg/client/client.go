@@ -245,7 +245,7 @@ func (c *Client) SetFormatHeaders(req *http.Request) {
 
 // StatusError is the refusal a request came back with, in the words the server used.
 //
-// A viff instance refusal is a SENTENCE — "stratum X still holds 3 rules, removing it would leave them
+// A viff refusal is a SENTENCE — "stratum X still holds 3 rules, removing it would leave them
 // installed and unchecked" — written into the response body on purpose, and reporting only
 // `400 Bad Request` throws away the whole of what the server said. The status is the fallback, for
 // a server that refused without saying anything.

@@ -10,7 +10,7 @@ import (
 	"go.viff.dev/viff/pkg/systems"
 )
 
-// THE VERBS ARE THE VIFF SYSTEM'S: each one the viff instance document describes is defined here, and
+// THE VERBS ARE THE VIFF SYSTEM'S: each one the viff document describes is defined here, and
 // nothing else, so a task's tools and viff mcp's are the same set.
 func TestTheVerbsAreTheViffDocumentsVerbs(t *testing.T) {
 	d, ok := systems.Get("viff")
@@ -27,7 +27,7 @@ func TestTheVerbsAreTheViffDocumentsVerbs(t *testing.T) {
 	slices.Sort(documented)
 	slices.Sort(defined)
 	if !slices.Equal(documented, defined) {
-		t.Errorf("the viff instance document describes %v, and the verbs defined are %v", documented, defined)
+		t.Errorf("the viff document describes %v, and the verbs defined are %v", documented, defined)
 	}
 }
 

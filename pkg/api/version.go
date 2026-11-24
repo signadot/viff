@@ -72,7 +72,7 @@ func Version() string {
 	return bi.Main.Version
 }
 
-// Skew is how far apart two viff instance versions are.
+// Skew is how far apart two viff versions are.
 type Skew int
 
 const (

@@ -1,4 +1,4 @@
-// Command viff is the single CLI for the viff instance prototype: `up` starts the
+// Command viff is the single CLI for the viff prototype: `up` starts the
 // daemon(s); every other subcommand is a client that connects to a running viff.
 // See docs/reference/README.md for the command tree, and docs/deployment-and-steering.md for
 // the plane split it encodes.
@@ -186,7 +186,7 @@ func rootCmd() *cli.Command {
 		}
 	}
 	return cli.NewCommand("viff").
-		WithSynopsis("one CLI for the viff instance prototype").
+		WithSynopsis("one CLI for the viff prototype").
 		WithDescription("`up` starts the daemon(s); every other subcommand is a client.").
 		WithOpts(gopts...).
 		// Each collection is ONE command, named in the singular, and bare it lists:

@@ -1209,7 +1209,7 @@ func (s *LogdStore) ReadAtCommit(at []string) (*ir.Node, bool, int64, error) {
 //
 // AN ARRAY IS A LEVEL LIKE ANY OTHER: its members are positions, and the descent enters them as
 // it enters an object's fields. Identity is the store's to give (!logd-key), a `!key` tag is
-// refused on the way in (checkNotKeyed), and the viff instance surface for the store's keying is not
+// refused on the way in (checkNotKeyed), and the viff surface for the store's keying is not
 // designed yet -- so nothing here has to read an array to find out what its elements are called.
 //
 // The addresses beneath an element are the same ones the document walk spells, since below an

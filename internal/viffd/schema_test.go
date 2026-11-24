@@ -51,10 +51,10 @@ func TestEveryRouteSignatureResolves(t *testing.T) {
 	}
 }
 
-// tonyBase is the part of tony's own vocabulary a route may name instead of a viff instance signature.
+// tonyBase is the part of tony's own vocabulary a route may name instead of a viff signature.
 // `GET /flows` returns subject addresses — a list of plain strings — and `string` is the whole
 // truth about them, so it is published rather than left blank. These resolve against tony-base
-// (go-tony/schema/base.tony), not against the viff instance schema, which is why they are named here.
+// (go-tony/schema/base.tony), not against the viff schema, which is why they are named here.
 var tonyBase = map[string]bool{"string": true, "int": true, "float": true, "bool": true}
 
 // A route that returns something must say HOW MANY come back, and one that returns nothing must

@@ -1,4 +1,4 @@
-// Package verbs is the viff instance verbs an agent is offered twice, defined once: by `viff mcp`, to an
+// Package verbs is the viff verbs an agent is offered twice, defined once: by `viff mcp`, to an
 // agent acting as you (viff_data), and by a runner's viff system, to a task acting as the
 // person it runs for (viff-data-get). Each verb says its name in both, the command it mirrors,
 // what it does, the parameters it takes and what a call must say; both faces read a call through

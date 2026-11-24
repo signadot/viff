@@ -4,7 +4,7 @@
 # the reason build/Dockerfile gives: binaries are built LOCALLY and copied in, so the image
 # stays in sync with your build cache and does no Go compilation.
 #
-# It is a SEPARATE image from the viff instance runtime, deliberately. That one is thin on purpose —
+# It is a SEPARATE image from the viff runtime, deliberately. That one is thin on purpose —
 # debian-slim plus three binaries — and its header explains that one image with several roles
 # is what keeps the deploy to a single ref to pin. This is the opposite kind of thing: its size
 # is set by what the repositories it serves need in order to build, so pinning it to the

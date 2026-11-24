@@ -251,7 +251,7 @@ func CheckPatchable(p Payload) error {
 // A `!key` tag in a payload is a second keying on top of that one, and it only survives a write
 // because it is stored as DATA (Raw / AsData) -- so the store keys the array by position while
 // the value claims a name for each element, and only viff's own reader knows. Two mechanisms
-// for one question is what this refuses; the viff instance surface for the substrate's keying is not
+// for one question is what this refuses; the viff surface for the substrate's keying is not
 // designed yet, and an array is positional until it is.
 //
 // It walks ESCAPED subtrees too, unlike checkPatchable: being data is exactly how the tag got
