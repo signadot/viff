@@ -251,7 +251,9 @@ type Task struct {
 	inbox     []input
 	wake      chan struct{} // cap 1: pings the Run goroutine that the inbox is non-empty
 	pauseGate *pauseGate
-	err       string // why this task terminated (failed/cancelled); see Err
+	err       string    // why this task terminated (failed/cancelled); see Err
+	orphaned  bool      // it ended orphaned; see Orphan
+	lost      *orphaned // Orphan came before Run
 
 	// read plane (event bus; Subscribe from any goroutine, emit from Run):
 	busMu  sync.Mutex
@@ -383,6 +385,34 @@ func (p *Task) Cancel(reason, by string) error {
 	return nil
 }
 
+// Orphan ends the task as one whose launcher is lost to it: it is stopped as a cancel stops it,
+// subtree and all, and ends `failed` and orphaned, with why for its error. What a runner does
+// with a task whose lease has run out (runner.DefaultLease).
+func (p *Task) Orphan(why string) {
+	lost := &orphaned{why}
+	p.mu.Lock()
+	c := p.cancel
+	if c == nil {
+		p.lost = lost // not running yet: Run stops as it starts
+	}
+	p.mu.Unlock()
+	if c != nil {
+		c(lost)
+	}
+}
+
+// Orphaned reports whether the task ended orphaned (Orphan).
+func (p *Task) Orphaned() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.orphaned
+}
+
+// orphaned is why a task's context ended, where Orphan ended it.
+type orphaned struct{ why string }
+
+func (o *orphaned) Error() string { return o.why }
+
 // Run drives the machine. It is a SHELL: read an input, call step, perform the effects. Every
 // decision about what the task does next is in machine.go, over a value; everything here is
 // the world — goroutines, contexts, channels, the executor.
@@ -395,8 +425,12 @@ func (p *Task) Run(ctx context.Context) (oc Outcome, err error) {
 	ctx, cancel := context.WithCancelCause(ctx)
 	p.mu.Lock()
 	p.cancel = cancel
+	lost := p.lost
 	p.mu.Unlock()
 	defer cancel(nil)
+	if lost != nil {
+		cancel(lost)
+	}
 	if c, ok := p.driver.(Closer); ok {
 		defer c.Close()
 	}
@@ -785,6 +819,15 @@ func (p *Task) teardown(ctx context.Context, td effTeardown) (Outcome, error) {
 	// the runner's snapshot, which in the window between this frame and Run returning still
 	// said running and had no err — so a failed claude task's entity carried its result and
 	// no reason, and a charter's onFailed reading err wrote nothing (zm5vx3z2h12ks5x8vhn0).
+	//
+	// A RUN STOPPED BY Orphan ENDS FAILED, AND ORPHANED, whatever the machine was doing when its
+	// context ended: the machine winds a stopped run down as a cancelled one, and how the run
+	// is said to have ended is decided here, by why it was stopped. A run that had finished, or
+	// failed for a reason of its own, stands as it ended.
+	var lost *orphaned
+	if td.status == Cancelled && errors.As(context.Cause(ctx), &lost) {
+		td.status, td.cause = Failed, lost
+	}
 	p.setErr(td.cause)
 	if len(td.frames) > 0 {
 		p.logf("— %s: unwinding %d frame(s)", td.status, len(td.frames))
@@ -792,7 +835,12 @@ func (p *Task) teardown(ctx context.Context, td effTeardown) (Outcome, error) {
 	for i := len(td.frames) - 1; i >= 0; i-- {
 		p.unwind(ctx, td.frames[i])
 	}
-	p.emit(Event{Kind: EventStatus, Text: string(td.status), Err: p.Err()})
+	if lost != nil {
+		p.mu.Lock()
+		p.orphaned = true
+		p.mu.Unlock()
+	}
+	p.emit(Event{Kind: EventStatus, Text: string(td.status), Err: p.Err(), Orphaned: lost != nil})
 	out := Outcome{Task: p.ID, Reason: string(td.status), Boundary: td.seq}
 	if td.status == Done {
 		return out, nil

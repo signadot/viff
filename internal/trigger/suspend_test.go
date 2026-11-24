@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/entity/entitytest"
 	"github.com/signadot/verse/pkg/launch"
+	"github.com/signadot/verse/pkg/mirror"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/task"
 )
@@ -363,17 +364,23 @@ func (h *heldHandle) finish() {
 	h.ch <- task.Event{Kind: task.EventStatus, Text: string(task.Done)}
 }
 
-// spawned is a spawner of heldHandles that remembers them by id.
+// spawned is a spawner of heldHandles that remembers them by id. With a store it mirrors each
+// one, as versed's spawner does, so that a task's end reaches its record: a test that ends a
+// task and waits on what follows gives it one.
 type spawned struct {
-	mu sync.Mutex
-	by map[string]*heldHandle
+	mu    sync.Mutex
+	by    map[string]*heldHandle
+	store entity.Store
 }
 
-func (s *spawned) spawn(id string, _ launch.Spec) task.Handle {
+func (s *spawned) spawn(id string, spec launch.Spec) task.Handle {
 	h := &heldHandle{ch: make(chan task.Event, 1)}
 	s.mu.Lock()
 	s.by[id] = h
 	s.mu.Unlock()
+	if s.store != nil {
+		mirror.Reflect(s.store, id, h, mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Occurrence: spec.Occurrence})
+	}
 	return h
 }
 
@@ -399,13 +406,12 @@ func (s *spawned) wait(t *testing.T, id string) *heldHandle {
 }
 
 // A task finishing under a suspension lands its hook — the hook's patch is on the subject — and
-// parks what the hook would start, without a selection posed for it and without the engine's reap
-// loop waiting on it: another task in the engine finishes and hooks meanwhile. The lift starts the
-// parked launch.
+// parks what the hook would start, without a selection posed for it: another task in the engine
+// finishes and hooks meanwhile. The lift starts the parked launch.
 func TestAHookLandsAndItsLaunchParks(t *testing.T) {
 	store := entitytest.Store(t)
 	eng, tbl := suspending(t, store, "user:tester")
-	sp := &spawned{by: map[string]*heldHandle{}}
+	sp := &spawned{by: map[string]*heldHandle{}, store: store}
 	eng.SetSpawner(sp.spawn)
 	reg := eng.resolver.(*task.Registry)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -537,11 +543,13 @@ func TestDrainingRefusesAFiringWhileAParkedLaunchStarts(t *testing.T) {
 	}
 
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
-	review := sp.wait(t, "review@demo.pr.1")
+	sp.wait(t, "review@demo.pr.1")
 	s, _ := NewSuspension("*", "", "demo.pr.1", false)
 	s.Held = map[string]Holder{"user:tester": {Why: "hold"}}
 	tbl.Put(s)
-	review.finish()
+	// Ended on its record, which is what ends a task for the engine. By hand: these tasks have
+	// no mirror, whose own writes during the lift would move the head the lift arms at.
+	entitytest.Set(t, store, mirror.Ref("review@demo.pr.1"), entity.Obj{"status": string(task.Done)}.Payload())
 	waitStage(t, store, prRef("1"), "reviewed")
 	stays(t, store, prRef("1"), "stage", "reviewed") // merge is refused about it while suspended
 
@@ -724,5 +732,226 @@ func TestARulePatchesARowThatHoldsSomebodyElsesPlace(t *testing.T) {
 	waitStage(t, store, pr, "reviewed")
 	if e, _, _ := store.Get(inner); entity.Str(e.Payload, "secret") != "hers" {
 		t.Errorf("carol's place did not survive the patch: %v", e.Payload)
+	}
+}
+
+// parking is a deploy run under way in an engine with a suspension table: its first element's
+// task running, about demo.pr.1.
+func parking(t *testing.T, spawn func(*spawned) Spawner) (*Engine, *Suspensions, entity.Store, *spawned, *heldHandle) {
+	t.Helper()
+	store := entitytest.Store(t)
+	eng, tbl, sp, _ := deploying(t, store, deploy(), spawn)
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	return eng, tbl, store, sp, sp.wait(t, elementID(eng, 0))
+}
+
+// deploying is an engine with a suspension table holding shapes, a rule and a spawner, observing
+// a store: one verse over it. The func it answers ends it.
+func deploying(t *testing.T, store entity.Store, rule Trigger, spawn func(*spawned) Spawner, shapes ...[3]string) (*Engine, *Suspensions, *spawned, func()) {
+	t.Helper()
+	eng, tbl := suspending(t, store, "user:tester", shapes...)
+	sp := &spawned{by: map[string]*heldHandle{}, store: store}
+	eng.SetSpawner(spawn(sp))
+	if err := eng.AddTrigger(rule); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	eng.ObserveScoped(ctx)
+	select {
+	case <-eng.Opened():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the engine did not open")
+	}
+	return eng, tbl, sp, cancel
+}
+
+func suspendPR1(t *testing.T, tbl *Suspensions) Suspension {
+	t.Helper()
+	s, err := NewSuspension("*", "", "demo.pr.1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Held = map[string]Holder{"user:tester": {Why: "hold"}}
+	tbl.Put(s)
+	return s
+}
+
+func waitFacts(t *testing.T, store entity.Store, what string, ok func(map[string]any) bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for !ok(charterFacts(t, store)) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the run's facts never said %s: %v", what, charterFacts(t, store))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// A SEQUENCE WAITS AT AN ELEMENT A SUSPENSION PARKS. The element before it ends under the
+// suspension: the steps that only write land, and the run's facts say how far it got; the element
+// that would start a task is parked, and the run holds there, its claim standing and its onDone
+// not run. The lift starts the task, and its end finishes the run.
+func TestASequenceWaitsAtAnElementASuspensionParks(t *testing.T) {
+	eng, tbl, store, sp, build := parking(t, func(sp *spawned) Spawner { return sp.spawn })
+	runID := spawnID(eng.idOwner(), chainID("deploy"), prRef("1"))
+	s := suspendPR1(t, tbl)
+	build.finish()
+	waitField(t, store, prRef("1"), "built", "yes")
+	waitFacts(t, store, "step 2", func(f map[string]any) bool { return f[seqStep] == int64(2) })
+	stays(t, store, prRef("1"), "stage", "open")
+	if sp.get(elementID(eng, 2)) != nil {
+		t.Fatal("an element's task started about a suspended subject")
+	}
+	if n := eng.Parked(); n != 1 {
+		t.Fatalf("%d launches parked, want the third element's", n)
+	}
+	if f := charterFacts(t, store); f[seqDone] != nil || !claimStands(t, store, runID) {
+		t.Fatalf("the run did not wait at its parked element: facts %v, claim stands %v", f, claimStands(t, store, runID))
+	}
+
+	tbl.Lift(s.ID())
+	sp.wait(t, elementID(eng, 2)).finish()
+	waitStage(t, store, prRef("1"), "shipped")
+	waitFacts(t, store, "done", func(f map[string]any) bool { return f[seqDone] == true && f[seqStep] == int64(3) })
+	waitUntilGone(t, store, runID)
+}
+
+// A parked element whose launch starts no task when the suspension lifts leaves nothing to carry
+// its run on: the run ends there, saying why, and lets go of the subject.
+func TestAParkedElementThatDoesNotStartEndsItsRun(t *testing.T) {
+	var eng *Engine
+	eng, tbl, store, _, build := parking(t, func(sp *spawned) Spawner {
+		return func(id string, spec launch.Spec) task.Handle {
+			if eng != nil && id == elementID(eng, 2) {
+				return nil
+			}
+			return sp.spawn(id, spec)
+		}
+	})
+	runID := spawnID(eng.idOwner(), chainID("deploy"), prRef("1"))
+	s := suspendPR1(t, tbl)
+	build.finish()
+	// Parked, and not only at step 2: the step is written before its next element is tried.
+	waitFacts(t, store, "its third element parked", func(map[string]any) bool { return eng.Parked() == 1 })
+	tbl.Lift(s.ID())
+	waitFacts(t, store, "ended", func(f map[string]any) bool { return f[seqEnded] == seqEndedError })
+	if f := charterFacts(t, store); f[seqReason] != errNotStarted.Error() {
+		t.Fatalf("run facts = %v, want the reason its element did not start", f)
+	}
+	waitUntilGone(t, store, runID)
+	stays(t, store, prRef("1"), "stage", "open")
+}
+
+func waitUntilGone(t *testing.T, store entity.Store, id string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for claimStands(t, store, id) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the claim at %s was never released", id)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// A PARKED LAUNCH OUTLIVES THE VERSE THAT PARKED IT, as the suspension holding it does. A run
+// waits at a parked element and verse restarts: the next verse finds the launch parked, so the
+// run still waits, its claim standing and nothing failed. The lift starts the task, with what the
+// launch read when it parked, and its end finishes the run.
+func TestAParkedLaunchOutlivesARestart(t *testing.T) {
+	rule := deploy()
+	rule.Action.Seq[2].Spawn.Prompt = "ship after $[status]"
+	store := entitytest.Store(t)
+	eng, tbl, first, stop := deploying(t, store, rule, func(sp *spawned) Spawner { return sp.spawn })
+	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
+	build := first.wait(t, elementID(eng, 0))
+	runID := spawnID(eng.idOwner(), chainID("deploy"), prRef("1"))
+	suspendPR1(t, tbl)
+	build.finish()
+	// Parked and recorded: the launch is listed a moment ahead of its record (park).
+	waitFacts(t, store, "its third element parked", func(map[string]any) bool {
+		recs, err := store.ScratchRead(entity.VerseRef(mirror.System, parkedKind))
+		return eng.Parked() == 1 && err == nil && len(entity.Fields(recs)) == 1
+	})
+	stop() // verse goes down
+
+	specs := make(chan launch.Spec, 1)
+	next, nextTbl, sp, _ := deploying(t, store, rule, func(sp *spawned) Spawner {
+		return func(id string, spec launch.Spec) task.Handle {
+			specs <- spec
+			return sp.spawn(id, spec)
+		}
+	}, [3]string{"*", "", "demo.pr.1"})
+	// Once the engine has looked its parked launches over, which it does as it opens and takes
+	// them off its list to do (releaseLaunches).
+	waitFacts(t, store, "the third element's launch parked after the restart", func(map[string]any) bool { return next.Parked() == 1 })
+	if f := charterFacts(t, store); f[seqEnded] != nil || f[seqDone] != nil || !claimStands(t, store, runID) {
+		t.Fatalf("the run did not wait across the restart: facts %v, claim stands %v", f, claimStands(t, store, runID))
+	}
+	if sp.get(elementID(next, 2)) != nil {
+		t.Fatal("the parked element's task started about a suspended subject")
+	}
+
+	s, _ := NewSuspension("*", "", "demo.pr.1", false)
+	nextTbl.Lift(s.ID())
+	ship := sp.wait(t, elementID(next, 2))
+	if spec := <-specs; spec.Prompt != "ship after done" {
+		t.Fatalf("the task was started with the prompt %q, want what its launch read of the task before it", spec.Prompt)
+	}
+	ship.finish()
+	waitStage(t, store, prRef("1"), "shipped")
+	waitUntilGone(t, store, runID)
+	if recs, err := store.ScratchRead(entity.VerseRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
+		t.Fatalf("the launch's record stands after it started: %v (err %v)", recs, err)
+	}
+}
+
+// A SHUT ENGINE STARTS NO PARKED LAUNCH. A lift reaches an engine that has not opened: the
+// launch stays parked, where the settle that opens the engine finds it, and starts once the
+// engine is open.
+func TestAShutEngineStartsNoParkedLaunch(t *testing.T) {
+	store := entitytest.Store(t)
+	eng, _ := suspending(t, store, "user:tester")
+	sp := &spawned{by: map[string]*heldHandle{}, store: store}
+	eng.SetSpawner(sp.spawn)
+	rule := deploy()
+	if err := eng.AddTrigger(rule); err != nil {
+		t.Fatal(err)
+	}
+	eng.AwaitTasks() // shut, until its host says its tasks are in
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	eng.ObserveScoped(ctx)
+	eng.park(parkedLaunch{a: rule.Action.Seq[2], chain: seqChain("deploy", 2), subj: prRef("1"), binding: launch.Binding{}})
+
+	eng.releaseLaunches() // what a lift does, with nothing holding the launch
+	if n := eng.Parked(); n != 1 || sp.get(elementID(eng, 2)) != nil {
+		t.Fatalf("a shut engine took up its parked launch: %d parked, started = %v", n, sp.get(elementID(eng, 2)) != nil)
+	}
+	eng.TasksIn()
+	sp.wait(t, elementID(eng, 2))
+	if n := eng.Parked(); n != 0 {
+		t.Fatalf("%d launches parked once the engine is open and nothing holds them", n)
+	}
+}
+
+// A PARKED RECORD WHOSE TASK STARTED PARKS NOTHING. Verse went down between starting a parked
+// launch's task and removing the launch's record: the task's record of that occurrence says it
+// started, so the next verse removes the record and does not start the task again.
+func TestAParkedRecordWhoseTaskStartedIsRemoved(t *testing.T) {
+	store := entitytest.Store(t)
+	rule := deploy()
+	first, _, _, stop := deploying(t, store, rule, func(sp *spawned) Spawner { return sp.spawn })
+	id := elementID(first, 2)
+	first.recordParked(parkedLaunch{a: rule.Action.Seq[2], chain: seqChain("deploy", 2), subj: prRef("1"), occurrence: 7, binding: launch.Binding{}})
+	entitytest.Set(t, store, mirror.Ref(id), entity.Obj{"status": string(task.Done), "occurrence": 7}.Payload())
+	stop()
+
+	next, _, sp, _ := deploying(t, store, rule, func(sp *spawned) Spawner { return sp.spawn })
+	if n := next.Parked(); n != 0 || sp.get(id) != nil {
+		t.Fatalf("a launch whose task started was parked again: %d parked, started = %v", n, sp.get(id) != nil)
+	}
+	if recs, err := store.ScratchRead(entity.VerseRef(mirror.System, parkedKind)); err != nil || len(entity.Fields(recs)) != 0 {
+		t.Fatalf("the record of a launch whose task started stands: %v (err %v)", recs, err)
 	}
 }

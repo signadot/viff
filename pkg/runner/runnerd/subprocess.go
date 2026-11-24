@@ -21,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/signadot/verse/pkg/codec"
@@ -51,8 +52,10 @@ type SubprocessHandler struct {
 	owned    EnvOf         // the variables a launch's task shell is given by the runner (CheckLaunch)
 	linger   time.Duration // lingerAfterEnd, as it was when the handler was made
 	seq      atomic.Uint64
-	mu       sync.Mutex
-	tasks    map[string]*proc
+	// lease, where set, is every task's lease whatever its launch says: a test's.
+	lease time.Duration
+	mu    sync.Mutex
+	tasks map[string]*proc
 }
 
 // SubprocessConfig is how a standalone runner starts a task's process.
@@ -145,7 +148,10 @@ func (h *SubprocessHandler) Describe(desc runner.Description) { h.describe = des
 func (h *SubprocessHandler) OwnEnv(of EnvOf) { h.owned = of }
 
 // HTTPHandler serves the task contract and GET /describe.
-func (h *SubprocessHandler) HTTPHandler() http.Handler {
+func (h *SubprocessHandler) HTTPHandler() http.Handler { return asRunner(h.routes()) }
+
+// routes is the runner's routes, unmarked (HTTPHandler marks them).
+func (h *SubprocessHandler) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, h.describe)
@@ -172,6 +178,9 @@ type proc struct {
 	known task.Snapshot
 	// l is the launch: what a replacement of the task's autonomy is held to (replacePolicy).
 	l *runner.Launch
+	// lease is the task's lease, counted from its launch and renewed by each subscribe this
+	// handler accepts for it (lease.go).
+	lease *lease
 	// autonomy is the task's CURRENT autonomy, the launch's until a replacement lands
 	// (replacePolicy): what its proxy decides each connection by (connections).
 	autonomy atomic.Pointer[task.Autonomy]
@@ -208,22 +217,73 @@ type proc struct {
 	// events is the task's read plane as the runner followed it, so a reader can still replay
 	// it once the process has exited: the last task.RingCap of it, as the task itself keeps.
 	events []task.Event
+	// ended is the task's own terminal frame, once the runner has followed it or handed it to a
+	// reader (standingEnd): from then the task has its end, and the lease ends nothing.
+	ended *task.Event
+	// cut is closed once there is a last word on the task (final): every stream still open is
+	// ended with it then (events).
+	cut chan struct{}
 }
 
-// record keeps an event the runner followed, once.
+// record keeps an event the runner followed, once. A terminal frame after the task's end was
+// decided is not its end: the end decided first stands, on the stream as on the snapshot (endLate).
 func (p *proc) record(e task.Event) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if e.Kind == task.EventGap {
 		return
 	}
+	if p.final != nil && e.Kind == task.EventStatus && task.Status(e.Text).Terminal() {
+		return
+	}
 	if n := len(p.events); n > 0 && e.Cursor <= p.events[n-1].Cursor {
 		return
+	}
+	if e.Kind == task.EventStatus && task.Status(e.Text).Terminal() && p.ended == nil {
+		p.ended = &e
 	}
 	p.events = append(p.events, e)
 	if len(p.events) > task.RingCap {
 		p.events = p.events[len(p.events)-task.RingCap:]
 	}
+}
+
+// endSeen reports whether the runner has followed the task to its terminal frame.
+func (p *proc) endSeen() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.endSeenLocked()
+}
+
+func (p *proc) endSeenLocked() bool { return p.ended != nil }
+
+// cutLocked is the channel closed once there is a last word on the task (cut).
+func (p *proc) cutLocked() chan struct{} {
+	if p.cut == nil {
+		p.cut = make(chan struct{})
+	}
+	return p.cut
+}
+
+// endLocked sets the last word on the task, which has none yet, and ends every stream open.
+func (p *proc) endLocked(final task.Snapshot) {
+	p.final = &final
+	close(p.cutLocked())
+}
+
+// standingEnd is the end a reader is given when the task's process says the task ended with
+// own: that frame, where the task has no end yet or that is its end, and it is its end from
+// then; otherwise the end that stands, the runner's.
+func (p *proc) standingEnd(own task.Event) task.Event {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.ended == nil && p.final == nil {
+		p.ended = &own
+	}
+	if p.ended != nil {
+		return *p.ended
+	}
+	return task.Event{Kind: task.EventStatus, Task: p.id, Text: string(p.final.Status), Err: p.final.Err, Orphaned: p.final.Orphaned}
 }
 
 // eventsSince is the followed events after the cursor since. A reader behind what is kept, or
@@ -312,6 +372,30 @@ func (p *proc) snapshot() (task.Snapshot, bool) {
 	return *p.final, true
 }
 
+// endOrphaned decides the task's end, failed and orphaned for why, unless it has one already: a
+// last word, or a terminal frame followed. One decision under p.mu, so that the task's own end
+// arriving as the lease runs out is either its end or not kept (record), never one on the
+// stream and the other on the snapshot. It answers the end that stands, and whether this call
+// decided it.
+func (p *proc) endOrphaned(why string) (task.Snapshot, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.final != nil {
+		return *p.final, false
+	}
+	final := p.known
+	final.ID = p.id
+	if p.endSeenLocked() {
+		e := p.ended
+		final.Status, final.Err, final.Orphaned = task.Status(e.Text), e.Err, e.Orphaned
+		return p.withRefused(final), false
+	}
+	final.Status, final.Err, final.Orphaned = task.Failed, why, true
+	final = p.withRefused(final)
+	p.endLocked(final)
+	return final, true
+}
+
 // remember records the last word on the task. The first one stands: the end the task reported
 // is a better account than its process exiting, which always comes after.
 func (p *proc) remember(in task.Snapshot) {
@@ -319,8 +403,10 @@ func (p *proc) remember(in task.Snapshot) {
 	defer p.mu.Unlock()
 	if p.final == nil {
 		in.ID = p.id
-		in = p.withRefused(in)
-		p.final = &in
+		if e := p.ended; e != nil { // the end a reader was given, or the runner followed
+			in.Status, in.Err, in.Orphaned = task.Status(e.Text), e.Err, e.Orphaned
+		}
+		p.endLocked(p.withRefused(in))
 	}
 }
 
@@ -381,14 +467,18 @@ func (h *SubprocessHandler) launch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	created := p == nil
+	if !created {
+		p.lease.join(&body, h.lease)
+	}
 	if created {
 		ctx, abort := context.WithCancelCause(context.Background())
 		p = &proc{id: body.ID, abort: abort, ready: make(chan struct{}), gone: make(chan struct{}),
 			done:  make(chan struct{}),
 			known: task.Snapshot{ID: body.ID, Prompt: body.Prompt, Agent: doerName(&body, h.describe), Occurrence: body.Occurrence},
-			l:     &body}
+			l:     &body, lease: newLease(&body, h.lease)}
 		h.tasks[body.ID] = p
 		go h.run(ctx, p, &body, raw)
+		go p.lease.keep(p.done, func() { h.endLate(p) })
 	}
 	h.mu.Unlock()
 
@@ -429,6 +519,33 @@ func (h *SubprocessHandler) run(ctx context.Context, p *proc, l *runner.Launch, 
 		p.remember(p.as(task.Failed, err.Error()))
 	}
 	close(p.ready)
+}
+
+// endLate ends a task whose lease ran out: failed and orphaned, said at once, and then its start
+// is given up or its process stopped, whichever it has reached. run does the rest, as for any
+// task that ends: its repos settled, its directory removed or kept. An end the task reached
+// first stands instead. It answers the end that stands: a subscribe answered after the lease
+// ran out is answered with it, and not with the process's frames, which may say otherwise. The
+// lease running out and such a subscribe both call it, and the first decides.
+func (h *SubprocessHandler) endLate(p *proc) task.Snapshot {
+	why := p.lease.noReader()
+	final, decided := p.endOrphaned(why)
+	if decided {
+		go h.stopOrphaned(p, why)
+	}
+	return final
+}
+
+// stopOrphaned stops a task whose lease ended it.
+func (h *SubprocessHandler) stopOrphaned(p *proc, why string) {
+	fmt.Fprintf(h.Log, "runnerd: %s: %s; the task is ended\n", p.id, why)
+	p.abort(errors.New(why))
+	p.mu.Lock()
+	hosted := p.hosted
+	p.mu.Unlock()
+	if hosted {
+		p.stop(h.Log)
+	}
 }
 
 // start makes the task's directory, checks out its repos in it, starts its process in the
@@ -524,6 +641,14 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	if err := h.Sandbox.Wrap(cmd, root, network, withReadOnly(h.Programs, h.ReadOnly, KeptDirs(h.Work, h.Control, h.Mirrors, h.Secrets, h.Cellar), out), inst); err != nil {
 		return err
 	}
+	// At the head of a process group of its own, so that the commands it started end with it
+	// where no sandbox ends them: it kills the group as its lifeline closes (exitWithLifeline),
+	// stop kills it where the process does not exit, and what is left when the process is gone
+	// is killed then (below).
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setpgid = true
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting the task's process: %w", err)
 	}
@@ -535,6 +660,9 @@ func (h *SubprocessHandler) start(ctx context.Context, p *proc, l *runner.Launch
 	}
 	go func() {
 		err := cmd.Wait()
+		// What is left of its group, where it died without ending it: a panic, a kill from
+		// outside. At once, while the group's id is still the group's if anything is in it.
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		p.mu.Lock()
 		p.exit = err
 		p.mu.Unlock()
@@ -691,7 +819,8 @@ func (p *proc) settled() (task.Snapshot, bool) {
 	return last, false
 }
 
-// stop closes the lifeline, then kills the process if it hasn't exited. Idempotent.
+// stop closes the lifeline, at which the process ends itself and its process group, then kills
+// the group if the process hasn't exited. Idempotent.
 func (p *proc) stop(log io.Writer) {
 	p.mu.Lock()
 	if p.dead {
@@ -708,7 +837,7 @@ func (p *proc) stop(log io.Writer) {
 		case <-p.gone:
 		case <-time.After(stopGrace):
 			fmt.Fprintf(log, "runnerd: %s: the task's process didn't exit; killing it\n", p.id)
-			p.cmd.Process.Kill()
+			_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL)
 			<-p.gone
 		}
 	} else {
@@ -736,10 +865,14 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 		http.NotFound(w, r)
 		return
 	}
+	if _, done := p.snapshot(); op == "events" && !done {
+		h.events(w, r, p)
+		return
+	}
 	if _, done := p.snapshot(); !done && !p.isReady() {
 		// Not hosted yet: its repos are being checked out, or its process started. A cancel is
-		// the runner's to carry out, and a look is answered from what the runner knows; the
-		// rest wait for the process.
+		// the runner's to carry out and a look is answered from what the runner knows; the rest
+		// wait for the process.
 		switch {
 		case op == "cancel" && cancelEarly(w, r, p):
 			return
@@ -781,18 +914,7 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 			codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 			return
 		}
-		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
-		events := p.eventsSince(since)
-		if n := len(events); n == 0 || !(events[n-1].Kind == task.EventStatus && task.Status(events[n-1].Text).Terminal()) {
-			events = append(events, task.Event{Kind: task.EventStatus, Task: id, Text: string(final.Status), Err: final.Err})
-		}
-		if r.URL.Query().Get("since") == "" {
-			events = events[len(events)-1:] // a live attach to an ended task gets its end
-		}
-		for _, e := range events {
-			_ = sse.Send(e)
-		}
-		sse.Flush()
+		p.sendEnded(sse, r, final)
 	// The rest as an InProcessHandler answers them for an ended task: a cancel, pause or resume
 	// does nothing and says so with 204, a say or a new autonomy is 410, and no question is left
 	// to resolve.
@@ -803,6 +925,201 @@ func (h *SubprocessHandler) forwardOp(w http.ResponseWriter, r *http.Request, op
 	case "resolve":
 		http.Error(w, "unknown or already-answered decision", http.StatusNotFound)
 	}
+}
+
+// sendEnded is a finished task's stream: what the runner followed of it, from the reader's
+// cursor, ending with how it ended.
+func (p *proc) sendEnded(sse *codec.SSE, r *http.Request, final task.Snapshot) {
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	events := p.endedSince(since, final)
+	if r.URL.Query().Get("since") == "" {
+		events = events[len(events)-1:] // a live attach to an ended task gets its end
+	}
+	for _, e := range events {
+		_ = sse.Send(e)
+	}
+	sse.Flush()
+}
+
+// endedSince is what the runner followed of an ended task after the cursor since, ending with
+// how it ended.
+func (p *proc) endedSince(since int64, final task.Snapshot) []task.Event {
+	events := p.eventsSince(since)
+	if n := len(events); n == 0 || !(events[n-1].Kind == task.EventStatus && task.Status(events[n-1].Text).Terminal()) {
+		events = append(events, task.Event{Kind: task.EventStatus, Task: p.id, Text: string(final.Status), Err: final.Err, Orphaned: final.Orphaned})
+	}
+	return events
+}
+
+// events answers a subscribe to a task that has not ended, frame by frame from its process,
+// and ends the stream with the task's end as the runner has it.
+//
+// A SUBSCRIBE RENEWS THE LEASE ONCE IT IS ANSWERED, to a reader still asking. Before the process
+// hosts the task, the runner answers at once: its repos may take longer to check out than a
+// reader waits, and its frames follow once there are some. After, the answer is the process's:
+// a subscribe it does not answer renews nothing (502), so a task whose process has stopped
+// answering is not kept by being asked after, and one it answers after its reader stopped
+// waiting renews nothing either. One answered after the lease ran out is answered with the
+// task's end (endLate).
+//
+// A STREAM ENDS WITH THE END THAT STANDS, whatever the process says. Once there is a last word
+// (cut: the lease ran out, a cancel before the task was hosted, the process gone), the stream is
+// given what the runner followed after the reader's cursor, and that end. A terminal frame of the
+// process's is passed on only as the end that stands (standingEnd).
+//
+// A subscribe that names no cursor is one from the start of what the process keeps, which has
+// every question the task has open.
+func (h *SubprocessHandler) events(w http.ResponseWriter, r *http.Request, p *proc) {
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	p.mu.Lock()
+	cut := p.cutLocked()
+	p.mu.Unlock()
+	open := func() *codec.SSE {
+		sse, err := codec.NewSSE(w, r)
+		if err != nil {
+			codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
+			return nil
+		}
+		return sse
+	}
+	var sse *codec.SSE
+	// ended gives the stream what the runner followed after cursor, and the end that stands. A
+	// reader that named no cursor and has been given nothing gets the end alone, as sendEnded
+	// gives it.
+	ended := func(cursor int64) {
+		if sse == nil {
+			if sse = open(); sse == nil {
+				return
+			}
+		}
+		final, _ := p.snapshot()
+		events := p.endedSince(cursor, final)
+		if r.URL.Query().Get("since") == "" && cursor == since {
+			events = events[len(events)-1:]
+		}
+		for _, e := range events {
+			_ = sse.Send(e)
+		}
+	}
+	var frames <-chan task.Event
+	if p.isReady() {
+		if _, done := p.snapshot(); done { // its start failed, or it ended since it was asked
+			ended(since)
+			return
+		}
+		ch, stop, ok := p.subscribeProcess(r, since, cut)
+		if !ok {
+			if isClosed(cut) {
+				ended(since)
+			}
+			return
+		}
+		defer stop()
+		if first, answered := <-ch; !answered || first.Kind != task.EventAccepted {
+			http.Error(w, "the task's process did not answer the subscribe", http.StatusBadGateway)
+			return
+		}
+		frames = ch
+	}
+	if sse = open(); sse == nil {
+		return
+	}
+	sse.Flush()
+	if !p.lease.renew() {
+		p.sendEnded(sse, r, h.endLate(p))
+		return
+	}
+	if frames == nil {
+		select {
+		case <-p.ready:
+		case <-cut:
+			ended(since)
+			return
+		case <-r.Context().Done():
+			return
+		}
+		if _, done := p.snapshot(); done {
+			ended(since)
+			return
+		}
+		ch, stop, ok := p.subscribeProcess(r, since, cut)
+		if !ok {
+			if isClosed(cut) {
+				ended(since)
+			}
+			return
+		}
+		defer stop()
+		if first, answered := <-ch; !answered || first.Kind != task.EventAccepted {
+			// The process does not answer: the stream waits for the task's end, or its reader.
+			select {
+			case <-cut:
+				ended(since)
+			case <-r.Context().Done():
+			}
+			return
+		}
+		frames = ch
+	}
+	cursor := since
+	for {
+		select {
+		case f, ok := <-frames:
+			if !ok {
+				if isClosed(cut) { // the process was stopped with the task's end
+					ended(cursor)
+				}
+				return
+			}
+			if f.Kind == task.EventStatus && task.Status(f.Text).Terminal() {
+				_ = sse.Send(p.standingEnd(f))
+				return
+			}
+			_ = sse.Send(f)
+			cursor = max(cursor, f.Cursor)
+		case <-cut:
+			ended(cursor)
+			return
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+func isClosed(c <-chan struct{}) bool {
+	select {
+	case <-c:
+		return true
+	default:
+		return false
+	}
+}
+
+// subscribeProcess asks the task's process for its stream from a cursor, saying when it is
+// accepted, for as long as the reader waits and the task has no end: false where the reader
+// stopped waiting or cut closed first, and then nothing is asked of the stream.
+func (p *proc) subscribeProcess(r *http.Request, since int64, cut <-chan struct{}) (<-chan task.Event, func(), bool) {
+	type sub struct {
+		ch   <-chan task.Event
+		stop func()
+	}
+	got := make(chan sub, 1)
+	go func() {
+		ch, stop := p.rt.Attach(p.id).(task.Accepting).SubscribeAccepted(since, 0)
+		got <- sub{ch, stop}
+	}()
+	select {
+	case s := <-got:
+		if r.Context().Err() != nil {
+			s.stop()
+			return nil, nil, false
+		}
+		return s.ch, s.stop, true
+	case <-cut:
+	case <-r.Context().Done():
+	}
+	go func() { (<-got).stop() }()
+	return nil, nil, false
 }
 
 // connections is how the task's proxy decides each connection to a host that is none of the
@@ -990,8 +1307,9 @@ func cancelEarly(w http.ResponseWriter, r *http.Request, p *proc) bool {
 	p.abort(why)
 	// Said now: a first clone runs to its end whatever the task (workspace.Mirrors.Ensure), and
 	// the task is over before it is.
-	final := p.as(task.Cancelled, why.Error())
-	p.final = &final
+	if p.final == nil {
+		p.endLocked(p.as(task.Cancelled, why.Error()))
+	}
 	w.WriteHeader(http.StatusNoContent)
 	return true
 }

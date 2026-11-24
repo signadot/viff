@@ -294,10 +294,8 @@ func TestSeqDoneIsARepeatPolicy(t *testing.T) {
 
 // A run that STOPPED is as concluded as one that finished, and it says so in the store.
 //
-// Fail-stop used to be implemented by a leak: the off-ramp path released no claim, so the next
-// run lost it forever — which is not a repeat policy but the absence of one, and it came undone
-// at the next restart, where `reconcileClaims` clears a claim no resumed task explains. What
-// is pinned here is the pair: the claim comes BACK, and the sequence still does not re-run.
+// A stopped run is kept from running again by its recorded conclusion and not by its claim.
+// What is pinned here is the pair: the claim comes BACK, and the sequence still does not re-run.
 func TestSeqStoppedRunReleasesItsClaim(t *testing.T) {
 	store := entitytest.Store(t)
 	eng, spawned := seqEngine(t, store)
@@ -385,7 +383,7 @@ func TestSeqProgressPerTriggerDoesNotClobber(t *testing.T) {
 }
 
 // navigate is what makes a chain a lookup key into the charter rather than a label — the
-// property both sequence-advance and (later) hook rehydration on resume rest on.
+// property both sequence-advance and (later) finding a resumed task's hooks rest on.
 func TestNavigate(t *testing.T) {
 	tr := Trigger{
 		Name: "review",

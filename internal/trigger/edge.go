@@ -352,17 +352,27 @@ func (e *Engine) heldOff(t Trigger, subj entity.Ref) bool {
 // A hook's own hooked spawn is held at a chain of its own, and its end takes nothing: the record
 // is the rule's, and a nested task ending while a second task of the rule runs would otherwise
 // wipe what that task's end is to take.
+//
+// A release that did not land takes nothing yet: the claim still stands and still refuses, so the
+// record is left for the release to take when it lands, and the reconsidering is done then.
 func (e *Engine) released(chain string, subj entity.Ref, own bool) bool {
 	e.refusedMu.Lock()
 	defer e.refusedMu.Unlock()
-	e.releaseRun(chain, subj)
-	if !own {
-		return false
+	take := func() bool { // under refusedMu
+		key := chain + "\x00" + subj.String()
+		was := e.refused[key]
+		delete(e.refused, key)
+		return own && was
 	}
-	key := chain + "\x00" + subj.String()
-	was := e.refused[key]
-	delete(e.refused, key)
-	return was
+	landed := e.releaseRun(chain, subj, func() {
+		e.refusedMu.Lock()
+		was := take()
+		e.refusedMu.Unlock()
+		if was {
+			e.reconsider(chain, subj)
+		}
+	})
+	return landed && take()
 }
 
 // reconsider fires a rule about a subject it still selects, at the head: what a hold owes the

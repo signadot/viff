@@ -159,6 +159,26 @@ type Server struct {
 	restored  atomic.Bool
 	scopeMu   sync.Mutex
 	scopeEngs map[string]*scopeEngine
+	// stopping is the charter packages being stopped, by the owner prefix of their ids, each
+	// with the tasks it still waits on: no engine is made for one (stop.go). Guarded by scopeMu.
+	stopping map[string]*stopState
+	// uninstalls is the uninstalls under way, by the engine key of their package (uninstall.go).
+	// Guarded by scopeMu.
+	uninstalls map[string]*uninstalling
+	stopWait   time.Duration
+	// left is the tasks the verse before this one left in baseline, re-attached, each with the
+	// engine it was handed to since (resumeLeft, handTasks); leftIn is closed once they are all
+	// here and the root package's are handed over (reconcileTasks).
+	leftMu   sync.Mutex
+	left     []*resumedRun
+	leftIn   chan struct{}
+	leftOnce sync.Once
+	// resuming says a start is re-attaching, or has re-attached, what the last verse left: an
+	// engine made from then on waits for its share (handTasks).
+	resuming atomic.Bool
+	// packagesRestored says the charter's packages are all in: which there are is known, and a
+	// package with no engine is one that is not there (settleTasks).
+	packagesRestored atomic.Bool
 	// charterMu serializes charter MUTATION — one operation at a time, across every address
 	// and scope. A capacity-one channel rather than a mutex, so it can be waited for with a
 	// deadline; see charterlock.go for what it does and does not promise.
@@ -300,7 +320,8 @@ func NewWithStore(store entity.Store, opts ...Option) *Server {
 	eng.SetSuspensions(susp)
 	s := &Server{Store: store, Reg: reg, Eng: eng, susp: susp, clock: wallClock{},
 		seedErr:   seedErr,
-		scopeEngs: map[string]*scopeEngine{}, ioRuns: map[string]*sourceRun{},
+		leftIn:    make(chan struct{}),
+		scopeEngs: map[string]*scopeEngine{}, stopping: map[string]*stopState{}, uninstalls: map[string]*uninstalling{}, stopWait: stopWait, ioRuns: map[string]*sourceRun{},
 		charterMu: make(chan struct{}, 1),
 		// Replaced by Start's, which is the real lifetime. A default here rather than a nil
 		// check at every use: a source installed on a server nobody started still needs a
@@ -577,8 +598,8 @@ func (s *Server) spawnerFor(st entity.Store, scope string, eng *trigger.Engine) 
 		// launch may do. Built once so the failure path and the running path cannot disagree
 		// about what was attempted. Where it runs is said once it is routed, below.
 		meta := mirror.Meta{
-			Subject: spec.Subject,
-			Chain:   spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
+			Subject: spec.Subject, Lease: spec.Lease,
+			Chain: spec.Chain, Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "", Occurrence: spec.Occurrence,
 			Git: (&runner.Launch{Environment: spec.Environment}).Repos(), ActsFor: spec.ActsFor,
 			Autonomy:    spec.Autonomy,
 			Environment: &spec.Environment, VirtualKey: spec.VirtualKey, // the address, before it is resolved below
@@ -733,7 +754,7 @@ func launchOf(id string, spec launch.Spec, principal string) (runner.Launch, err
 	l := runner.Launch{
 		ID: id, Prompt: spec.Prompt, Script: spec.Script, Agent: spec.Agent, Person: spec.Person,
 		Environment: spec.Environment, Autonomy: spec.Autonomy,
-		Answer: spec.Answer, Timeout: spec.Timeout,
+		Answer: spec.Answer, Timeout: spec.Timeout, Lease: spec.Lease,
 		// A firing has no launcher, so its principal is the rule that fired — the address of
 		// its record, which the runner can read back. See trigger.Engine.Principal.
 		Provenance: runner.Provenance{Principal: principal, Subject: spec.Subject, Chain: spec.Chain},
@@ -778,25 +799,216 @@ func withAnnotation(m map[string]string, k, v string) map[string]string {
 	return out
 }
 
-// reconcileTasks runs on Start: for each non-terminal task:instance, either RESUME
-// (a remote runner still running the work — re-attach and re-mirror from the entity's
-// runner + cursor) or ORPHAN (a local in-process runtime that died with the previous
-// run). This refines the old orphan-only reconcile now that a task can outlive verse
-// behind a remote runner. Control re-tracking (cancel/say a resumed task) is a
-// follow-on; this keeps the entity truthful.
-func (s *Server) reconcileTasks() error {
-	if err := s.awaiting(phaseSuspensions); err != nil {
+// resumeLeft runs on Start, first: for each non-terminal task:instance of baseline, either
+// RESUME (the record names a runner's url — re-attach and re-mirror from the record's runner,
+// and let the mirror hear how the task stands) or END it as failed and orphaned (its runtime
+// was this process, which died with the previous run).
+//
+// A resumed task is mirrored from here and is no engine's yet: reconcileTasks hands it over
+// once the suspensions are in. An end its record takes meanwhile is taken by its engine when it
+// is handed the task (trigger's reapEnded).
+func (s *Server) resumeLeft() error {
+	resumed, err := s.resumeTasks(s.Store, "", func(string) bool { return true }, s.packageOf)
+	if err != nil {
 		return err
 	}
-	var resumed []resumedRun
+	s.leftMu.Lock()
+	s.left = resumed
+	s.leftMu.Unlock()
+	return nil
+}
+
+// reconcileTasks hands each task resumeLeft re-attached to the engine of its rule's charter
+// package, which does not open until its tasks are in (trigger.Engine.AwaitTasks): the root
+// package's here, and each other package's when its engine is made (handTasks). What its end
+// owes is looked up when it ends. After the suspensions, since a task is held by one as it is
+// handed over, and until they have loaded they hold every task.
+func (s *Server) reconcileTasks() error {
+	if err := s.awaiting(phaseResume, phaseSuspensions); err != nil {
+		return err
+	}
+	s.handTasks(s.Eng)
+	s.leftOnce.Do(func() { close(s.leftIn) })
+	s.reconcileQuestions() // AFTER the above: it reads the statuses this just settled
+	return nil
+}
+
+// handTasks hands eng the tasks resumed at start that are its own, and says they are in: the
+// ones whose id carries its owner prefix, and for the root package's engine the ones run by
+// hand, which are of no rule. A task about no subject is the flow of its own id, as at spawn.
+func (s *Server) handTasks(eng *trigger.Engine) {
+	s.leftMu.Lock()
+	defer s.leftMu.Unlock()
+	for _, r := range s.left {
+		if r.eng != nil || r.stopped {
+			continue
+		}
+		if r.chain == "" && eng != s.Eng || r.chain != "" && trigger.OwnerOf(r.id) != eng.Owner() {
+			continue
+		}
+		r.adopt(eng)
+	}
+	eng.TasksIn()
+}
+
+func (r *resumedRun) adopt(eng *trigger.Engine) {
+	flow := r.subject
+	if flow == "" {
+		flow = r.id
+	}
+	// An engine stopped meanwhile takes nothing, and the task is left for what stops its
+	// package's work (stopWork).
+	if eng.AdoptChain(flow, r.id, r.chain, r.h) {
+		r.eng = eng
+	}
+}
+
+// packageOf is the engine of the charter package a task or a claim belongs to, among the
+// packages of baseline: the one whose owner prefix its id carries, the root package's being
+// empty. nil where the id names a package that has no engine.
+func (s *Server) packageOf(id string) *trigger.Engine {
+	owner := trigger.OwnerOf(id)
+	if s.Eng.Owner() == owner {
+		return s.Eng
+	}
+	for _, eng := range s.packageEngines() {
+		if eng.Owner() == owner {
+			return eng
+		}
+	}
+	return nil
+}
+
+// settleTasks stops what the last verse left to a charter package that is not there. It follows
+// the packages' restore, which is what says which there are.
+//
+// A TASK WHOSE PACKAGE HAS NO ENGINE IS STOPPED, as the tasks of a package being uninstalled are
+// (stop.go): its rule is not here to say what its end owes, and no other package's rules speak
+// for it. That is a package removed while verse was down, or one that could not be brought back.
+// The claims of such a package come off once its tasks have ended, and at once where it left
+// none. Where the packages could not be restored at all, nothing says which packages there are,
+// so such a task is left running and its claim standing, for the next start.
+//
+// Every other claim is its engine's to settle, as the engine opens (trigger's settleLeft).
+func (s *Server) settleTasks() error {
+	if err := s.awaiting(phaseTasks, phasePackages); err != nil {
+		return err
+	}
+	if s.ctxOrBackground().Err() != nil {
+		return nil // stopping: the restore above ended without its charters
+	}
+	restored := s.packagesRestored.Load()
+	// The packages with no engine that the last verse left a task of, by the owner prefix of
+	// their ids. Each is marked as stopping under the lock an engine is made under, so that an
+	// engine made meanwhile either is found here, and takes its tasks itself (handTasks), or is
+	// refused. The stop takes the tasks (stopWork).
+	gone := map[string]*stopState{}
+	s.scopeMu.Lock()
+	has := map[string]bool{s.Eng.Owner(): true}
+	for _, pe := range s.scopeEngs {
+		has[pe.eng.Owner()] = true
+	}
+	s.leftMu.Lock()
+	for _, r := range s.left {
+		owner := trigger.OwnerOf(r.id)
+		switch {
+		case r.eng != nil || r.stopped:
+		case r.chain == "" || has[owner]:
+			// Its engine is there and has not taken it yet: an engine is handed its tasks
+			// before it opens (handTasks), which nothing orders ahead of this.
+		case restored:
+			fmt.Fprintf(os.Stderr, "verse: task %s is being stopped: its charter package has no engine\n", r.id)
+			if s.stopping[owner] == nil { // else a stop of the package is under way, and takes it
+				gone[owner] = &stopState{done: make(chan struct{})}
+				s.stopping[owner] = gone[owner]
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "verse: task %s is watched and belongs to no engine: the charter packages were not restored\n", r.id)
+		}
+	}
+	s.leftMu.Unlock()
+	stopping := map[string]bool{}
+	for owner := range s.stopping {
+		stopping[owner] = true
+	}
+	s.scopeMu.Unlock()
+	if !restored {
+		return nil
+	}
+	for owner, st := range gone {
+		s.stopWork(owner, st, nil, noPackage)
+	}
+	// And the claims of a package that is gone and left no task.
+	claims, err := entity.BelowErr(s.Store, func(r entity.Ref) bool {
+		return r.ChildOf(entity.VerseRoot, mirror.System, mirror.ClaimKind)
+	}, 1, entity.VerseRoot, mirror.System, mirror.ClaimKind)
+	if err != nil {
+		return entity.Unread(fmt.Errorf("claims could not be read, so none of a package that is gone were removed: %w", err))
+	}
+	for _, claim := range claims {
+		if stopping[trigger.OwnerOf(claim.Ref.Name())] || s.packageOf(claim.Ref.Name()) != nil {
+			continue // the stop's to remove, or its engine's to settle
+		}
+		fmt.Fprintf(os.Stderr, "verse: claim %s is removed: its charter package has no engine\n", claim.Ref.Name())
+		if _, _, err := s.Store.Write(entity.Write{At: claim.Ref.At(), When: []entity.Require{{Pattern: entity.Unchanged(claim.Payload)}}}); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: claim %s: %v\n", claim.Ref.Name(), err)
+		}
+	}
+	return nil
+}
+
+// noPackage is why a task resumed at start is stopped: its rule's package is not there.
+const noPackage = "the charter package of the rule that started this task could not be restored"
+
+// resumeScope is the start's resume for one scope, made when the scope's engine is: a restart
+// cannot list the scopes there are, so a scope's tasks are re-attached when somebody comes back
+// to it. Until then its tasks are watched by nobody here, and its records and claims stand as
+// the last verse left them. The scope's engine does not open until this has handed it its
+// tasks, so it is asked again for as long as the engine runs.
+//
+// The scope's own are the ids that carry its prefix, which every id its rules mint does. A
+// scoped read answers baseline's records with the scope's, and the prefix is what tells them
+// apart: a task run by hand in the scope carries none, and is not resumed.
+func (s *Server) resumeScope(ctx context.Context, eng *trigger.Engine, scope string) {
+	own := func(id string) *trigger.Engine {
+		if trigger.OwnerOf(id) == eng.Owner() {
+			return eng
+		}
+		return nil
+	}
+	for wait := 250 * time.Millisecond; ; wait = min(2*wait, 8*time.Second) {
+		resumed, err := s.resumeTasks(s.Store.Scope(scope), scope, func(id string) bool { return own(id) != nil }, own)
+		if err == nil {
+			for _, r := range resumed {
+				r.adopt(eng)
+			}
+			eng.TasksIn()
+			return
+		}
+		fmt.Fprintf(os.Stderr, "verse: scope %s: %v\n", scope, err)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+	}
+}
+
+// resumeTasks is resumeLeft over one store, for the tasks mine selects by id: baseline's,
+// or those of scope. engineOf is the engine a task's holds are read from, by its id.
+func (s *Server) resumeTasks(store entity.Store, scope string, mine func(id string) bool, engineOf func(id string) *trigger.Engine) ([]*resumedRun, error) {
+	var resumed []*resumedRun
 	// The task slice, not the verse. This read at the root was 18.9s of staging's startup.
-	tasks, err := entity.BelowErr(s.Store, mirror.IsTaskish, 2, entity.VerseRoot, mirror.System)
+	tasks, err := entity.BelowErr(store, mirror.IsTaskish, 2, entity.VerseRoot, mirror.System)
 	if err != nil {
 		// Not "no tasks outlived us": orphaning nothing is right, and resuming nothing is not.
 		// Reported as the read it is, and the phase asks again.
-		return entity.Unread(fmt.Errorf("tasks could not be read, so none were resumed or orphaned: %w", err))
+		return nil, entity.Unread(fmt.Errorf("tasks could not be read, so none were resumed or orphaned: %w", err))
 	}
 	for _, ent := range tasks {
+		if !mine(ent.Ref.Name()) {
+			continue
+		}
 		if ent.Ref.Under(entity.VerseRoot, mirror.System, mirror.RunKind) {
 			// A record of a run that HAPPENED, not a task that is running. Named explicitly
 			// for the reason the claim below is: it carries a `status` like an instance does,
@@ -806,13 +1018,14 @@ func (s *Server) reconcileTasks() error {
 			continue
 		}
 		if ent.Ref.Under(entity.VerseRoot, mirror.System, mirror.ClaimKind) {
-			// A run claim, not a task. It is cleared below rather than here, and it is
-			// named explicitly so it is not merely skipped by accident (a claim carries no
+			// A claim, not a task: settled as its engine opens (trigger's settleLeft). Named
+			// explicitly so it is not merely skipped by accident (a claim carries no
 			// `status`, so it would fall through the check that follows).
 			continue
 		}
-		status := entity.Str(ent.Payload, "status")
-		if status == "" || task.TerminalStatus(status) {
+		// Only a task its record says is live is one the last verse left running. A record
+		// with any other status is of a task that is over, whatever the status is.
+		if status := task.Status(entity.Str(ent.Payload, "status")); status != task.Running && status != task.Paused {
 			continue
 		}
 		runnerRef := entity.Str(ent.Payload, "runner")
@@ -820,8 +1033,8 @@ func (s *Server) reconcileTasks() error {
 		// Reflect REPLACES the entity's payload, so provenance it does not carry is lost on
 		// re-attach. Read the chain back off the entity and hand it straight in: it is the
 		// address of the action that spawned this task, and a resumed task should not
-		// forget where it came from. AdoptChain re-derives its hooks from that address —
-		// see docs/trigger-model.md.
+		// forget where it came from. Its end is looked up by that address
+		// (trigger's applyHook) — see docs/trigger-model.md.
 		chain := entity.Str(ent.Payload, "chain")
 		// What can still be re-attached is what did not die with this process, and the entity
 		// says which by naming where it ran.
@@ -840,13 +1053,13 @@ func (s *Server) reconcileTasks() error {
 				// a slide of its autonomy is kept where its questions are posed from, whose it is
 				// reads the same as before the restart, and what it was launched with is read back
 				// off its record.
-				ht := hostedTask{subject: subject, principal: entity.Str(ent.Payload, "actsFor"),
+				ht := hostedTask{scope: scope, subject: subject, principal: entity.Str(ent.Payload, "actsFor"),
 					answerers: entity.Strs(ent.Payload, "answerers"), autonomy: mirror.AutonomyOf(ent.Payload)}
 				if env != nil {
 					ht.launched = &launched{*env, entity.Str(ent.Payload, "runnerName"), entity.Str(ent.Payload, "virtualKey")}
 				}
 				serial := s.host(ent.Ref.Name(), ht)
-				s.reflect(s.Store, ent.Ref.Name(), serial, h, mirror.Meta{
+				s.reflect(store, ent.Ref.Name(), serial, h, mirror.Meta{
 					Subject: subject, Runner: runnerRef, Chain: chain,
 					// Carried for the same reason chain is: Reflect REPLACES the payload, so
 					// provenance this does not hand back is provenance the resumed task
@@ -856,6 +1069,8 @@ func (s *Server) reconcileTasks() error {
 					RunnerName: entity.Str(ent.Payload, "runnerName"),
 					// And the subject the door holds a relaying runner to, for the same reason.
 					RunnerSubject: entity.Str(ent.Payload, "runnerSubject"),
+					// And its lease, so its clocks are the ones it was launched with.
+					Lease: entity.Str(ent.Payload, "lease"),
 					// Carried, not re-stamped: a resumed task did not start again.
 					StartedAt: entity.Str(ent.Payload, "startedAt"),
 					Started:   entity.Str(ent.Payload, "started"),
@@ -878,28 +1093,25 @@ func (s *Server) reconcileTasks() error {
 					Occurrence: mirror.OccurrenceOf(ent.Payload),
 					// And its launch, which a `then` it raises is held within.
 					Environment: env, VirtualKey: entity.Str(ent.Payload, "virtualKey"),
-					HeldBy: func() []string { return s.Eng.HeldBy(ent.Ref.Name()) },
+					HeldBy: func() []string {
+						if eng := engineOf(ent.Ref.Name()); eng != nil {
+							return eng.HeldBy(ent.Ref.Name())
+						}
+						return nil
+					},
 				})
-				// re-track: steerable, AND its hooks rehydrated from the chain, so the
-				// chain or sequence it belongs to carries on rather than ending silently.
-				// A task about no subject is the flow of its own id, as at spawn.
-				flow := subject
-				if flow == "" {
-					flow = ent.Ref.Name()
-				}
-				s.Eng.AdoptChain(flow, ent.Ref.Name(), chain, h)
-				resumed = append(resumed, resumedRun{subject: subject, chain: chain})
+				resumed = append(resumed, &resumedRun{id: ent.Ref.Name(), subject: subject, chain: chain, h: h})
 				continue
 			}
 		}
-		// local (or unresolvable): the in-process runtime is gone → orphan. Only the status
-		// changes, so only the status is written — the rest of what the task recorded is
-		// none of this reconcile's business.
-		s.write(ent.Ref.At("status"), entity.Val(string(task.Orphaned)))
+		// Its runtime was this process: the task ended with the verse that ran it, and its
+		// record says so. Only how it ended is written;
+		// the rest of what the task recorded stands.
+		if _, _, err := store.Write(entity.Write{At: ent.Ref.At(), Value: mirror.Orphaned(mirror.OrphanedWithVerse).Payload()}); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: reconcile: write %s: %v\n", ent.Ref, err)
+		}
 	}
-	s.reconcileClaims(resumed)
-	s.reconcileQuestions() // AFTER the above: it reads the statuses this just settled
-	return nil
+	return resumed, nil
 }
 
 // reconcileQuestions settles the questions nobody is waiting on any more.
@@ -912,7 +1124,7 @@ func (s *Server) reconcileTasks() error {
 // Two cases, and the second is the one that is easy to miss:
 //
 //   - A TASK raised it. It survives exactly as its task does, which is the distinction
-//     reconcileTasks already draws: resumed behind a runner that is still there, orphaned
+//     resumeLeft already draws: resumed behind a runner that is still there, orphaned
 //     when the runtime died with us. The question does not get its own opinion.
 //   - A FIRING raised it, before anything spawned. That waiter was in this verse, always, so
 //     a restart ends it unconditionally. If the rule still matches, its replay poses the
@@ -963,63 +1175,13 @@ func attachOn(p task.Runner, id string) task.Handle {
 	return p.Attach(id)
 }
 
-// resumedRun is a task that survived the restart, and the chain it came from — enough to
-// tell whether the sequence a claim guards is still alive.
-type resumedRun struct{ subject, chain string }
-
-// reconcileClaims drops run claims whose run did not survive the restart.
-//
-// A claim is an exclusive lease on a sequence, released when the sequence ends — however it
-// ends, including at an off-ramp (Engine.stopSeq), which used to leak one and leave this
-// function as the only thing that ever freed it. Nothing releases a claim across a RESTART, so
-// what reaches here is a run that was interrupted, and the question is whether it survived.
-//
-// It survives when its task was re-adopted WITH its hooks — that task will complete,
-// and its completion advances the sequence. Then the claim must stay: dropping it would let a
-// concurrent firing start a second run alongside the one still going.
-//
-// It does not survive when the task was orphaned (its runner is gone, and the task with it) or
-// when nothing was resumed at all. Then no completion is coming, and a surviving claim would
-// block that sequence forever with no live task to explain why.
-//
-// So a claim is exactly as durable as the run it guards — which is what makes a durable lease
-// safe rather than a liability, and is only decidable now that resume rehydrates hooks.
-//
-// Scoped engines hold their claims in their own scope stores; those are created lazily and
-// are not walked here. A scoped sequence therefore keeps a stale claim across a restart —
-// worth fixing when scoped resume is, since both are the same gap.
-func (s *Server) reconcileClaims(resumed []resumedRun) {
-	for _, ent := range entity.Below(s.Store, func(r entity.Ref) bool {
-		return r.ChildOf(entity.VerseRoot, mirror.System, mirror.ClaimKind)
-	}, 1, entity.VerseRoot, mirror.System, mirror.ClaimKind) {
-		if claimIsLive(ent, resumed) {
-			continue
-		}
-		s.write(ent.Ref.At(), nil) // release: nothing stands there any more
-	}
-}
-
-// claimIsLive reports whether any resumed task belongs to the run this claim holds: same
-// subject, and a chain at or below the claim's own for a sequence, whose every element is a task
-// of the run; exactly the claim's own for a hooked spawn (mirror.ClaimOfSpawn), whose hooks'
-// spawns are held at chains of their own and release only those — a resumed `fix.onDone` task
-// must not keep `fix` held after it, or nothing would release it.
-func claimIsLive(claim entity.Entity, resumed []resumedRun) bool {
-	subject := entity.Str(claim.Payload, "flow")
-	chain := entity.Str(claim.Payload, "chain")
-	if subject == "" || chain == "" {
-		return false
-	}
-	exact := entity.Str(claim.Payload, mirror.ClaimOfField) == mirror.ClaimOfSpawn
-	for _, r := range resumed {
-		if r.subject != subject {
-			continue
-		}
-		if r.chain == chain || (!exact && trigger.ChainUnder(chain, r.chain)) {
-			return true
-		}
-	}
-	return false
+// resumedRun is a task re-attached at start: its id, the subject and the chain its record names,
+// and its handle on the runner that has it.
+type resumedRun struct {
+	id, subject, chain string
+	h                  task.Handle
+	eng                *trigger.Engine // the engine it was handed to, nil until it is
+	stopped            bool            // cancelled for want of one (settleTasks)
 }
 
 // engFor returns the engine serving a scope for read/manage operations: the baseline
@@ -1079,6 +1241,7 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 		sctx, cancel := context.WithCancel(s.ctx)
 		// Per-trigger observation: no root watch. Each scoped trigger watches exactly the
 		// (system,kind) subtree it matches, scoped to this scope. cancel stops them.
+		eng.AwaitTasks() // its tasks are handed over as it is restored (resumeScope)
 		eng.ObserveScoped(sctx)
 		se = &scopeEngine{eng: eng, ctx: sctx, cancel: cancel, susp: susp}
 		s.scopeEngs[scope] = se
@@ -1103,6 +1266,9 @@ func (s *Server) scopeEngine(scope string) *trigger.Engine {
 			fmt.Fprintf(os.Stderr, "verse: perms mirror (scope %s): %v\n", scope, err)
 		}
 		s.loadScopeSuspensions(se, scope)
+		// The scope's tasks are handed to its engine, which opens once they and its charter
+		// are in.
+		go s.resumeScope(se.ctx, se.eng, scope)
 		s.restoreScopeCharter(se.ctx, se.eng, scope)
 	})
 	return se.eng
@@ -2771,6 +2937,8 @@ func (s *Server) reflect(store entity.Store, id string, serial uint64, h task.Ha
 	if m.As == "" {
 		m.As = runnerIdentity(store, m.RunnerName)
 	}
+	// Followed while this verse runs: the one that comes next follows it again (resume).
+	m.Done = s.ctxOrBackground().Done()
 	mirror.Reflect(store, id, h, m)
 }
 
@@ -3281,7 +3449,7 @@ func (s *Server) spawnTask(w http.ResponseWriter, r *http.Request) {
 		// two facts a reader of this task wants beside its status, and for a task on a named
 		// runner the record is the only place they can be read without that runner.
 		Prompt: spec.Prompt, Agent: recordAgent(spec.Agent), Script: spec.Script != "",
-		Subject: spec.Subject, Autonomy: spec.Autonomy, ActsFor: actsFor, Git: l.Repos(),
+		Subject: spec.Subject, Autonomy: spec.Autonomy, ActsFor: actsFor, Git: l.Repos(), Lease: spec.Lease,
 		Environment: &spec.Environment, VirtualKey: named,
 		HeldBy: func() []string { return eng.HeldBy(id) },
 		// No Occurrence: nothing caused this one, so there is no commit to name and the

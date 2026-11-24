@@ -136,9 +136,24 @@ type Engine struct {
 	refusedMu sync.Mutex
 	refused   map[string]bool
 
+	// opened is closed once the engine is open: its charter is restored, the tasks the last
+	// verse left it are in, and its claims are settled (open). Until then no rule arms and no
+	// task's end is taken. nil for an engine nobody started, which is open. tasksIn is closed
+	// when the host has handed over the tasks it resumed, nil where it hands none (AwaitTasks).
+	opened      chan struct{}
+	tasksIn     chan struct{}
+	tasksInOnce sync.Once
+	// started is closed once the engine has its context (Start, ObserveScoped): what a task
+	// handed over ahead of the start waits on before it reads that context (awaitOpen).
+	started     chan struct{}
+	startedOnce sync.Once
+	// settleUnread says a claim was left unsettled because the store did not answer: the
+	// settle's own, read and written by its one goroutine (settleLeft).
+	settleUnread bool
+
 	// parked is the launches a suspension stopped at launchSpawn, in the order they arrived —
 	// a hook's or a sequence step's spawn about suspended work — each started when nothing
-	// holds it. It does not survive a restart. Guarded by parkMu.
+	// holds it. Each is recorded, and the next verse parks it again (parked.go). Guarded by parkMu.
 	parkMu sync.Mutex
 	parked []parkedLaunch
 
@@ -163,6 +178,19 @@ type Engine struct {
 	// delete and spawn-dedupe a lookup. Guarded independently of the loop.
 	liveMu sync.Mutex
 	live   map[string]flowTask
+	// closing says the engine's charter is being taken down (Close): nothing is launched, and
+	// the ends of the tasks that are running are still taken. halted says the engine was stopped
+	// (Stop): nothing of its own begins. work counts what may launch and is in progress (begin),
+	// hooks the ends being taken (beginHook), and ends the tasks retired whose end is not taken
+	// yet. closeCtx ends when the engine closes: a firing waits under it. All guarded by liveMu,
+	// which work and hooks are added to under.
+	closing  bool
+	halted   bool
+	work     sync.WaitGroup
+	hooks    sync.WaitGroup
+	ends     int
+	closeCtx context.Context
+	closeNow context.CancelFunc
 	// dropped is why this engine's live work was cancelled whole (CancelLive), "" until it is:
 	// a task tracked after that is cancelled as it arrives rather than run with nothing to own it.
 	dropped string
@@ -299,7 +327,8 @@ func (e *Engine) Fired() int {
 // is dispatched, and while paused no change is dispatched at all — so control can
 // never queue behind an observation backlog. See docs/deployment-and-steering.md.
 func (e *Engine) Start(ctx context.Context) {
-	e.bgctx = ctx            // bounds what the engine starts in the background — cancelled on stop
+	e.bgctx = ctx // bounds what the engine starts in the background — cancelled on stop
+	e.sayStarted()
 	e.cursor = e.store.Rev() // start live from now; Observe() delivers rev>cursor
 	// NO PATTERNS: this loop asks each commit whether it touched what a rule reads
 	// (Trigger.touches), which the commit answers from its own delta. The task records it acts
@@ -330,6 +359,7 @@ func (e *Engine) startReconciler(ctx context.Context) {
 // Start instead. Actions still run on this engine's (scoped) store and spawner.
 func (e *Engine) ObserveScoped(ctx context.Context) {
 	e.bgctx = ctx
+	e.sayStarted()
 	e.subtree = true
 	// Any trigger added before we entered subtree mode (e.g. the baseline charter seeded at
 	// startup) has no watch: it goes back to pending, for the reconciler to arm, so entering
@@ -340,27 +370,31 @@ func (e *Engine) ObserveScoped(ctx context.Context) {
 	}
 	e.triggers = nil
 	e.trigMu.Unlock()
+	if e.opened == nil {
+		e.opened = make(chan struct{})
+	}
 	e.startReconciler(ctx)
 	e.follow(ctx)
+	go e.open(ctx)
 	// Watch the task:instance mirror subtree directly, independent of any charter trigger:
-	// this drives store-driven reaping AND completion-hook (onX) application in scoped mode,
-	// where no root dispatch loop runs. Store-driven means race-free for a fast task (unlike
-	// the reapOnDone bus); reapOnDone remains the backstop, and the atomic retire dedupes.
+	// this drives reaping and completion-hook (onX) application in scoped mode, where no root
+	// dispatch loop runs.
 	// Where the records are, and at their own length: a run's record is `mirror.Ref(id)`, so the
 	// watch is on the place above it and reports each record whole.
 	e.watchTaskRecords(ctx)
 }
 
 // watchTaskRecords opens the watch the completion path reads: the task records, at their own
-// length, wherever the engine runs. Store-driven means race-free for a fast task — the property
-// reapOnDone's live-from-now bus lacks — and the atomic retire makes the two exactly-once.
+// length, wherever the engine runs (reapLoop).
 func (e *Engine) watchTaskRecords(ctx context.Context) {
 	at := mirror.Ref("").Segs() // verse.task.instance.<id>, without the id
 	at = at[:len(at)-1]         // …and without the kind: a run record is taskish too
 	if ch, unsub, err := e.store.WatchSubtree(len(at)+2, at...); err == nil {
 		go e.reapLoop(ctx, ch, unsub)
 	} else {
-		e.tracef("task record watch: %v", err)
+		// A task's record reaching its end is what retires the task and runs its hook, and this
+		// watch is where the engine sees that.
+		e.logger.Error("the task records cannot be watched; tasks this engine tracks will not end", "err", err)
 	}
 }
 
@@ -631,6 +665,13 @@ func (e *Engine) patchEntity(chain string, parent int64, subj, ref entity.Ref, p
 			return err
 		}
 	}
+	return e.patchRecord(chain, parent, ref, patch)
+}
+
+// patchRecord is patchEntity past the suspension: the write of what records, which lands whatever
+// holds the subject. A completion hook's writes and a sequence step's come here through
+// patchEntity; a run's own facts come here directly (publishSeq).
+func (e *Engine) patchRecord(chain string, parent int64, ref entity.Ref, patch entity.Payload) error {
 	// THE CONFINEMENT, at the moment of the write. A static check at install cannot be the
 	// whole answer while a derive's address can be templated, and this is the one place every
 	// charter-authored write passes through — which is what lets it be a promise rather than a

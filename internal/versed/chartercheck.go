@@ -88,6 +88,9 @@ func (s *Server) checkCharterAt(store entity.Store, scope, at string, docs []*ir
 	}
 	out.Pruned = gone
 	for _, g := range groups {
+		if err := s.lockedAt(scope, g.at); err != nil {
+			return refuse(err)
+		}
 		if _, err := checkPackageAddress(store, installer, g.at); err != nil {
 			return refuse(err)
 		}

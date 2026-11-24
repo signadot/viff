@@ -38,6 +38,8 @@ type InProcessHandler struct {
 	// other than open, is refused: a task in the runner's own process has no checkout, no
 	// channel to push over, and the runner's network.
 	taskProcess bool
+	// lease, where set, is every task's lease whatever its launch says: a test's.
+	lease time.Duration
 }
 
 type hosted struct {
@@ -53,6 +55,9 @@ type hosted struct {
 	// occurrence is which run this is (Launch.Occurrence), retained so the snapshot can say so:
 	// the process, and not only the entity, knows which run it is.
 	occurrence int64
+	// lease is the task's lease, which this handler keeps; nil in a task's own process, whose
+	// runner keeps it (lease.go).
+	lease *lease
 
 	mu     sync.Mutex
 	status task.Status
@@ -63,7 +68,13 @@ type hosted struct {
 // done reports whether this run has finished — the question the launch dedupe is actually
 // asking. A live task of the same id is the SAME work and joins; a finished one is a previous
 // run, and the next launch is a new one.
+//
+// A run whose lease ran out is finished for this question too, while it winds down: it is
+// being ended, and a launch of its id is a new run and not that one.
 func (h *hosted) done() bool {
+	if h.lease != nil && h.lease.ranOut() {
+		return true
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.status.Terminal()
@@ -90,7 +101,7 @@ func (h *hosted) snapshot() task.Snapshot {
 		// returns: the terminal frame leaves from inside Run, and a reader it brings (versed's
 		// mirror) asks for the snapshot before Run has returned. The task has both before it
 		// ends; h.err is for a run that broke without recording one.
-		Err: cmp.Or(h.task.Err(), h.err), Result: h.task.Result(), Pending: pending, Occurrence: h.occurrence, Settings: taskSettings(h.task),
+		Err: cmp.Or(h.task.Err(), h.err), Orphaned: h.task.Orphaned(), Result: h.task.Result(), Pending: pending, Occurrence: h.occurrence, Settings: taskSettings(h.task),
 		Cursor: h.task.Cursor(), // resume the event stream with ?since=<cursor>
 	}
 }
@@ -119,7 +130,10 @@ func (d *InProcessHandler) OwnEnv(of EnvOf) { d.owned = of }
 
 // HTTPHandler returns the HTTP routes (Go 1.22 method+wildcard patterns): the task contract, and
 // GET /describe.
-func (d *InProcessHandler) HTTPHandler() http.Handler {
+func (d *InProcessHandler) HTTPHandler() http.Handler { return asRunner(d.routes()) }
+
+// routes is the runner's routes, unmarked (HTTPHandler marks them).
+func (d *InProcessHandler) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /describe", func(w http.ResponseWriter, r *http.Request) {
 		writeOut(w, r, http.StatusOK, d.describe)
@@ -185,6 +199,14 @@ func (d *InProcessHandler) check(l *runner.Launch) error {
 	return nil
 }
 
+// joined is a live task a launch of its id joins: its lease is the joining launch's from now.
+func (d *InProcessHandler) joined(h *hosted, l runner.Launch) *hosted {
+	if h.lease != nil {
+		h.lease.join(&l, d.lease)
+	}
+	return h
+}
+
 // host builds, registers, wires the read plane, and runs a task. Shared
 // by Launch and POST /tasks. The bool reports whether it BUILT one; false means
 // the id was already hosted and that task is what came back.
@@ -201,7 +223,7 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 	d.mu.Lock()
 	if h, ok := d.tasks[l.ID]; ok && !h.done() {
 		d.mu.Unlock()
-		return h, false
+		return d.joined(h, l), false
 	}
 	d.mu.Unlock()
 
@@ -250,16 +272,22 @@ func (d *InProcessHandler) host(l runner.Launch) (*hosted, bool) {
 	d.mu.Lock()
 	if existing, ok := d.tasks[l.ID]; ok && !existing.done() {
 		d.mu.Unlock()
-		return existing, false
+		return d.joined(existing, l), false
+	}
+	if !d.taskProcess {
+		h.lease = newLease(&l, d.lease)
 	}
 	d.tasks[l.ID] = h
 	d.mu.Unlock()
 
 	go func() {
+		ended := make(chan struct{})
+		defer close(ended)
 		if limit, err := time.ParseDuration(l.Timeout); err == nil && limit > 0 {
-			ended := make(chan struct{})
-			defer close(ended)
 			go timeout(tk, reg, limit, ended)
+		}
+		if h.lease != nil {
+			go h.lease.keep(ended, func() { tk.Orphan(h.lease.noReader()) })
 		}
 		// A hosted task outlives its launch call, so it must NOT derive from a
 		// request context. Its own subtree cancel (task.Cancel, via POST /cancel) is
@@ -381,6 +409,11 @@ func (d *InProcessHandler) events(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		codec.HTTPError(w, r, http.StatusInternalServerError, err.Error())
 		return
+	}
+	// A subscribe the runner accepts renews the task's lease. One that comes after the lease
+	// ran out renews nothing: the task is being ended, and its end is what this stream says.
+	if h.lease != nil {
+		h.lease.renew()
 	}
 
 	var ch <-chan task.Event

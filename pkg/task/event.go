@@ -40,7 +40,10 @@ type Event struct {
 	Answerers []string `tony:"field=answerers,omitzero"`
 	Text      string   `tony:"field=text,omitzero"` // reason / detail / result
 	Err       string   `tony:"field=err,omitzero"`
-	Dropped   int      `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
+	// Orphaned, on a terminal status: the task ended because verse and its runner lost each
+	// other, and not for a reason of its own. Its status is failed.
+	Orphaned bool `tony:"field=orphaned,omitzero"`
+	Dropped  int  `tony:"field=dropped,omitzero"` // gap marker: events a slow subscriber missed
 }
 
 // The kinds of Event, its `kind`.
@@ -62,6 +65,10 @@ const (
 	// EventAutonomy is the task's autonomy replaced while it runs: By is who replaced it, and Text
 	// the autonomy in one line (Autonomy.Summary).
 	EventAutonomy = "autonomy"
+	// EventAccepted is a client's own frame and never a runner's: the runner accepted the
+	// subscribe this stream is. It is the first frame of a stream asked for with
+	// Accepting.SubscribeAccepted, and of no other.
+	EventAccepted = "accepted"
 )
 
 type subscriber struct {

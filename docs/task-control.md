@@ -145,8 +145,14 @@ fields and the event cursor are all on the task's record. A restart reads them a
 The work on a runner went on in the world while verse was down. Verse resumes where the
 work outlived the daemon, and orphans only what died with it.
 
-The reconcile reads baseline's tasks. A task that a [scope](glossary.md#scope) started is
-neither resumed nor orphaned at a restart: its record keeps the status it had.
+The work outlives the daemon only within the task's [lease](runners.md#a-tasks-lease). A runner
+stops a task that nobody has asked about for that long, and ends it `failed`,
+`orphaned: true`. A verse that comes back later attaches again all the same, and what it
+reads is that end.
+
+The reconcile reads baseline's tasks. A task that a rule in a [scope](glossary.md#scope) started
+is resumed the same way when the scope's engine is made. A task run by hand in a scope is not:
+its record keeps the status it had.
 
 An open question follows the task that asks it.
 
@@ -258,6 +264,7 @@ run without what it asked for.
 | `answer` | the answer contract, a tony match pattern. A runner that cannot enforce one refuses the launch; a script takes none. |
 | `timeout` | how long the task may run, as a duration. Time spent waiting for an answer does not count; time paused does. |
 | `converse` | the run is a conversation: when the agent goes quiet, the person gets the turn as a question, and the run ends when they end it. Only for an offer whose `converse` is true. |
+| `lease` | how long the task may run with nobody asking for its events, as a duration of `1m` or more. Absent is `4m`. The runner counts it, and ends a task whose lease runs out ([a task's lease](runners.md#a-tasks-lease)). |
 | `occurrence` | which run this is: the store revision it is about. The runner says it back on the snapshot. |
 | `provenance` | `{principal?, subject?, chain?}`: on whose account, and about what. A record, never authority. |
 | `credential` | the token verse signed for the task when its rule's gate passed ([gates](reference/gates.md#a-credential-for-what-a-gate-let-through)). It carries a secret. The runner hands it to the task as a file named by `VERSE_CREDENTIAL_FILE`, and never says it back. |
@@ -297,7 +304,7 @@ Verse keeps its high-water cursor on the task's record. On a restart, it knows w
 | `decision` | `id, gate, step?, fields?, choice, proceed, by, text` | clears `pending`; records the resolution — `choice` is the option, `proceed` the same as yes or no; `gate` is the autonomy's row that decided the call, whether it allowed, denied or asked, or `environment` for a step outside it |
 | `child` | `child, status` | flow-tracking (sub-task spawn/join) |
 | `autonomy` | `text, by` | records a change of autonomy: `text` is the autonomy in one line, `2 row(s), default ask` |
-| `status` | `text: running\|paused\|done\|failed\|cancelled`, `by?`, `err?` | `status`, `paused`; on terminal `result` (CAS-once), read from `GET /tasks/{id}`, and `err`, why it ended, which the status alone never says |
+| `status` | `text: running\|paused\|done\|failed\|cancelled`, `by?`, `err?`, `orphaned?` | `status`, `paused`; on terminal `result` (CAS-once), read from `GET /tasks/{id}`, and `err`, why it ended, which the status alone never says |
 
 That table is the durable contract. It is `mirror.Reflect`, plus `autonomy`, minus the
 `gap` marker. The `gap` marker says something about the *reading*, and not about the task.
@@ -345,7 +352,9 @@ answer.
 **A stream that ends without a terminal did not end because the task ended.** The terminal is
 always the last frame. If it is absent, the connection broke. Resume from the last cursor, and
 conclude nothing about the work. `mirror.Reflect` does exactly that. It backs off between
-attempts, and publishes `observed: false` on the record while it is disconnected.
+attempts, and publishes `observed: false` on the record while it is disconnected. It stops a
+minute after the task's lease has gone by with no subscribe the runner accepted, and ends the
+task on its record as `failed`, `orphaned: true`.
 
 An index that looks confident while it is only stale is worse than one that says it is stale.
 

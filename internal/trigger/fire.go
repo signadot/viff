@@ -229,6 +229,17 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	// refuses a second task under a live id — but together they stop a firing for work
 	// already under way from posing a question and spending budget before being told so.
 	// And again here, because a paced firing waits out the throttle before it arrives.
+	if !e.begin() {
+		return // the engine is closing, or was stopped
+	}
+	defer e.work.Done()
+	// A firing waits on its gates only while the engine is not closing (Close): its own context,
+	// which ends with the firing. What it starts as it ends outlives it, and runs under the
+	// context the firing was given (endFlight).
+	given := ctx
+	ctx, cancel := context.WithCancel(given)
+	defer cancel()
+	defer context.AfterFunc(e.closeContext(), cancel)()
 	if held := e.holding(t.Name, subj); len(held) > 0 {
 		e.tracef("%s: %s is suspended (%s); not firing", t.Name, subj, strings.Join(held, ", "))
 		return
@@ -240,7 +251,7 @@ func (e *Engine) fireOne(ctx context.Context, t Trigger, oc occasion, subj entit
 	if !ok {
 		return
 	}
-	defer e.endFlight(ctx, t.Name, subj)
+	defer e.endFlight(given, t.Name, subj)
 
 	subjects := []entity.Ref{subj} // the gate and motion identities are over the firing's set
 	var wg sync.WaitGroup
@@ -569,14 +580,15 @@ func matchText(m map[string]any) string {
 // this task ends), chain is this spawn's position in a hook chain (for deterministic nested
 // ids). Public Spawn passes nil/"" — an ordinary spawn with no chaining.
 func (e *Engine) spawnHooked(id string, spec launch.Spec, hooks *Action, chain string) task.Handle {
-	return e.startHooked(id, spec, hooks, chain, e.spawn)
+	return e.startHooked(id, spec, hooks, chain, nil, e.spawn)
 }
 
 // startHooked is spawnHooked with what starts the task named: the Spawner, or for a launch the
 // engine refuses itself, the Spawner given the refusal, which starts nothing and answers a task
-// that has already failed — one that passes every check a spawn does and is tracked the same
-// way, so its completion hooks run as a started task's would.
-func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain string,
+// that has already failed — one that passes every check a spawn does and whose end track takes
+// at once, so its completion hooks run as a started task's would. within is the narrowing of the
+// firing that spawns it, which its hooks read by (flowTask.within).
+func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain string, within [][]string,
 	start func(id string, spec launch.Spec) task.Handle) task.Handle {
 	if e.spawn == nil {
 		e.tracef("no spawner configured; cannot spawn %q", id)
@@ -589,9 +601,9 @@ func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain s
 		return nil
 	}
 	// Idempotent per id: spawnID is deterministic per (trigger, subject), so a re-fire about
-	// the same subject must not start a second task. The runtime would not stop it — a
-	// runnerd Spawn overwrites its registry entry while the old task keeps running — so
-	// the engine, which owns the live registry, is where this belongs.
+	// the same subject must not start a second task. A runner answers a launch of a live id
+	// with the task that has it, and starts none; the engine, which owns the live registry,
+	// says so first, with the handle it tracks and nothing sent.
 	e.liveMu.Lock()
 	if fp, running := e.live[id]; running {
 		e.liveMu.Unlock()
@@ -615,7 +627,7 @@ func (e *Engine) startHooked(id string, spec launch.Spec, hooks *Action, chain s
 	e.tracef("spawn task %s (doer=%s): %s", id, spec.Who(), spec.Prompt)
 	h := start(id, spec)
 	if h != nil && spec.Subject != "" {
-		e.track(flowTask{id: id, subject: spec.Subject, h: h, hooks: hooks, chain: chain, occurrence: spec.Occurrence})
+		e.track(flowTask{id: id, subject: spec.Subject, h: h, hooks: hooks, within: within, chain: chain, occurrence: spec.Occurrence})
 	}
 	return h
 }

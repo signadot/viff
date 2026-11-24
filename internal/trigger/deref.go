@@ -41,9 +41,9 @@ const (
 	fromSubject refSource = iota
 	// fromCause — a completion hook, or a sequence element one drives. The action is
 	// downstream of a TASK, and `result`, `err` and `data` are exactly the facts it exists to
-	// read. The engine synthesizes that payload (Engine.taskEvent) rather than reading the
-	// store, because the mirror may not have written the terminal facts yet — so this is not
-	// merely a different entity to read, it is a payload only the engine has.
+	// read. That payload is the task's record as it ended, which is the event that woke the
+	// hook (Engine.reap); for work that never started it is the engine's own account
+	// (Engine.neverStarted).
 	fromCause
 )
 
@@ -620,8 +620,7 @@ func (e *Engine) subjectValueAt(oc occasion, subj entity.Ref) (entity.Payload, e
 
 // refPayload answers whose fields an action's expressions read by name, for one subject.
 //
-// fromCause hands back the cause's payload — a hook's task, which the engine may hold
-// facts about that the store does not yet (Engine.taskEvent).
+// fromCause hands back the cause's payload — a hook's task, as its record ended.
 //
 // fromSubject reads the SUBJECT. When the subject IS the entity that changed, the event
 // already carries its whole level state as of the dispatching commit, so that is used

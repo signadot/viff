@@ -10,6 +10,8 @@ package mirror
 
 import (
 	"cmp"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -32,9 +34,9 @@ import (
 // of any default/ambient trigger match set.
 const System = "task"
 
-// The reflected status vocabulary is task.Status (running/completed/cancelled/
-// failed/orphaned), carried on the entity payload as the "status" field; its
-// Terminal() decides when to stop projecting.
+// The reflected status vocabulary is task.Status (running/done/cancelled/failed),
+// carried on the entity payload as the "status" field; its Terminal() decides when to stop
+// projecting.
 
 // InstanceKind is the kind a mirrored task lives under. Named, because a reader selecting
 // instances has to say so — the system also holds claims, which carry no status and would fall
@@ -132,6 +134,14 @@ type Meta struct {
 	// relayTask), so a registration rewritten under the same name with another subject relays
 	// nothing of a task it did not host. Empty where the registration names none.
 	RunnerSubject string
+	// Lease is the task's lease as its spawn wrote it, a duration; empty is runner.DefaultLease.
+	// The mirror subscribes again four times within it, and stops waiting on the runner a
+	// minute after it (follow.go). On the record as `lease`, so a re-attach carries it back.
+	Lease string
+	// Done closes when the verse mirroring the task stops: the runner is asked nothing more, the
+	// frames already read are written, and the record stands so, for the verse that comes next
+	// to follow it again. Nil is never.
+	Done <-chan struct{}
 	// StartedAt is when the task began, RFC3339. Empty on a fresh spawn — Reflect stamps
 	// the clock — and carried back verbatim by a re-attach, which is the only caller that
 	// knows this task is older than this verse.
@@ -245,7 +255,7 @@ func TriggerOf(chain string) string {
 var RecordFields = map[string]bool{
 	"actsFor": true, "answerers": true, "chain": true, "credential": true, "cursor": true, "data": true,
 	"agent": true, "ended": true, "err": true, "flow": true, "git": true, "hook": true,
-	"environment": true, "lastAction": true, "lastOutput": true, "observed": true, "occurrence": true,
+	"environment": true, "lastAction": true, "lease": true, "lastOutput": true, "observed": true, "occurrence": true, OrphanedField: true,
 	"paused": true, "pending": true, "autonomy": true, "autonomyBy": true, "prompt": true, "refused": true, "result": true, "script": true,
 	"runner": true, "runnerName": true, "runnerSubject": true, "say": true, "started": true, "startedAt": true,
 	"status": true, "trigger": true, "virtualKey": true,
@@ -253,7 +263,16 @@ var RecordFields = map[string]bool{
 }
 
 func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
-	ch, unsub := h.Subscribe()
+	// A handle of the task's own bus is subscribed to before the record is written, and before
+	// whoever called starts the task: it replays nothing that went by before the subscribe. A
+	// task on a runner is subscribed to from its first frame whenever it is asked, and the
+	// asking is a request that may go unanswered for a while, so it is follow's: nobody waits
+	// on it here, and the tasks a start re-attaches are asked for side by side.
+	var ch <-chan task.Event
+	var unsub func()
+	if _, leased := h.(task.Accepting); !leased {
+		ch, unsub = subscribe(h, true, 0, 0) // not leased: no subscribe is waited on
+	}
 	// WHEN, and only twice: `started` here, `ended` at the terminal status below. A record
 	// stamped on every update would be an entity that changes whenever anything narrates,
 	// which wakes every trigger watching this slice for no fact anybody wrote — and the two
@@ -277,6 +296,11 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	}
 	if m.RunnerSubject != "" {
 		st["runnerSubject"] = m.RunnerSubject
+	}
+	// The lease its spawn named, so a verse that restarts while it runs keeps the same clocks
+	// for it. One that named none says none, and has the default.
+	if m.Lease != "" {
+		st["lease"] = m.Lease
 	}
 	// When this task began, so `verse runner` can say when a runner was last used and a
 	// runner nobody names is visible as such. Written once, at the first reflection, and
@@ -380,41 +404,13 @@ func Reflect(store entity.Store, id string, h task.Handle, m Meta) {
 	if m.As != "" {
 		claimed(asPrincipal(store, entity.SystemMirror), id, st, m.As)
 	}
-	go func() {
-		// A stream ending is not the same fact as a task ending, and treating them as one
-		// is what let a mirror stop forever: the connection died, Reflect returned, and the
-		// entity kept saying `running` about work that had long since finished.
-		//
-		// The terminal is what says the task ended — always the last frame, never dropped
-		// and never absent (see pkg/task/event.go). A channel that closes without one closed
-		// for a reason of its own, and the answer is to resume from the cursor this loop has
-		// been keeping all along.
-		attempt := 0
-		claimant := m.As
-		for {
-			ended, heard := drainInto(store, id, st, m, h, ch, &claimant)
-			unsub()
-			if ended {
-				return
-			}
-			if heard {
-				attempt = 0 // it worked for a while; the next outage starts its own count
-			}
-			if attempt >= reconnectAttempts {
-				// Gave up, and says so. The entity keeps `observed: false` rather than
-				// reverting to a confident `running` nobody is watching.
-				return
-			}
-			// Said BEFORE the wait, not after it: a reader asking during the outage is
-			// exactly the reader who needs to know the index is not current.
-			st["observed"] = false
-			project(store, id, st, m)
-			time.Sleep(backoff(attempt))
-			attempt++
-			since, _ := st["cursor"].(int64)
-			ch, unsub = h.SubscribeSince(since)
-		}
-	}()
+	// Two parts from here: one keeps a subscription to the task's stream (follow.go), and the
+	// other writes what the stream says onto the record. They are apart so that a write the
+	// store is slow to take does not hold up the next subscribe, which is what the task's
+	// lease is renewed by.
+	q := newFrames()
+	go follow(h, q, ch, unsub, runner.LeaseOf(m.Lease), m.Done)
+	go record(store, id, st, m, h, q)
 }
 
 // launchAsk is the ask of the autonomy's row a frame's question is about, by the row's name:
@@ -741,25 +737,26 @@ func claimed(system entity.Store, id string, st entity.Obj, by string) {
 	}
 }
 
-// reconnectAttempts bounds how long a mirror keeps trying to reopen a stream that keeps
-// dying. With the backoff below it is a few minutes — long enough to outlast a runner
-// restart, short enough that a task on a runner that is never coming back does not hold a
-// goroutine and a retry loop forever. A stream that delivers anything at all resets it.
-const reconnectAttempts = 40
-
-// backoff grows to a ceiling and stays there. A mirror reconnecting to a runner that is down
-// should not hammer it on the way.
+// backoff grows to a ceiling and stays there. A mirror subscribing again to a runner that is
+// down should not hammer it on the way.
 func backoff(attempt int) time.Duration {
 	d := time.Duration(1<<min(attempt, 5)) * 250 * time.Millisecond
 	return min(d, 8*time.Second)
 }
 
-// drainInto projects one subscription's frames, reporting whether the TASK ended (true) or
-// merely the stream did (false).
+// record writes what the task's stream says onto its record, frame by frame as follow hands
+// them over, until the task has ended and its record says so.
+//
+// A STREAM ENDING IS NOT A TASK ENDING. The terminal status is what says the task ended,
+// always the last frame. A stream that is lost is said on the record (`observed: false`) while
+// it is, since a reader asking during the outage is the reader who needs to know the record is
+// not current; and where follow stops waiting on the runner, the task is ended here, as failed
+// and orphaned: the record is what ends a task, and one nobody is watching would otherwise
+// hold its subject for good.
 //
 // WHO WRITES. The task's record is written as the party working the task: the spawn's
 // principal until a worker claims it, and the worker from then on — the claimant, named by the
-// runner on the claim's running frame, and remembered across a reconnect in claimant. A
+// runner on the claim's running frame. A
 // question is posed and settled as the docket (entity.SystemDocket) whoever is working the task,
 // since versed poses it and the decision that settles it travelled by the answer path, where the
 // answerer was checked; the worker's grant is on its task and must reach no question, and a
@@ -775,28 +772,63 @@ func backoff(attempt int) time.Duration {
 // all, and a worker reporting another verdict under it would leave a record saying the
 // answerer chose what they did not. So a relayed task's decision is settled from what verse
 // holds (settleRelayed), and its slide named from what verse relayed (slidBy).
-func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Handle, ch <-chan task.Event, claimant *string) (ended, heard bool) {
-	docket, projector := asPrincipal(store, entity.SystemDocket), asPrincipal(store, entity.SystemMirror)
+func record(base entity.Store, id string, st entity.Obj, m Meta, h task.Handle, q *frames) {
+	docket, projector := asPrincipal(base, entity.SystemDocket), asPrincipal(base, entity.SystemMirror)
 	relayed := m.Runner != ""
-	if *claimant != "" {
-		store = asPrincipal(store, *claimant)
+	store, claimant := base, m.As
+	if claimant != "" {
+		store = asPrincipal(base, claimant)
+	}
+	// A FRAME'S WRITE WAITS WHILE ANOTHER IS QUEUED BEHIND IT: the record is the task as it
+	// stands, and the next write carries this one's. A task that says more than the store takes
+	// in a moment is written as fast as the store takes it, and its end lands when it comes,
+	// not behind every frame before it. What waits is written before record waits for more.
+	dirty := false
+	write := func() {
+		if q.queued() {
+			dirty = true
+			return
+		}
+		project(store, id, st, m)
+		dirty = false
 	}
 	{
-		for ev := range ch {
-			if !heard {
-				// The first frame of a resumed stream is the only proof it is working, and
-				// nothing else can stand in for it — a channel that is merely open may be
-				// one that is about to close.
-				heard = true
-				if st["observed"] == false {
-					// Gone from the document, because the document is what gets stored. This
-					// said `nil, not delete: a write MERGES`, which was true when a bare null
-					// meant removal — since baa0c459 it is data, so it was writing
-					// `observed: null` where it meant to write nothing at all.
-					delete(st, "observed")
-					project(store, id, st, m)
-				}
+		for {
+			if dirty && !q.queued() {
+				project(store, id, st, m)
+				dirty = false
 			}
+			it, ok := q.take()
+			if !ok {
+				return
+			}
+			switch it.mark {
+			case markLost:
+				if st["observed"] != false {
+					st["observed"] = false
+					write()
+				}
+				continue
+			case markCurrent:
+				// Removed from the document, since the document is what is stored.
+				if st["observed"] == false {
+					delete(st, "observed")
+					write()
+				}
+				continue
+			case markGaveUp:
+				for k, v := range Orphaned(OrphanedUnanswered) {
+					st[k] = v
+				}
+				landEnd(base, projector, id, st, m)
+				writeRun(base, id, occurrenceOf(st), st)
+				OrphanQuestions(docket, id)
+				if m.Ended != nil {
+					m.Ended()
+				}
+				return
+			}
+			ev := it.ev
 			if ev.Cursor > 0 { // high-water for resume: verse re-subscribes ?since=cursor
 				st["cursor"] = ev.Cursor
 			}
@@ -851,7 +883,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 				if st["pending"] == QuestionRef(ev.ID).String() {
 					res := task.Resolution{Choice: ev.Choice, Proceed: ev.Proceed, By: ev.By, Note: ev.Text}
 					if relayed {
-						settleRelayed(docket, ev.ID, res, *claimant)
+						settleRelayed(docket, ev.ID, res, claimant)
 					} else {
 						AnswerQuestion(docket, ev.ID, res)
 					}
@@ -884,9 +916,9 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 					// A CLAIM: a worker took the task and named itself. The grant a spawn makes
 					// to its runner is written now, naming the party that actually turned up,
 					// and every report from here on is written as them.
-					if ev.Text == string(task.Running) && mayClaim(ev.By) && *claimant == "" {
+					if ev.Text == string(task.Running) && mayClaim(ev.By) && claimant == "" {
 						claimed(projector, id, st, ev.By)
-						*claimant = ev.By
+						claimant = ev.By
 						store = asPrincipal(store, ev.By)
 					}
 					st["status"] = ev.Text
@@ -916,6 +948,11 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						if e != "" {
 							st["err"] = e
 						}
+						// And whether it ended for a reason of its own, or because verse and
+						// its runner lost each other.
+						if ev.Orphaned {
+							st[OrphanedField] = true
+						}
 						// What its proxy turned away, by destination and how often: the runner's
 						// account, which no frame carries.
 						if r := h.Refused(); len(r) > 0 {
@@ -924,7 +961,7 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						// And which agent ran and with what, the runner's defaults filled in,
 						// said by the runner that ran it.
 						resolved(h, st)
-						project(store, id, st, m)
+						landEnd(store, projector, id, st, m)
 						// And the run's own record, which the next run does not overwrite.
 						writeRun(store, id, occurrenceOf(st), st)
 						// Whatever it was still asking, it will never hear the answer to.
@@ -935,15 +972,15 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 						if m.Ended != nil {
 							m.Ended()
 						}
-						return true, heard // the TASK ended; the entity remains, terminal
+						return // the TASK ended; the entity remains, terminal
 					}
 				}
-				project(store, id, st, m)
+				write()
 				continue
 			case task.EventAutonomy: // the policy replaced — project it so `entity get` shows it
 				by := ev.By
 				if relayed {
-					by = slidBy(m, ev.Text, *claimant)
+					by = slidBy(m, ev.Text, claimant)
 				}
 				if by != "" {
 					st["autonomyBy"] = by
@@ -958,10 +995,9 @@ func drainInto(store entity.Store, id string, st entity.Obj, m Meta, h task.Hand
 			default: // boundary / steer / child / gap: not projected (index, not warehouse)
 				continue
 			}
-			project(store, id, st, m) // the payload is cloned on the way out; safe to reuse st
+			write() // the payload is cloned on the way out; safe to reuse st
 		}
 	}
-	return false, heard
 }
 
 // write projects the accumulated state onto the task's entity. A failed write is
@@ -1001,7 +1037,7 @@ func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 // answers the commit it landed at, or 0 if it did not land.
 //
 // Replacing at every write rather than only at a run's first one, because st is the whole
-// document: the drain loop mutates it and writes it entire, so a merge was never adding
+// document: record mutates it and writes it entire, so a merge was never adding
 // anything a replace does not carry. What it was adding was fields from BEFORE — an id names
 // the work, so a new run writes where the last one left off, and `started`/`status` landed on
 // top of `ended`/`err`/`result` without displacing them. That is a record saying it began at
@@ -1031,6 +1067,12 @@ func write(store entity.Store, id string, st entity.Obj, at ...entity.Ref) int64
 // project is write for a live task's record, with who holds the task asked as it is written:
 // the record is replaced whole, so a hold not carried on every write is a hold forgotten.
 func project(store entity.Store, id string, st entity.Obj, m Meta) int64 {
+	held(st, m)
+	return write(store, id, st)
+}
+
+// held puts who holds the task on the record about to be written, or takes it off.
+func held(st entity.Obj, m Meta) {
 	if m.HeldBy != nil {
 		if by := m.HeldBy(); len(by) > 0 {
 			st[HeldByField] = by
@@ -1038,8 +1080,117 @@ func project(store entity.Store, id string, st entity.Obj, m Meta) int64 {
 			delete(st, HeldByField)
 		}
 	}
-	return write(store, id, st)
 }
+
+// OrphanedField is the field of a task's record that says the task ended because verse and its
+// runner lost each other, and not for a reason of its own. Such a task is `failed`, so it reaches
+// `onFailed`, which reads the field. Absent on every other end.
+const OrphanedField = "orphaned"
+
+// Why an orphaned task ended, as its record's `err` says it, by who ended it.
+const (
+	// OrphanedUnanswered: the mirror stopped waiting on a runner that did not answer.
+	OrphanedUnanswered = "the runner did not answer, and verse stopped waiting on it"
+	// OrphanedWithVerse: the task ran in verse's own process, which ended.
+	OrphanedWithVerse = "its runtime ended with verse"
+	// OrphanedNoAccount: a rule holds its subject for a task nothing is running and no record
+	// says the end of.
+	OrphanedNoAccount = "no account of how the task ended"
+)
+
+// Orphaned is the end of an orphaned task, as fields of its record: failed, orphaned, why, and
+// when.
+func Orphaned(why string) entity.Obj {
+	return entity.Obj{"status": string(task.Failed), OrphanedField: true, "err": why, "ended": nowStamp()}
+}
+
+// landEnd writes a task's terminal record, and returns when it stands there, when the record has
+// become another run's, or when the store has closed.
+//
+// THE ONE WRITE THAT IS NOT DROPPED. A task ends when its record says so and only then: the
+// engine retires it, runs its completion hook and lets go of its subject on the record's
+// terminal status, and on nothing else (trigger.Engine.reap). Every other write of a live
+// record is replaceable, since the next one carries the whole document; nothing follows this
+// one, so a terminal that did not land is a task that never ends.
+//
+// A store that did not answer is asked again, with the reflect loop's backoff, for as long as
+// the store is open. That is said when it begins, again when the reason changes (once a minute
+// at most) and every sayAgain while it does not, and once more when the end lands: a task whose
+// end is not on its record holds its subject, and the log is where an operator learns why. A
+// store that REFUSED is asked as the mirror itself (system): the record is written as the party
+// working the task, and that party's hold on it can be taken away while the task runs, which
+// says nothing about whether the task ended. And a document the store's own
+// check will not take (entity.CheckPatchable) goes without `data`, the one part of the record
+// that is whatever a task answered: how the task ended is owed, and what it said stays readable
+// as `result`.
+//
+// AN ASKING AGAIN IS OF THIS RUN'S RECORD ONLY. A write the store did not answer may have landed,
+// and the engine may have acted on it: by the next attempt the id can name another run, whose
+// record this would replace with an end that is not its own. So every attempt after the first is
+// conditional on what stands there, which is read first: nothing, the record this run opened, or
+// the record of a run that started before this one, which this run's opening write did not
+// replace. A record of a run that started after this one is left as it is.
+func landEnd(store, system entity.Store, id string, st entity.Obj, m Meta) {
+	held(st, m)
+	at := Ref(id)
+	if _, said := st["data"]; said {
+		if err := entity.CheckPatchable(entity.Raw(st.Payload())); err != nil {
+			fmt.Fprintf(os.Stderr, "verse: task %s: its end is recorded without `data`, which the store will not take: %v\n", id, err)
+			delete(st, "data")
+		}
+	}
+	started, _ := st["started"].(string)
+	var when []entity.Require
+	asSystem := false
+	said, saidAt := "", time.Time{}
+	for attempt := 0; ; attempt++ {
+		if attempt > 0 {
+			time.Sleep(backoff(attempt - 1))
+		}
+		committed, _, err := store.Write(entity.Write{At: at.At(), Value: entity.Raw(st.Payload()), When: when})
+		if err == nil && committed {
+			if said != "" {
+				fmt.Fprintf(os.Stderr, "verse: task %s: its end is on its record, after %d attempts\n", id, attempt+1)
+			}
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			return // the store is closed: nothing reads the record from here on
+		}
+		if errors.Is(err, entity.ErrForbidden) && !asSystem {
+			store, asSystem = system, true
+		}
+		if since := time.Since(saidAt); err != nil && (said == "" || since >= sayAgain || err.Error() != said && since >= time.Minute) {
+			said, saidAt = err.Error(), time.Now()
+			fmt.Fprintf(os.Stderr, "verse: task %s: its end is not on its record yet, and is being written again (attempt %d): %v\n", id, attempt+1, err)
+		}
+		// What stands there now decides what the next attempt may replace.
+		ent, ok, rerr := system.Get(at)
+		switch {
+		case errors.Is(rerr, context.Canceled):
+			return
+		case rerr != nil:
+			if when == nil {
+				when = []entity.Require{{Pattern: entity.Obj{"started": started}.Payload()}}
+			}
+		case !ok:
+			when = []entity.Require{entity.Created()}
+		case entity.Str(ent.Payload, "started") > started,
+			entity.Str(ent.Payload, "started") == started && OccurrenceOf(ent.Payload) > OccurrenceOf(st.Payload()):
+			return // another run's record: one that started later, or within the same second of a later firing
+		case entity.Str(ent.Payload, "started") == started && task.TerminalStatus(entity.Str(ent.Payload, "status")):
+			if said != "" {
+				fmt.Fprintf(os.Stderr, "verse: task %s: its end is on its record\n", id)
+			}
+			return // it landed
+		default:
+			when = []entity.Require{{Pattern: entity.Unchanged(ent.Payload)}}
+		}
+	}
+}
+
+// sayAgain is how often an end that does not land is said again while its reason stays the same.
+const sayAgain = 5 * time.Minute
 
 // ParseResult is the structured face of a driver's final answer: the answer document
 // projected beside the text as `data` so a charter can read into it (`.[data.severity]`)
@@ -1058,12 +1209,9 @@ func project(store entity.Store, id string, st entity.Obj, m Meta) int64 {
 // the patch, declares an answer contract (launch.Spec.Answer) — and the two agree by
 // construction, because the contract validates exactly the document this returns.
 //
-// It is exported because the mirror is not the only writer that has to answer this question:
-// the trigger engine synthesizes a completed task's payload when it beats the mirror to
-// the terminal (see trigger.Engine.taskEvent), and if the two derived `data` differently a
-// hook would deref against a different document than the one the store ends up holding. The
-// answer contract's check is a third such reader, which is why the extraction itself lives
-// in one place rather than being written out again here.
+// It is exported because the mirror is not the only reader that has to answer this question:
+// the answer contract's check is another, which is why the extraction itself lives in one
+// place rather than being written out again there.
 // It comes back AS DATA, escaped, and that is not a detail of this function — it is the
 // whole reason a projection may hold an agent's document at all.
 //
@@ -1108,10 +1256,9 @@ const ClaimKind = "claim"
 
 // ClaimOfField and ClaimOfSpawn: a claim's payload says `of: spawn` where it is a hooked
 // spawn's hold on its subject (trigger's applyOne) rather than a sequence's run claim. A
-// sequence's claim is kept alive across a restart by any resumed task at or below its chain,
-// since every element is a task of the run; a spawn's only by the task at its own chain, since
-// the hook's own spawns are held at chains of their own and release only those (versed's
-// claimIsLive).
+// sequence's claim is explained across a restart by a resumed task that is an element of it; a
+// spawn's only by the task at its own chain, since the hook's own spawns are held at chains of
+// their own and release only those (trigger's ClaimsOf, Settle).
 const (
 	ClaimOfField = "of"
 	ClaimOfSpawn = "spawn"

@@ -523,6 +523,16 @@ func streamEvents(cc *cli.Context, id, as, since string) error {
 				if err := short(); err != nil {
 					return fmt.Errorf("task attach %s: %w", id, err)
 				}
+				// A stream that closes with no end on it says nothing about the task: its
+				// record does. Said where the task has not ended, so that a transcript that
+				// stops is not read as a task that did, and where the record could not be read,
+				// which is most often verse restarting.
+				switch ended, err := taskEnded(apiClient(), id); {
+				case err != nil:
+					fmt.Fprintf(cc.Out, "  the stream closed, and the task's record could not be read: %v; `verse task get %s` says how it stands\n", err, id)
+				case !ended:
+					fmt.Fprintf(cc.Out, "  the stream closed and the task has not ended; `verse task get %s` says how it stands\n", id)
+				}
 				return nil
 			}
 			// WHAT WAS TYPED BEFORE A FRAME IS TAKEN BEFORE IT. A select with both ready takes
@@ -787,7 +797,7 @@ func recordedFailureVia(c *client.Client, id string) string {
 // runtime (completed | cancelled | "driver error") vocabularies.
 func isTerminalStatus(text string) bool {
 	switch text {
-	case "done", "cancelled", "failed", "orphaned":
+	case "done", "cancelled", "failed":
 		return true
 	}
 	return strings.Contains(text, "error")

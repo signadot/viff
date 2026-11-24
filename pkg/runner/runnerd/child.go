@@ -48,13 +48,19 @@ func ServeTask(build Builder, desc runner.Description, owned EnvOf) error {
 	return http.Serve(ln, h.HTTPHandler())
 }
 
-// exitWithLifeline exits when the runner closes the lifeline or dies. bwrap's --die-with-parent
-// covers the second on Linux; this covers both, sandboxed or not.
+// exitWithLifeline ends the process when the runner closes the lifeline or dies, and with it the
+// commands it started: the runner starts it at the head of a process group of its own, and it
+// kills that group, itself included. No sandbox is needed for a task's commands to end with the
+// task, and the runner need not live to end them. bwrap's --die-with-parent covers a runner
+// that dies on Linux; this covers both, sandboxed or not.
 func exitWithLifeline() {
 	f := os.NewFile(lifelineFD, "lifeline")
 	var b [1]byte
 	for {
 		if _, err := f.Read(b[:]); err != nil {
+			if syscall.Getpgrp() == os.Getpid() {
+				_ = syscall.Kill(0, syscall.SIGKILL)
+			}
 			os.Exit(0)
 		}
 	}

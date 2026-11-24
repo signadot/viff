@@ -24,7 +24,6 @@ its own. It acts on the [subject](../glossary.md#subject) of the condition.
 | `onDone` | an action that fires when the task ends `done` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 | `onFailed` | an action that fires when the task ends `failed` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 | `onCancelled` | an action that fires when the task ends `cancelled` ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
-| `onOrphaned` | an action for a task that ends `orphaned`, which no tracked task does ([completion hooks](#completion-hooks-one-trigger-chaining-visible)) |
 
 An action writes to the store, and it can also act on a system outside verse. A `patch` or a
 `derive` that writes to an [iod](../glossary.md#iod)'s out place asks the iod to act: to post a
@@ -302,6 +301,7 @@ Verse does not fall back to a default, and it drops nothing.
 | Field | What it names |
 |---|---|
 | `timeout` | how long the run may take, as a duration. Verse cancels it after that, on every runner. |
+| `lease` | how long the task runs on with verse out of reach, as a duration of `1m` or more. Absent is `4m`. Verse asks the runner for the task's events four times within it. A runner that has gone that long unasked stops the task and ends it `failed` with `orphaned: true`, and a minute after that verse ends the task's record the same way where the runner has not said so ([a task's lease](../runners.md#a-tasks-lease)). A longer lease rides out a longer outage, and holds the subject that much longer when the runner is really gone. |
 | `credential` | `{audience: <name>}` asks verse for a token that vouches for the task to a system outside verse: the rule's gate let this work through. It is for a rule's own spawn, of a rule that writes a gate, `mode: auto` included. See [a credential for what a gate let through](gates.md#a-credential-for-what-a-gate-let-through). |
 | `virtualKey` | the address of the model credential the run spends, such as `acme.keys.review`. Verse reads it as whoever installed the rule, so a rule cannot name a key its owner may not read. Absent is the runner's default ([virtual key](../glossary.md#virtual-key)). |
 | `retain` | how many of the task's events verse keeps for a reader who attaches late. Absent is the default. |
@@ -433,13 +433,14 @@ change that fired was a task's and not the PR's. `stage` is the stage of that PR
 not of the task.
 
 **A completion hook reads the payload of the finished task.** So does an element of a sequence
-that a hook drives. `status`, `result`, `data` and `err` are the facts it exists to read. The
-engine makes that payload itself, and does not read it from the store. The mirror may not have
-written the terminal facts yet. This is why those bindings resolve at all, and why they are
-flat. They are facts about a run, and no address holds them.
+that a hook drives. `status`, `result`, `data` and `err` are the facts it exists to read. That
+payload is the task's record as it ended: a task ends when its record says so, and the hook
+runs on that. A launch that was refused before anything ran has ended already, as `failed`
+with the refusal as its `err`. This is why those bindings are flat. They are facts about a run.
 
-Each of the four is there whatever the task said. `result` and `err` are empty where it said
-nothing, and `data` is null where its result is no document. So a hook that an `onDone` and an
+Each of them is there whatever the task said. `result` and `err` are empty where it said
+nothing, and `data` is null where its result is no document. `orphaned` is there too, `false`
+unless the task ended because verse and its runner lost each other. So a hook that an `onDone` and an
 `onFailed` share can say `.[err]` in both, and `report: .[data]` writes null for a task that gave
 no document. Reading into a null is not reading a null: `.[data.findings]` there refuses the
 firing, as any absent path does.
@@ -801,7 +802,9 @@ An `Action` carries one [hook](../glossary.md#hook) for each terminal status:
 | `onDone` | `done` |
 | `onFailed` | `failed` |
 | `onCancelled` | `cancelled` |
-| `onOrphaned` | `orphaned` |
+
+A task that ended because verse and its runner lost each other is `failed`, and its record says
+`orphaned: true`. `onFailed` reads `.[orphaned]`, which is `false` on every other end.
 
 Each hook is itself a full `Action` (`patch` + `spawn` + its own hooks). So a chain
 (`review → merge → approve`) nests `onDone`s, and reads from top to bottom in one rule.
@@ -815,10 +818,8 @@ the rule and the subject when it fires, before it writes anything, and the rule 
 about that subject again until the hook has run. The hook reads the subject as it is when the
 task ends ([Bindings](#bindings)), so what the firing wrote beside its spawn is what the hook
 finds, and no firing in between has written over it. The claim is a record in the store, as a
-sequence's run claim is, so a restart keeps it for a task that resumes and drops it for one that
-is orphaned. It comes off once the hook has written, whether the hook ran cleanly or failed, and
-whether or not the action still carries the hook. A completion the engine missed leaves the
-subject held until a restart, whose reconcile drops the claim of a task that did not resume. A
+sequence's run claim is, so a restart finds it. It comes off once the hook has written, whether
+the hook ran cleanly or failed, and whether or not the action still carries the hook. A
 firing about the subject that the hold refused is not lost: once the hook has run, the rule is
 evaluated about the subject again, at the head, if it still selects it. So a change made while
 the subject was held is seen then, and so is the hook's own write. A hold that refused nothing
@@ -845,16 +846,39 @@ change to `verse.task.instance` and names the PR by pattern. Use it when a compl
 out into several reactions, advance a different subject, or be written separately. Use the hook
 for a linear chain that one rule owns, with the task step visible in the rule.
 
-The four hooks are named fields. So an unknown status cannot be written: no field exists to write
+The three hooks are named fields. So an unknown status cannot be written: no field exists to write
 it in. Verse refuses a misspelled `onDoen` at install, as it refuses any field an action does not
 have.
 
-Hooks survive a restart. Resume restores them from the chain of the task, so `done`, `failed`
-and `cancelled` still fire.
+Hooks survive a restart. A task's hook is looked up by the chain on its record when the task
+ends, so `done`, `failed` and `cancelled` still fire for a task that was running while verse was
+down.
 
-`onOrphaned` never fires. Orphaning and adopting are the two alternatives in reconcile. A task
-that can be attached again is adopted, and never marked orphaned. A task that cannot is
-orphaned, and never tracked. So no tracked task reaches that status.
+A claim is what verse owes: the hook of a task, or the rest of a sequence. A claim found at a
+restart with no task running behind it is paid then, from the task's record, before any rule of
+its charter package fires. A record that says
+`done` runs `onDone`. A record that says another end runs that end's hook. A record that says no
+end, or no record of that run, is `failed`, `orphaned: true`, and runs `onFailed`. A sequence
+carries on from the element its `step` names, or stops there. An element that spawns nothing is
+not run again: the run ends `error` and says that verse restarted.
+
+So a hook can run twice: verse ended after the hook ran and before its claim came off. Write a
+hook so that running it again is harmless. A sequence's element can run twice in one case: the
+write of `step` that follows the element before it did not land, and verse then restarted.
+
+A task whose rule's charter package is gone when verse comes back is cancelled, and no hook
+runs: no rule is there to say what its end owes. The package's claims come off once the task's
+record says it ended, and a cancel that does not reach the task is asked again until then.
+Where verse could not read which packages there are, the task and its claim are left as they
+stand. A package [removed](charter.md#a-charter-can-be-installed-at-an-address) while verse is
+up is different: its rules are still there, so its tasks' hooks run, except a hook that would
+start work, which the package's removal refuses whole.
+
+A task on a runner is attached again at a restart, and what its runner says of it ends it. A
+runner that has no such task ends it `failed`, `orphaned: true`, and its `onFailed` runs. So does
+a runner that stopped the task because verse was away for longer than the task's `lease`. A
+task that ran in verse's own process ended with that process, and the restart writes its record
+`failed`, `orphaned: true`.
 
 ### `seq`: sequence along the chain, parallel across triggers
 
@@ -901,8 +925,8 @@ A [seq](../glossary.md#seq) follows these rules.
   patch applies, then the sequence runs.
 - The sequence owns the `done` slot of each element. So verse refuses at install an explicit
   `onDone` on any element, the last element too. The list already says what comes next.
-  `onFailed`, `onCancelled` and `onOrphaned` stay on each element as ways out, and firing one ends
-  the sequence.
+  `onFailed` and `onCancelled` stay on each element as ways out, and firing one ends the
+  sequence.
 - `onDone` on the action that *carries* the seq means "after the whole sequence". So a sequence is
   a unit with its own completion, and nesting composes.
 - An element with no spawn completes at once. So `seq: [{patch: …}, {patch: …}]` is two ordered
@@ -1042,8 +1066,8 @@ subject:
 
 | Field | What it says |
 |---|---|
-| `done` | the engine latches it when `step` reaches `steps` |
-| `ended` | the terminal status other than `done` at which an element stopped the sequence. Its own `onFailed`/`onCancelled`/`onOrphaned` runs, and the sequence stops there. `error` when an element after a finished task could not run. |
+| `done` | the engine latches it when `step` has reached `steps` and the sequence's `onDone` has run |
+| `ended` | the terminal status other than `done` at which an element stopped the sequence. Its own `onFailed`/`onCancelled` runs, and the sequence stops there. `error` when an element after a finished task could not run. |
 | `reason` | with `ended: error`, the error of the element that could not run |
 | `shape` | a hash of the declared sequence. Verse compares it at each advance. |
 

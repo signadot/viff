@@ -9,6 +9,7 @@ import (
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/entity/entitytest"
 	"github.com/signadot/verse/pkg/launch"
+	"github.com/signadot/verse/pkg/mirror"
 	"github.com/signadot/verse/pkg/systems"
 	"github.com/signadot/verse/pkg/task"
 )
@@ -109,11 +110,13 @@ func TestAHookSpawnWithNoFiringCommitReadsTheSubject(t *testing.T) {
 	eng.Start(ctx)
 	entitytest.Set(t, store, prRef("1"), entity.Obj{"stage": "open"}.Payload())
 
-	// Adopted with no record at all, so nothing says which firing it belongs to.
+	// Adopted with a record that says only how it ended, so nothing says which firing it
+	// belongs to.
 	sup := task.NewSupervisor(systems.Environment{}, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{})
 	p := task.NewTask("review@demo.pr.1", sup, immediate{}, noExec{})
 	eng.AdoptChain(prRef("1").String(), p.ID, "review", p)
-	go p.Run(context.Background())
+	p.Run(context.Background())
+	entitytest.Set(t, store, mirror.Ref(p.ID), entity.Obj{"status": string(task.Done)}.Payload())
 
 	select {
 	case hook := <-specs:

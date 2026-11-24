@@ -60,6 +60,9 @@ type Launch struct {
 	// Timeout is how long the task may run, as a duration ("1h"). Time spent waiting for an
 	// answer doesn't count; time paused does. Absent is no limit.
 	Timeout string `tony:"field=timeout,omitzero"`
+	// Lease is how long the task may run with nobody asking for its events, as a duration
+	// ("30m"), of MinLease or more. Absent is DefaultLease.
+	Lease string `tony:"field=lease,omitzero"`
 	// Converse makes the run a conversation: when the agent goes quiet the person is handed the
 	// turn, and the run ends when they end it. Set only by verse (`verse task run --attach`), and
 	// only for an offer whose `converse` is true.
@@ -398,6 +401,15 @@ func (l *Launch) Check() error {
 	if l.Timeout != "" {
 		if d, err := time.ParseDuration(l.Timeout); err != nil || d <= 0 {
 			return fmt.Errorf("timeout: %q is not a duration", l.Timeout)
+		}
+	}
+	if l.Lease != "" {
+		d, err := time.ParseDuration(l.Lease)
+		if err != nil {
+			return fmt.Errorf("lease: %q is not a duration", l.Lease)
+		}
+		if d < MinLease {
+			return fmt.Errorf("lease: %s is under %s, the shortest a lease may be", l.Lease, MinLease)
 		}
 	}
 	return nil

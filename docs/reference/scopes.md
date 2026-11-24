@@ -57,7 +57,8 @@ verse refuses it ([what a scope owns](#what-a-scope-owns)).
 
 After verse restarts, a scope's charter comes back the first time something asks for the scope.
 Until then, the scope has no engine and its rules do not run. Verse keeps no list of scopes, so
-a restart cannot start them all.
+a restart cannot start them all. The tasks the scope's rules started are attached again, and
+its claims are paid, at the same moment. A task run by hand in the scope is not attached again.
 
 Whether a scope should also run the rules of baseline is an open question
 ([why it is this way](#why-it-is-this-way)).

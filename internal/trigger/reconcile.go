@@ -177,6 +177,9 @@ func (e *Engine) reconcile(ctx context.Context) {
 
 // pass tries every pending rule once, in the order they were placed.
 func (e *Engine) pass() {
+	if !e.isOpen() {
+		return // nothing arms ahead of what the last verse left (open), which kicks a pass
+	}
 	e.trigMu.Lock()
 	snap := make([]held, len(e.pending))
 	copy(snap, e.pending)

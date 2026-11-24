@@ -7,6 +7,7 @@ import (
 
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/entity/entitytest"
+	"github.com/signadot/verse/pkg/task"
 )
 
 // A CHANGE ELSEWHERE WHILE THE SUBJECT IS FIRING IS NOT LOST. The rule copies a repo's branch into
@@ -98,4 +99,72 @@ func TestAChangeElsewhereDuringAFiringIsNotLost(t *testing.T) {
 	if got := branchOf(); got != "dev" {
 		t.Fatalf("a kept firing fired on a subject the rule no longer selects: branch %q", got)
 	}
+}
+
+// A FIRING KEPT DURING A GATED FIRING ASKS ITS OWN QUESTION. A gated rule's question stands when
+// something its condition reads changes: that firing is kept. The question is answered no, the
+// rule still selects the subject, and the kept firing runs when the first ends: its question
+// reaches the docket and stands.
+func TestAKeptFiringOfAGatedRuleAsksItsQuestion(t *testing.T) {
+	store := entitytest.Store(t)
+	reg := task.NewRegistry()
+	eng := New(store, reg)
+	repo := entity.RefAt("git", "repo", "abc")
+	entitytest.Set(t, store, repo, entity.Obj{"branch": "main"}.Payload())
+	if err := eng.AddTrigger(Trigger{
+		Name:      "ship",
+		Condition: Condition{Subject: Match{"path": pathOf("demo", "pr", "*"), "value": readOf(`!let {let: [{repo: !get-path {at: "git.repo.abc"}}], in: {stage: open}}`)}},
+		Gates:     []Gate{{Name: "ok", Mode: "ask"}},
+		Action:    Action{Patch: entity.Obj{"stage": "shipped"}.Payload()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+	pr := entity.RefAt("demo", "pr", "1")
+	asked := func(what string) string {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+			if p := reg.Pending(); len(p) == 1 {
+				return p[0].Question.ID
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: no question stands on the docket", what)
+			}
+		}
+	}
+	entitytest.Set(t, store, pr, entity.Obj{"stage": "open"}.Payload())
+	id := asked("the rule's firing")
+	fl := func() *flight {
+		eng.flightMu.Lock()
+		defer eng.flightMu.Unlock()
+		return eng.inflight["ship\x00"+pr.String()]
+	}()
+	if fl == nil {
+		t.Fatal("no firing is under way while its question stands")
+	}
+	entitytest.Set(t, store, repo, entity.Obj{"branch": "dev"}.Payload())
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		fl.mu.Lock()
+		kept := fl.again != nil
+		fl.mu.Unlock()
+		if kept {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the repo moving during the firing woke nothing that was kept")
+		}
+	}
+	if !reg.Answer(id, task.Resolution{Proceed: false, By: "alice"}) {
+		t.Fatalf("Answer(%q) found nothing", id)
+	}
+	for deadline := time.Now().Add(5 * time.Second); len(reg.Pending()) != 0; time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the answered question still stands")
+		}
+	}
+	asked("the kept firing")
+	time.Sleep(300 * time.Millisecond)
+	asked("the kept firing, a moment later")
 }

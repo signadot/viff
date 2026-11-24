@@ -83,6 +83,9 @@ type Spec struct {
 	// Timeout bounds the run: a duration ("1h"). Verse enforces it by cancelling, so it holds
 	// on every runner. Empty is no bound.
 	Timeout string `tony:"field=timeout,omitzero"`
+	// Lease is how long the task runs with nobody asking after it before its runner ends it: a
+	// duration ("30m"), of a minute or more. Empty is runner.DefaultLease.
+	Lease string `tony:"field=lease,omitzero"`
 	// VirtualKey is the ADDRESS of the model credential this work runs under —
 	// `acme.keys.review` — and the node standing there holds the key's name.
 	//
@@ -305,6 +308,7 @@ func (s Spec) Bind(b Binding) (Spec, error) {
 		Prompt:  x.text("prompt", s.Prompt),
 		Subject: x.text("subject", s.Subject),
 		Timeout: s.Timeout,
+		Lease:   s.Lease,
 		Script:  s.Script,
 		Person:  s.Person,
 	}

@@ -1,5 +1,7 @@
 package task
 
+import "time"
+
 // Runner runs and governs tasks on some substrate; verse (the engine) is its
 // client. The only implementation today is the in-process local supervisor (a runnerd
 // wrapper); remote runners addressed by a base URL — k8s, lambda, another verse — come
@@ -87,6 +89,16 @@ type Handle interface {
 	Agent() (name string, settings map[string]string)
 }
 
+// Accepting is a Handle of a task on a runner reached by request, which says when the runner
+// accepted a subscribe: what a task's lease is renewed by (runner.DefaultLease), so what a
+// reader keeping the lease counts.
+type Accepting interface {
+	// SubscribeAccepted is SubscribeSince, with an EventAccepted frame ahead of the runner's
+	// once the runner has accepted the subscribe. A stream that closes with no such frame was
+	// not accepted: the runner did not answer within the wait, or refused.
+	SubscribeAccepted(since int64, within time.Duration) (<-chan Event, func())
+}
+
 // *Task is the local Handle.
 var _ Handle = (*Task)(nil)
 
@@ -101,6 +113,14 @@ var _ Handle = (*Task)(nil)
 func FailedHandle(reason string) Handle { return failedHandle{reason} }
 
 type failedHandle struct{ err string }
+
+// NeverStarted reports whether h is the Handle for work that never started (FailedHandle), and
+// the reason it did not. Such work has ended already, as failed: there is no task to wait on, and
+// whoever holds the handle takes its end from here.
+func NeverStarted(h Handle) (reason string, ok bool) {
+	f, ok := h.(failedHandle)
+	return f.err, ok
+}
 
 func (f failedHandle) Subscribe() (<-chan Event, func()) {
 	ch := make(chan Event, 1)

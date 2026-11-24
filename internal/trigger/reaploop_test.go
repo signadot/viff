@@ -10,15 +10,14 @@ import (
 	"github.com/signadot/verse/pkg/task"
 )
 
-// THE STORE-DRIVEN REAP WATCHES WHERE TASK RECORDS ARE WRITTEN. A scoped engine retires a task
-// when its record reaches a terminal status, seen on its own watch of the mirror — the race-free
-// path, with reapOnDone's bus as the backstop. With no spawn here there is no bus, so the store
-// is the only way the task can be retired, and a watch opened anywhere but under `verse` never
-// sees the record.
+// THE REAP WATCHES WHERE TASK RECORDS ARE WRITTEN. A scoped engine retires a task when its
+// record reaches a terminal status, seen on its own watch of the mirror. The record is the only
+// way a task is retired, and a watch opened anywhere but under `verse` never sees it.
 func TestAScopedEngineReapsFromTheTaskRecord(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
 	eng.ObserveScoped(t.Context())
+	<-eng.Opened() // an end is taken once the engine is open
 
 	const id = "run-reaped"
 	eng.liveMu.Lock()

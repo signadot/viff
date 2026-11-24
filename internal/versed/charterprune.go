@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/signadot/tony-format/go-tony/ir"
 
@@ -14,17 +15,23 @@ import (
 	"github.com/signadot/verse/pkg/schedule"
 )
 
-// A PRUNE IS `verse c -R <root>` AND `verse c -a -d <dir>` AS ONE STEP: what stands at and under
-// the root afterwards is what the request holds, and nothing else.
+// A PRUNE IS `verse c -R` OF WHAT THE DIRECTORY LEAVES OUT, THEN `verse c -a -d <dir>`: what
+// stands at and under the root afterwards is what the request holds, and nothing else.
 //
-// NOT TAKEN DOWN AND PUT BACK. A package the request holds is installed over — its rules replaced
-// by name, as any install does — and then loses what its file leaves out, so a rule the directory
-// keeps goes on running through the request rather than being stopped and re-armed. The removals
-// go on the request's undo beside the installs, so a refusal anywhere puts back both.
+// A PACKAGE THE REQUEST DOES NOT HOLD IS UNINSTALLED, FIRST, as `-R` uninstalls it (uninstall.go):
+// locked, its tasks cancelled and their hooks run (those that start nothing: trigger.Engine.Close),
+// then removed. Each is asked about before any
+// is touched (mayUninstall), all are locked at once, under the charter lock, and uninstalled
+// together, and the install begins once every one is gone: nothing of the request is installed
+// beside what it replaces, and nothing is installed meanwhile where it is taking down. An
+// uninstall is not undone: an install refused after it leaves those packages removed, which is
+// where the request was taking them, and says so. The request waits for as long as their tasks
+// take to end.
 //
-// A package the request does NOT hold goes whole, as `-R` takes it. Its parts are asked about
-// before anything is installed (mayUninstall) and it is taken down last, after everything that
-// can be put back: an uninstall is not undoable, so it is the step nothing can come after.
+// A PACKAGE THE REQUEST HOLDS IS NOT TAKEN DOWN AND PUT BACK. It is installed over, its rules
+// replaced by name as any install does, and then loses what its file leaves out, so a rule the
+// directory keeps goes on running through the request. Those removals go on the request's undo
+// beside the installs, so a refusal puts back both.
 
 // NOTHING, WITH A PRUNE ROOT, IS THE ROOT EMPTIED: a directory with no charter left in it is a
 // state a repository's charters can be in (internal/repocharters: the empty tree), and installing
@@ -97,18 +104,67 @@ func (s *Server) pruneTargets(store entity.Store, scope, root string, groups []c
 	return gone, 0, nil
 }
 
-// pruneGone takes down the packages the request left out, deepest first.
-//
-// A failure here is the store failing between checks that passed and writes that did not, and it
-// is said as what it is: the install stands, and the prune stopped part-way.
-func (s *Server) pruneGone(store entity.Store, gone []string) (int, error) {
-	for _, at := range gone {
-		if err := s.takeDown(store, at); err != nil {
-			return http.StatusServiceUnavailable, fmt.Errorf("the charters installed, and the "+
-				"prune stopped at %s: %w — `verse c -R %s` finishes it", at, err, at)
+// pruneLeftOut is what a pruning install checks before it changes anything, under the charter
+// lock: the request reads, names its installer, installs at no package that is locked, and may
+// take down what it leaves out, which it answers, deepest first.
+func (s *Server) pruneLeftOut(store entity.Store, scope, at, prune string, docs []*ir.Node) ([]string, int, error) {
+	groups, err := charterFilesPruning(docs, at, prune)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	if entity.PrincipalOf(store) == "" {
+		return nil, http.StatusBadRequest, errors.New("a charter names who installs it: its rules act as their installer")
+	}
+	for _, g := range groups {
+		if err := s.lockedAt(scope, g.at); err != nil {
+			return nil, http.StatusTooManyRequests, err
 		}
 	}
-	return 0, nil
+	return s.pruneTargets(store, scope, prune, groups)
+}
+
+// ownPackageAmong is the package among those a prune would uninstall whose rules started the
+// task that is asking, "" where there is none or no task asks. The uninstall would cancel the
+// task, and the request with it, ahead of the install.
+func (h *taskCharter) ownPackageAmong(gone []string) string {
+	if h == nil {
+		return ""
+	}
+	for _, at := range gone {
+		if confine, err := trigger.ParseAt(at); err == nil && trigger.OwnerOf(h.task) == trigger.OwnerAt(confine) {
+			return at
+		}
+	}
+	return ""
+}
+
+// pruneUninstalled is err, the refusal of a pruning install, saying also what the prune had
+// uninstalled ahead of it: an uninstall is not undone.
+func pruneUninstalled(err error, gone []string) error {
+	return fmt.Errorf("%w\nthe charters the prune leaves out (%s) were uninstalled ahead of the "+
+		"install, and stay uninstalled", err, strings.Join(gone, ", "))
+}
+
+// pruneStopped says how a prune ended that did not uninstall everything it leaves out: gone[i]
+// was not uninstalled where errs[i] says why.
+func pruneStopped(root string, gone []string, errs []error) string {
+	var done, not []string
+	for i, at := range gone {
+		if errs[i] == nil {
+			done = append(done, at)
+		} else {
+			why := errs[i].Error()
+			if !strings.HasPrefix(why, at+":") {
+				why = at + ": " + why
+			}
+			not = append(not, why)
+		}
+	}
+	said := "none of the charters it leaves out was uninstalled"
+	if len(done) > 0 {
+		said = strings.Join(done, ", ") + " uninstalled"
+	}
+	return fmt.Sprintf("prune %s: nothing was installed, and the prune did not uninstall %s; %s", root, strings.Join(not, "; "), said)
 }
 
 // keep notes that the request holds this rule, level or schedule at the package being installed.

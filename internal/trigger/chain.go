@@ -96,7 +96,7 @@ func seqIndexOf(chain string) (carrier string, idx int, ok bool) {
 // navigate resolves a chain to the Action it addresses inside t. This is what makes a chain a
 // lookup key into the charter rather than a label: given `review.seq[2].onFailed` off a
 // completed task, the engine can fetch exactly the action that spawned it — which is what
-// advancing a sequence needs, and what rehydrating hooks on resume needs
+// advancing a sequence needs, and what finding a resumed task's hooks needs
 // (docs/trigger-model.md).
 //
 // Only the shapes a chain can actually have are walked: the root is the trigger name, a field
@@ -153,7 +153,7 @@ func (a *Action) eachSpawn(chain string, fn func(string, *launch.Spec)) {
 	for _, h := range []struct {
 		name string
 		act  *Action
-	}{{"onDone", a.OnDone}, {"onFailed", a.OnFailed}, {"onCancelled", a.OnCancelled}, {"onOrphaned", a.OnOrphaned}} {
+	}{{"onDone", a.OnDone}, {"onFailed", a.OnFailed}, {"onCancelled", a.OnCancelled}} {
 		h.act.eachSpawn(chain+"."+h.name, fn)
 	}
 	for i := range a.Seq {
@@ -171,8 +171,6 @@ func (a *Action) hookNamed(field string) *Action {
 		return a.OnFailed
 	case "onCancelled":
 		return a.OnCancelled
-	case "onOrphaned":
-		return a.OnOrphaned
 	}
 	return nil
 }

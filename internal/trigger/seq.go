@@ -1,10 +1,13 @@
 package trigger
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"time"
 
+	"github.com/signadot/tony-format/go-tony/ir"
 	"github.com/signadot/tony-format/go-tony/ir/kpath"
 	"github.com/signadot/verse/pkg/codec"
 	"github.com/signadot/verse/pkg/entity"
@@ -79,7 +82,7 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 	//
 	// The rule it teaches: every predicate guarding a decision must be evaluated UNDER the
 	// exclusive thing, or the exclusion guards nothing.
-	if !e.claimRun(chain, subj, nil) {
+	if !e.claimRun(chain, subj, entity.Obj{"occurrence": oc.commit.Rev}) {
 		e.tracef("seq %s: another run holds the claim for %s", chain, subj)
 		return
 	}
@@ -92,12 +95,31 @@ func (e *Engine) startSeq(chain string, carrier Action, oc occasion, subj entity
 		e.releaseRun(chain, subj)
 		return
 	}
+	e.clearConclusion(chain, subj)
 	e.publishSeq(chain, oc.parent, subj, entity.Obj{
 		seqStep:  0,
 		seqSteps: len(carrier.Seq),
 		seqShape: shape,
 	})
 	e.advanceSeq(chain, carrier, 0, oc, subj, src, false)
+}
+
+// clearConclusion removes what a run before left on the subject of how it concluded. A run
+// starts with none: what a run at an earlier shape left says nothing of this one, and read as
+// this one's it is a run that has concluded (settleRun). Each is removed at its path, where it
+// stands (clearHookFailure says why), so a subject that never ran the sequence is not written.
+func (e *Engine) clearConclusion(chain string, subj entity.Ref) {
+	facts := e.seqFacts(chain, subj)
+	trig := mirror.TriggerOf(chain)
+	for _, field := range []string{seqDone, seqEnded, seqReason} {
+		if entity.Get(facts, field) == nil {
+			continue
+		}
+		if _, _, err := e.caused(chain, 0).Write(entity.Write{At: subj.At(VerseRoot, CharterKey, trig, field)}); err != nil {
+			e.logger.Warn("a sequence's earlier conclusion could not be cleared from its subject",
+				"chain", chain, "subject", subj.String(), "field", field, "err", err.Error())
+		}
+	}
 }
 
 // advanceSeq runs elements from i onward until one SPAWNS — at which point the sequence waits
@@ -122,6 +144,16 @@ func (e *Engine) advanceSeq(chain string, carrier Action, i int, oc occasion, su
 			// that ran: this run releases, and the next commit tries again.
 			e.tracef("seq %s: element %d is held (%v); sequence stops", chain, i, err)
 			e.releaseRun(chain, subj)
+			return
+		}
+		if errors.Is(err, errParked) {
+			// A suspension holds what the element would start. Its writes have landed and its
+			// launch waits for the lift, so the element is in flight as one whose task is running
+			// is: the run keeps its claim, and the task the lift starts resumes it when it ends.
+			e.tracef("seq %s: element %d is parked; the sequence waits for the lift", chain, i)
+			if resumed {
+				e.clearHookFailure(subj, elChain)
+			}
 			return
 		}
 		if err != nil && resumed {
@@ -189,16 +221,22 @@ func occurrenceOf(oc occasion) int64 {
 	return oc.commit.Rev
 }
 
-// finishSeq latches `done` and fires the carrier's own onDone — the hook that means "after the
-// whole sequence" rather than "after one task".
+// finishSeq fires the carrier's own onDone — the hook that means "after the whole sequence"
+// rather than "after one task" — and latches `done`.
 //
 // `done` is PUBLISHED rather than derived, because a match compares a value against a pattern
 // and never one field of a payload against another: a join written as `step == steps` cannot
 // be expressed, and one written as `step: 3` silently stops meaning "finished" the moment the
 // sequence gains an element.
+//
+// THE HOOK, THEN `done`, THEN THE CLAIM. `done` says the sequence and its onDone have run, so a
+// run found holding its claim says by its facts what it is owed (settleRun): `step` at `steps`
+// and no `done` is a run whose onDone is owed, and `done` is a run that owes nothing but its
+// claim. That second is also what a firing leaves that claimed a run already concluded and went
+// no further (startSeq), and the two are settled alike.
 func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entity.Ref, src refSource) {
-	e.publishSeq(chain, oc.parent, subj, entity.Obj{seqStep: len(carrier.Seq), seqDone: true})
-	e.releaseRun(chain, subj)
+	defer e.releaseRun(chain, subj)
+	defer e.publishSeq(chain, oc.parent, subj, entity.Obj{seqStep: len(carrier.Seq), seqDone: true})
 	if carrier.OnDone != nil {
 		hook := chain + "." + "onDone"
 		if err := carrier.OnDone.apply(hook, oc, []entity.Ref{subj}, e, src); err != nil {
@@ -221,11 +259,9 @@ func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entit
 // terminal status but `done`. It is a no-op for a chain that addresses no sequence element,
 // which is every ordinary completion hook.
 //
-// It exists because fail-stop used to be implemented by a LEAK. The off-ramp path in applyHook
-// released nothing, so the run claim stood forever and blocked the next run — which looked like
-// fail-stop and was not one: `Server.reconcileClaims` clears a claim no resumed task
-// explains, so a failed sequence ran again at the next restart and never before it. A repeat
-// autonomy that turns on whether anybody bounced the server is not an autonomy.
+// The run's conclusion is what stops it running again (seqConcluded), and not its claim: a
+// claim left standing would hold the subject, and a repeat policy that turns on whether
+// anybody restarted the server is not a policy.
 //
 // The record goes down BEFORE the claim comes back, for the reason startSeq takes the claim
 // before reading `done`: between the two there is a window, and whatever is not yet written in
@@ -235,8 +271,13 @@ func (e *Engine) finishSeq(chain string, carrier Action, oc occasion, subj entit
 // `step` is not touched: advanceSeq advances it only when an element COMPLETES, so it already
 // names the last one that did, and the element that failed is `step`+1.
 func (e *Engine) stopSeq(chain string, subj entity.Ref, status task.Status) {
-	carrier, _, ok := seqIndexOf(chain)
+	carrier, idx, ok := seqIndexOf(chain)
 	if !ok {
+		return
+	}
+	// Only while `step` has not passed the element, as an advance is (resumeSeq): an end run a
+	// second time is not the run's to stop.
+	if step, ok := e.seqStep(carrier, subj); ok && step > idx {
 		return
 	}
 	// No causing commit — an off-ramp is downstream of a task finishing, which is where a
@@ -256,7 +297,16 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 	if !ok {
 		return false
 	}
-	t, ok := e.triggerNamed(mirror.TriggerOf(chain))
+	// The run's next steps are work that may launch, counted until they have run: a close waits
+	// for them, and a run whose element ends once its charter is being taken down ends here,
+	// cancelled, and starts nothing.
+	if !e.begin() {
+		e.stopSeq(chain, subj, task.Cancelled)
+		return true
+	}
+	defer e.work.Done()
+	oc.begun = true
+	t, ok := e.Rule(mirror.TriggerOf(chain))
 	if !ok {
 		e.tracef("seq %s: trigger gone; sequence cannot continue", chain)
 		e.releaseRun(carrierChain, subj)
@@ -277,11 +327,34 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 		e.releaseRun(carrierChain, subj)
 		return true
 	}
+	// AN ELEMENT'S END ADVANCES THE RUN ONLY WHILE `step` HAS NOT PASSED THAT ELEMENT. An end can
+	// be run a second time: verse ended after the run had advanced and before the element's own
+	// claim was released, and the claim found at the next start is settled by ending its task
+	// again (settleClaim). Advancing again would run the next element beside its own live task.
+	// So the second end does nothing here, and the element's claim is released by the caller.
+	// A `step` that was not written (publishSeq) leaves the run to advance as it would have.
+	if step, ok := e.seqStep(carrierChain, subj); ok && step > idx {
+		return true
+	}
 	e.publishSeq(carrierChain, oc.parent, subj, entity.Obj{seqStep: idx + 1})
 	// A resumed sequence is downstream of the task that just completed, so its elements
 	// read that task's facts — result and the rest — exactly as a hook does.
 	e.advanceSeq(carrierChain, *carrier, idx+1, oc, subj, fromCause, true)
 	return true
+}
+
+// seqStep is how many elements of the run at chain have completed about subj, as the subject
+// says it; ok is false where the subject says nothing.
+func (e *Engine) seqStep(chain string, subj entity.Ref) (int, bool) {
+	return stepIn(e.seqFacts(chain, subj))
+}
+
+func stepIn(facts entity.Payload) (int, bool) {
+	n := ir.Uncomment(entity.Get(facts, seqStep))
+	if n == nil || n.Type != ir.NumberType || n.Int64 == nil {
+		return 0, false
+	}
+	return int(*n.Int64), true
 }
 
 // seqConcluded reports whether this sequence has ALREADY RUN TO A CONCLUSION for this subject
@@ -294,8 +367,8 @@ func (e *Engine) resumeSeq(chain string, subj entity.Ref, oc occasion) bool {
 // sequence that already ran run again?
 //
 // TWO CONCLUSIONS, one autonomy. A run that finished is `done`; a run that stopped at an off-ramp
-// is `ended`, and the second used to be enforced by a claim nobody released (see stopSeq).
-// Asking about both here is what lets that claim be released, which is what keeps the mechanism
+// is `ended`. Asking about both here is what lets a stopped run's claim be released (stopSeq),
+// which is what keeps the mechanism
 // and the autonomy apart — the separation startSeq's own comment names as the thing that let each
 // shrink.
 //
@@ -319,8 +392,7 @@ func (e *Engine) seqConcluded(chain string, subj entity.Ref, shape string) bool 
 
 // seqFacts reads verse.<trigger-of-chain> off the subject, or nil.
 func (e *Engine) seqFacts(chain string, subj entity.Ref) entity.Payload {
-	store := e.reader(mirror.TriggerOf(chain))
-	ent, ok, err := store.Get(subj)
+	facts, err := e.readSeqFacts(chain, subj)
 	if err != nil {
 		// SAID, not folded into "no facts". These facts decide where a sequence has got to, so
 		// a read that did not happen looks exactly like a step that has not run.
@@ -328,10 +400,16 @@ func (e *Engine) seqFacts(chain string, subj entity.Ref) entity.Payload {
 			"subject carries none", "chain", chain, "subject", subj.String(), "err", err)
 		return nil
 	}
-	if !ok {
-		return nil
+	return facts
+}
+
+// readSeqFacts is seqFacts for a caller that tells no facts from facts unread.
+func (e *Engine) readSeqFacts(chain string, subj entity.Ref) (entity.Payload, error) {
+	ent, ok, err := e.reader(mirror.TriggerOf(chain)).Get(subj)
+	if err != nil || !ok {
+		return nil, err
 	}
-	return entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), mirror.TriggerOf(chain))
+	return entity.Get(entity.Get(entity.Get(ent.Payload, VerseRoot), CharterKey), mirror.TriggerOf(chain)), nil
 }
 
 // shapeMatches reports whether the sequence a subject is partway through is still the one the
@@ -357,7 +435,7 @@ func (e *Engine) shapeMatches(chain string, subj entity.Ref, want string) bool {
 // place for a chain to end.
 func (e *Engine) publishSeq(chain string, parent int64, subj entity.Ref, fields entity.Obj) {
 	patch := entity.Obj{VerseRoot: entity.Obj{CharterKey: entity.Obj{mirror.TriggerOf(chain): fields}}}.Payload()
-	if err := e.patchEntity(chain, parent, subj, subj, patch); err != nil {
+	if err := e.patchRecord(chain, parent, subj, patch); err != nil {
 		e.tracef("seq %s: publishing progress on %s failed: %v", chain, subj, err)
 	}
 }
@@ -419,7 +497,6 @@ func collectShapes(chain string, a *Action, into map[string]string) {
 		{"onDone", a.OnDone},
 		{"onFailed", a.OnFailed},
 		{"onCancelled", a.OnCancelled},
-		{"onOrphaned", a.OnOrphaned},
 	} {
 		if h.act != nil {
 			collectShapes(chain+"."+h.field, h.act, into)
@@ -450,10 +527,6 @@ func seqShapeHash(seq []Action) string {
 	}
 	return fmt.Sprintf("%08x", h.Sum32())
 }
-
-// ChainUnder is chainUnder, exported for the resume path: reconcile has to ask whether a
-// resumed task's chain lies under a claim's, and the answer is segment-wise.
-func ChainUnder(prefix, target string) bool { return chainUnder(prefix, target) }
 
 // chainUnder reports whether target lies at or below prefix, comparing SEGMENTS rather than
 // characters — so `review.seq` does not match a trigger named `review.sequel` (which cannot
@@ -486,11 +559,12 @@ func chainUnder(prefix, target string) bool {
 // elements where no task is live and the registry therefore had nothing to say.
 //
 // A hooked spawn's hold on its subject is the same claim (applyOne), marked on its payload,
-// since a restart keeps the two alive by different rules (versed's claimIsLive): more is what
-// the mark adds.
+// since a restart settles the two by different rules (Settle): more is what the mark adds.
 func (e *Engine) claimRun(chain string, subj entity.Ref, more entity.Obj) bool {
 	ref := mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj))
-	payload := entity.Obj{"flow": subj.String(), "chain": chain}
+	// `taken` is which claim this is: a claim's address is the same from one run to the next, and
+	// a release is of the claim it read (releaseRun).
+	payload := entity.Obj{"flow": subj.String(), "chain": chain, takenField: time.Now().UTC().Format(time.RFC3339Nano)}
 	for k, v := range more {
 		payload[k] = v
 	}
@@ -504,6 +578,70 @@ func (e *Engine) claimRun(chain string, subj entity.Ref, more entity.Obj) bool {
 
 // releaseRun drops the claim when a sequence ends, however it ends. A claim that outlives its
 // run would block the next one forever, so every exit path releases.
-func (e *Engine) releaseRun(chain string, subj entity.Ref) {
-	e.write(mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj)).At(), nil) // nil removes it
+//
+// THE RELEASE ALWAYS LANDS, AND TAKES ONLY THE CLAIM IT READ. The claim is read first and removed
+// on the condition that it is still what was read, which `taken` makes this claim and no other. So a release may be asked
+// again: where the store did not answer, the removal may or may not have landed, and by the next
+// attempt another run may hold a claim at the same address, which the condition leaves alone.
+//
+// It is tried here, so that a caller finds the claim gone when this returns, which is the
+// ordinary case and what the result reports. Where the store did not take it, it is asked again
+// in the background for as long as the engine runs, and late runs once it has landed: nothing
+// else removes a claim of this verse's while it is up, so a release that was dropped is a subject the rule
+// never fires about again.
+func (e *Engine) releaseRun(chain string, subj entity.Ref, late ...func()) bool {
+	ref := mirror.ClaimRef(spawnID(e.idOwner(), chainID(chain), subj))
+	var when []entity.Require
+	read := false
+	release := func() error {
+		if !read {
+			ent, ok, err := e.store.Get(ref)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil // nothing stands there
+			}
+			when = []entity.Require{{Pattern: entity.Unchanged(ent.Payload)}}
+			read = true
+		}
+		// Not committed is released too: the claim this read is no longer the one standing.
+		_, _, err := e.store.Write(entity.Write{At: ref.At(), Value: nil, When: when}) // nil removes it
+		return err
+	}
+	err := release()
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, context.Canceled) {
+		return false // the store is closed
+	}
+	e.logger.Warn("a claim's release did not land; it is being asked again", "at", ref.String(), "err", err)
+	go func() {
+		ctx := e.bgctx
+		if ctx == nil {
+			ctx = context.Background() // not started (a direct call in a test)
+		}
+		for wait := 250 * time.Millisecond; ; wait = min(2*wait, 8*time.Second) {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
+			err := release()
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			if err == nil {
+				for _, f := range late {
+					f()
+				}
+				return
+			}
+		}
+	}()
+	return false
 }
+
+// takenField is the field of a claim that says when it was taken.
+const takenField = "taken"

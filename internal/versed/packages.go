@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -43,6 +44,11 @@ func (s *Server) packageEngine(at string) (*trigger.Engine, error) {
 	return s.packageEngineLocked(confine, nil)
 }
 
+// errStopping is why no engine is made at an address whose last charter package is still being
+// stopped (stopWork). The address is free once its tasks have ended, so it is a refusal that
+// asking again mends (charterCode).
+var errStopping = errors.New("the charter package that was here is being stopped")
+
 // packageEngineLocked is packageEngine with the lock already held — the restore path below
 // builds several in one pass — and reads what the package declares it reads, for an engine made
 // here: set before the engine observes, since its rules are placed from their records the
@@ -54,6 +60,10 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree, reads []trigger.Su
 	}
 	if s.ctx == nil {
 		return nil, fmt.Errorf("engine not started")
+	}
+	if st := s.stopping[trigger.OwnerAt(confine)]; st != nil {
+		return nil, fmt.Errorf("%s: %w, and its tasks have not ended yet (%s): a charter is "+
+			"installed here once they have", confine.Stamp(), errStopping, strings.Join(st.ids, ", "))
 	}
 	eng := trigger.New(s.Store, s.Reg)
 	eng.Confine(confine)
@@ -68,7 +78,22 @@ func (s *Server) packageEngineLocked(confine trigger.Subtree, reads []trigger.Su
 	ctx, cancel := context.WithCancel(s.ctx)
 	// Per-trigger observation, exactly as a scope's engine has: each rule watches the subtrees
 	// it reads, which for a package is usually wider than what it may write.
+	// Shut until the tasks the last verse left it are in, which is once the start has
+	// re-attached them, whenever this engine is made. A server nobody started re-attaches none.
+	resuming := s.resuming.Load()
+	if resuming {
+		eng.AwaitTasks()
+	}
 	eng.ObserveScoped(ctx)
+	if resuming {
+		go func() {
+			select {
+			case <-s.leftIn:
+				s.handTasks(eng)
+			case <-ctx.Done():
+			}
+		}()
+	}
 	s.scopeEngs[key] = &scopeEngine{eng: eng, ctx: ctx, cancel: cancel}
 	return eng, nil
 }
@@ -408,25 +433,6 @@ func (s *Server) putPackageDecl(store entity.Store, at string, was entity.Payloa
 	return nil
 }
 
-// dropPackageEngine stops the engine at an address and forgets it, leaving nothing running for a
-// charter that is not there. It is uninstallOne's last step on its own, for the caller that has
-// already taken the records down — an install that was refused whole, at an address that had no
-// charter before it.
-func (s *Server) dropPackageEngine(at string) {
-	confine, err := trigger.ParseAt(at)
-	if err != nil {
-		return
-	}
-	s.scopeMu.Lock()
-	defer s.scopeMu.Unlock()
-	key := "at:" + confine.Stamp()
-	if pe, ok := s.scopeEngs[key]; ok {
-		pe.cancel()
-		s.susp.Detach(pe.eng)
-		delete(s.scopeEngs, key)
-	}
-}
-
 // packageImports reads the declared graph out of the store, reporting the read that did not
 // happen: a graph read as empty is one where every package reads nothing, which is the opposite
 // fact.
@@ -502,7 +508,7 @@ func (s *Server) restorePackageImports(imports map[string][]trigger.Subtree) {
 // A CHARTER UNDER IT is refused rather than swept up, because `demo` and `demo.pr` are two
 // packages and somebody removing the first did not necessarily mean the second. The refusal
 // names them; `recurse` is the operator saying they did mean it.
-func (s *Server) removePackage(store entity.Store, at string, recurse bool) error {
+func (s *Server) removePackage(ctx context.Context, store entity.Store, at string, recurse bool) error {
 	confine, err := trigger.ParseAt(at)
 	if err != nil {
 		return err
@@ -530,7 +536,7 @@ func (s *Server) removePackage(store entity.Store, at string, recurse bool) erro
 	// Deepest first, so a package is gone before the address above it is.
 	sort.Sort(sort.Reverse(sort.StringSlice(targets)))
 	for _, target := range targets {
-		if err := s.uninstallOne(store, target); err != nil {
+		if err := s.uninstallOne(ctx, store, target); err != nil {
 			return err
 		}
 	}
@@ -566,13 +572,31 @@ func (s *Server) packagesUnder(at string) []string {
 	return out
 }
 
-// uninstallOne takes down one package: its rules, then its levels, then its declaration, then
-// the engine that was running them.
-func (s *Server) uninstallOne(store entity.Store, at string) error {
-	if err := s.mayUninstall(store, at); err != nil {
+// uninstallOne uninstalls one package, where the requester may (uninstall.go). The caller does
+// not hold the charter lock: it is taken for the asking and the locking (startUninstall), and
+// again by the uninstall for the removal.
+func (s *Server) uninstallOne(ctx context.Context, store entity.Store, at string) error {
+	release, err := s.lockCharter(ctx)
+	if err != nil {
 		return err
 	}
-	return s.takeDown(store, at)
+	u, err := s.startUninstall(store, at)
+	release()
+	if err != nil {
+		return err
+	}
+	return u.wait(ctx, at)
+}
+
+// startUninstall asks whether the requester may uninstall the package at an address, and where
+// they may, locks it and starts its uninstall, or joins the one under way. The caller holds the
+// charter lock, which an install holds: nothing is installed at the address between the asking
+// and the lock (lockedAt), so what is removed is what was asked about.
+func (s *Server) startUninstall(store entity.Store, at string) (*uninstalling, error) {
+	if err := s.mayUninstall(store, at); err != nil {
+		return nil, err
+	}
+	return s.beginUninstall(store, at)
 }
 
 // mayUninstall asks whether the requester may take down every part of the package at an address,
@@ -624,13 +648,11 @@ func (s *Server) mayUninstall(store entity.Store, at string) error {
 	return nil
 }
 
-// takeDown removes the package at an address without asking (mayUninstall asks).
-func (s *Server) takeDown(store entity.Store, at string) error {
+// takeDown removes the package at an address, whose engine is eng, without asking (mayUninstall
+// asks), under the charter lock. It is the removal alone: uninstall ends the package's work
+// ahead of it.
+func (s *Server) takeDown(store entity.Store, at string, eng *trigger.Engine) error {
 	confine, err := trigger.ParseAt(at)
-	if err != nil {
-		return err
-	}
-	eng, err := s.packageEngine(at)
 	if err != nil {
 		return err
 	}
@@ -690,9 +712,9 @@ func (s *Server) takeDown(store entity.Store, at string) error {
 		fmt.Fprintf(os.Stderr, "verse: uninstall %s: removed %d record(s) the engine had not "+
 			"installed (a refused or held rule leaves one)\n", at, left)
 	}
-	// The engine LAST, and dropped from the registry as well as cancelled: a package installed
-	// again at the same address gets a new one, and a cancelled engine left in the map would be
-	// found first and observe nothing.
-	s.dropPackageEngine(at)
+	// The engine LAST, and what is left of its work with it (stopPackage): an uninstall has
+	// ended the package's tasks by now (uninstall.go), and a task still running is cancelled
+	// with no hook. A package installed at the address again gets a new engine.
+	s.stopPackage(at)
 	return nil
 }

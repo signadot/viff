@@ -276,11 +276,14 @@ verse charter -a repos.verse -d out/ --prune   # …and remove what out/ leaves 
 An install adds and replaces by name, so a rule missing from the directory stays installed.
 `--prune` makes the directory the whole truth under an address:
 
-- It is `verse c -R repos.verse` followed by `verse c -a -d out/`, as one step.
-- A rule, level or schedule missing from a file is removed, and so is a package with no file.
+- A package with no file is uninstalled first, as `verse c -R` uninstalls it: its tasks are
+  cancelled and their hooks run, except a hook that would start work, before anything of the
+  directory is installed. The install waits for as long as those tasks take to end.
+- Then the directory is installed, and a rule, level or schedule missing from a file is removed.
 - Rules the directory keeps go on running. They are not stopped and started again.
 - Every file must be at or under the address.
-- If anything is refused, the removals are put back along with the installs.
+- If the install is refused, what it changed in the packages it keeps is put back. The packages
+  it uninstalled stay uninstalled, and the refusal says which.
 
 **An install answers once its rules are accepted, not once they are armed.** A rule's watch
 opens behind the answer, and a rule held for a stratum or a runner arms when that arrives.
@@ -324,6 +327,26 @@ charters, installs the same. `--paths` lists every charter as one path per rule 
 A package is removed whole: its rules, its levels, its schedules, its declaration (what it
 reads, what it sends, its ttl), the grants on its outboxes, and the engine that runs them. What
 the package *wrote* stays. `verse data -rm` removes that.
+
+Removing a package ends its work first, in this order:
+
+1. The package is locked. Its rules fire about nothing more, its open questions leave the
+   docket, and a launch a suspension had parked is dropped.
+2. Its running tasks are cancelled. Each ends as a cancelled task does: its `onCancelled` runs
+   and its claim comes off. A sequence ends `cancelled` where it stands.
+3. Its rules, levels, schedules and declaration are removed, with its engine.
+
+While a package is locked, nothing of it starts. A hook that would spawn, or that carries a
+sequence, is refused whole: its patch does not run either, and nothing is recorded against it.
+Every change to the package is refused with `429 Too Many Requests`: an install at the address,
+of a rule, a level, a schedule or a declaration, and the removal of a rule, a level or a
+schedule. The same request is taken once the uninstall is over, so it can be asked again.
+
+A task whose runner does not answer the cancel is asked again until it ends, and the removal
+waits for it with the package still installed and locked. `verse c -R` waits too. If it is
+interrupted, the removal of the package it was waiting on goes on, and asking again joins it
+and takes the rest. If verse restarts meanwhile, the package comes back installed and unlocked,
+and the removal has to be asked again.
 
 ```sh
 verse c -r repos.verse.merge
@@ -369,7 +392,7 @@ Everything else that a restart needs is durable in the same way.
 |---|---|
 | a task | it is mirrored |
 | the position of a sequence | a fact on its subject |
-| a claim | a lease in the store |
+| a claim | a record in the store of what verse owes |
 | an open question | a record, with its ballots on it |
 | an open selection | a channel, with its ballots beside it |
 

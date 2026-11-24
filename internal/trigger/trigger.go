@@ -378,7 +378,7 @@ type Gate struct {
 	//
 	// It hangs off the GATE rather than the action because a no is the gate's outcome: two
 	// gates on one rule refuse for different reasons, and each says what its own refusal
-	// means. That also keeps it clear of onDone/onFailed/onCancelled/onOrphaned, which are
+	// means. That also keeps it clear of onDone/onFailed/onCancelled, which are
 	// completion hooks for a spawn — a denied gate has no task to complete, which is why
 	// Action.validate requires a spawn for those and must not for this one.
 	OnDenied *Action `tony:"field=onDenied,omitzero"`
@@ -585,6 +585,9 @@ type occasion struct {
 	// applied: what the rule's own spawn carries as launch.Spec.Passed. Empty for a completion
 	// hook and for a sequence's steps, which no gate was asked about when they start.
 	passed []launch.Passed
+	// begun says the work this occasion is part of is counted as work that may launch (begin),
+	// by whoever started it, until that returns: an action applied under it does not ask again.
+	begun bool
 }
 
 // reads is the store the occasion's reads go through.
@@ -750,7 +753,7 @@ type Action struct {
 	// chain — which is why there is no `par`. See docs/trigger-model.md.
 	//
 	// The sequence owns the DONE slot of each element: an element may carry onFailed /
-	// onCancelled / onOrphaned as off-ramps (firing one ends the sequence), but not onDone,
+	// onCancelled as off-ramps (firing one ends the sequence), but not onDone,
 	// because the list already says what comes next. This action's own onDone fires after the
 	// WHOLE sequence, so a sequence is a unit with its own completion and nesting composes.
 	// SeqDoc/SeqNote: the list is not a struct, so the comments about `seq:` need the field.
@@ -763,16 +766,16 @@ type Action struct {
 	// Completion hooks: when this action's Spawn reaches a terminal status, the matching
 	// hook fires as a full Action (set + spawn + its own onX) about the same subject — so a
 	// chain (review → merge → approve) reads top-to-bottom in one trigger. The engine applies
-	// it scoped to exactly this spawn's task (see Engine.applyHook / hookFor). onOrphaned is
-	// inert until resume rehydrates hooks (see docs/trigger-model.md).
+	// it scoped to exactly this spawn's task (see Engine.applyHook / hookFor). A task that
+	// ended because verse and its runner lost each other is `failed`, and its record says
+	// `orphaned: true`, which onFailed reads.
 	OnDone      *Action `tony:"field=onDone,omitzero"`      // status done (success)
 	OnFailed    *Action `tony:"field=onFailed,omitzero"`    // status failed
 	OnCancelled *Action `tony:"field=onCancelled,omitzero"` // status cancelled
-	OnOrphaned  *Action `tony:"field=onOrphaned,omitzero"`  // status orphaned
 }
 
-// hookFor returns the completion hook for a terminal status (nil if none). The four terminal
-// statuses map to the four onX fields; non-terminal statuses have no hook.
+// hookFor returns the completion hook for a terminal status (nil if none). The three terminal
+// statuses map to the three onX fields; non-terminal statuses have no hook.
 func (a *Action) hookFor(s task.Status) *Action {
 	switch s {
 	case task.Done:
@@ -781,8 +784,6 @@ func (a *Action) hookFor(s task.Status) *Action {
 		return a.OnFailed
 	case task.Cancelled:
 		return a.OnCancelled
-	case task.Orphaned:
-		return a.OnOrphaned
 	}
 	return nil
 }
@@ -799,15 +800,13 @@ func hookField(s task.Status) string {
 		return "onFailed"
 	case task.Cancelled:
 		return "onCancelled"
-	case task.Orphaned:
-		return "onOrphaned"
 	}
 	return ""
 }
 
 // hasHooks reports whether any completion hook is set — used to require a spawn for them.
 func (a *Action) hasHooks() bool {
-	return a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil || a.OnOrphaned != nil
+	return a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil
 }
 
 // does reports whether this action would do anything at all: write the subject, write another
@@ -937,7 +936,7 @@ func (a Action) validate() error {
 			return fmt.Errorf("seq[%d]: %w", i, err)
 		}
 	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled} {
 		if h == nil {
 			continue
 		}
@@ -961,7 +960,7 @@ func (a Action) credentialBeneath(at string) string {
 			return found
 		}
 	}
-	for name, h := range map[string]*Action{"onDone": a.OnDone, "onFailed": a.OnFailed, "onCancelled": a.OnCancelled, "onOrphaned": a.OnOrphaned} {
+	for name, h := range map[string]*Action{"onDone": a.OnDone, "onFailed": a.OnFailed, "onCancelled": a.OnCancelled} {
 		if h == nil {
 			continue
 		}
@@ -996,7 +995,7 @@ func (a Action) noNestedSeq(inSeq bool) error {
 			return err
 		}
 	}
-	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled, a.OnOrphaned} {
+	for _, h := range []*Action{a.OnDone, a.OnFailed, a.OnCancelled} {
 		if h == nil {
 			continue
 		}
@@ -1016,11 +1015,25 @@ func (a Action) noNestedSeq(inSeq bool) error {
 // than only traced, so a caller that has somewhere to record it (a completion hook, which
 // knows the task it belongs to) can persist it instead of dropping it into the log.
 func (a Action) apply(chain string, oc occasion, subjects []entity.Ref, e *Engine, src refSource) error {
+	// AN ACTION THAT WOULD LAUNCH IS REFUSED WHOLE WHILE ITS CHARTER IS BEING TAKEN DOWN, its
+	// write with its launch: a hook's as a firing's. Asked under the lock the closing is set
+	// under and counted until this returns, so a close waits for a launch that began (Close),
+	// and for the steps of a sequence that run off it here.
+	if (a.Spawn != nil || len(a.Seq) > 0) && !oc.begun {
+		if !e.begin() {
+			return ErrClosing
+		}
+		defer e.work.Done()
+		oc.begun = true
+	}
 	var first error
 	for _, subj := range subjects {
 		h, err := a.applyOne(chain, oc, subj, e, src)
 		if errors.Is(err, errHeld) {
 			continue // held, not failed: the hold's end owes the subject its evaluation (reconsider)
+		}
+		if errors.Is(err, errParked) {
+			continue // written, and its launch waits for a suspension to lift
 		}
 		if err != nil {
 			if first == nil {
@@ -1059,10 +1072,10 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	//
 	// It is a sequence's run claim (claimRun), at this action's own chain: create-only in the
 	// store, so two firings that race settle there, and durable, so a restart finds it and
-	// versed's reconcileClaims keeps it exactly as long as the task it guards. fireOne asks the
+	// pays what it is owed where no task is left to (Settle). fireOne asks the
 	// same question before the gates (heldForHook); this is the answer that cannot be raced.
 	hooked := a.hooked()
-	if hooked && !e.claimRun(chain, subj, entity.Obj{mirror.ClaimOfField: mirror.ClaimOfSpawn}) {
+	if hooked && !e.claimRun(chain, subj, entity.Obj{mirror.ClaimOfField: mirror.ClaimOfSpawn, "occurrence": oc.commit.Rev}) {
 		e.tracef("trigger %s: a task of this action holds %s until its hook has run; not firing", chain, subj)
 		return nil, errHeld
 	}
@@ -1070,11 +1083,16 @@ func (a Action) applyOne(chain string, oc occasion, subj entity.Ref, e *Engine, 
 	// A claim outlives this call only on a task that will end: one started, or parked for a
 	// suspension to lift (launchSpawn), which starts then. Anything else — a reference that did
 	// not resolve, a write refused, no spawner — leaves no task to release it.
-	if hooked && h == nil && !e.parkedFor(chain, subj) {
+	if hooked && h == nil && !errors.Is(err, errParked) {
 		e.releaseRun(chain, subj)
 	}
 	return h, err
 }
+
+// errParked is applyOne's answer where the action's writes landed and a suspension holds what it
+// would start (launchSpawn): the launch is parked, and the lift starts it. Not a failure, and not
+// an action that started nothing: a sequence waits at a parked element as at a running one.
+var errParked = errors.New("a suspension holds the launch until it lifts")
 
 // errHeld is applyOne's answer where the action's hooked spawn is held: a task of it is still
 // running about the subject, or ending with its hook not yet written. Not a failure of the
@@ -1085,7 +1103,7 @@ var errHeld = errors.New("a task of this action holds the subject until its hook
 // hooked reports whether the action spawns with a completion hook: the actions whose subject a
 // firing holds (applyOne) and whose task's end releases it (applyHook).
 func (a Action) hooked() bool {
-	return a.Spawn != nil && (a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil || a.OnOrphaned != nil)
+	return a.Spawn != nil && (a.OnDone != nil || a.OnFailed != nil || a.OnCancelled != nil)
 }
 
 // applyClaimed is applyOne past the claim: the write, then the spawn.
@@ -1133,9 +1151,9 @@ func (a Action) applyClaimed(chain string, oc occasion, subj entity.Ref, e *Engi
 	if a.Patch != nil {
 		// ev.Rev is the commit that woke this firing, and carrying it into the write is what
 		// makes the resulting commit a HOP rather than a fresh cause. It is 0 for a firing with
-		// no engine-caused cause — a completion hook, whose event comes off a task finishing
-		// (taskEvent leaves Rev unset) — and 0 is exactly right there: the world came back, so
-		// the chain starts again. See causal.go.
+		// no engine-caused cause — a completion hook, whose event comes off a task finishing —
+		// and 0 is exactly right there: the world came back, so the chain starts again. See
+		// causal.go.
 		if err := e.patchEntity(chain, oc.parent, subj, subj, patch); err != nil {
 			// Fail the firing rather than continuing into the spawn: a task started about
 			// a state the trigger FAILED to establish is worse than no task at all, and it
@@ -1170,7 +1188,7 @@ func (a Action) applyClaimed(chain string, oc occasion, subj entity.Ref, e *Engi
 	if src == fromCause {
 		taskFacts(b)
 	}
-	return e.launchSpawn(a, chain, subj, b, oc.commit.Rev, oc.passed)
+	return e.launchSpawn(a, chain, subj, b, oc.commit.Rev, oc.passed, oc.within)
 }
 
 // spawnSubjectValue is what `subject.value` is in a spawn's expressions: the subject's payload,
@@ -1314,15 +1332,15 @@ func (a Action) resolveDerives(chain string, oc occasion, subj entity.Ref, e *En
 // revision this run is about, 0 when nothing caused it; passed is the gates the firing passed,
 // nil for a launch no firing's gates admitted.
 func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, b launch.Binding,
-	occurrence int64, passed []launch.Passed) (task.Handle, error) {
+	occurrence int64, passed []launch.Passed, within [][]string) (task.Handle, error) {
 	// A SUSPENDED SUBJECT STARTS NOTHING. A hook's writes and derives have landed by now —
 	// recording is not progress — and what it would start is parked here. The lift starts it.
 	if held := e.settled(mirror.TriggerOf(chain), subj); len(held) > 0 {
-		e.park(parkedLaunch{a: a, chain: chain, subj: subj, binding: b, occurrence: occurrence, passed: passed})
+		e.park(parkedLaunch{a: a, chain: chain, subj: subj, binding: b, occurrence: occurrence, passed: passed, within: within})
 		e.tracef("%s: %s is suspended (%s); its launch is parked", chain, subj, strings.Join(held, ", "))
-		return nil, nil
+		return nil, errParked
 	}
-	return e.launch(a, chain, subj, b, occurrence, passed)
+	return e.launch(a, chain, subj, b, occurrence, passed, within)
 }
 
 // ownerSettle is how long a firing spawning `as: subject` waits for the subject's owner record to
@@ -1330,8 +1348,9 @@ func (e *Engine) launchSpawn(a Action, chain string, subj entity.Ref, b launch.B
 const ownerSettle = 250 * time.Millisecond
 
 // launch is launchSpawn past the suspension: what a parked launch re-enters when it is released.
+// within is the firing's narrowing (occasion.within), which the task's hooks read by.
 func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Binding,
-	occurrence int64, passed []launch.Passed) (task.Handle, error) {
+	occurrence int64, passed []launch.Passed, within [][]string) (task.Handle, error) {
 	spec, refused := a.Spawn.Bind(b)
 	// What the firing's gates settled, the engine's to say and nobody else's: it is what a
 	// credential vouches for, so a value a charter wrote there does not survive to it.
@@ -1361,7 +1380,7 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Bindin
 	// entity's payload and re-Puts it on every event, so a field the engine wrote afterwards
 	// would be clobbered. Engine-owned, like Subject above.
 	//
-	// The lookup key a resumed task's hooks are rehydrated from (AdoptChain).
+	// The lookup key a resumed task's hooks are found by when it ends (hooksOf).
 	spec.Chain = chain
 	// And WHICH RUN this is. The id names the work — chain plus subject, so a re-fire is
 	// idempotent — and nothing named the occurrence, so a second run overwrote the first
@@ -1399,14 +1418,14 @@ func (e *Engine) launch(a Action, chain string, subj entity.Ref, b launch.Bindin
 		e.tracef("trigger %s: %v; the task fails without starting", chain, err)
 		e.failed(chain, subj, err)
 		spec.Refusal = err.Error()
-		return e.startHooked(id, spec, &hooks, chain, func(id string, spec launch.Spec) task.Handle {
+		return e.startHooked(id, spec, &hooks, chain, within, func(id string, spec launch.Spec) task.Handle {
 			if h := e.spawn(id, spec); h != nil {
 				return h
 			}
 			return task.FailedHandle(spec.Refusal)
 		}), nil
 	}
-	return e.spawnHooked(id, spec, &hooks, chain), nil
+	return e.startHooked(id, spec, &hooks, chain, within, e.spawn), nil
 }
 
 // installLaunch is a charter's spawn as the launch it will become, for the checks made at
@@ -1418,6 +1437,7 @@ func installLaunch(spec launch.Spec) (l runner.Launch, known bool) {
 	l = runner.Launch{
 		ID: "install", Prompt: spec.Prompt, Script: spec.Script, Person: spec.Person,
 		Environment: templatedEnvironment(spec.Environment), Autonomy: spec.Autonomy, Timeout: spec.Timeout,
+		Lease: spec.Lease,
 	}
 	known = true
 	if spec.Agent != nil {

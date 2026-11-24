@@ -14,9 +14,7 @@ import (
 	"github.com/signadot/verse/pkg/task"
 )
 
-// answering is a driver that completes immediately with a final answer — fast enough that
-// the bus-driven reapOnDone reliably beats mirror.Reflect to the retire, which is the
-// condition the terminal bindings used to be wrong under.
+// answering is a driver that completes immediately with a final answer.
 type answering struct{ r string }
 
 func (answering) Next(context.Context, task.StepResult) (task.ToolUse, bool, error) {
@@ -41,10 +39,8 @@ func hookResultEngine(t *testing.T, answer string) (*Engine, entity.Store) {
 	return eng, store
 }
 
-// A completion hook binds the TERMINAL payload. reapOnDone and mirror.Reflect are two
-// independent readers of the same task bus, so the hook used to see the pre-terminal
-// projection instead: status bound "running" and result was absent — the payload a
-// completion hook exists to read.
+// A completion hook binds the TERMINAL payload: the status the task ended with and what it
+// said, which are the facts a completion hook exists to read.
 func TestHookBindsTerminalStatusAndResult(t *testing.T) {
 	eng, store := hookResultEngine(t, "SHIPIT")
 

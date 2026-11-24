@@ -10,6 +10,7 @@ import (
 	"github.com/signadot/verse/pkg/entity"
 	"github.com/signadot/verse/pkg/entity/entitytest"
 	"github.com/signadot/verse/pkg/launch"
+	"github.com/signadot/verse/pkg/mirror"
 	"github.com/signadot/verse/pkg/runner"
 	"github.com/signadot/verse/pkg/task"
 )
@@ -59,6 +60,7 @@ func TestCancelLiveCancelsWithoutHooks(t *testing.T) {
 		mu.Lock()
 		handles[spec.Subject] = h
 		mu.Unlock()
+		mirror.Reflect(store, id, h, mirror.Meta{Subject: spec.Subject, Chain: spec.Chain, Occurrence: spec.Occurrence})
 		return h
 	})
 	if err := eng.AddTrigger(Trigger{

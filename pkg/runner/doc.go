@@ -39,6 +39,22 @@
 // arrives and refuses what it can't honour with `400` and the reason (runnerd.CheckLaunch), and
 // a new autonomy the same way (runnerd.CheckAutonomy).
 //
+// # The lease
+//
+// A task runs only while somebody reads it. Its lease is the launch's (Launch.Lease, LeaseOf),
+// and counts from the launch and again from each GET /tasks/{id}/events the runner answers. A
+// launch of a running task joins it, and its lease is the joining launch's from then. A
+// runner answers that route at once, and ends a task whose lease runs out as failed and
+// orphaned, on its terminal frame, on every stream still open, and on its snapshot
+// (docs/runners.md).
+//
+// # Answers
+//
+// Every answer a runner's own handler gives on these routes carries AnswerHeader, its refusals
+// included; a door in front of it, such as its auth, need not. What verse acts on as a fact
+// about a task, a 404 for it and an accepted subscribe, it takes only from an answer that
+// carries it: anything in front of a runner can answer HTTP.
+//
 // Bodies are tony by default; a request's Content-Type and Accept pick the format. A refusal
 // is a status, and the client reads each as one of the errors in pkg/task/errors.go.
 package runner

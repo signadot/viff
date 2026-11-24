@@ -236,7 +236,7 @@ read:
 				if err := short(); err != nil {
 					return nil, taskEventsOutput{}, fmt.Errorf("task events %s, after cursor %s: %w", in.ID, out.Cursor, err)
 				}
-				out.Ended = taskEnded(m.c.With(ctx), in.ID)
+				out.Ended, _ = taskEnded(m.c.With(ctx), in.ID)
 				out.Closed = !out.Ended
 				break read
 			}
@@ -306,11 +306,15 @@ func named(id string) error {
 	return nil
 }
 
-// taskEnded is whether the task's record says it has ended. A record not read says it has not, and
-// the next call from the cursor asks again.
-func taskEnded(c *client.Client, id string) bool {
+// taskEnded is whether the task's record says it has ended, and why it could not be read where
+// it was not. A record not read says it has not ended, and the next call from the cursor asks
+// again.
+func taskEnded(c *client.Client, id string) (bool, error) {
 	var snap api.Task
-	return taskSnapshotVia(c, id, &snap) == nil && snap.Status.Terminal()
+	if err := taskSnapshotVia(c, id, &snap); err != nil {
+		return false, err
+	}
+	return snap.Status.Terminal(), nil
 }
 
 func (m *mcpServer) taskRun(ctx context.Context, _ *mcp.CallToolRequest, in taskRunIn) (*mcp.CallToolResult, any, error) {

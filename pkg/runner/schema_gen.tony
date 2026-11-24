@@ -90,6 +90,7 @@ define:
   credential: .[string]
   environment: !irtype {}
   id: .[string]
+  lease: .[string]
   occurrence: .[int]
   person: .[string]
   prompt: .[string]

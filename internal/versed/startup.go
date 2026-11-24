@@ -24,10 +24,12 @@ const (
 // follows another names it (awaiting), and status lists them.
 const (
 	phasePerms       = "loaded the perms mirror"
+	phaseResume      = "re-attached tasks"
 	phaseSuspensions = "loaded the suspensions"
 	phaseTasks       = "reconciled tasks"
 	phaseCharter     = "restored the charter"
 	phasePackages    = "restored packages"
+	phaseSettle      = "settled tasks and claims"
 	phaseSystem      = "installed the system charter"
 	phaseSystems     = "installed the systems' documents"
 	phaseDeadlines   = "armed deadlines"
@@ -169,10 +171,12 @@ func (s *Server) charterIn(ctx context.Context, eng *trigger.Engine, what string
 // reason Start waits for baseline's: a scope's engine is made on demand, by a request that then
 // reads or writes its charter. A charter not in by then is logged, as Start's are, and arrives
 // when the store answers: the engine follows its records whether or not anybody waited.
-func (s *Server) restoreScopeCharter(ctx context.Context, eng *trigger.Engine, scope string) {
+func (s *Server) restoreScopeCharter(ctx context.Context, eng *trigger.Engine, scope string) bool {
 	if err := s.charterIn(ctx, eng, "the charter of scope "+scope); err != nil {
 		fmt.Fprintf(os.Stderr, "verse: charter (scope %s): %v\n", scope, err)
+		return false
 	}
+	return ctx.Err() == nil
 }
 
 // SeedError is what the permission seed refused with, nil when it landed. A server holding one
@@ -189,7 +193,9 @@ func (s *Server) SeedError() error { return s.seedErr }
 // while an operator (and the probe) gets an answer instead of a refused connection.
 func (s *Server) StartServing(ctx context.Context) {
 	s.ctx = ctx
-	s.susp.Unload() // before the first request can be served, which Start's goroutine is not
+	s.susp.Unload()        // before the first request can be served, which Start's goroutine is not
+	s.resuming.Store(true) // likewise: an engine a request makes waits for its tasks
+	s.Eng.AwaitTasks()     // and the root package's is shut before a request can hand it one
 	go s.Start(ctx)
 }
 
@@ -212,11 +218,21 @@ func (s *Server) Start(ctx context.Context) {
 	// The perms mirror, loaded and watched, so the check every write and read makes costs no
 	// round trip: on a busy store the per-write read hit its deadline and refused the write.
 	phase(phasePerms, func() error { return entity.Track(ctx, s.Store) })
-	// The suspensions before anything they could hold is re-attached or restored: until they
-	// have loaded they hold everything, and a store that cannot serve them holds every rule and
-	// task, since a suspension that failed open on a restart would resume what somebody stopped.
+	// The root package's engine is shut until the tasks the last verse left are handed to it
+	// (reconcileTasks), however long that takes: no rule of it arms ahead of them.
+	s.Eng.AwaitTasks()
+	s.resuming.Store(true)
+	// THE TASKS THE LAST VERSE LEFT ARE SUBSCRIBED TO FIRST. Each one's lease has been running
+	// since the last verse stopped asking for its events, and a subscribe is what renews it, so
+	// nothing that can wait goes ahead of this. It is the subscribing alone: no engine has the
+	// tasks yet.
+	phase(phaseResume, s.resumeLeft)
+	// The suspensions before anything they could hold is handed to an engine or restored:
+	// until they have loaded they hold everything, and a store that cannot serve them holds
+	// every rule and task, since a suspension that failed open on a restart would resume what
+	// somebody stopped.
 	phase(phaseSuspensions, s.restoreSuspensions)
-	phase(phaseTasks, s.reconcileTasks) // resume remote-hosted tasks; orphan local-dead ones
+	phase(phaseTasks, s.reconcileTasks) // the re-attached tasks, each to its engine
 	// Per-trigger subtree observation — no root watch. The baseline engine watches
 	// exactly the (system[,kind]) subtree each trigger matches, the same docd-aligned
 	// model the scoped engines use; a mount under verse no longer collides with (and
@@ -244,8 +260,8 @@ func (s *Server) Start(ctx context.Context) {
 	// happens on demand — the first scoped request, i.e. the dev reconnecting (see
 	// scopeEngine). It cannot happen here, because a restart cannot enumerate the scopes that
 	// have one: a scope's layer is invisible from baseline and nothing registers a scope's
-	// existence. So a scope nobody has come back to sits inert, which is the remaining
-	// half of the gap scoped resume also has (see reconcileClaims).
+	// existence. So a scope nobody has come back to sits inert, its tasks and claims with it
+	// (resumeScope).
 	phase(phaseCharter, func() error {
 		if err := s.awaiting(phaseSuspensions); err != nil {
 			return err
@@ -256,7 +272,15 @@ func (s *Server) Start(ctx context.Context) {
 	// anyone can list, so unlike a scope a restart can bring every one of them back rather than
 	// waiting for somebody to reconnect. It follows the baseline load because the two split the
 	// same listing between them — baseline takes the unstamped records, a package its own.
-	phase(phasePackages, s.restorePackages)
+	phase(phasePackages, func() error {
+		err := s.restorePackages()
+		s.packagesRestored.Store(err == nil)
+		return err
+	})
+	// What the last verse left to a package that is not there is stopped, and that package's
+	// claims removed: which packages there are is the restore above's to say. Every other task
+	// and claim is its own engine's, handed over and settled as the engine opens.
+	phase(phaseSettle, s.settleTasks)
 	// And the charter the deployment itself stands behind, as the system. After the restore,
 	// so that it is installed over what stood rather than under it, and every time, since an
 	// install of what already stands is a no-op with a revision attached and the file is the

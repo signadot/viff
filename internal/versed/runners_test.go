@@ -617,10 +617,10 @@ func TestRestartReattachesEvenAfterTheRunnerIsRemoved(t *testing.T) {
 
 	// "verse restart": a new server over the same store.
 	second := issuing(t, serverWith(t, runnerdtest.Scripted, store))
-	second.reconcileTasks()
+	reconcile(t, second)
 
 	rec := instanceOf(t, second, id)
-	if st, _ := rec["status"].(string); st == string(task.Orphaned) {
+	if st, _ := rec["status"].(string); st == string(task.Failed) {
 		t.Fatal("the restart orphaned work that is still running — the runner entity was gone, " +
 			"but the url on the task is what a restart reconstructs from")
 	}

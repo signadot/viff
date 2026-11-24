@@ -76,7 +76,7 @@ func waitField(t *testing.T, store entity.Store, ref entity.Ref, key string, wan
 
 // A spawn's onDone fires when its task completes — advancing the subject in ONE trigger,
 // with no separate completion trigger. Runs under ObserveScoped (versed's mode) with the
-// immediate (fast) driver, so it also exercises the race-free store-driven reapLoop path.
+// immediate (fast) driver, so the task has ended before anything waits on it.
 func TestOnDoneFiresUnderScoped(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -306,9 +306,8 @@ func TestAdoptDropsHooks(t *testing.T) {
 	}
 }
 
-// Resume rehydrates a task's hooks from its CHAIN. This is what a chain being a lookup key
-// into the charter buys: before it, a completion after a restart silently ended a chain,
-// because Adopt tracked the task with no hooks at all.
+// A resumed task's hooks are found by its CHAIN when it ends. This is what a chain being a
+// lookup key into the charter buys: a completion after a restart carries its chain on.
 func TestAdoptChainRehydratesHooks(t *testing.T) {
 	store := entitytest.Store(t)
 	eng := New(store, task.AutoResolver{})
@@ -341,7 +340,7 @@ func TestAdoptChainRehydratesHooks(t *testing.T) {
 	waitField(t, store, prRef("1"), "stage", "reviewed")
 }
 
-// Rehydration fails softly, and the failures are ordinary: a trigger removed while its
+// The lookup fails softly, and the failures are ordinary: a trigger removed while its
 // task ran, or a chain the charter no longer has. The task is still adopted — steerable
 // and reaped — there is simply no action left to run.
 func TestAdoptChainSurvivesAMissingCharter(t *testing.T) {

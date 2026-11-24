@@ -28,7 +28,7 @@ func TestARestartReadsATasksLaunchBackOffItsRecord(t *testing.T) {
 		"virtualKey":  "acme.keys.review",
 	}.Payload())
 
-	srv.reconcileTasks()
+	reconcile(t, srv)
 
 	got := srv.hostedOf("remote-1").launched
 	if got == nil {
@@ -112,7 +112,7 @@ func TestWhatVerseHostedOfAResumedTaskIsDroppedAfterItEnds(t *testing.T) {
 		"environment": entity.Obj{"systems": entity.Obj{"question": entity.Obj{}}},
 	}.Payload())
 
-	srv.reconcileTasks()
+	reconcile(t, srv)
 
 	waitTaskStatus(t, srv, "resumed", "done")
 	waitRetired(t, srv, clock, "resumed")

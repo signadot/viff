@@ -84,7 +84,7 @@ A `Builder` returns no error. To refuse a launch, return
 | `GET /describe` | none | `200` and what the runner offers: its agents, with the settings each takes, and whether it runs scripts, and the systems each holds, with what the runner builds of each (`builds`, the network's modes) and the ceiling over each. Verse checks a spawn against it. |
 | `GET /tasks` | none | `200` and a list of `verse-task-snapshot`, one for each task the runner hosts |
 | `GET /tasks/{id}` | none | `200` and one `verse-task-snapshot` |
-| `GET /tasks/{id}/events?since=N` | none | the event stream of the task, as server-sent events. Each holds one event, a `verse-task-event`. |
+| `GET /tasks/{id}/events?since=N` | none | the event stream of the task, as server-sent events. Each holds one event, a `verse-task-event`. Answered at once, and each one answered renews [the task's lease](../runners.md#a-tasks-lease). |
 | `POST /tasks` | `verse-runner-launch` | `201` and the task's `verse-task-snapshot` when the runner built the task. `200` and the same when the task was already running. `400` when the body does not parse, or when the runner will not host the task, with the reason. |
 | `POST /tasks/{id}/resolve` | `verse-runner-resolve` | `204` when applied. `404` when the task has no such open question. |
 | `POST /tasks/{id}/say` | `verse-runner-say` | `204` when applied. `410` when the task has ended, since nothing said to it would be heard. |

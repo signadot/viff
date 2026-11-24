@@ -176,23 +176,3 @@ func TestDoNoDeadlockAfterCancel(t *testing.T) {
 		t.Fatal("do() deadlocked after the engine's ctx was cancelled")
 	}
 }
-
-// On restart the durable store may hold task:instance entities a crashed run left
-// running; ReconcileOrphans retires them (they have no live handle) without touching
-// already-terminal ones.
-func TestReconcileOrphans(t *testing.T) {
-	store := entitytest.Store(t)
-	entitytest.Set(t, store, mirror.Ref("old-running"), entity.Obj{"status": string(task.Running), "flow": `demo.pr."1"`}.Payload())
-	entitytest.Set(t, store, mirror.Ref("old-done"), entity.Obj{"status": string(task.Done), "flow": `demo.pr."2"`}.Payload())
-
-	eng := New(store, task.AutoResolver{})
-	if n := eng.ReconcileOrphans(); n != 1 {
-		t.Fatalf("reconciled %d, want 1", n)
-	}
-	if e, _, _ := store.Get(mirror.Ref("old-running")); entity.ToObj(e.Payload)["status"] != string(task.Orphaned) {
-		t.Fatalf("running task not orphaned: %+v", e.Payload)
-	}
-	if e, _, _ := store.Get(mirror.Ref("old-done")); entity.ToObj(e.Payload)["status"] != string(task.Done) {
-		t.Fatalf("completed task wrongly touched: %+v", e.Payload)
-	}
-}
