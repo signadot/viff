@@ -1,0 +1,4 @@
+# Every package path under the module answers with the module's page: the go command asks
+# for go.viff.dev/viff/<any/package>?go-get=1 and reads the go-import tag from what it gets.
+/viff/*  /viff/index.html  200
+/        https://github.com/signadot/viff  302
