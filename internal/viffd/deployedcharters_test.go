@@ -35,6 +35,12 @@ var renderedExamples = []string{
 	"../../docs/reference/examples/repo-charters/repo-charters.tony",
 }
 
+// configExamples is the example files that are no charter: a .tony beside the charters that is
+// read as something else, so it is not installed here.
+var configExamples = []string{
+	"../../docs/reference/examples/tui/viff.tony", // the tui section of viff's config
+}
+
 // repoCharters is the repository's own charters, and repoChartersAt where this test's deployment
 // has the git io install them (a deployment's auth file names its own): the whole
 // directory as one request with a prune, as `viff c -a <address> -d <dir> --prune` sends it.
@@ -50,8 +56,8 @@ const (
 // that stops installing is found here and not at the next ship, or at the next change to the
 // charters on main.
 func TestEveryDeployedCharterInstalls(t *testing.T) {
-	// Every example charter in the tree is in the order, or named as viffd's to render: one added
-	// beside these is installed here too, or says why not, and the examples README's promise that
+	// Every example .tony in the tree is in the order, or named as viffd's to render, or named as
+	// no charter: one added beside these is installed here too, or says why not, and the examples README's promise that
 	// each is tested holds.
 	var inTree []string
 	err := filepath.WalkDir("../../docs/reference/examples", func(path string, d os.DirEntry, err error) error {
@@ -72,6 +78,7 @@ func TestEveryDeployedCharterInstalls(t *testing.T) {
 		listed = append(listed, files...)
 	}
 	listed = append(listed, renderedExamples...)
+	listed = append(listed, configExamples...)
 	sort.Strings(listed)
 	sort.Strings(inTree)
 	if strings.Join(listed, "\n") != strings.Join(inTree, "\n") {
