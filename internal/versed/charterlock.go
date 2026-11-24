@@ -2,6 +2,7 @@ package versed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -78,13 +79,17 @@ func (s *Server) lockCharter(ctx context.Context) (func(), error) {
 		// The CALLER's context ending is a client that went away, and the deadline is this
 		// server being busy. Different news, and only the second is worth a Retry-After.
 		if ctx.Err() == context.DeadlineExceeded {
-			return func() {}, fmt.Errorf("another charter operation is in progress and did not "+
+			return func() {}, fmt.Errorf("%w and did not "+
 				"finish within %s — a charter is installed and removed one at a time, so this "+
-				"is a queue rather than a refusal: try again", wait)
+				"is a queue rather than a refusal: try again", errCharterBusy, wait)
 		}
 		return func() {}, ctx.Err()
 	}
 }
+
+// errCharterBusy is why a charter operation that waited its turn for the charter lock, and did
+// not get it, is refused: answered 503, to be asked again.
+var errCharterBusy = errors.New("another charter operation is in progress")
 
 // ctxOrBackground is the server's lifetime context, or Background before Start has set one.
 // Callers that are not handlers use it, so a charter operation on the startup path is bounded
@@ -105,9 +110,23 @@ func (s *Server) ctxOrBackground() context.Context {
 func (s *Server) lockCharterHTTP(w http.ResponseWriter, r *http.Request) (func(), bool) {
 	release, err := s.lockCharter(r.Context())
 	if err != nil {
-		w.Header().Set("Retry-After", "5")
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		charterError(w, err.Error(), http.StatusServiceUnavailable)
 		return release, false
 	}
 	return release, true
+}
+
+// charterError answers a charter request refused with code. A refusal that asking again mends
+// says when to ask (Retry-After): a package being uninstalled (429), and a server busy with
+// another charter operation or a store that did not answer (503).
+func charterError(w http.ResponseWriter, msg string, code int) {
+	if code == http.StatusTooManyRequests || code == http.StatusServiceUnavailable {
+		w.Header().Set("Retry-After", "5")
+	}
+	http.Error(w, msg, code)
+}
+
+// charterRefused is charterError for an error, with the code it is answered with (charterCode).
+func charterRefused(w http.ResponseWriter, err error) {
+	charterError(w, err.Error(), charterCode(err))
 }

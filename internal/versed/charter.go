@@ -422,11 +422,11 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 	// nobody checked is the system deleting somebody's rule, its owner record with it, and
 	// leaving the name free for the stranger who asked.
 	if err := s.lockedAt(r.URL.Query().Get("scope"), r.URL.Query().Get("at")); err != nil {
-		http.Error(w, err.Error(), http.StatusTooManyRequests)
+		charterError(w, err.Error(), http.StatusTooManyRequests)
 		return
 	}
 	if eng.Closing() {
-		http.Error(w, trigger.ErrClosing.Error(), http.StatusTooManyRequests)
+		charterError(w, trigger.ErrClosing.Error(), http.StatusTooManyRequests)
 		return
 	}
 	who := entity.PrincipalOf(s.scopedStore(r))
@@ -434,6 +434,9 @@ func (s *Server) deleteCharterItem(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if removed {
 		w.WriteHeader(http.StatusNoContent)
+		return
+	} else if err != nil {
+		charterRefused(w, err) // the engine closed meanwhile, or the delete did not land
 		return
 	}
 	// A schedule is the daemon's record rather than the engine's, and is removed by the
@@ -524,7 +527,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 	if prune != "" {
 		var code int
 		if gone, code, err = s.pruneLeftOut(store, scope, at, prune, docs); err != nil {
-			http.Error(w, err.Error(), code)
+			charterError(w, err.Error(), code)
 			return
 		}
 		if own := hold.ownPackageAmong(gone); own != "" {
@@ -550,13 +553,12 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 			failed = failed || errs[i] != nil
 		}
 		if failed {
-			http.Error(w, pruneStopped(prune, gone, errs), http.StatusServiceUnavailable)
+			charterError(w, pruneStopped(prune, gone, errs), http.StatusServiceUnavailable)
 			return
 		}
 		again, err := s.lockCharter(r.Context())
 		if err != nil {
-			w.Header().Set("Retry-After", "5")
-			http.Error(w, pruneUninstalled(err, gone).Error(), http.StatusServiceUnavailable)
+			charterError(w, pruneUninstalled(err, gone).Error(), http.StatusServiceUnavailable)
 			return
 		}
 		release = again
@@ -566,7 +568,7 @@ func (s *Server) addCharter(w http.ResponseWriter, r *http.Request) {
 		if len(gone) > 0 {
 			err = pruneUninstalled(err, gone)
 		}
-		http.Error(w, err.Error(), code)
+		charterError(w, err.Error(), code)
 		return
 	}
 	release()
@@ -1425,12 +1427,8 @@ func (s *Server) deleteCharter(w http.ResponseWriter, r *http.Request) {
 		if refused(w, err) {
 			return
 		}
-		if r.Context().Err() != nil {
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		if entity.IsUnread(err) {
-			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		if r.Context().Err() != nil || entity.IsUnread(err) || errors.Is(err, errCharterBusy) {
+			charterError(w, err.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1461,7 +1459,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 	}
 	kind, name := rest[0], rest[1]
 	if err := s.lockedAt(r.URL.Query().Get("scope"), at); err != nil {
-		http.Error(w, err.Error(), http.StatusTooManyRequests)
+		charterError(w, err.Error(), http.StatusTooManyRequests)
 		return
 	}
 	if kind == "schedules" {
@@ -1503,7 +1501,7 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 		return
 	}
 	if eng.Closing() {
-		http.Error(w, at+": "+trigger.ErrClosing.Error(), http.StatusTooManyRequests)
+		charterError(w, at+": "+trigger.ErrClosing.Error(), http.StatusTooManyRequests)
 		return
 	}
 	who := entity.PrincipalOf(s.scopedStore(r)) // see deleteCharterItem: the engine refuses for them
@@ -1512,6 +1510,9 @@ func (s *Server) deleteCharterAt(w http.ResponseWriter, r *http.Request, at stri
 			return
 		} else if removed {
 			w.WriteHeader(http.StatusNoContent)
+			return
+		} else if err != nil {
+			charterRefused(w, err) // see deleteCharterItem
 			return
 		}
 		notHere()
@@ -1613,7 +1614,7 @@ func charterCode(err error) int {
 	if errors.Is(err, trigger.ErrClosing) || errors.Is(err, errStopping) {
 		return http.StatusTooManyRequests
 	}
-	if errors.Is(err, trigger.ErrCharter) {
+	if errors.Is(err, trigger.ErrCharter) || errors.Is(err, errCharterBusy) {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusBadRequest

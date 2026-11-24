@@ -159,6 +159,15 @@ func runningPackageAt(t *testing.T, at, rule string, deaf *atomic.Bool) (*Server
 // runningPackageOn is runningPackageAt on a store the test gives.
 func runningPackageOn(t *testing.T, store entity.Store, at, rule string, deaf *atomic.Bool) (*Server, string, string) {
 	t.Helper()
+	return runningPackageGated(t, store, at, rule, func(r *http.Request) bool {
+		return deaf.Load() && strings.HasSuffix(r.URL.Path, "/cancel")
+	})
+}
+
+// runningPackageGated is runningPackageOn whose runner answers no request refuse says it does
+// not: a 503 from in front of it, as from an ingress whose runner is not there.
+func runningPackageGated(t *testing.T, store entity.Store, at, rule string, refuse func(*http.Request) bool) (*Server, string, string) {
+	t.Helper()
 	release := make(chan struct{})
 	build := func(l runner.Launch, _ *task.Registry) *task.Task {
 		sup := systemstest.Opened(task.NewSupervisor(l.Environment, task.Autonomy{{Then: task.Then{Mode: task.ThenAllow}}}, task.AutoResolver{}), l.Environment)
@@ -177,7 +186,7 @@ func runningPackageOn(t *testing.T, store entity.Store, at, rule string, deaf *a
 	}
 	runs := offeringAll(runnerd.NewInProcessHandler(build), "fake").HTTPHandler()
 	face := provenFace(t, ts.URL, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if deaf.Load() && strings.HasSuffix(r.URL.Path, "/cancel") {
+		if refuse(r) {
 			http.Error(w, "the runner is not answering", http.StatusServiceUnavailable)
 			return
 		}
@@ -283,6 +292,8 @@ func TestATaskThatDoesNotTakeItsCancelHoldsTheUninstall(t *testing.T) {
 	}
 	if resp := del(t, tester, url+"/charter?path=demo.schedules.hourly"); resp.StatusCode != 429 {
 		t.Fatalf("removing a schedule of a package that is being uninstalled = %d, want 429", resp.StatusCode)
+	} else if resp.Header.Get("Retry-After") == "" {
+		t.Fatal("the 429 for a package being uninstalled does not say when to ask again")
 	}
 	if code, msg := pruneAt(t.Context(), t, url, "demo", "at: demo\nrules: []\n"); code != 429 {
 		t.Fatalf("a pruning install that keeps a package that is being uninstalled = %d, want 429: %s", code, msg)
@@ -464,4 +475,40 @@ func TestAnInstallThatCannotListTheCharterLeavesARunningPackageAlone(t *testing.
 		t.Fatalf("the package's engine or rule is gone after a refused install at it (%d: %s)", code, msg)
 	}
 	t.Logf("refused %d: %s", code, msg)
+}
+
+// AN UNINSTALL WAITS OUT A RUNNER IT CANNOT REACH. Nothing the runner is asked is answered: the
+// cancel, and the subscribes that keep the task. The uninstall does not finish and the task's
+// record is not ended for it, the package stays installed and locked, and once the runner answers
+// again the cancel lands, the task's onCancelled runs, and the package is removed.
+func TestAnUninstallWaitsOutARunnerItCannotReach(t *testing.T) {
+	down := new(atomic.Bool)
+	srv, url, id := runningPackageGated(t, entitytest.Store(t), "demo", reviewAtDemo, func(*http.Request) bool { return down.Load() })
+	pr := entity.RefAt("demo", "pr", "1")
+	down.Store(true)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := srv.uninstall(ctx, srv.Store, "demo"); err == nil {
+		t.Fatal("the uninstall answered as done while its task's runner could not be reached")
+	}
+	if got := recordStatus(srv, id); got != string(task.Running) {
+		t.Fatalf("the task's record says %q, want running: nothing has said it ended", got)
+	}
+	if eng := srv.packageEngineIfRunning("demo"); eng == nil || !srv.packagesSeenAt("demo") {
+		t.Fatal("the package was removed while its task's runner could not be reached")
+	}
+	if code, msg := installAt(t, url, "demo", reviewAtDemo); code != 429 {
+		t.Fatalf("installing at the package meanwhile = %d, want 429: %s", code, msg)
+	}
+
+	down.Store(false)
+	if err := srv.uninstall(t.Context(), srv.Store, "demo"); err != nil {
+		t.Fatalf("the uninstall, once the runner answers: %v", err)
+	}
+	if e, _, _ := srv.Store.Get(pr); entity.Str(e.Payload, "stage") != "dropped" {
+		t.Fatalf("subject = %v, want what the rule's onCancelled writes", e.Payload)
+	}
+	if srv.packageEngineIfRunning("demo") != nil || srv.packagesSeenAt("demo") {
+		t.Fatal("the package stands after its uninstall")
+	}
 }

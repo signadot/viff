@@ -573,12 +573,30 @@ func (s *Server) packagesUnder(at string) []string {
 }
 
 // uninstallOne uninstalls one package, where the requester may (uninstall.go). The caller does
-// not hold the charter lock: the uninstall takes it for the removal.
+// not hold the charter lock: it is taken for the asking and the locking (startUninstall), and
+// again by the uninstall for the removal.
 func (s *Server) uninstallOne(ctx context.Context, store entity.Store, at string) error {
-	if err := s.mayUninstall(store, at); err != nil {
+	release, err := s.lockCharter(ctx)
+	if err != nil {
 		return err
 	}
-	return s.uninstall(ctx, store, at)
+	u, err := s.startUninstall(store, at)
+	release()
+	if err != nil {
+		return err
+	}
+	return u.wait(ctx, at)
+}
+
+// startUninstall asks whether the requester may uninstall the package at an address, and where
+// they may, locks it and starts its uninstall, or joins the one under way. The caller holds the
+// charter lock, which an install holds: nothing is installed at the address between the asking
+// and the lock (lockedAt), so what is removed is what was asked about.
+func (s *Server) startUninstall(store entity.Store, at string) (*uninstalling, error) {
+	if err := s.mayUninstall(store, at); err != nil {
+		return nil, err
+	}
+	return s.beginUninstall(store, at)
 }
 
 // mayUninstall asks whether the requester may take down every part of the package at an address,

@@ -167,10 +167,13 @@ func (s *Server) expireCharterLater(ref entity.Ref, p entity.Payload) {
 
 // expireCharter removes a package whose expiry has come, as `verse charter -r` would, and only
 // the package AT the address: a charter under it is one of its own. It reads the declaration
-// again first, under the charter lock, so a timer outliving what armed it acts on the charter as
-// it stands: one installed again since, renewed or with no ttl, is not removed.
+// again first, and locks the package for its uninstall, under one hold of the charter lock, so a
+// timer outliving what armed it acts on the charter as it stands: one installed again since,
+// renewed or with no ttl, is not removed, and an install after the reading is refused (429),
+// as at any package being uninstalled.
 func (s *Server) expireCharter(ref entity.Ref) {
-	release, err := s.lockCharter(s.ctxOrBackground())
+	ctx := s.ctxOrBackground()
+	release, err := s.lockCharter(ctx)
 	if err != nil {
 		return // the server is stopping; the next start arms it again
 	}
@@ -188,8 +191,12 @@ func (s *Server) expireCharter(ref entity.Ref) {
 		return
 	}
 	at := entity.Str(ent.Payload, charter.AtField)
+	u, err := s.startUninstall(entity.As(s.Store, entity.SystemDefault), at)
 	release() // the uninstall takes the lock itself, for the removal
-	if err := s.uninstallOne(s.ctxOrBackground(), entity.As(s.Store, entity.SystemDefault), at); err != nil {
+	if err == nil {
+		err = u.wait(ctx, at)
+	}
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "verse: charter %s: its ttl is over, and it was not removed: %v\n", at, err)
 		return
 	}

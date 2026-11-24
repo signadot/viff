@@ -41,7 +41,8 @@ var ErrClosing = errors.New("the charter package is being uninstalled")
 // still runs when a task ends, unless it would launch: an action that spawns or carries a
 // sequence is refused whole, its write too (ErrClosing), with nothing recorded against it, and
 // a sequence whose element ends is ended there, cancelled; one whose steps are running is
-// waited for. The charter takes no rule and no level (ErrClosing).
+// waited for. The charter takes no rule and no level, and loses no rule but by its host
+// (ErrClosing: RemoveTriggerAs).
 func (e *Engine) Close() {
 	e.liveMu.Lock()
 	e.closing = true

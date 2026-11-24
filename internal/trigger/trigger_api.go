@@ -180,8 +180,11 @@ func (e *Engine) MayRemoveTrigger(principal, name string) error {
 // reports whether it stood. The removal is the delete of its record, which is what the next
 // start reads, and the engine follows: the rule's watches stop with it, or a removed rule keeps
 // firing off a watch nothing lists any more.
+//
+// It is the host's, and is not refused once the engine closes: taking a closed charter down is
+// how its rules go (Close).
 func (e *Engine) RemoveTrigger(name string) bool {
-	stood, err := e.RemoveTriggerAs(context.Background(), "", name)
+	stood, err := e.removeTrigger(context.Background(), "", name)
 	if err != nil {
 		e.logger.Warn("a rule's removal did not land", "trigger", name, "err", err)
 	}
@@ -190,7 +193,21 @@ func (e *Engine) RemoveTrigger(name string) bool {
 
 // RemoveTriggerAs is RemoveTrigger on behalf of a principal, refused where they may not, and
 // answered once the engine no longer holds the rule (followed), bounded by ctx.
+//
+// IT IS REFUSED ONCE THE ENGINE CLOSES (ErrClosing), as an install is: the tasks a closing
+// engine cancels end with their rules standing, and a rule removed meanwhile leaves its task's
+// end with no hook to run. Asked as work (begin), so a Close waits for a removal under way and
+// refuses one after it.
 func (e *Engine) RemoveTriggerAs(ctx context.Context, principal, name string) (bool, error) {
+	if !e.begin() {
+		return false, ErrClosing
+	}
+	defer e.work.Done()
+	return e.removeTrigger(ctx, principal, name)
+}
+
+// removeTrigger is the removal, refused where principal may not.
+func (e *Engine) removeTrigger(ctx context.Context, principal, name string) (bool, error) {
 	if err := e.MayRemoveTrigger(principal, name); err != nil {
 		return false, err
 	}

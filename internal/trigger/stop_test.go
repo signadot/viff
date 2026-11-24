@@ -131,8 +131,8 @@ func (h *heldHandle) cancelled() {
 }
 
 // A CLOSED ENGINE LAUNCHES NOTHING, AND TAKES THE ENDS OF ITS TASKS. Its rule fires about nothing
-// and its charter takes no rule. Its task, cancelled, ends as any task does: `onCancelled` runs,
-// the claim comes off, and the engine is not busy.
+// and its charter takes no rule and loses none to a request. Its task, cancelled, ends as any task
+// does: `onCancelled` runs, the claim comes off, and the engine is not busy.
 func TestAClosedEngineLaunchesNothingAndTakesItsTasksEnds(t *testing.T) {
 	store := entitytest.Store(t)
 	eng, _, sp, _ := deploying(t, store, reviewing(), func(sp *spawned) Spawner { return sp.spawn })
@@ -149,6 +149,12 @@ func TestAClosedEngineLaunchesNothingAndTakesItsTasksEnds(t *testing.T) {
 	other.Name = "again"
 	if err := eng.AddTrigger(other); !errors.Is(err, ErrClosing) {
 		t.Fatalf("adding a rule to a closed engine = %v, want ErrClosing", err)
+	}
+	if removed, err := eng.RemoveTriggerAs(t.Context(), "", "review"); removed || !errors.Is(err, ErrClosing) {
+		t.Fatalf("removing the rule of a closed engine = %v, %v, want ErrClosing: its task's end runs its hook", removed, err)
+	}
+	if _, stands := eng.Rule("review"); !stands {
+		t.Fatal("a closed engine lost the rule its task's end runs the hook of")
 	}
 	entitytest.Set(t, store, prRef("2"), entity.Obj{"stage": "open"}.Payload())
 	time.Sleep(300 * time.Millisecond)
