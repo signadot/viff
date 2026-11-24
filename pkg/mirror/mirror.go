@@ -1258,7 +1258,7 @@ const ClaimKind = "claim"
 // spawn's hold on its subject (trigger's applyOne) rather than a sequence's run claim. A
 // sequence's claim is explained across a restart by a resumed task that is an element of it; a
 // spawn's only by the task at its own chain, since the hook's own spawns are held at chains of
-// their own and release only those (trigger's ClaimsOf, Settle).
+// their own and release only those (trigger's settleClaim, settleTask).
 const (
 	ClaimOfField = "of"
 	ClaimOfSpawn = "spawn"
