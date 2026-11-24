@@ -2,6 +2,7 @@
 blocked_by: []
 blocks: []
 branches: []
+closed_by: fb13c927eb0352a8595271b309038152deb7deba
 commits: []
 created: "2026-11-24T00:25:21.996567+01:00"
 duplicates: []
@@ -9,5 +10,5 @@ id: sh1d05dth12krreb0hng
 labels: []
 related_issues:
 - zm4kqgzsh12krkmtznn0
-status: open
-updated: "2026-11-24T01:16:34.589775+01:00"
+status: closed
+updated: "2026-11-24T10:14:26.280153+01:00"
