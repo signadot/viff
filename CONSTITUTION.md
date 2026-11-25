@@ -43,7 +43,8 @@ Its current focus is software development work.
 The maintainers decide whether to adopt or change this constitution and its maintainers, and the decision process seeks consensus and shared understanding by principled and open-minded discussion.
 
 The decision for proposed changes is taken 7 days after the time the request is
-made by a maintainer.  It is adopted if and only if at that time
+made by a maintainer and placed before all maintainers for review.  It is adopted if
+and only if at that time
 
 1. At least 2 maintainers approve.
 2. The number of denials is strictly less than the number of approvals.
