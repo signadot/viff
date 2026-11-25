@@ -1,8 +1,8 @@
-# viff charter
+# viff constitution
 
 ## Scope
 
-This charter pertains to the viff repository: what is in it, and how that changes.
+This constitution pertains to the viff repository: what is in it, and how that changes.
 
 ## Statement of purpose
 
@@ -13,13 +13,13 @@ The purposes of viff are:
 3. To achieve 1 and 2 in a fashion which maximises the value of human attention.
 4. To be something helpful that others can freely build on and use.
 5. To remain fit to these purposes as the world and the nature of autonomy change.
-6. To contain no work outside this charter, and to change that only through changing the charter.
+6. To contain no work outside this constitution, and to change that only through changing the constitution.
 
-## Ownership, work, and this charter.
+## Ownership, work, and this constitution
 
-This charter is owned by the viff maintainers, listed in `MAINTAINERS`.
+This constitution is owned by the viff maintainers, listed in `MAINTAINERS`.
 
-Work under this charter shapes viff and changes are justified against the current
+Work under this constitution shapes viff and changes are justified against the current
 state of viff, in terms of the purposes above.
 
 At the time of its last adoption, viff was a small runtime that supported
@@ -32,23 +32,18 @@ At the time of its last adoption, viff was a small runtime that supported
 - a record of who made every write, and a permissions model over both data and control.
 - the use case of automatically deployed charters in a repository's `.viff/charters`.
 
-The commit that amends this charter also updates this description of viff, so that it
+The commit that amends this constitution also updates this description of viff, so that it
 describes viff as of the last adoption.
 
 Its current focus is software development work.
 
 
-## Adopting and changing this charter
+## Adopting and changing this constitution
 
-The maintainers decide whether to adopt or change this charter, and the decision process seeks consensus and shared understanding by principled and open-minded discussion.
+The maintainers decide whether to adopt or change this constitution and its maintainers, and the decision process seeks consensus and shared understanding by principled and open-minded discussion.
 
-## Changing the maintainers
+The decision for proposed changes is taken 7 days after the time the request is
+made by a maintainer.  It is adopted if and only if at that time
 
-Adding a maintainer is a commit to main by the new maintainer whose commit message attests
-to adopting the charter.  Prior to landing on main, the commit is placed under review
-by all maintainers, using viff, and
 1. At least 2 maintainers approve.
 2. The number of denials is strictly less than the number of approvals.
-
-Removing a maintainer follows the same path but may be proposed by any maintainer
-and there is no declaration about adopting the charter.
