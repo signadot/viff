@@ -321,6 +321,12 @@ build:
     # repository costs against the rate limit — and they are opt-in per repository on GitHub's
     # side, so most repositories have none. Off by default; see docs/reference/iod.md.
     githubDiscussions: false
+    # Dependabot alerts, at `github.<org>.<name>.alert.<n>`: the open ones and the newest
+    # `-settled` fixed or dismissed. Off by default, for two reasons. The credential then needs
+    # Dependabot alerts read, and a read GitHub refuses drops the alerts and keeps the rest. And
+    # GitHub shows a repository's alerts to its admins and security managers alone, where once
+    # reflected anyone who reads `github.<org>.<name>.*` reads them; see docs/reference/iod.md.
+    githubAlerts: false
     # The out half: comments, pull requests, merges, reviews, closes, checks and issues asked
     # for under `github.<org>.<name>.out`, as the App. The repo-charters reconciler's question,
     # review and statuses on a pull request to main ride it, and its candidate's issue; off,
@@ -1898,7 +1904,7 @@ build:
   # patch that inserted would have to know what it was inserting into, and two of them would
   # each clobber the other's.
   #
-  # `-discussions` is spelled `=value` so one patch carries both knobs. A source with no
+  # `-discussions` and `-alerts` are spelled `=value` so one patch carries every knob. A source with no
   # repositories refuses to start, which is why this is conditional on there being some rather
   # than defaulting to a list nobody meant.
   - if: '.[ githubIod && githubRepos != "" ]'
@@ -1922,6 +1928,7 @@ build:
               - -repo
               - $[githubRepos]
               - -discussions=$[githubDiscussions]
+              - -alerts=$[githubAlerts]
               - -out=$[githubOut]
               # One out loop per repository, each reporting its pass to viff: at the default 5s
               # that report alone is most of the store's commits. A comment's hint kicks a pass at
