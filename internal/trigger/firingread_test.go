@@ -293,3 +293,54 @@ func TestASequenceEditedWhileItsElementRunsReadsByTheRuleAsItStands(t *testing.T
 		t.Fatalf("subject = %v, want the new onDone's patch: finished, covering bbb222", got)
 	}
 }
+
+// ONE SNAPSHOT PER FAN-OUT, however many members it has. Each member is its own firing, but every
+// one reads the same places at the same commit as the same rule, so a snapshot each is the same
+// read N times over. On staging a rule over every open pull request took sixty-three snapshots
+// of the whole github subtree for one commit, all at once, and the store's session budget ran
+// out under them: every member failed with `context deadline exceeded`.
+func TestAFanOutTakesOneSnapshotForAllItsMembers(t *testing.T) {
+	store := &countingStore{Store: entitytest.Store(t)}
+	eng := New(store, task.AutoResolver{})
+
+	const n = 20
+	var members []entity.Ref
+	for i := range n {
+		ref := entity.RefAt("drive", "item", string(rune('a'+i)))
+		entitytest.Set(t, store, ref, entity.Obj{"stage": "open", "note": "hello"}.Payload())
+		members = append(members, ref)
+	}
+	entitytest.Set(t, store, entity.RefAt("git", "viff", "head"), entity.Obj{"sha": "bbb222"}.Payload())
+
+	if err := eng.AddTrigger(mustParseCharter(t, `
+- name: every-open-item
+  condition:
+    when: {path: "ci.status.*"}
+    subject: {path: "drive.item.*", value: {stage: open}}
+  action:
+    patch:
+      stage: seen
+      note: .[subject.value.note]
+      covering: !get-path {at: "git.viff.head", path: sha}
+`)); err != nil {
+		t.Fatalf("AddTrigger: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	eng.Start(ctx)
+
+	// One change that touches no member, so every member's `subject.value` is read at the
+	// commit rather than taken from it.
+	entitytest.Set(t, store, entity.RefAt("ci", "status", "build"), entity.Obj{"state": "green"}.Payload())
+	c := store.Head()
+	for _, ref := range members {
+		waitField(t, store, ref, "covering", "bbb222")
+		waitField(t, store, ref, "note", "hello")
+	}
+	// At the causing commit: the engine's own evaluate read, and the fan-out's one. The members'
+	// writes are later commits, each evaluated in its turn, and are not what this counts.
+	if got := store.asOfAt(c); got > 2 {
+		t.Fatalf("%d snapshots at commit %d for one fan-out of %d members: they read the same "+
+			"places at the same commit and are supposed to share one", got, c, n)
+	}
+}

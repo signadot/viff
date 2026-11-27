@@ -71,13 +71,20 @@ func (e *Engine) fireSubjects(ctx context.Context, t Trigger, c entity.Commit, s
 	// Worked out once for the rule rather than per subject: it walks the rule's document, and
 	// the answer is the same for every member of a fan-out.
 	within := firingWithin(t)
+	// ONE SNAPSHOT FOR THE FAN-OUT. Every member reads the same places (within), at the same
+	// commit (c), as the same rule (reader), so its snapshot is the same world, and one each
+	// was that one read N times over, all at once. On staging, a rule over every open pull
+	// request took sixty-three snapshots of the whole github subtree for one commit, and the
+	// store's session budget ran out under them. Shared, it is taken by whichever member asks
+	// first and read by the rest. A member that is paced (below) reads it later, still at c.
+	snap := &snapCache{}
+	reader := e.reader(t.Name)
 	for _, subj := range subjects {
 		parent := e.causeFor(t, c, subj)
 		// The causing commit rides ALONGSIDE the causal parent rather than replacing it: parent
 		// is zeroed when this firing begins a fresh chain, and c is the commit that caused it
 		// either way. See occasion.
-		oc := occasion{commit: c, parent: parent, snap: &snapCache{}, within: within,
-			reader: e.reader(t.Name)}
+		oc := occasion{commit: c, parent: parent, snap: snap, within: within, reader: reader}
 		// Before the throttle, which counts the trip and marks the chain reported: a firing a
 		// suspension holds is not one the throttle should have seen.
 		if held := e.holding(t.Name, subj); len(held) > 0 {

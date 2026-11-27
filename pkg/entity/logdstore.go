@@ -363,7 +363,14 @@ func canonicalFields(n *ir.Node) *ir.Node {
 	}
 	fields := map[string]*ir.Node{}
 	for k, v := range ir.ToMap(obj) {
-		fields[k] = canonicalFields(v)
+		c := canonicalFields(v)
+		// A value that came back as itself is a node of the document being read, and FromMap
+		// below reparents what it is given. So it gets a copy, or every read would write to the
+		// document it reads: a race once a snapshot is shared by a fan-out's members.
+		if c == v {
+			c = v.Clone()
+		}
+		fields[k] = c
 	}
 	sorted := ir.FromMap(fields).WithTag(obj.Tag)
 	sorted.Comment = obj.Comment

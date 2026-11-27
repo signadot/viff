@@ -316,6 +316,7 @@ type countingStore struct {
 	n       int
 	whole   int
 	withins [][][]string
+	revs    []int64
 }
 
 func (c *countingStore) AsOf(rev int64, within ...[]string) (entity.Snapshot, error) {
@@ -325,6 +326,7 @@ func (c *countingStore) AsOf(rev int64, within ...[]string) (entity.Snapshot, er
 		c.whole++
 	}
 	c.withins = append(c.withins, append([][]string(nil), within...))
+	c.revs = append(c.revs, rev)
 	c.mu.Unlock()
 	return c.Store.AsOf(rev, within...)
 }
@@ -333,6 +335,19 @@ func (c *countingStore) asOf() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.n
+}
+
+// asOfAt is how many snapshots were taken at one revision.
+func (c *countingStore) asOfAt(rev int64) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, r := range c.revs {
+		if r == rev {
+			n++
+		}
+	}
+	return n
 }
 
 // wholeViff is how many of those snapshots were of the whole viff.
