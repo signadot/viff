@@ -566,6 +566,7 @@ cloning one it can reflect nothing from.
 | `gitIssueIod` | `false` | deploy the git-issue connector |
 | `gitIssueMirror` | `""` | its own mirror set, when it differs; `""` follows `gitMirror` |
 | `gitAsApp` | `false` | the git and git-issue iods fetch, and the git iod pushes, as the GitHub App, its keys read from `viff-github`, in place of the `viff-git` PAT |
+| `githubAlerts` | `false` | the github iod reflects Dependabot alerts at `github.<org>.<name>.alert.<n>`. The App needs Dependabot alerts read, and anyone who reads the repository's entities then reads its alerts ([iod github](../docs/reference/iod.md#github)) |
 | `githubOut` | `false` | the github iod acts back as the App: comments, pull requests, merges, reviews, closes, checks and issues asked for under `github.<org>.<name>.out` |
 | `slackIod` | `false` | deploy the Slack connector (needs the `viff-slack` Secret) |
 | `slackIodName` | `slack` | the registration name — must match `viff iod add <name> -root slack` |
@@ -725,7 +726,7 @@ kubectl -n viff get secret viff-git -o go-template='{{range $k,$v := .data}}{{$k
 
 **The GitHub token needs `Contents` as well**, which is the permission easiest to leave off
 and the first one used. Read-only on **Contents, Metadata, Issues, Pull requests and Actions**
-(plus Discussions with `githubDiscussions`). Without Contents the connector's first read is a
+(plus Discussions with `githubDiscussions`, and Dependabot alerts with `githubAlerts`). Without Contents the connector's first read is a
 `403 Resource not accessible by personal access token` on `git/ref/heads/<branch>` — it reads
 the default branch's ref before anything else. Get the set wrong and you edit the token's
 permissions in place (Settings → Developer settings → Fine-grained tokens → the token → Edit): the
@@ -822,9 +823,13 @@ charters, and on main's commit for a change that reached main unanswered (an inp
 without the permission GitHub refuses the status and the refusal lands on the input's status.
 Add it under the App's settings (Permissions & events → Repository permissions → Commit
 statuses: Read and write); the installation then asks an org owner to approve the new
-permission. Two are left off on purpose:
+permission. Three are left off on purpose:
 
 - **Discussions.** Discussions stay off unless `githubDiscussions` is turned on.
+- **Dependabot alerts.** Alerts stay off unless `githubAlerts` is turned on. Then add
+  Repository permissions → Dependabot alerts: Read-only, and have each repository's webhook send
+  `Dependabot alerts` events too, or an alert waits for the next pass. Without the permission
+  GitHub answers 403, and the iod drops the alerts and keeps what was already reflected.
 - **Workflows.** Without it, GitHub refuses the app a merge of a pull request that changes
   `.github/workflows/*`, and the refusal lands on the input's status.
 
